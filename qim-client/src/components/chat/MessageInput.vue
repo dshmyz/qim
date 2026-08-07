@@ -18,6 +18,7 @@
     <ChatToolbar
       :is-electron="isElectron"
       :show-ai-actions="localShowAIActions"
+      :can-call="canCall"
       @start-voice-call="$emit('start-voice-call')"
       @start-video-call="$emit('start-video-call')"
       @start-screen-share="$emit('start-screen-share')"
@@ -199,12 +200,15 @@ interface Props {
   slashFooterLabel?: string
   /** 斜杠面板底部操作按钮图标 class。可选 */
   slashFooterIcon?: string
+  /** 是否允许通话/屏幕共享（机器人/系统助手等非人类账号为 false） */
+  canCall?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   processingAction: null,
   draftStreaming: false,
-  hasDraftReply: false
+  hasDraftReply: false,
+  canCall: true
 })
 
 const emit = defineEmits<{

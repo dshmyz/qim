@@ -6,7 +6,7 @@
       <span class="mode-hint">（在普通设置中修改触发模式）</span>
     </div>
 
-    <div v-if="modelValue.triggerRules?.mode === 'keyword' || modelValue.triggerRules?.mode === 'smart'" class="setting-item">
+    <div v-if="modelValue.triggerRules?.keywordOnly" class="setting-item">
       <label>触发关键词</label>
       <div class="keyword-input-wrapper">
         <input
@@ -28,9 +28,9 @@
 
     <div class="setting-item">
       <label>接管冷却期</label>
-      <select 
-        :value="modelValue.takeoverCooldown" 
-        @change="update('takeoverCooldown', Number(($event.target as HTMLSelectElement).value))" 
+      <select
+        :value="modelValue.takeoverCooldown"
+        @change="update('takeoverCooldown', Number(($event.target as HTMLSelectElement).value))"
         class="form-select"
       >
         <option :value="5">5 分钟</option>
@@ -38,7 +38,23 @@
         <option :value="30">30 分钟</option>
         <option :value="60">1 小时</option>
       </select>
-      <span class="setting-hint">你发消息后，分身暂停回复的时间</span>
+      <span class="setting-hint">点击「接管分身」后，分身暂停回复的时间</span>
+    </div>
+
+    <div class="setting-item">
+      <label>你发消息后，分身暂停回复</label>
+      <select
+        :value="modelValue.selfMessagePause ?? 0"
+        @change="update('selfMessagePause', Number(($event.target as HTMLSelectElement).value))"
+        class="form-select"
+      >
+        <option :value="0">不暂停</option>
+        <option :value="5">5 分钟</option>
+        <option :value="10">10 分钟</option>
+        <option :value="30">30 分钟</option>
+        <option :value="60">1 小时</option>
+      </select>
+      <span class="setting-hint">你在会话发言后，分身在这段时间内不自动回复，避免插话</span>
     </div>
   </div>
 </template>
@@ -58,14 +74,14 @@ const emit = defineEmits<{
 const keywordInput = ref('')
 
 const modeLabel = computed(() => {
-  const labels: Record<string, string> = {
-    mention: '被 @ 时回复',
-    offline: '离线时自动回复',
-    smart: '智能模式',
-    keyword: '关键词触发',
-    all: '所有消息'
-  }
-  return labels[props.modelValue.triggerRules?.mode ?? ''] || '未知'
+  const parts: string[] = []
+  const r = props.modelValue.triggerRules
+  if (r?.requireMention) parts.push('被 @ 时回复')
+  if (r?.smartDecide) parts.push('智能判断')
+  if (r?.keywordOnly) parts.push('关键词命中')
+  if (r?.offlineOnly) parts.push('仅离线')
+  if (parts.length === 0) return '所有消息'
+  return parts.join(' + ')
 })
 
 function update<K extends keyof AvatarConfig>(key: K, value: AvatarConfig[K]) {

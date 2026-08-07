@@ -28,6 +28,14 @@ type AvatarTask struct {
 	TriggerName    string
 }
 
+// avatarSendMeta 分身回复发送所需的分身侧元数据。
+// 将回复发送所需的非核心参数收敛为单个参数对象，避免回复发送函数参数膨胀。
+type avatarSendMeta struct {
+	avatarCfgName   string
+	disclaimerStyle string
+	sources         []AvatarSource
+}
+
 // AvatarWorkerPool 分身工作池
 type AvatarWorkerPool struct {
 	queue        chan AvatarTask
@@ -114,7 +122,7 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		return
 	}
 
-	reply, err := p.service.GenerateReply(task.UserID, task.ConversationID, task.TriggerMessage, &avatarConfig)
+	reply, sources, err := p.service.GenerateReplyWithSources(task.UserID, task.ConversationID, task.TriggerMessage, &avatarConfig)
 	if err != nil {
 		logger.WithModule("AvatarWorkerPool").Error("分身回复生成失败", "user", task.UserID, "conv", task.ConversationID, "error", err)
 		return
@@ -127,12 +135,6 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		return
 	}
 
-	// 一次性查询分身用户信息，后续发送函数复用
-	var avatarUser model.User
-	if err := p.db.First(&avatarUser, task.UserID).Error; err != nil {
-		logger.WithModule("AvatarWorkerPool").Error("获取分身用户信息失败", "user", task.UserID, "error", err)
-		return
-	}
 	avatarCfgName := ""
 	if avatarConfig.Name != "" {
 		avatarCfgName = avatarConfig.Name
@@ -145,11 +147,23 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	}
 	// 发送逻辑抽成闭包，便于延迟发送时异步执行而不阻塞 worker
 	send := func() {
+		meta := avatarSendMeta{
+			avatarCfgName:   avatarCfgName,
+			disclaimerStyle: replyStrategy.DisclaimerStyle,
+			sources:         sources,
+		}
 		// 群聊默认回群内（GroupReplyTarget=private 时回触发者私聊），私聊回原会话
 		if task.IsGroupChat && replyStrategy.GroupReplyTarget == "private" {
-			p.sendPrivateReply(task, reply, &avatarUser, avatarCfgName, replyStrategy.DisclaimerStyle)
+			convService := NewConversationService(database.GetDB())
+			conv, err := convService.CreateSingleConversation(task.UserID, task.TriggerUserID)
+			if err != nil {
+				logger.WithModule("AvatarWorkerPool").Error("创建私聊会话失败",
+					"user", task.UserID, "trigger", task.TriggerUserID, "error", err)
+				return
+			}
+			p.sendReply(task, conv.ID, reply, meta)
 		} else {
-			p.sendDirectReply(task, reply, &avatarUser, avatarCfgName, replyStrategy.DisclaimerStyle)
+			p.sendReply(task, task.ConversationID, reply, meta)
 		}
 		now := time.Now()
 		p.db.Model(&session).Update("last_reply_at", now)
@@ -182,82 +196,13 @@ func (p *AvatarWorkerPool) getUserLimiter(userID uint) *rate.Limiter {
 	return limiterAny.(*rate.Limiter)
 }
 
-// sendPrivateReply 发送私聊回复（群聊场景）
-func (p *AvatarWorkerPool) sendPrivateReply(task AvatarTask, reply string, avatarUser *model.User, avatarCfgName string, disclaimerStyle string) {
-	// 1. 找到或创建分身用户与触发者的私聊会话
-	convService := NewConversationService(database.GetDB())
-	conv, err := convService.CreateSingleConversation(task.UserID, task.TriggerUserID)
-	if err != nil {
-		logger.WithModule("AvatarWorkerPool").Error("创建私聊会话失败",
-			"user", task.UserID, "trigger", task.TriggerUserID, "error", err)
-		return
-	}
-
-	// 2. 创建消息
-	msg := model.Message{
-		ConversationID: conv.ID,
-		SenderID:       task.UserID,
-		Type:           "text",
-		Content:        reply,
-		IsRead:         false,
-		Origin:         "avatar",
-	}
-
-	if err := p.db.Create(&msg).Error; err != nil {
-		logger.WithModule("AvatarWorkerPool").Error("保存分身消息失败", "conv", conv.ID, "error", err)
-		return
-	}
-
-	// 5. 预加载发送者信息
-	p.db.Preload("Sender").First(&msg, msg.ID)
-
-	// 6. 更新会话最后消息
-	now := time.Now()
-	p.db.Model(&model.Conversation{}).Where("id = ?", conv.ID).Updates(map[string]interface{}{
-		"last_message_id": msg.ID,
-		"last_message_at": now,
-	})
-
-	// 7. 增加触发者的未读数
-	p.db.Model(&model.ConversationMember{}).
-		Where("conversation_id = ? AND user_id != ?", conv.ID, task.UserID).
-		UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
-
-	// 8. 广播消息到私聊会话
-	responseData := map[string]interface{}{
-		"id":              msg.ID,
-		"conversation_id": msg.ConversationID,
-		"sender_id":       msg.SenderID,
-		"type":            msg.Type,
-		"content":         msg.Content,
-		"is_read":         msg.IsRead,
-		"created_at":      msg.CreatedAt,
-		"is_avatar_reply": msg.Origin == "avatar",
-		"origin":         msg.Origin,
-		"sender":          msg.Sender,
-		"avatar_name":     avatarCfgName,
-		"disclaimer_style": disclaimerStyle,
-	}
-
-	if ws.GlobalHub != nil {
-		wsMsg := ws.WSMessage{
-			Type: "new_message",
-			Data: responseData,
-		}
-		jsonMsg, _ := json.Marshal(wsMsg)
-		logger.WithModule("sendPrivateReply").Debug("Broadcasting",
-			"conv", conv.ID, "origin", msg.Origin, "sender_id", msg.SenderID, "sender_name", msg.Sender.Nickname)
-		ws.GlobalHub.SendToConversation(conv.ID, 0, jsonMsg)
-	}
-
-	logger.WithModule("AvatarWorkerPool").Info("分身私聊回复已发送", "conv", conv.ID, "msgID", msg.ID)
-}
-
-// sendDirectReply 发送直接回复（私聊场景）
-func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatarUser *model.User, avatarCfgName string, disclaimerStyle string) {
+// sendReply 把分身回复作为新消息写入指定会话并广播。
+// convID 即回复落点会话：群聊（GroupReplyTarget=private）回触发者私聊时用新建的私聊会话，
+// 否则为原会话。分身侧元数据集中放在 meta，避免参数过多。
+func (p *AvatarWorkerPool) sendReply(task AvatarTask, convID uint, reply string, meta avatarSendMeta) {
 	// 1. 创建消息
 	msg := model.Message{
-		ConversationID: task.ConversationID,
+		ConversationID: convID,
 		SenderID:       task.UserID,
 		Type:           "text",
 		Content:        reply,
@@ -266,39 +211,40 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatar
 	}
 
 	if err := p.db.Create(&msg).Error; err != nil {
-		logger.WithModule("AvatarWorkerPool").Error("保存分身消息失败", "conv", task.ConversationID, "error", err)
+		logger.WithModule("AvatarWorkerPool").Error("保存分身消息失败", "conv", convID, "error", err)
 		return
 	}
 
-	// 4. 预加载发送者信息
+	// 2. 预加载发送者信息
 	p.db.Preload("Sender").First(&msg, msg.ID)
 
-	// 5. 更新会话最后消息
+	// 3. 更新会话最后消息
 	now := time.Now()
-	p.db.Model(&model.Conversation{}).Where("id = ?", task.ConversationID).Updates(map[string]interface{}{
+	p.db.Model(&model.Conversation{}).Where("id = ?", convID).Updates(map[string]interface{}{
 		"last_message_id": msg.ID,
 		"last_message_at": now,
 	})
 
-	// 6. 增加其他成员的未读数
+	// 4. 增加其他成员的未读数
 	p.db.Model(&model.ConversationMember{}).
-		Where("conversation_id = ? AND user_id != ?", task.ConversationID, task.UserID).
+		Where("conversation_id = ? AND user_id != ?", convID, task.UserID).
 		UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
 
-	// 7. 广播消息到当前会话
+	// 5. 广播消息到会话
 	responseData := map[string]interface{}{
-		"id":              msg.ID,
-		"conversation_id": msg.ConversationID,
-		"sender_id":       msg.SenderID,
-		"type":            msg.Type,
-		"content":         msg.Content,
-		"is_read":         msg.IsRead,
-		"created_at":      msg.CreatedAt,
-		"is_avatar_reply": msg.Origin == "avatar",
-		"origin":         msg.Origin,
-		"sender":          msg.Sender,
-		"avatar_name":     avatarCfgName,
-		"disclaimer_style": disclaimerStyle,
+		"id":               msg.ID,
+		"conversation_id":  msg.ConversationID,
+		"sender_id":        msg.SenderID,
+		"type":             msg.Type,
+		"content":          msg.Content,
+		"is_read":          msg.IsRead,
+		"created_at":       msg.CreatedAt,
+		"is_avatar_reply":  msg.Origin == "avatar",
+		"origin":           msg.Origin,
+		"sender":           msg.Sender,
+		"avatar_name":      meta.avatarCfgName,
+		"disclaimer_style": meta.disclaimerStyle,
+		"sources":          p.compactSources(meta.sources),
 	}
 
 	if ws.GlobalHub != nil {
@@ -307,10 +253,33 @@ func (p *AvatarWorkerPool) sendDirectReply(task AvatarTask, reply string, avatar
 			Data: responseData,
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
-		logger.WithModule("sendDirectReply").Debug("Broadcasting",
-			"conv", task.ConversationID, "origin", msg.Origin, "sender_id", msg.SenderID, "sender_name", msg.Sender.Nickname)
-		ws.GlobalHub.SendToConversation(task.ConversationID, 0, jsonMsg)
+		logger.WithModule("sendReply").Debug("Broadcasting",
+			"conv", convID, "origin", msg.Origin, "sender_id", msg.SenderID, "sender_name", msg.Sender.Nickname)
+		ws.GlobalHub.SendToConversation(convID, 0, jsonMsg)
 	}
 
-	logger.WithModule("AvatarWorkerPool").Info("分身直接回复已发送", "conv", task.ConversationID, "msgID", msg.ID)
+	logger.WithModule("AvatarWorkerPool").Info("分身回复已发送", "conv", convID, "msgID", msg.ID)
+}
+
+// compactSources 压缩待下发的来源：截断即时聊天无需的冗长 snippet，避免 WS 载荷膨胀；
+// 无来源时返回 nil，保持旧响应兼容（前端不渲染「依据」）。
+func (p *AvatarWorkerPool) compactSources(sources []AvatarSource) []AvatarSource {
+	if len(sources) == 0 {
+		return nil
+	}
+	out := make([]AvatarSource, 0, len(sources))
+	seen := map[string]struct{}{}
+	for _, s := range sources {
+		// 去重（同一来源可能被多条命中），并截断 snippet
+		key := s.Type + "|" + s.Title
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		if runes := []rune(s.Snippet); len(runes) > 80 {
+			s.Snippet = string(runes[:80])
+		}
+		out = append(out, s)
+	}
+	return out
 }

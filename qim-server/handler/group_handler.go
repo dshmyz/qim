@@ -839,6 +839,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 	service.GetAINameCache().InvalidateGroupAssistantName(group.ConversationID)
 
 	// 同步 AI 助手账号昵称（分身名变更时）
+	var assistantMember gin.H
 	if req.AIAssistantName != nil && aiConfig.Enabled {
 		newName := aiConfig.AssistantName
 		if newName == "" {
@@ -851,34 +852,53 @@ func UpdateGroupAISettings(c *gin.Context) {
 			db.Model(&model.Bot{}).Where("id = ?", existingBot.ID).Update("name", newName)
 			// 更新关联 User.Nickname
 			if existingBot.VirtualUserID != nil {
-				db.Model(&model.User{}).Where("id = ?", *existingBot.VirtualUserID).Update("nickname", newName)
+				db.Model(&model.User{}).Where("id = ?", *existingBot.VirtualUserID).Updates(map[string]any{
+					"nickname": newName,
+				})
+				// 组装更新后的助手成员，随广播下发给群成员，用于刷新成员侧栏/成员列表里的旧昵称
+				var aiUser model.User
+				if db.First(&aiUser, *existingBot.VirtualUserID).Error == nil {
+					assistantMember = gin.H{
+						"id":       aiUser.ID,
+						"name":     aiUser.Nickname,
+						"username": aiUser.Username,
+						"avatar":   aiUser.Avatar,
+						"role":     "member",
+						"type":     aiUser.Type,
+					}
+				}
 			}
 		}
 	}
 
 	// 广播给群成员，让其他客户端实时感知 AI 设置变更
 	if ws.GlobalHub != nil {
+		data := gin.H{
+			"id":   convID,
+			"type": "group",
+			"name": group.Name,
+			"ai_config": gin.H{
+				"ai_enabled":            aiConfig.Enabled,
+				"ai_assistant_name":     aiConfig.AssistantName,
+				"ai_reply_mode":         aiConfig.ReplyMode,
+				"ai_personality":        aiConfig.Personality,
+				"ai_custom_prompt":      aiConfig.CustomPrompt,
+				"ai_language":           aiConfig.Language,
+				"ai_max_length":         aiConfig.MaxLength,
+				"ai_mention_reply_mode": aiConfig.MentionReplyMode,
+				"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
+				"ai_trigger_keywords":   aiConfig.TriggerKeywords,
+				"ai_learn_enabled":      aiConfig.LearnEnabled,
+				"ai_extract_todos":      aiConfig.ExtractTodos,
+			},
+		}
+		// 助手改名时附带更新后的成员条目，客户端据此刷新成员侧栏里 bot 的旧昵称
+		if assistantMember != nil {
+			data["ai_assistant_member"] = assistantMember
+		}
 		updateMsg := ws.WSMessage{
 			Type: "conversation_updated",
-			Data: gin.H{
-				"id":   convID,
-				"type": "group",
-				"name": group.Name,
-				"ai_config": gin.H{
-					"ai_enabled":            aiConfig.Enabled,
-					"ai_assistant_name":     aiConfig.AssistantName,
-					"ai_reply_mode":         aiConfig.ReplyMode,
-					"ai_personality":        aiConfig.Personality,
-					"ai_custom_prompt":      aiConfig.CustomPrompt,
-					"ai_language":           aiConfig.Language,
-					"ai_max_length":         aiConfig.MaxLength,
-					"ai_mention_reply_mode": aiConfig.MentionReplyMode,
-					"ai_anti_spam_interval": aiConfig.AntiSpamInterval,
-					"ai_trigger_keywords":   aiConfig.TriggerKeywords,
-					"ai_learn_enabled":      aiConfig.LearnEnabled,
-					"ai_extract_todos":      aiConfig.ExtractTodos,
-				},
-			},
+			Data: data,
 		}
 		jsonMsg, _ := json.Marshal(updateMsg)
 		ws.GlobalHub.SendToConversation(uint(convID), 0, jsonMsg)
@@ -901,7 +921,7 @@ func UpdateGroupAISettings(c *gin.Context) {
 
 	di.GlobalContainer.OperationLogService.LogUserOperation(c, "group_ai", "update_settings")
 
-	response.SuccessWithMessage(c, "AI 设置更新成功", gin.H{
+	resp := gin.H{
 		"ai_enabled":            aiConfig.Enabled,
 		"ai_assistant_name":     aiConfig.AssistantName,
 		"ai_reply_mode":         aiConfig.ReplyMode,
@@ -914,7 +934,11 @@ func UpdateGroupAISettings(c *gin.Context) {
 		"ai_trigger_keywords":   aiConfig.TriggerKeywords,
 		"ai_learn_enabled":      aiConfig.LearnEnabled,
 		"ai_extract_todos":      aiConfig.ExtractTodos,
-	})
+	}
+	if assistantMember != nil {
+		resp["ai_assistant_member"] = assistantMember
+	}
+	response.SuccessWithMessage(c, "AI 设置更新成功", resp)
 }
 
 func SetMemberRole(c *gin.Context) {

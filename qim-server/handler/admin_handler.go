@@ -668,6 +668,7 @@ type AdminAvatarConfigResponse struct {
 	ModelConfigID      *uint                      `json:"model_config_id"`
 	UseSystemConfig    bool                       `json:"use_system_config"`
 	TakeoverCooldown   int                        `json:"takeover_cooldown"`
+	SelfMessagePause   int                        `json:"self_message_pause"`
 	CreatedAt          time.Time                  `json:"created_at"`
 	UpdatedAt          time.Time                  `json:"updated_at"`
 }
@@ -708,6 +709,7 @@ func toAdminAvatarConfigResponse(cfg model.AvatarConfig) AdminAvatarConfigRespon
 		ModelConfigID:      cfg.ModelConfigID,
 		UseSystemConfig:    cfg.UseSystemConfig,
 		TakeoverCooldown:   cfg.TakeoverCooldown,
+		SelfMessagePause:   cfg.SelfMessagePause,
 		CreatedAt:          cfg.CreatedAt,
 		UpdatedAt:          cfg.UpdatedAt,
 	}
@@ -758,6 +760,7 @@ func AdminUpdateUserAvatarConfig(c *gin.Context) {
 		KnowledgeScope     *model.AvatarKnowledgeScope `json:"knowledge_scope"`
 		ReplyStrategy      *model.AvatarReplyStrategy  `json:"reply_strategy"`
 		TakeoverCooldown   *int                        `json:"takeover_cooldown"`
+		SelfMessagePause   *int                        `json:"self_message_pause"`
 		CustomPersonaAddon *string                     `json:"custom_persona_addon"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -830,6 +833,9 @@ func AdminUpdateUserAvatarConfig(c *gin.Context) {
 	}
 	if req.TakeoverCooldown != nil {
 		updates["takeover_cooldown"] = *req.TakeoverCooldown
+	}
+	if req.SelfMessagePause != nil {
+		updates["self_message_pause"] = *req.SelfMessagePause
 	}
 	if req.CustomPersonaAddon != nil {
 		updates["custom_persona_addon"] = *req.CustomPersonaAddon

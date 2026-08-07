@@ -7,7 +7,7 @@
       :style="ballStyle"
       title="AI 助手"
       @mousedown.left="onMouseDown"
-      @touchstart="onTouchStart"
+      @touchstart.passive="onTouchStart"
       @contextmenu.prevent="onContextMenu"
     >
       <i class="fas fa-robot"></i>
@@ -65,15 +65,20 @@ const BALL_SIZE = 52
 const MARGIN = 32
 const MOBILE_SIZE = 48
 const MOBILE_MARGIN = 20
+// 默认位置在视口右下角再往上抬一段，避免与底部聊天输入区的发送按钮重叠。
+// 输入区最小约 150px 高、球 52px，抬升 120px 让球浮在输入区上方但仍靠右下。
+const DEFAULT_TOP_LIFT = 120
+const MOBILE_TOP_LIFT = 100
 
 const size = computed(() => winW.value <= 768 ? MOBILE_SIZE : BALL_SIZE)
 const margin = computed(() => winW.value <= 768 ? MOBILE_MARGIN : MARGIN)
+const topLift = computed(() => winW.value <= 768 ? MOBILE_TOP_LIFT : DEFAULT_TOP_LIFT)
 
 const ballStyle = computed(() => {
   const s = size.value
   const m = margin.value
   const left = ballLeft.value ?? (winW.value - s - m)
-  const top = ballTop.value ?? (winH.value - s - m)
+  const top = ballTop.value ?? (winH.value - s - m - topLift.value)
   return {
     left: `${left}px`,
     top: `${top}px`,

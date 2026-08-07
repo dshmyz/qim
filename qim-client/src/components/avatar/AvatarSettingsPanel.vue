@@ -43,13 +43,6 @@
               v-model="config"
             />
           </div>
-
-          <div class="settings-section">
-            <h3 class="section-title">记忆管理</h3>
-            <AvatarMemoryPanel
-              :user-id="userId"
-            />
-          </div>
         </template>
 
         <template v-else-if="activeMainTab === 'advanced'">
@@ -77,6 +70,13 @@
         </template>
 
         <template v-else-if="activeMainTab === 'graph'">
+          <div class="settings-section">
+            <h3 class="section-title">记忆管理</h3>
+            <AvatarMemoryPanel
+              :user-id="userId"
+            />
+          </div>
+
           <div class="settings-section">
             <h3 class="section-title">知识图谱</h3>
             <AvatarGraph />

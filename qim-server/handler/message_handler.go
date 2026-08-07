@@ -21,6 +21,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // getUserIDFromContext 从 gin.Context 安全提取 user_id，避免类型断言 panic。
@@ -626,6 +627,11 @@ func SendMessage(c *gin.Context) {
 		return
 	}
 
+	// 「你发消息后，分身暂停回复」：本人在会话里发言后，给该会话的分身会话设
+	// 一个暂停窗口（TakeoverUntil），期间分身不自动回复。仅发送者本人 = 分身主人时生效；
+	// 未配置（SelfMessagePause<=0）或该会话无分身会话时静默跳过。
+	applyOwnMessagePause(database.GetDB(), uid, uint(convIDUint))
+
 	if req.Type == "file" || req.Type == "image" {
 		var fileData struct {
 			URL string `json:"url"`
@@ -640,6 +646,40 @@ func SendMessage(c *gin.Context) {
 	responseData := buildMessageResponse(*msg, uid, allMemberIDs)
 
 	response.Success(c, responseData)
+}
+
+// applyOwnMessagePause 实现「你发消息后，分身暂停回复」：
+// 分身主人在会话里发消息后，把该会话的分身会话的 TakeoverUntil 设为 now + SelfMessagePause，
+// 期间分身不自动回复（worker pool / smart_reply 均按 TakeoverUntil 门控）。
+// 未配置（SelfMessagePause<=0）、该会话无分身会话、或写入失败时静默跳过，不影响主流程。
+func applyOwnMessagePause(db *gorm.DB, userID, convID uint) {
+	if db == nil {
+		return
+	}
+
+	var config model.AvatarConfig
+	if err := db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+		return // 非分身主人
+	}
+	if config.SelfMessagePause <= 0 {
+		return // 未启用「我发消息后暂停」
+	}
+
+	// 会话行不存在则无需暂停（分身未在该会话激活）
+	var n int64
+	db.Model(&model.AvatarSession{}).
+		Where("user_id = ? AND conversation_id = ?", userID, convID).
+		Count(&n)
+	if n == 0 {
+		return
+	}
+
+	takeoverUntil := time.Now().Add(time.Duration(config.SelfMessagePause) * time.Minute)
+	if err := db.Model(&model.AvatarSession{}).
+		Where("user_id = ? AND conversation_id = ?", userID, convID).
+		Update("takeover_until", takeoverUntil).Error; err != nil {
+		logger.WithModule("SendMessage").Error("设置「发消息后分身暂停」失败", "userID", userID, "convID", convID, "error", err)
+	}
 }
 
 // broadcastNewMessage 广播新消息到会话并更新相关状态

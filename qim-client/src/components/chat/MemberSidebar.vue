@@ -114,7 +114,8 @@ const searchQueryLocal = computed({
 
 const rolePriority: Record<string, number> = { owner: 3, admin: 2, member: 1 }
 
-const isBotType = (type?: string) => type === 'bot'
+// 非人类成员（机器人 bot、系统助手 system）——样式与私聊约束与机器人一致
+const isBotType = (type?: string) => type === 'bot' || type === 'system'
 
 const filteredMembers = computed(() => {
   let members = (props.members || []).filter(isVisibleGroupMember)
@@ -177,7 +178,6 @@ const handleCollapsedMemberContextMenu = (event: MouseEvent, member: Member) => 
 }
 
 const handleStartPrivateChat = (member: Member) => {
-  if (isBotType(member.type)) return
   emit('start-private-chat', member)
 }
 </script>

@@ -203,6 +203,18 @@ func (s *AvatarService) GenerateReply(userID uint, conversationID uint, triggerM
 	return graph.Execute(ctx, userID, conversationID, triggerMessage, config)
 }
 
+// GenerateReplyWithSources 与 GenerateReply 等价，额外返回本条回复命中的知识来源
+// （笔记/群知识/记忆标题与摘要），供 worker 随 WS 下发供前端展示「依据」。
+func (s *AvatarService) GenerateReplyWithSources(userID uint, conversationID uint, triggerMessage string, config *model.AvatarConfig) (string, []AvatarSource, error) {
+	graph := s.replyGraph.Load()
+	if graph == nil {
+		return "", nil, fmt.Errorf("回复 Graph 未初始化")
+	}
+
+	ctx := context.Background()
+	return graph.ExecuteWithSources(ctx, userID, conversationID, triggerMessage, config)
+}
+
 // PreviewReply 预览回复
 func (s *AvatarService) PreviewReply(userID uint, message string) (string, error) {
 	return s.GenerateReply(userID, 0, message, nil)

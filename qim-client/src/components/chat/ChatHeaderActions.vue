@@ -37,11 +37,11 @@
         <div class="avatar-toggle-hint">
           <template v-if="avatarApprovalStatus === 'pending'"><i class="fas fa-hourglass-half"></i> 审批中</template>
           <template v-else-if="avatarApprovalStatus === 'rejected'"><i class="fas fa-circle-xmark"></i> 审批未通过</template>
-          <template v-else>代替你回复消息</template>
+          <template v-else><i class="fas fa-robot"></i>{{ isGroupOrDiscussion ? '被 @ 时替你回复' : '代替你回复消息' }}</template>
         </div>
       </div>
       <div
-        v-if="systemConfigStore.enableAI && showAvatarToggle && avatarApprovalStatus === 'approved'"
+        v-if="systemConfigStore.enableAI && showAvatarToggle && avatarApprovalStatus === 'approved' && avatarEnabled"
         class="avatar-takeover-menu-item"
         @click="handleTakeoverAvatar"
       >
@@ -49,7 +49,7 @@
         <span class="ucm-item-label">手动接管分身</span>
       </div>
       <div
-        v-if="systemConfigStore.enableAI && showAvatarToggle && avatarApprovalStatus === 'approved'"
+        v-if="systemConfigStore.enableAI && showAvatarToggle && avatarApprovalStatus === 'approved' && avatarEnabled"
         class="avatar-takeover-hint"
       >
         <i class="fas fa-clock"></i> 暂停一段时间由你亲自回复，到期自动恢复
@@ -100,7 +100,7 @@
 import { ref, computed, watch, nextTick, onUnmounted, inject } from 'vue'
 import QMessage from '../../utils/qmessage'
 import type { Conversation } from '../../types'
-import { getCurrentUser } from '../../utils/user'
+import { getCurrentUser, isConversationPeerNonHuman } from '../../utils/user'
 import { useRequest } from '../../composables/useRequest'
 import { useSystemConfigStore } from '../../stores/systemConfig'
 import MemberSidebar from './MemberSidebar.vue'
@@ -241,9 +241,12 @@ const currentUserRole = computed((): string => {
   return (member?.role as string) || 'member'
 })
 
-// 是否显示分身开关（私聊时显示）
+// 是否显示分身开关（私聊、群聊均显示）。
+// 判断顺序：私聊且对方为 bot/系统助手时也不显示（与机器人一致，分身开关对其无意义）。
 const showAvatarToggle = computed(() => {
-  return props.conversation?.type === 'single'
+  const t = props.conversation?.type
+  if (t === 'single') return !isConversationPeerNonHuman(props.conversation, currentUserId.value)
+  return t === 'group'
 })
 
 // 处理分身开关切换
@@ -445,42 +448,73 @@ function handleUpdateAISettings(settings: any) {
   color: var(--text-secondary);
 }
 
-/* AI 分身开关菜单项 */
+/* AI 分身开关菜单项 —— 与 UniversalContextMenu 视觉统一 */
+/* 插槽内容在自己作用域内复刻 .ucm-icon / .ucm-item-label，避免依赖子组件 scoped 样式 */
+/* 同样复刻 .ucm-divider：slot 里的分隔线不受子组件 scoped 样式覆盖 */
+.ucm-divider {
+  height: 1px;
+  background: var(--border-color, #e5e7eb);
+  margin: 4px 6px;
+}
+.avatar-toggle-menu-item .ucm-icon,
+.avatar-takeover-menu-item .ucm-icon {
+  width: 18px;
+  flex-shrink: 0;
+  font-size: 13px;
+  text-align: center;
+  color: var(--primary-color);
+}
+.avatar-toggle-menu-item .ucm-item-label,
+.avatar-takeover-menu-item .ucm-item-label {
+  flex: 1;
+}
+
 .avatar-toggle-menu-item {
-  padding: 8px 16px;
+  padding: 8px 10px;
+  border-radius: 6px;
 }
 
 .avatar-toggle-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .avatar-toggle-title {
-  font-size: 13px;
+  flex: 1;
+  font-size: 12.5px;
   color: var(--text-color);
 }
 
 .avatar-toggle-hint {
-  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 2px;
+  padding: 0 0 2px;
   font-size: 11px;
   color: var(--text-secondary);
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
+/* 状态图标/占位宽度与菜单项图标列一致，保证带/不带图标时文字同列对齐 */
 .avatar-toggle-hint i {
-  margin-right: 4px;
+  width: 18px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 11px;
 }
 
 .avatar-takeover-menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  font-size: 13px;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
   color: var(--text-color);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, color 0.15s;
 }
 
 .avatar-takeover-menu-item:hover {
@@ -488,19 +522,26 @@ function handleUpdateAISettings(settings: any) {
 }
 
 .avatar-takeover-menu-item .ucm-item-label {
+  flex: 1;
   color: var(--text-primary);
 }
 
 .avatar-takeover-hint {
-  margin-top: 2px;
-  padding: 0 16px 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 2px;
+  padding: 0 10px 8px;
   font-size: 11px;
   color: var(--text-secondary);
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
 .avatar-takeover-hint i {
-  margin-right: 4px;
+  width: 18px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 11px;
 }
 
 /* 下拉动画 */

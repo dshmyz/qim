@@ -17,6 +17,7 @@
     :is-processing="props.isProcessing ?? false"
     :draft-streaming="props.draftStreaming ?? false"
     :has-draft-reply="props.hasDraftReply ?? false"
+    :can-call="canCall"
     :show-slash-panel="props.showSlashPanel"
     :slash-query="props.slashQuery"
     :slash-items="props.slashItems"
@@ -91,12 +92,15 @@ interface Props {
   slashItems: SlashCommandItem[]
   slashTitle?: string
   slashItemComponent?: Component
+  /** 是否允许通话/屏幕共享（机器人/系统助手等非人类账号为 false） */
+  canCall?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isProcessing: false,
   draftStreaming: false,
-  hasDraftReply: false
+  hasDraftReply: false,
+  canCall: true
 })
 
 const emit = defineEmits<{

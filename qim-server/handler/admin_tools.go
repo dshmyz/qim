@@ -210,9 +210,42 @@ func (t *GroupManagementTool) Execute(params map[string]interface{}, ctx *ai.Cal
 		if userIDStr == "" {
 			return nil, fmt.Errorf("user_identifier parameter is required for action: %s", action)
 		}
-		err = db.Where("id = ? OR username = ? OR nickname = ?", userIDStr, userIDStr, userIDStr).First(&user).Error
-		if err != nil {
-			return nil, fmt.Errorf("用户不存在: %s", userIDStr)
+		// 先精确匹配 id/username/nickname。精确命中 → 直接执行（后续 switch）。
+		exactFound := db.Where("id = ? OR username = ? OR nickname = ?", userIDStr, userIDStr, userIDStr).First(&user).Error == nil
+		if !exactFound {
+			// 精确未命中，用昵称 LIKE 找出相似用户作为「候选」返回给 LLM 转述反问，
+			// 而不是自动模糊匹配执行——操作类动作（拉人/踢人/禁言）不允许系统替用户猜身份。
+			// 候选仅呈递给用户确认，绝不自动拉取。只模糊昵称，不模糊 username/id（易串号）。
+			candidates := make([]map[string]interface{}, 0)
+			fuzzy := "%" + userIDStr + "%"
+			var similar []model.User
+			if err := db.Where("nickname LIKE ?", fuzzy).Limit(5).Find(&similar).Error; err == nil {
+				for _, u := range similar {
+					candidates = append(candidates, map[string]interface{}{
+						"id":       u.ID,
+						"username": u.Username,
+						"nickname": u.Nickname,
+					})
+				}
+			}
+			if len(candidates) > 0 {
+				// 无法唯一确定目标 → 返回候选名单，要求用户确认后再重发，不直接执行。
+				return map[string]interface{}{
+					"result":          "need_confirmation",
+					"action":          action,
+					"reason":          fmt.Sprintf("无法唯一确定用户「%s」，请用户明确指定其中的一个并重发指令", userIDStr),
+					"suggest_to_user": "我没有找到完全匹配的成员，但找到了几个相似的昵称。请告诉我要操作的是哪一位（提供准确的用户名或 ID 后再发一次指令）。",
+					"candidates":      candidates,
+					"candidate_count": len(candidates),
+				}, nil
+			}
+			// 既无精确命中也无相似昵称 → 也是结构化结果交 LLM 转述，引导用户补充完整信息。
+			return map[string]interface{}{
+				"result":          "not_found",
+				"action":          action,
+				"reason":          fmt.Sprintf("系统里没有名为「%s」的用户", userIDStr),
+				"suggest_to_user": fmt.Sprintf("我没有在系统里找到叫「%s」的成员。请确认对方是否已注册，并提供准确的用户名、完整昵称或用户 ID 后再发一次指令。", userIDStr),
+			}, nil
 		}
 		if action == "remove_member" || action == "mute" || action == "unmute" {
 			var targetMember model.ConversationMember

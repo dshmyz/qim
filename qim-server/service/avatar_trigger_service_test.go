@@ -123,6 +123,87 @@ func TestAvatarDecideReplyNonSmartModes(t *testing.T) {
 	}
 }
 
+func TestAvatarTriggerRulesNormalize(t *testing.T) {
+	// 遗留 mode 枚举 → 新正交字段
+	cases := []struct {
+		mode string
+		exp  model.AvatarTriggerRules
+	}{
+		{"mention", model.AvatarTriggerRules{RequireMention: true}},
+		{"offline", model.AvatarTriggerRules{OfflineOnly: true}},
+		{"keyword", model.AvatarTriggerRules{KeywordOnly: true}},
+		{"smart", model.AvatarTriggerRules{SmartDecide: true}},
+		{"all", model.AvatarTriggerRules{}},
+		{"", model.AvatarTriggerRules{}}, // 空配置 = 均未勾选 → 回复所有消息
+	}
+	for _, tc := range cases {
+		r := model.AvatarTriggerRules{Mode: tc.mode}
+		r.Normalize()
+		assert.Equal(t, tc.exp.OfflineOnly, r.OfflineOnly, "mode=%s offline", tc.mode)
+		assert.Equal(t, tc.exp.RequireMention, r.RequireMention, "mode=%s mention", tc.mode)
+		assert.Equal(t, tc.exp.SmartDecide, r.SmartDecide, "mode=%s smart", tc.mode)
+		assert.Equal(t, tc.exp.KeywordOnly, r.KeywordOnly, "mode=%s keyword", tc.mode)
+	}
+
+	// 显式设置了新字段时，不应被遗留 Mode 覆盖
+	r := model.AvatarTriggerRules{Mode: "all", SmartDecide: true}
+	r.Normalize()
+	assert.True(t, r.SmartDecide, "已显式设置的新字段保持不变")
+	assert.False(t, r.KeywordOnly, "不得被遗留 mode 误回填")
+}
+
+// TestAvatarDecideReplyOrthogonalFields 直接以新正交字段配置触发决策，覆盖多开关组合语义。
+func TestAvatarDecideReplyOrthogonalFields(t *testing.T) {
+	db := setupServiceTestDB(t)
+	svc := &AvatarTriggerService{db: db} // 非智能判断场景不触达 LLM
+
+	const avatarUID = uint(1)
+	require.NoError(t, db.Create(&model.User{ID: avatarUID, Username: "ava", PasswordHash: "h", Status: "offline"}).Error)
+	require.NoError(t, db.Create(&model.User{ID: 2, Username: "snd", PasswordHash: "h", Status: "online"}).Error)
+
+	config := func(rules string) model.AvatarConfig {
+		return model.AvatarConfig{UserID: avatarUID, Enabled: true, Name: "分身", TriggerRulesJSON: rules}
+	}
+
+	cases := []struct {
+		name     string
+		rules    string
+		convID   uint
+		message  string
+		isGroup  bool
+		mentions []uint
+		want     bool
+	}{
+		// 仅 @ 提及门（群聊）
+		{"new字段/群/被@命中", `{"requireMention":true}`, 1, "在吗", true, []uint{avatarUID}, true},
+		{"new字段/群/未@", `{"requireMention":true}`, 1, "在吗", true, nil, false},
+		// 私聊 @ 门降级为智能意图（无 AI 服务时 fail-closed 静默）
+		{"new字段/私聊requireMention无AI静默", `{"requireMention":true}`, 1, "在吗", false, nil, false},
+		// 仅智能判断门（无 AI 服务 → fail-closed 静默）
+		{"new字段/仅smart无AI静默", `{"smartDecide":true}`, 1, "在吗", true, nil, false},
+		// 仅关键词门
+		{"new字段/keyword命中", `{"keywordOnly":true,"keywords":["请假"]}`, 1, "我请假一天", true, nil, true},
+		{"new字段/keyword未命中", `{"keywordOnly":true,"keywords":["请假"]}`, 1, "今天天气好", true, nil, false},
+		{"new字段/keyword无关键词不触发", `{"keywordOnly":true}`, 1, "任意", true, nil, false},
+		// 仅时机门：离线 + 无意图门 → 回复所有消息
+		{"new字段/offline离线回复所有", `{"offlineOnly":true}`, 1, "在吗", true, nil, true},
+		// 时机门 + @门组合：离线且被@ 才回
+		{"new字段/offline+mmention离线被@命中", `{"offlineOnly":true,"requireMention":true}`, 1, "在吗", true, []uint{avatarUID}, true},
+		{"new字段/offline+mmention离线未@", `{"offlineOnly":true,"requireMention":true}`, 1, "在吗", true, nil, false},
+		// 空配置 = 均未勾选 → 回复所有消息（含群聊未@）
+		{"new字段/空配置回复所有", `{}`, 1, "在吗", true, nil, true},
+		// 显式 mode=all（遗留迁移：全开关 false）→ 回复所有消息
+		{"new字段/legacy all无开关回复所有", `{"mode":"all"}`, 1, "在吗", true, nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, reason, err := svc.DecideReply(config(tc.rules), tc.convID, tc.message, "snd", tc.isGroup, tc.mentions)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got, "reason=%s", reason)
+		})
+	}
+}
+
 func TestAvatarDecideReplyOfflineMode(t *testing.T) {
 	db := setupServiceTestDB(t)
 	svc := &AvatarTriggerService{db: db}

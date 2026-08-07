@@ -1,6 +1,6 @@
 <template>
   <div class="input-toolbar">
-    <div class="call-dropdown">
+    <div v-if="canCall" class="call-dropdown">
       <ChatToolbarButton
         class="call-btn"
         icon="fas fa-phone-alt"
@@ -13,6 +13,7 @@
       <UniversalContextMenu menuId="call" :items="callMenuItems" />
     </div>
     <ChatToolbarButton
+      v-if="canCall"
       icon="fas fa-desktop"
       title="屏幕共享"
       @click="$emit('start-screen-share')"
@@ -181,9 +182,13 @@ const showScreenshotTooltip = () => {
 interface Props {
   isElectron: boolean
   showAiActions: boolean
+  /** 是否允许通话/屏幕共享。对机器人/系统助手等非人类账号为 false，隐藏通话与屏幕共享按钮。 */
+  canCall?: boolean
 }
 
-defineProps<Props>()
+withDefaults(defineProps<Props>(), {
+  canCall: true
+})
 
 const emit = defineEmits<{
   'start-voice-call': []

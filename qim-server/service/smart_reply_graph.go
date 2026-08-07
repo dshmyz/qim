@@ -220,17 +220,21 @@ var groupAssistantToolWhitelist = []string{
 }
 
 // ExecuteWithTools 带工具的非流式回复，用于 @AI 管理操作指令（踢人/加人/禁言等）。
-// 走 GetCompletionWithToolsFiltered 注入白名单 AI 工具（含 GroupManagementTool），
+// 走 GetCompletionWithToolsMultiStep 注入白名单 AI 工具（含 GroupManagementTool）并多步循环，
 // LLM 返回 tool call 时真实执行。callerCtx 用 input.UserID，isSystemAdmin 校验生效，
 // 即仅群主/管理员发起的管理指令会被工具执行，普通成员指令被工具拒绝。
+// 采用 MultiStep 而非单轮 core 的原因：工具执行出错时（如"用户不存在"）MultiStep 会把
+// 错误以 tool 角色消息回喂给 LLM（见 ai_service.go 中 ReAct 循环），让群助手基于错误
+// 生成自然回复，而不是像旧路径那样把错误硬抛到 handler 直接静默失败。
 func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartReplyContext) (string, error) {
 	if err := g.prepareInput(input); err != nil {
 		return "", err
 	}
 	historyMessages := g.buildHistoryMessages(input)
 	callerCtx := &ai.CallerContext{UserID: input.UserID}
-	return g.aiService.GetCompletionWithToolsFiltered(
+	return g.aiService.GetCompletionWithToolsMultiStep(
 		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx, groupAssistantToolWhitelist,
+		ai.MaxReActSteps, nil,
 	)
 }
 

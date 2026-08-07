@@ -28,9 +28,10 @@ func NewAvatarTriggerService(aiService *ai.AIService, db *gorm.DB) *AvatarTrigge
 }
 
 // DecideReply 是分身触发决策的唯一入口。
-// 排除列表 / 时间窗 在所有模式下统一生效；mode 分发（mention/offline/keyword/all/smart）
-// 全部收敛到这里，供实时路径 shouldTriggerAvatar 与预览接口 CheckTrigger 共用，
-// 避免两套判断逻辑各自为政。
+// 排除列表 / 时间窗 在所有配置下统一生效；触发时机（offlineOnly）与触发意图
+// （requireMention/smartDecide/keywordOnly）正交求值，全部收敛到这里，
+// 供实时路径 shouldTriggerAvatar 与预览接口 CheckTrigger 共用，避免两套判断逻辑各自为政。
+// 存量配置的遗留 mode 枚举由 AvatarTriggerRules.Normalize 回填为新字段。
 func (s *AvatarTriggerService) DecideReply(config model.AvatarConfig, conversationID uint, message string, senderName string, isGroupChat bool, mentionUserIDs []uint) (bool, string, error) {
 	if !config.Enabled {
 		return false, "分身未启用", nil
@@ -43,6 +44,8 @@ func (s *AvatarTriggerService) DecideReply(config model.AvatarConfig, conversati
 			return false, "解析触发规则失败", nil
 		}
 	}
+	// 存量配置用遗留 mode 枚举：读取时回填为新正交字段（触发时机 offlineOnly + 意图门 mention/smart/keyword）
+	rules.Normalize()
 
 	if IsAvatarExcluded(rules, conversationID) {
 		return false, "在排除列表中", nil
@@ -52,39 +55,48 @@ func (s *AvatarTriggerService) DecideReply(config model.AvatarConfig, conversati
 		return false, "不在活跃时间范围内", nil
 	}
 
-	effectiveMode := rules.Mode
-	if effectiveMode == "" {
-		effectiveMode = "mention"
-	}
-
-	// 私聊中 mention 模式：不再对任何消息无条件触发（否则对方随便说一句就触发分身，导致乱回复）。
-	// 改用智能意图判断「这条消息是否真的需要分身代表主人回复」，无关/闲聊则静默（fail-closed）。
-	if !isGroupChat && effectiveMode == "mention" {
-		return s.decideReplyByIntent(config, message, senderName)
-	}
-
-	switch effectiveMode {
-	case "mention":
-		for _, uid := range mentionUserIDs {
-			if uid == config.UserID {
-				return true, "mention 触发", nil
-			}
-		}
-		return false, "未被 mention", nil
-	case "offline":
+	// —— 触发时机门：仅离线才回 ——
+	if rules.OfflineOnly {
 		var user model.User
 		if err := s.db.First(&user, config.UserID).Error; err != nil {
 			return false, "查找用户失败", err
 		}
-		if user.Status == "offline" {
-			return true, "离线触发", nil
+		if user.Status != "offline" {
+			return false, "用户在线", nil
 		}
-		return false, "用户在线", nil
-	case "keyword":
-		// 无关键词默认触发 = 对任何消息都回 → 与 all 模式混淆且极易乱回复。改 fail-closed：
-		// keyword 模式必须显式配置关键词，缺失时静默不触发（与唯一触发路径分支对齐）。
+		// 离线只是时机条件，仍需通过下方意图门判断该不该回，避免离线+all 乱回复
+	}
+
+	// —— 意图门 ——
+	// @ 提及门（仅群聊生效）：群里被 @ 才回，否则 fail-closed。
+	if rules.RequireMention {
+		if isGroupChat {
+			mentioned := false
+			for _, uid := range mentionUserIDs {
+				if uid == config.UserID {
+					mentioned = true
+					break
+				}
+			}
+			if !mentioned {
+				return false, "未被 mention", nil
+			}
+		} else {
+			// 私聊无 @ 语义：RequireMention 降级为智能意图判断，
+			// 保留 legacy「私聊 mention」行为（原来就走 decideReplyByIntent）。
+			return s.decideReplyByIntent(config, message, senderName)
+		}
+	}
+
+	// 智能判断门：LLM 判断这条消息是否真的需要分身代表主人回复。
+	if rules.SmartDecide {
+		return s.decideReplyByIntent(config, message, senderName)
+	}
+
+	// 关键词门：命中关键词才回；未配置关键词时 fail-closed，避免与"回复所有消息"混淆。
+	if rules.KeywordOnly {
 		if len(rules.Keywords) == 0 {
-			return false, "keyword 模式未配置关键词", nil
+			return false, "关键词触发未配置关键词", nil
 		}
 		// 大小写不敏感匹配，与旧 matchKeywords 行为一致
 		msgLower := strings.ToLower(message)
@@ -94,13 +106,10 @@ func (s *AvatarTriggerService) DecideReply(config model.AvatarConfig, conversati
 			}
 		}
 		return false, "未命中关键词", nil
-	case "all":
-		return true, "all 模式", nil
-	case "smart":
-		return s.decideReplyByIntent(config, message, senderName)
-	default:
-		return isGroupChat && len(mentionUserIDs) > 0, "未知模式按 mention 处理", nil
 	}
+
+	// 未勾选任何意图门 → 回复所有消息
+	return true, "默认回复", nil
 }
 
 // decideReplyByIntent 用 LLM 意图判断「这条消息是否真的需要分身代表主人回复」，

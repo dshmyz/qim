@@ -158,6 +158,9 @@
           :sources="message.knowledge_sources"
         />
 
+        <!-- 分身回复命中的知识来源（仅 avatar 实时消息且有数据时展示「依据」） -->
+        <AvatarSources v-if="message.origin === 'avatar' && message.sources && message.sources.length > 0" :sources="message.sources" />
+
         <div class="message-meta">
           <span class="message-meta-badge">
             <AIMessageBadge v-if="isAIMessage && message.origin === 'assistant' && !message.isStreaming" :assistant-name="message.ai_assistant_name || 'AI 助手'" compact />
@@ -199,6 +202,7 @@ import CardMessage from './CardMessage.vue'
 import KnowledgeSources from './KnowledgeSources.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
+import AvatarSources from '../avatar/AvatarSources.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
 import { computed } from 'vue'
 import { escapeHTML } from '../../utils/sanitize'

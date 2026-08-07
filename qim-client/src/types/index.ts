@@ -82,6 +82,8 @@ export interface Message {
   disclaimer_style?: string
   // Bot 回复命中创建者笔记时的知识来源（标题/分数），用于折叠「知识来源」标签
   knowledge_sources?: KnowledgeSource[]
+  // 分身回复命中的知识来源（笔记/群知识/记忆），随 WS 实时下发，用于展示「依据」
+  sources?: AvatarSource[]
   // 消息附加信息（JSON 字符串），撤回时保存原始内容用于重新编辑
   extra?: string
 }
@@ -90,6 +92,13 @@ export interface Message {
 export interface KnowledgeSource {
   title: string
   score: number
+}
+
+// AvatarSource 分身回复命中的知识来源，用于在气泡下展示「依据」
+export interface AvatarSource {
+  type: 'note' | 'group' | 'memory'
+  title?: string
+  snippet?: string
 }
 
 export interface Conversation {

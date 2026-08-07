@@ -5,8 +5,7 @@ import type {
   AvatarConfig,
   AvatarConfigWithApproval,
   AvatarSession,
-  CreateAvatarConfigRequest,
-  AvatarWithTools
+  CreateAvatarConfigRequest
 } from '../types/avatar'
 
 function mapSessionFields(raw: any): AvatarSession {
@@ -22,7 +21,6 @@ export function useAvatar() {
   const { currentUser } = useCurrentUser()
   const config = ref<AvatarConfigWithApproval | null>(null)
   const sessions = ref<AvatarSession[]>([])
-  const avatarWithTools = ref<AvatarWithTools | null>(null)
   const loading = ref(true)
   const error = ref('')
   const configLoaded = ref(false)
@@ -75,6 +73,7 @@ export function useAvatar() {
         'knowledgeScope',
         'replyStrategy',
         'takeoverCooldown',
+        'selfMessagePause',
         'activateByDefault',
         'customPersonaAddon'
       ]
@@ -172,6 +171,22 @@ export function useAvatar() {
     }
   }
 
+  // 重置所有会话设置为跟随全局默认：删除全部 session 行，sessions 列表清空并强制下次重新拉取。
+  async function clearSessions() {
+    loading.value = true
+    error.value = ''
+    try {
+      await avatarAPI.clearSessions()
+      sessions.value = []
+      sessionsLoaded.value = false
+    } catch (e: any) {
+      error.value = e.message || '重置会话设置失败'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function takeoverSession(convId: string | number) {
     loading.value = true
     error.value = ''
@@ -196,9 +211,14 @@ export function useAvatar() {
 
   function isAvatarActive(convId: string | number): boolean {
     const session = getSession(convId)
-    if (!session || !session.avatarEnabled) return false
-    if (session.takeoverUntil && new Date(session.takeoverUntil) > new Date()) return false
-    return true
+    if (session) {
+      // 有 session 行 = 用户显式设置过：以该行为准
+      if (!session.avatarEnabled) return false // 显式 opt-out
+      if (session.takeoverUntil && new Date(session.takeoverUntil) > new Date()) return false
+      return true // 显式 opt-in
+    }
+    // 无 session 行 = 跟随全局默认（与后端候选判定 enabled && activate_by_default 对齐）
+    return config.value?.activateByDefault ?? false
   }
 
   // 审批相关方法
@@ -230,42 +250,6 @@ export function useAvatar() {
     }
   }
 
-  // 工具相关方法
-  async function fetchAvatarWithTools() {
-    loading.value = true
-    error.value = ''
-    try {
-      avatarWithTools.value = await avatarAPI.getAvatarWithTools()
-      return avatarWithTools.value
-    } catch (e: any) {
-      error.value = e.message || '加载工具列表失败'
-      throw e
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function toggleTool(toolId: string) {
-    const tool = avatarWithTools.value?.availableTools.find(t => t.id === toolId)
-    if (!tool) return
-
-    loading.value = true
-    error.value = ''
-    try {
-      if (tool.enabled) {
-        await avatarAPI.unbindToolFromAvatar(toolId)
-      } else {
-        await avatarAPI.bindToolToAvatar(toolId)
-      }
-      await fetchAvatarWithTools()
-    } catch (e: any) {
-      error.value = e.message || '切换工具失败'
-      throw e
-    } finally {
-      loading.value = false
-    }
-  }
-
   const avatarConfig = config
   const avatarApprovalStatus = computed(() => config.value?.approvalStatus || 'none')
 
@@ -274,7 +258,6 @@ export function useAvatar() {
     avatarConfig,
     avatarApprovalStatus,
     sessions,
-    avatarWithTools,
     loading,
     error,
     fetchConfig,
@@ -284,12 +267,11 @@ export function useAvatar() {
     toggleEnabled,
     fetchSessions,
     toggleSession,
+    clearSessions,
     takeoverSession,
     getSession,
     isAvatarActive,
     applyForApproval,
-    cancelApplication,
-    fetchAvatarWithTools,
-    toggleTool
+    cancelApplication
   }
 }

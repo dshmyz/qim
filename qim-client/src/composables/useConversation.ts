@@ -86,6 +86,12 @@ export function useConversation() {
       })
       chatStore.removeConversation(conversation.id)
     } catch (error: any) {
+      // 本地伪造的会话（id 形如 conv_xxx，后端不存在）无法被服务器删除。
+      // 为避免留下删不掉的空会话，这类会话直接从本地列表移除。
+      if (typeof conversation.id === 'string' && conversation.id.startsWith('conv_')) {
+        chatStore.removeConversation(conversation.id)
+        return
+      }
       const msg = error?.message || ''
       if (msg.includes('权限') || msg.includes('成员')) {
         QMessage.error('您不是该会话的成员，无法移除')

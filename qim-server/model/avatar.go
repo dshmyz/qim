@@ -32,8 +32,12 @@ type AvatarConfig struct {
 	ModelConfigID   *uint `json:"model_config_id"`
 	UseSystemConfig bool  `json:"use_system_config" gorm:"default:true"`
 
-	// 接管冷却时间（分钟）
+	// 接管冷却时间（分钟）：点击「接管分身」后，分身暂停回复的时长。与 SelfMessagePause 相互独立。
 	TakeoverCooldown int `json:"takeover_cooldown" gorm:"default:10"`
+
+	// 你发消息后，分身暂停回复的时间（分钟）。0=关闭（你发消息不触发分身暂停）。
+	// 与手动接管冷却独立：仅当分身主人在某会话发言后触发，复用 TakeoverUntil 门控。
+	SelfMessagePause int `json:"self_message_pause" gorm:"default:0"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -94,11 +98,47 @@ type AvatarKnowledgeScope struct {
 }
 
 // AvatarTriggerRules 分身触发规则
+//
+// 与原单一 mode 枚举不同，此处将「触发时机」与「触发意图」拆成相互独立的正交开关：
+//   - 时机（门）：OfflineOnly=仅离线才回；否则始终可回。
+//   - 意图（门，可多选组合）：RequireMention=群里被@才回；SmartDecide=LLM 判断该不该回；
+//     KeywordOnly=关键词命中才回（复用 Keywords）。均未勾选时等同回复所有消息。
+//
+// Mode 为遗留字段，仅用于读取存量配置时回填上述新字段（见 Normalize），不再参与决策。
 type AvatarTriggerRules struct {
-	Mode                  string            `json:"mode"` // mention, offline, keyword, all, smart
-	Keywords              []string          `json:"keywords"`
-	TimeRanges            []AvatarTimeRange `json:"timeRanges"`
-	ExcludedConversations []uint            `json:"excludedConversations"`
+	OfflineOnly          bool              `json:"offlineOnly"` // 触发时机：仅离线时才回
+	RequireMention       bool              `json:"requireMention"` // 意图：群里被 @ 才回（私聊无 @ 语义，自动降级为智能判断）
+	SmartDecide          bool              `json:"smartDecide"`    // 意图：LLM 判断该不该回
+	KeywordOnly          bool              `json:"keywordOnly"`    // 意图：关键词命中才回（复用 Keywords）
+	Keywords             []string          `json:"keywords"`
+	TimeRanges           []AvatarTimeRange `json:"timeRanges"`
+	ExcludedConversations []uint           `json:"excludedConversations"`
+	// —— 遗留迁移 ——
+	Mode string `json:"mode,omitempty"` // mention, offline, keyword, all, smart（存量配置读取时回填新字段）
+}
+
+// Normalize 将遗留的 mode 枚举回填为新正交字段（新字段全空且 mode 非空时触发）。
+// 新式正交模型自洽：「均未勾选任何意图门 = 回复所有消息」。空配置（无 mode 且新字段全空）
+// 同样归入「回复所有」，与 UI 上「都不勾选=回复所有」一致，不再隐式默认被 @ 才回。
+func (r *AvatarTriggerRules) Normalize() {
+	// 只要任一新开关已设置，就视为已是新式配置，不再回填
+	if r.OfflineOnly || r.RequireMention || r.SmartDecide || r.KeywordOnly {
+		return
+	}
+	switch r.Mode {
+	case "offline":
+		r.OfflineOnly = true
+	case "keyword":
+		r.KeywordOnly = true
+	case "smart":
+		r.SmartDecide = true
+	case "all":
+		// 所有消息：全部开关保持 false
+	case "mention":
+		r.RequireMention = true
+	default:
+		// 空或未知 mode：均未勾选 → 回复所有消息
+	}
 }
 
 // AvatarTimeRange 时间范围配置

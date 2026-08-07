@@ -28,7 +28,7 @@ import ScreenShareSimple from '../shared/ScreenShareSimple.vue'
 import CallOverlay from '../shared/CallOverlay.vue'
 import { useRealtimeMessaging } from '../../composables/useRealtimeMessaging'
 import { useUserStatus } from '../../composables/useUserStatus'
-import { getCurrentUser } from '../../utils/user'
+import { getCurrentUser, isConversationPeerNonHuman } from '../../utils/user'
 import QMessage from '../../utils/qmessage'
 
 interface Props {
@@ -100,7 +100,7 @@ const startScreenShare = async () => {
     QMessage.warning('群聊和讨论组暂不支持屏幕共享')
     return
   }
-  if (conv?.type === 'bot') {
+  if (isConversationPeerNonHuman(conv)) {
     QMessage.warning('AI 助手不支持屏幕共享')
     return
   }
@@ -179,8 +179,8 @@ const startCall = async (type: 'voice' | 'video') => {
     QMessage.warning('群聊和讨论组暂不支持通话功能')
     return
   }
-  
-  if (conv?.type === 'bot') {
+
+  if (isConversationPeerNonHuman(conv)) {
     QMessage.warning('AI 助手不支持通话功能')
     return
   }

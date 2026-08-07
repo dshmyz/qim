@@ -1974,6 +1974,36 @@ const handleNotification = (data: any) => {
   }
 }
 
+// 将改名后的群助手成员同步进 selectedGroup.members / chatStore 会话 members，
+// 让成员侧栏与成员列表的 bot 昵称实时跟新，无需重新拉群详情或重新登录。
+const syncAssistantMember = (group: any, member: any) => {
+  if (!group || !member || !member.id) return
+  const normalizedMember = {
+    ...member,
+    id: member.id.toString()
+  }
+  const patchMembers = (members: any[] = []) => {
+    const idx = members.findIndex(m => String(m.id) === normalizedMember.id)
+    if (idx !== -1) {
+      members[idx] = { ...members[idx], ...normalizedMember }
+    } else {
+      members.push(normalizedMember)
+    }
+    return [...members]
+  }
+  if (group.members) {
+    group.members = patchMembers(group.members)
+  }
+  if (groupMembers.value?.length) {
+    groupMembers.value = patchMembers(groupMembers.value)
+  }
+  // 同步到会话 store，保证聊天区域 / 下次打开时也一致
+  const stored = chatStore.conversations.find(c => sameConversationId(c.id, group.id))
+  if (stored) {
+    chatStore.patchConversation(stored.id, { members: patchMembers(stored.members || []) })
+  }
+}
+
 // 处理会话更新
 const handleConversationUpdated = (data: any) => {
   logger.log('会话更新:', data)
@@ -1993,6 +2023,14 @@ const handleConversationUpdated = (data: any) => {
     // 同步 selectedGroup，让右侧面板实时感知 AI 设置等变更
     if (selectedGroup.value && sameConversationId(selectedGroup.value.id, normalizedData.id)) {
       selectedGroup.value = { ...selectedGroup.value, ...normalizedData }
+    }
+
+    // 群助手改名时，把更新后的 bot 成员刷进成员侧栏 / 成员列表（corresponds 后端 ai_assistant_member）
+    if (normalizedData.ai_assistant_member) {
+      const target = selectedGroup.value && sameConversationId(selectedGroup.value.id, normalizedData.id)
+        ? selectedGroup.value
+        : { id: normalizedData.id }
+      syncAssistantMember(target, normalizedData.ai_assistant_member)
     }
   } catch (error) {
     logger.error('处理会话更新失败:', error)
@@ -2397,31 +2435,10 @@ const openChat = async (user: any) => {
     }
   } catch (error) {
     logger.error('创建私聊失败:', error)
-    QMessage.error('创建私聊失败')
-    // 模拟创建会话（当API调用失败时）
-    activeOption.value = 'recent'
-    // 创建一个模拟的会话
-    const mockConversation = {
-      id: `conv_${Date.now()}`,
-      name: user.name,
-      avatar: user.avatar,
-      lastMessage: null,
-      unread_count: 0,
-      timestamp: Date.now(),
-      type: 'single',
-      members: [
-        { id: currentUser.value?.id || 'me', name: currentUser.value?.nickname || currentUser.value?.username || '我', avatar: getAvatarUrl(currentUser.value?.avatar, '我', serverUrl.value) },
-        { id: user.id, name: user.name, avatar: user.avatar }
-      ]
-    }
-    // 添加到会话列表
-    conversations.value.unshift(mockConversation)
-    // 选择新创建的会话
-    setCurrentConversationId(mockConversation.id)
-    // 初始化消息列表
-    if (mockConversation.id) {
-      chatStore.clearMessages(String(mockConversation.id))
-    }
+    // API 失败时不伪造本地会话：用 conv_${Date.now()} 这种只在本地存在、后端不认识
+    // 的假 id 会留下一个既加载不出消息、也无法移除(服务器 DELETE 永远 400)的空会话。
+    // 这里直接提示失败，避免产生无法清理的幽灵会话。
+    QMessage.error('创建私聊失败，无法打开会话')
   }
   hideUserContextMenu()
 }
@@ -2985,6 +3002,10 @@ const updateAISettings = async (settings: any) => {
         ai_trigger_keywords: settings.aiTriggerKeywords.join(','),
         ai_learn_enabled: settings.aiLearnEnabled,
         ai_extract_todos: settings.aiExtractTodos
+      }
+      // 改名后同步成员侧栏 / 成员列表的 bot 昵称（后端返回更新后的助手成员）
+      if (response.data?.ai_assistant_member) {
+        syncAssistantMember(selectedGroup.value, response.data.ai_assistant_member)
       }
       closeAISettings()
     } else {

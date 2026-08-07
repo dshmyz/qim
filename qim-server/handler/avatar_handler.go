@@ -76,6 +76,7 @@ func (h *AvatarHandler) RegisterRoutes(router *gin.RouterGroup) {
 		avatar.DELETE("/learned-persona", h.ClearLearnedPersona)
 
 		avatar.GET("/sessions", h.GetSessions)
+		avatar.DELETE("/sessions", checkAIEnabledForAvatar(), h.ClearSessions)
 
 		avatar.GET("/tools", h.GetAvailableTools)
 		avatar.GET("/:id/tools", h.GetAvatarTools)
@@ -113,6 +114,7 @@ type AvatarConfigResponse struct {
 	ModelConfigID      *uint                      `json:"modelConfigId"`
 	UseSystemConfig    bool                       `json:"useSystemConfig"`
 	TakeoverCooldown   int                        `json:"takeoverCooldown"`
+	SelfMessagePause   int                        `json:"selfMessagePause"`
 	ActivateByDefault  bool                       `json:"activateByDefault"`
 	// 审批相关（从approvals表获取）
 	ApprovalStatus         string     `json:"approvalStatus"`
@@ -139,6 +141,9 @@ func (h *AvatarHandler) toConfigResponse(config model.AvatarConfig) AvatarConfig
 	if config.TriggerRulesJSON != "" {
 		json.Unmarshal([]byte(config.TriggerRulesJSON), &triggerRules)
 	}
+	// 存量配置回填：遗留 mode 枚举 → 新正交字段（offlineOnly/requireMention/smartDecide/keywordOnly），
+	// 保证前端拿到迁移后的开关，无需重配。
+	triggerRules.Normalize()
 	if config.ReplyStrategyJSON != "" {
 		json.Unmarshal([]byte(config.ReplyStrategyJSON), &replyStrategy)
 	}
@@ -171,6 +176,7 @@ func (h *AvatarHandler) toConfigResponse(config model.AvatarConfig) AvatarConfig
 		ModelConfigID:          config.ModelConfigID,
 		UseSystemConfig:        config.UseSystemConfig,
 		TakeoverCooldown:       config.TakeoverCooldown,
+		SelfMessagePause:       config.SelfMessagePause,
 		ActivateByDefault:      config.ActivateByDefault,
 		ApprovalStatus:         approvalStatus,
 		ApprovalRejectedReason: rejectReason,
@@ -189,6 +195,7 @@ type CreateAvatarConfigRequest struct {
 	KnowledgeScope     model.AvatarKnowledgeScope `json:"knowledgeScope"`
 	ReplyStrategy      model.AvatarReplyStrategy  `json:"replyStrategy"`
 	TakeoverCooldown   int                        `json:"takeoverCooldown"`
+	SelfMessagePause   int                        `json:"selfMessagePause"`
 	ActivateByDefault  bool                       `json:"activateByDefault"`
 	CustomPersonaAddon string                     `json:"customPersonaAddon"`
 }
@@ -282,6 +289,7 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 		TriggerRulesJSON:   string(triggerRulesJSON),
 		ReplyStrategyJSON:  string(replyStrategyJSON),
 		TakeoverCooldown:   req.TakeoverCooldown,
+		SelfMessagePause:   req.SelfMessagePause,
 		ActivateByDefault:  req.ActivateByDefault,
 		CustomPersonaAddon: req.CustomPersonaAddon,
 	}
@@ -322,6 +330,7 @@ type UpdateAvatarConfigRequest struct {
 	KnowledgeScope     *model.AvatarKnowledgeScope `json:"knowledgeScope"`
 	ReplyStrategy      *model.AvatarReplyStrategy  `json:"replyStrategy"`
 	TakeoverCooldown   *int                        `json:"takeoverCooldown"`
+	SelfMessagePause   *int                        `json:"selfMessagePause"`
 	ActivateByDefault  *bool                       `json:"activateByDefault"`
 	CustomPersonaAddon *string                     `json:"customPersonaAddon"`
 }
@@ -390,6 +399,9 @@ func (h *AvatarHandler) UpdateConfig(c *gin.Context) {
 	}
 	if req.TakeoverCooldown != nil {
 		updates["takeover_cooldown"] = *req.TakeoverCooldown
+	}
+	if req.SelfMessagePause != nil {
+		updates["self_message_pause"] = *req.SelfMessagePause
 	}
 	if req.ActivateByDefault != nil {
 		updates["activate_by_default"] = *req.ActivateByDefault
@@ -605,10 +617,25 @@ func (h *AvatarHandler) GetSessions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": sessions})
 }
 
+// ClearSessions 清空该分身用户所有会话级设置（删除 avatar_sessions 行）。
+// 之后所有会话回归「跟随全局默认 activateByDefault」，用于「重置所有会话设置为跟随全局默认」。
+func (h *AvatarHandler) ClearSessions(c *gin.Context) {
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
+
+	if err := h.db.Where("user_id = ?", userID).Delete(&model.AvatarSession{}).Error; err != nil {
+		response.InternalServerError(c, "重置会话失败")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": nil})
+}
+
 // UpdateSession 更新会话分身状态
 func (h *AvatarHandler) UpdateSession(c *gin.Context) {
 	userIDAny, _ := c.Get("user_id")
 	userID := userIDAny.(uint)
+
 	convIdStr := c.Param("convId")
 
 	var req struct {

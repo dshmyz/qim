@@ -17,6 +17,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// AvatarSource 分身回复命中的知识来源，随 WS 下发供前端展示「依据」。
+// 仅记录实际参与注入的笔记/群知识/记忆，任务仅作附加注入不打标记。
+type AvatarSource struct {
+	Type    string `json:"type"` // "note" | "group" | "memory"
+	Title   string `json:"title,omitempty"`
+	Snippet string `json:"snippet,omitempty"`
+}
+
 type AvatarReplyContext struct {
 	Message        string
 	ConversationID uint
@@ -30,6 +38,8 @@ type AvatarReplyContext struct {
 	MemoryContext  string
 	TaskContext    string
 	History        string
+	// Sources 本条回复命中的知识来源（笔记/群知识/记忆标题与摘要），供下发展示依据
+	Sources []AvatarSource
 	// SkipReply 命中"知识范围外且配置为不回复"时置位，Execute 据此跳过 LLM 调用
 	SkipReply bool
 	// CustomProvider 非 nil 表示分身配置了「使用自定义模型」（!UseSystemConfig && ModelConfigID）。
@@ -81,7 +91,8 @@ func (g *AvatarReplyGraph) BuildGraph() error {
 【回复要求】
 - 以第一人称回复，就像你就是这个人
 - 保持自然的对话风格
-- {LengthHint}`},
+- {LengthHint}
+- 回答必须优先基于上方【相关笔记知识】【群知识库】【相关记忆】等资料；若资料不足以回答，请明确说明资料不足并给出你的理解，切勿假装引用或编造。`},
 		&schema.Message{Role: schema.User, Content: `{ContextSection}
 对方说：{Message}
 
@@ -181,8 +192,19 @@ func (g *AvatarReplyGraph) createFormatReplyNode() *compose.Lambda {
 }
 
 func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (string, error) {
+	reply, _, err := g.executeWithSources(ctx, userID, conversationID, message, preloaded)
+	return reply, err
+}
+
+// ExecuteWithSources 与 Execute 等价，额外返回本条回复命中的知识来源（供下发展示「依据」）。
+// 若命中"不回复"策略（SkipReply）或生成失败，sources 可能为空。
+func (g *AvatarReplyGraph) ExecuteWithSources(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (string, []AvatarSource, error) {
+	return g.executeWithSources(ctx, userID, conversationID, message, preloaded)
+}
+
+func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (string, []AvatarSource, error) {
 	if g.runnable == nil {
-		return "", fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
+		return "", nil, fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
 	}
 
 	input := &AvatarReplyContext{
@@ -193,11 +215,11 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 
 	// 先在图外完成上下文准备，以便在命中"不回复"时直接跳过 LLM 调用
 	if err := g.prepare(ctx, input, preloaded); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if input.SkipReply {
 		log.Printf("[AvatarReplyGraph] 命中不回复策略，跳过 LLM: userID=%d convID=%d", userID, conversationID)
-		return "", nil
+		return "", nil, nil
 	}
 
 	startTime := time.Now()
@@ -218,7 +240,7 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 		reply, err = g.runnable.Invoke(ctx, input)
 	}
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	log.Printf("[AvatarReplyGraph] 生成回复耗时: %v", time.Since(startTime))
@@ -231,7 +253,7 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 		}
 	}
 
-	return reply, nil
+	return reply, input.Sources, nil
 }
 
 // generateWithCustomProvider 用分身「自选模型」生成回复（非流式）。
@@ -340,6 +362,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 			var parts []string
 			for _, r := range noteResults {
 				parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", r.Metadata["title"], r.Content))
+				input.Sources = append(input.Sources, AvatarSource{Type: "note", Title: r.Metadata["title"], Snippet: r.Content})
 			}
 			noteCtx = "【相关笔记知识】\n" + strings.Join(parts, "\n\n")
 		}
@@ -358,6 +381,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 					var parts []string
 					for _, r := range results {
 						parts = append(parts, fmt.Sprintf("[群知识库: %s]\n%s", r.Metadata["title"], r.Content))
+						input.Sources = append(input.Sources, AvatarSource{Type: "group", Title: r.Metadata["title"], Snippet: r.Content})
 					}
 					groupKnowledge = "【群知识库】\n" + strings.Join(parts, "\n\n")
 
@@ -380,6 +404,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 			var parts []string
 			for _, r := range memoryResults {
 				parts = append(parts, r.Content)
+				input.Sources = append(input.Sources, AvatarSource{Type: "memory", Snippet: r.Content})
 			}
 			memoryCtx = "【相关记忆】\n" + strings.Join(parts, "\n\n")
 		}

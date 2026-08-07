@@ -81,6 +81,8 @@ export const conversationPartnerType = (
 ): PartnerType => {
   if (!conversation) return 'user'
   if (conversation.type === 'bot') return 'bot'
+  if (conversation.type === 'system') return 'system'
+  if (conversation.type === 'api') return 'api'
   if (conversation.type === 'group' || conversation.type === 'discussion') return 'user'
 
   if (conversation.type === 'single') {
@@ -102,6 +104,22 @@ export const conversationPartnerType = (
   }
 
   return 'user'
+}
+
+/**
+ * 判断会话的「对方」是否为非人类账号（bot 或 system）。
+ * 系统助手与机器人一致：语音通话、屏幕共享、右上角分身设置等约束应同样生效。
+ * 兼容 direct 类型（type=bot/system）与 single 会话中对方为 bot/system 两种形态。
+ *
+ * @param conversation 会话对象
+ * @param currentUserId 当前用户 id；不传则从 localStorage 读取（用于 single 会话 partner 推导）
+ */
+export const isConversationPeerNonHuman = (
+  conversation: any,
+  currentUserId?: string | number
+): boolean => {
+  const partner = conversationPartnerType(conversation, currentUserId)
+  return partner === 'bot' || partner === 'system'
 }
 
 /**

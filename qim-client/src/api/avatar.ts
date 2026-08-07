@@ -4,8 +4,7 @@ import type {
   AvatarSession,
   AvatarLearnStatus,
   CreateAvatarConfigRequest,
-  AvatarConfigWithApproval,
-  AvatarWithTools
+  AvatarConfigWithApproval
 } from '../types/avatar'
 
 export const avatarAPI = {
@@ -99,6 +98,10 @@ export const avatarAPI = {
     return response?.data ?? []
   },
 
+  async clearSessions(): Promise<void> {
+    await request('/api/v1/avatar/sessions', { method: 'DELETE' })
+  },
+
   async updateSession(convId: number, enabled: boolean): Promise<AvatarSession> {
     const response = await request<{ code: number; data: AvatarSession }>(
       `/api/v1/avatar/sessions/${convId}`,
@@ -159,34 +162,5 @@ export const avatarAPI = {
       { method: 'GET' }
     )
     return response?.data ?? []
-  },
-
-  async getAvatarWithTools(): Promise<AvatarWithTools | null> {
-    const [avatar, tools] = await Promise.all([
-      this.getConfig(),
-      this.getAvailableTools()
-    ])
-    if (!avatar) return null
-    return {
-      id: String(avatar.id),
-      enabled: avatar.enabled,
-      persona: avatar.persona,
-      availableTools: tools,
-      lastActiveAt: new Date()
-    }
-  },
-
-  async bindToolToAvatar(toolId: string): Promise<void> {
-    await request(
-      `/api/v1/avatar/tools/${toolId}`,
-      { method: 'POST' }
-    )
-  },
-
-  async unbindToolFromAvatar(toolId: string): Promise<void> {
-    await request(
-      `/api/v1/avatar/tools/${toolId}`,
-      { method: 'DELETE' }
-    )
   }
 }

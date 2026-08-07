@@ -92,6 +92,7 @@
     <ChatInputArea
       ref="chatInputRef"
       :conversation="conversation"
+      :can-call="canCall"
       v-model:input-message="inputMessage"
       :pending-files="pendingFiles"
       :show-emoji-panel="showEmojiPanel"
@@ -265,7 +266,7 @@ import CodeBlockEditor from './CodeBlockEditor.vue'
 import OverlayManager from './OverlayManager.vue'
 import ChatHeader from './ChatHeader.vue'
 import { useServerUrl } from '../../composables/useServerUrl'
-import { getCurrentUser } from '../../utils/user'
+import { getCurrentUser, isConversationPeerNonHuman } from '../../utils/user'
 import { addWsHandlers } from '../../composables/useWebSocket'
 import { useMessageActions } from '../../composables/useMessageActions'
 import '../../assets/styles/modules/modals.css'
@@ -322,6 +323,12 @@ const currentUser = ref(getCurrentUser())
 const currentUserId = computed((): string | number => {
   const user = currentUser.value || props.currentUser
   return user?.id ?? ''
+})
+
+// 是否允许通话/屏幕共享。对机器人/系统助手等非人类账号为 false，
+// 由输入区据此隐藏通话与屏幕共享按钮（而非点后再弹「不支持」）。
+const canCall = computed(() => {
+  return !isConversationPeerNonHuman(props.conversation, currentUserId.value)
 })
 
 // 初始化 composables
@@ -412,9 +419,9 @@ const handleUpdateAvatarEnabled = async (enabled: boolean) => {
       await toggleSession(props.conversation.id, enabled)
     }
     if (enabled) {
-      $message.success('分身已开启')
+      $message.success('本会话分身已开启')
     } else {
-      $message.success('分身已关闭')
+      $message.success('本会话分身已关闭')
     }
   } catch (error) {
     $message.error('切换分身状态失败')

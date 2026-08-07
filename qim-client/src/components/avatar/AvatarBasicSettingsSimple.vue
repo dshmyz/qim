@@ -67,19 +67,51 @@
     </div>
 
     <div class="setting-item">
-      <label>触发模式</label>
-      <select 
-        :value="modelValue.triggerRules?.mode ?? 'mention'" 
-        @change="handleTriggerModeChange" 
-        class="form-select"
-      >
-        <option value="mention">被 @ 时回复</option>
-        <option value="offline">离线时自动回复</option>
-        <option value="smart">智能模式</option>
-        <option value="keyword">关键词触发</option>
-        <option value="all">所有消息</option>
-      </select>
-      <span class="setting-hint">设置分身何时自动回复消息</span>
+      <div class="setting-row">
+        <span class="setting-label">仅在被 @ 时回复</span>
+        <Switch
+          :model-value="!!modelValue.triggerRules?.requireMention"
+          @update:model-value="updateTrigger('requireMention', $event)"
+        />
+      </div>
+      <span class="setting-hint">仅群聊生效：群里被 @ 才回复；私聊没有 @ 语义，会自动改由智能判断是否回复</span>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-row">
+        <span class="setting-label">智能判断是否需要回复</span>
+        <Switch
+          :model-value="!!modelValue.triggerRules?.smartDecide"
+          @update:model-value="updateTrigger('smartDecide', $event)"
+        />
+      </div>
+      <span class="setting-hint">让 AI 判断这条消息是否值得你回复，避免无关闲聊触发分身</span>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-row">
+        <span class="setting-label">关键词命中才回复</span>
+        <Switch
+          :model-value="!!modelValue.triggerRules?.keywordOnly"
+          @update:model-value="updateTrigger('keywordOnly', $event)"
+        />
+      </div>
+      <span class="setting-hint">仅当消息包含下方关键词时才回复</span>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-row">
+        <span class="setting-label">仅离线时自动回复</span>
+        <Switch
+          :model-value="!!modelValue.triggerRules?.offlineOnly"
+          @update:model-value="updateTrigger('offlineOnly', $event)"
+        />
+      </div>
+      <span class="setting-hint">触发时机：仅在你离线时才自动回复，作为上面意图条件的叠加门槛；未勾选则无论在线与否都可回</span>
+    </div>
+
+    <div class="setting-item">
+      <span class="setting-hint setting-note">上面的意图开关（被 @ / 智能判断 / 关键词）均未勾选时，分身会回复该范围内的所有消息。</span>
     </div>
 
     <div class="setting-item">
@@ -94,7 +126,23 @@
         <option :value="30">30 分钟</option>
         <option :value="60">1 小时</option>
       </select>
-      <span class="setting-hint">你发消息后，分身暂停回复的时间</span>
+      <span class="setting-hint">点击「接管分身」后，分身暂停回复的时间</span>
+    </div>
+
+    <div class="setting-item">
+      <label>你发消息后，分身暂停回复</label>
+      <select
+        :value="modelValue.selfMessagePause ?? 0"
+        @change="update('selfMessagePause', Number(($event.target as HTMLSelectElement).value))"
+        class="form-select"
+      >
+        <option :value="0">不暂停</option>
+        <option :value="5">5 分钟</option>
+        <option :value="10">10 分钟</option>
+        <option :value="30">30 分钟</option>
+        <option :value="60">1 小时</option>
+      </select>
+      <span class="setting-hint">你在会话发言后，分身在这段时间内不自动回复，避免插话；选「不暂停」则发言后照常可回</span>
     </div>
 
     <div class="setting-item">
@@ -108,7 +156,14 @@
       <span class="setting-hint">开启后，未单独设置的会话（含新建）自动激活分身，可逐个关闭；关闭则需逐会话手动开启</span>
     </div>
 
-    <template v-if="modelValue.triggerRules?.mode === 'keyword' || modelValue.triggerRules?.mode === 'smart'">
+    <div class="setting-item">
+      <button class="btn-reset-sessions" :disabled="resettingSessions" @click="handleResetSessions">
+        {{ resettingSessions ? '重置中...' : '重置所有会话设置为跟随全局默认' }}
+      </button>
+      <span class="setting-hint">清除所有会话单独设置，未单独设置的会话将重新按上方「默认在所有会话激活」开关生效</span>
+    </div>
+
+    <template v-if="modelValue.triggerRules?.keywordOnly">
       <div class="setting-divider"></div>
       <div class="setting-item">
         <label>触发关键词</label>
@@ -137,10 +192,11 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { AvatarConfigWithApproval, AvatarApprovalStatus } from '../../types/avatar'
+import type { AvatarConfigWithApproval, AvatarApprovalStatus, AvatarTriggerRules } from '../../types/avatar'
 import ApprovalStatusSection from './ApprovalStatusSection.vue'
 import Switch from '../common/Switch.vue'
 import { avatarAPI } from '../../api/avatar'
+import { useAvatar } from '../../composables/useAvatar'
 import { validateAliasName } from '../../utils/validation'
 
 const props = defineProps<{
@@ -151,7 +207,10 @@ const emit = defineEmits<{
   'update:modelValue': [value: AvatarConfigWithApproval]
 }>()
 
+const { clearSessions: clearAllSessions } = useAvatar()
+
 const applying = ref(false)
+const resettingSessions = ref(false)
 const keywordInput = ref('')
 
 // Switch 变更处理：开启走审批，关闭直接生效
@@ -165,17 +224,6 @@ async function handleSwitchChange(value: boolean) {
 
 const approvalStatus = computed<AvatarApprovalStatus>(() => {
   return props.modelValue.approvalStatus || 'none'
-})
-
-const modeLabel = computed(() => {
-  const labels: Record<string, string> = {
-    mention: '被 @ 时回复',
-    offline: '离线时自动回复',
-    smart: '智能模式',
-    keyword: '关键词触发',
-    all: '所有消息'
-  }
-  return labels[props.modelValue.triggerRules?.mode ?? 'mention'] || '未设置'
 })
 
 const cooldownLabel = computed(() => {
@@ -234,13 +282,30 @@ function handleNameInput(event: Event) {
   update('name', value)
 }
 
-function handleTriggerModeChange(event: Event) {
-  const value = (event.target as HTMLSelectElement).value as 'mention' | 'offline' | 'keyword' | 'all' | 'smart'
+async function handleResetSessions() {
+  const result = await window.$QMessageBox?.confirm(
+    '将清除所有会话的单独设置，之后未单独设置的会话按上方「默认在所有会话激活」开关生效。确定重置吗？',
+    '重置会话设置',
+    { confirmButtonText: '确认重置', type: 'warning' }
+  )
+  if (result?.action !== 'confirm') return
+  resettingSessions.value = true
+  try {
+    await clearAllSessions()
+    window.$QMessage?.success?.('已重置所有会话设置为跟随全局默认')
+  } catch {
+    window.$QMessage?.error?.('重置会话设置失败')
+  } finally {
+    resettingSessions.value = false
+  }
+}
+
+function updateTrigger<K extends keyof AvatarTriggerRules>(key: K, value: AvatarTriggerRules[K]) {
   emit('update:modelValue', {
     ...props.modelValue,
     triggerRules: {
       ...props.modelValue.triggerRules,
-      mode: value
+      [key]: value
     }
   })
 }
@@ -316,6 +381,29 @@ function removeKeyword(index: number) {
   margin: 16px 0;
 }
 
+.btn-reset-sessions {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-color);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
+}
+
+.btn-reset-sessions:hover:not(:disabled) {
+  color: #d33;
+  border-color: #d33;
+  background: rgba(221, 51, 51, 0.06);
+}
+
+.btn-reset-sessions:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .setting-item {
   margin-bottom: 16px;
 }
@@ -343,6 +431,13 @@ function removeKeyword(index: number) {
   margin-top: 4px;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.setting-note {
+  padding: 6px 10px;
+  background: var(--primary-color-alpha, rgba(99, 102, 241, 0.06));
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
 }
 
 .form-input {

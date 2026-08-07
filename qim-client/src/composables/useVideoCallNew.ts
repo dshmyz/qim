@@ -1,4 +1,4 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onScopeDispose } from 'vue'
 import { useSession } from './useSession'
 import { useSignaling } from './useSignaling'
 
@@ -305,12 +305,22 @@ function createVideoCall() {
     }
   }
 
+  // @contextmenu 此类监听必须成对注册/移除：CallOverlay 每次通话都会 v-if 挂载/卸载，
+  // 本 composable 也随之反复执行 setup。若不清理，每通一次电话都会在 window 上累积
+  // beforeunload + visibilitychange 两个常驻监听（visibilitychange 之前还是匿名函数，
+  // 后续根本无法移除），随通话次数无限增长。
+  const handleVisibilityChange = () => {
+    if (document.hidden) {
+      cleanupOnUnload()
+    }
+  }
+
   if (typeof window !== 'undefined') {
     window.addEventListener('beforeunload', cleanupOnUnload)
-    window.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        cleanupOnUnload()
-      }
+    window.addEventListener('visibilitychange', handleVisibilityChange)
+    onScopeDispose(() => {
+      window.removeEventListener('beforeunload', cleanupOnUnload)
+      window.removeEventListener('visibilitychange', handleVisibilityChange)
     })
   }
 

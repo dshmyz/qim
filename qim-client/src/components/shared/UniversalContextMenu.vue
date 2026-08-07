@@ -9,7 +9,7 @@
           :class="{ danger: item.danger }"
           @click="handleClick(item)"
         >
-          <span v-if="item.icon" class="ucm-icon"><i :class="item.icon" :style="item.iconColor ? { color: item.iconColor, fontSize: item.iconColor ? '8px' : '' } : {}"></i></span>
+          <span v-if="item.icon" class="ucm-icon"><i :class="item.icon" :style="item.iconColor ? { color: item.iconColor } : {}"></i></span>
           <span class="ucm-label">{{ item.label }}</span>
         </div>
       </template>
@@ -121,19 +121,20 @@ onUnmounted(() => {
   overflow-y: auto;
   background: var(--card-bg, #fff);
   border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 6px 0;
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  padding: 6px;
 }
 .ucm-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 12.5px;
   color: var(--text-color, #333);
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 .ucm-item:hover {
   background: var(--hover-color, #f3f4f6);
@@ -148,9 +149,10 @@ onUnmounted(() => {
   background: rgba(229, 72, 77, 0.08);
 }
 .ucm-icon {
-  width: 16px;
+  width: 18px;
   text-align: center;
   flex-shrink: 0;
+  font-size: 13px;
   color: var(--primary-color);
 }
 .ucm-label {
@@ -162,6 +164,6 @@ onUnmounted(() => {
 .ucm-divider {
   height: 1px;
   background: var(--border-color, #e5e7eb);
-  margin: 4px 0;
+  margin: 4px 6px;
 }
 </style>
