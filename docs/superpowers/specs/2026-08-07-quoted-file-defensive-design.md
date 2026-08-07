@@ -45,7 +45,7 @@ QuotedFileFailed string
 
 ### 3. 应答 buildHistoryMessages
 
-去掉固定应答,按字段分支:
+将"上下文注入"段(KnowledgeCtx / MemoryCtx / QuotedFileCtx / QuotedFileFailed)抽成纯函数 `buildContextBlocks`,去掉固定应答,按字段分支:
 
 ```go
 if input.QuotedFileCtx != "" {
@@ -58,7 +58,7 @@ if input.QuotedFileFailed != "" {
 }
 ```
 
-成功说"已读到",失败说"未能读取",消除歧义。
+成功说"已读到",失败说"未能读取",消除歧义。抽纯函数是为让该段无 DB、可独立单测。
 
 ## 边界清单(已全部显式化,无静默假答)
 
@@ -80,10 +80,15 @@ if input.QuotedFileFailed != "" {
 
 ## 测试
 
-为 `buildHistoryMessages` 补单测,断言:
-1. 仅 `QuotedFileCtx` 非空 → 只有"我已读到"应答,无"未能读取"应答
-2. 仅 `QuotedFileFailed` 非空 → 只有"未能读取"应答,无"我已读到"应答
+将 `buildHistoryMessages` 里"上下文注入"段(KnowledgeCtx / MemoryCtx / QuotedFileCtx / QuotedFileFailed)抽成纯函数 `buildContextBlocks(input *SmartReplyContext) []*schema.Message`,该段不依赖 DB(历史消息查询在独立的后段),因此可无 DB 单测。
+
+对 `buildContextBlocks` 断言:
+1. 仅 `QuotedFileCtx` 非空 → 产出「我已读到被引用的文件内容。」应答,无「未能读取」应答
+2. 仅 `QuotedFileFailed` 非空 → 产出「我未能读取该文件,将如实向用户说明原因。」应答,无「我已读到」应答
 3. 两者皆空 → 无引用上下文消息
+4. 两者互斥:不会同时注入两套上下文(由 prepareInput 赋值逻辑保证)
+
+测试文件:`qim-server/service/smart_reply_graph_test.go`(新增)
 
 ## 范围
 
