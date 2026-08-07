@@ -102,6 +102,18 @@ qim config show
 | `qim event create` | 创建日历事件 |
 | `qim event update` | 更新日历事件 |
 
+### 笔记（长期记忆）
+
+| 命令 | 说明 |
+|------|------|
+| `qim note list` | 列出正式笔记（排除便签） |
+| `qim note get <id>` | 获取单条笔记全文 |
+| `qim note create --title ...` | 创建笔记 |
+| `qim note update <id> --title ...` | 更新笔记标题/正文 |
+
+> 笔记是**用户级私有数据**，以登录用户的 user JWT 操作（走 `qim login` 登录后的身份），
+> 与机器人 bot token（`qbot_xxx`）是两套身份，机器人无法访问你的笔记。
+
 ### 会话管理
 
 | 命令 | 说明 |
@@ -223,6 +235,24 @@ qim task list
 # 更新任务状态
 qim task update --id 1 --status done
 ```
+
+### 笔记管理（长期记忆）
+
+```bash
+# 列出正式笔记（运行前先 qim login 以登录用户身份操作）
+qim note list
+
+# 查看单条笔记全文
+qim note get 12
+
+# 创建笔记（把有价值结论沉淀成长期记忆）
+qim note create --title "部署备忘" --content "生产环境用 systemd 托管，端口 8080"
+
+# 更新笔记（整体覆盖标题/正文，只传其一则合并保留）
+qim note update 12 --title "部署备忘（更新版）"
+```
+
+> 笔记是**用户级私有数据**，走登录用户的 JWT，与机器人 `qbot_xxx` 身份相互独立。
 
 ### 输出格式控制
 

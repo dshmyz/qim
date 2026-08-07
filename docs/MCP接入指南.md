@@ -126,7 +126,12 @@ curl -X POST http://localhost:8082/mcp \
 
 ## MCP 工具列表
 
-qim-mcp 注册了 6 个标准 MCP 工具：
+qim-mcp 注册了标准 MCP 工具，按功能分四组：
+
+- **消息收发**：`list_messages` `poll_messages` `list_group_conversations` `send_message` `start_streaming_message` `append_streaming_chunk` `finish_streaming_message`
+- **消息增强**：`edit_message` `search_messages`
+- **任务与日历**（需 user JWT）：`list_tasks` `create_task` `update_task` `list_events` `create_event` `update_event`
+- **笔记管理**（需 user JWT）：`list_notes` `get_note` `create_note` `update_note` `search_notes`
 
 ### list_messages
 
@@ -209,6 +214,70 @@ qim-mcp 注册了 6 个标准 MCP 工具：
 | `message_id` | uint64 | 是 | 流式消息 ID |
 
 **返回**：`{"ok": true}`
+
+---
+
+### 笔记管理工具（需 user JWT）
+
+> 笔记是**用户级私有数据**，需通过 `--user-token`（stdio 模式）或 `X-QIM-User-Token` 头（HTTP 模式）
+> 传入用户 JWT，机器人的 `--token` 无法访问笔记。
+
+#### list_notes
+
+列出当前用户的正式笔记（排除便签）。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `limit` | int | 否 | 最大返回条数 |
+
+**返回**：每行一条笔记 JSON（`id` / `title` / `content` / `tags`）。
+
+#### get_note
+
+按 id 获取单条笔记全文。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `note_id` | uint64 | 是 | 笔记 ID |
+
+**返回**：笔记完整 JSON（含 `title` / `content` / `tags` / `summary`）。
+
+#### create_note
+
+创建一条笔记。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `title` | string | 是 | 笔记标题 |
+| `content` | string | 否 | 笔记正文 |
+
+**返回**：`{"note_id": 12}`
+
+#### update_note
+
+更新已有笔记的标题和正文（整体覆盖）。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `note_id` | uint64 | 是 | 笔记 ID |
+| `title` | string | 是 | 新标题 |
+| `content` | string | 是 | 新正文 |
+
+**返回**：`{"success": true}`
+
+#### search_notes
+
+按语义检索当前用户的笔记，返回与 query 最相关的命中。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `query` | string | 是 | 检索问题 |
+| `top_k` | int | 否 | 返回条数，默认 5 |
+
+**返回**：每行一条命中（`title` / `content` / `score` / `note_id`）。
+
+> 这是 agent 最有价值的能力：把用户笔记当作**显式长期记忆 + RAG 源**，
+> 回答"需要查阅用户笔记知识"的问题。
 
 ---
 
