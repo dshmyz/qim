@@ -79,6 +79,12 @@ export function useMainGroupHandlers(
 
     const conversationId = data.conversation_id.toString()
     const newMember = data.member
+    if (!newMember) {
+      // 防御性兜底：无完整 member 载荷时（如历史旧广播），仅告警并跳过，
+      // 避免空指针导致整条 WebSocket 消息解析崩溃。
+      logger.warn('群成员加入事件缺少 member 载荷，已跳过:', data)
+      return
+    }
     const memberName = newMember.nickname || newMember.username || (newMember.name !== undefined ? newMember.name : '未知用户')
     const memberData = {
       id: newMember.id?.toString() || '',
@@ -121,16 +127,22 @@ export function useMainGroupHandlers(
 
   const handleGroupMemberRoleUpdated = (data: any) => {
     logger.log('群成员角色更新:', data)
-    const { group_id, user_id, user_name, new_role } = data
-    
+    const { conversation_id, user_id, user_name, role } = data
+
     const roleNames: Record<string, string> = {
       'admin': '管理员',
       'member': '普通成员',
       'owner': '群主'
     }
 
+    // 同步本地成员角色（后端广播 role 字段，兼容旧 new_role 命名）
+    const currentRole = role ?? data.new_role
+    if (conversation_id != null && user_id != null && currentRole) {
+      chatStore.updateMemberRole(conversation_id.toString(), user_id.toString(), currentRole)
+    }
+
     showMessage({
-      message: `${user_name} 已成为${roleNames[new_role] || new_role}`,
+      message: `${user_name ?? '有人'} 已成为${roleNames[currentRole] || currentRole}`,
       type: 'info',
       duration: 3000
     })
@@ -138,10 +150,10 @@ export function useMainGroupHandlers(
 
   const handleGroupOwnerTransferred = (data: any) => {
     logger.log('群主转让:', data)
-    const { group_id, new_owner_id, new_owner_name } = data
-    
+    const { new_owner_name } = data
+
     showMessage({
-      message: `群主已转让给 ${new_owner_name}`,
+      message: `群主已转让给 ${new_owner_name ?? '群成员'}`,
       type: 'warning',
       duration: 5000
     })

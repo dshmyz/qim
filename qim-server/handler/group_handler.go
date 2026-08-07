@@ -989,12 +989,24 @@ func SetMemberRole(c *gin.Context) {
 	targetMember.Role = req.Role
 	convSvc.UpdateMember(targetMember)
 
+	// 获取目标用户昵称用于群内广播提示
+	targetName := ""
+	if userSvc := di.GlobalContainer.UserService; userSvc != nil {
+		if targetUser, err := userSvc.GetUser(uint(targetMemberID)); err == nil {
+			targetName = targetUser.Nickname
+			if targetName == "" {
+				targetName = targetUser.Username
+			}
+		}
+	}
+
 	if ws.GlobalHub != nil {
 		updateMsg := ws.WSMessage{
 			Type: "group_member_role_updated",
 			Data: gin.H{
 				"conversation_id": conv.ID,
 				"user_id":         targetMember.UserID,
+				"user_name":       targetName,
 				"role":            req.Role,
 			},
 		}
@@ -1073,12 +1085,24 @@ func TransferOwner(c *gin.Context) {
 	}
 
 	if ws.GlobalHub != nil {
+		// 获取新群主昵称用于群内广播提示
+		newOwnerName := ""
+		if userSvc := di.GlobalContainer.UserService; userSvc != nil {
+			if newOwner, err := userSvc.GetUser(uint(targetMemberID)); err == nil {
+				newOwnerName = newOwner.Nickname
+				if newOwnerName == "" {
+					newOwnerName = newOwner.Username
+				}
+			}
+		}
+
 		transferMsg := ws.WSMessage{
 			Type: "group_owner_transferred",
 			Data: gin.H{
 				"conversation_id": conv.ID,
 				"old_owner_id":    userID,
 				"new_owner_id":    targetMember.UserID,
+				"new_owner_name":  newOwnerName,
 			},
 		}
 		jsonMsg, _ := json.Marshal(transferMsg)

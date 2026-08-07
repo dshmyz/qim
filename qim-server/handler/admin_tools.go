@@ -241,6 +241,13 @@ func (t *GroupManagementTool) Execute(params map[string]interface{}, ctx *ai.Cal
 				Data: gin.H{
 					"conversation_id": conversation.ID,
 					"user_id":         user.ID,
+					"member": gin.H{
+						"id":       user.ID,
+						"nickname": user.Nickname,
+						"username": user.Username,
+						"avatar":   user.Avatar,
+						"type":     user.Type,
+					},
 				},
 			}
 			jsonMsg, _ := json.Marshal(msg)
