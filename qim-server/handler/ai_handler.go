@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -581,6 +582,10 @@ type KnowledgeGraphQueryRequest struct {
 	MaxNodes   int    `json:"max_nodes"`
 }
 
+// groupCollectionRe 匹配群集合名（group_{id}）。命中时 GetKnowledgeGraph 走按群构建拓扑，
+// 否则回落到按集合平铺向量块的旧逻辑。
+var groupCollectionRe = regexp.MustCompile(`^group_(\d+)$`)
+
 // GetKnowledgeGraph 获取知识图谱数据
 // @Summary 获取知识图谱数据
 // @Description 获取指定集合的知识图谱节点和关系数据
@@ -605,6 +610,28 @@ func (h *AIHandler) GetKnowledgeGraph(c *gin.Context) {
 	maxNodes := 50
 	if maxNodesStr := c.Query("max_nodes"); maxNodesStr != "" {
 		fmt.Sscanf(maxNodesStr, "%d", &maxNodes)
+	}
+
+	// 群集合（group_{id}）走真正的拓扑构建（文档/实体节点 + 关系边 + 实体反查），
+	// 对齐分身知识图谱形态；非群集合回落到下方按集合平铺向量块的旧逻辑。
+	if m := groupCollectionRe.FindStringSubmatch(collection); m != nil {
+		groupID, _ := strconv.ParseUint(m[1], 10, 32)
+		docSvc := di.GlobalContainer.GroupDocumentService
+		if docSvc != nil {
+			graph, err := docSvc.BuildGroupKnowledgeGraph(uint(groupID), query, maxNodes)
+			if err != nil {
+				logger.WithModule("GroupKnowledgeGraph").Error("构建群知识图谱失败", "groupID", groupID, "error", err)
+			} else {
+				response.Success(c, gin.H{
+					"nodes":           graph.Nodes,
+					"edges":           graph.Edges,
+					"total_nodes":     graph.TotalNodes,
+					"total_edges":     graph.TotalEdges,
+					"knowledge_count": graph.KnowledgeCount,
+				})
+				return
+			}
+		}
 	}
 
 	nodes := make([]map[string]interface{}, 0)

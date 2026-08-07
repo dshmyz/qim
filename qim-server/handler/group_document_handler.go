@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -99,46 +98,39 @@ func GetGroupKnowledgeGraph(c *gin.Context) {
 		fmt.Sscanf(maxNodesStr, "%d", &maxNodes)
 	}
 
-	nodes := make([]map[string]interface{}, 0)
-	edges := make([]map[string]interface{}, 0)
-
-	vectorSvc := di.GlobalContainer.VectorService
-	if vectorSvc == nil {
+	// 从存储图构建真正的拓扑（文档/实体节点 + 关系边 + 实体反查），对齐分身知识图谱。
+	// 无图谱数据时返回空结构，不报错。
+	docSvc := di.GlobalContainer.GroupDocumentService
+	if docSvc == nil {
 		response.Success(c, gin.H{
-			"nodes":       nodes,
-			"edges":       edges,
-			"total_nodes": 0,
-			"total_edges": 0,
+			"nodes":           []interface{}{},
+			"edges":           []interface{}{},
+			"total_nodes":     0,
+			"total_edges":     0,
+			"knowledge_count": 0,
 		})
 		return
 	}
 
-	collection := fmt.Sprintf("group_%d", group.ID)
-	results, err := vectorSvc.GetByCollection(context.Background(), collection, maxNodes)
-	if err == nil {
-		for i, result := range results {
-			nodeID := fmt.Sprintf("node_%d", i)
-			nodes = append(nodes, map[string]interface{}{
-				"id":    nodeID,
-				"label": result.DocID,
-				"type":  "knowledge",
-				"x":     float64(i%10) * 100,
-				"y":     float64(i/10) * 100,
-				"data": map[string]interface{}{
-					"content":    result.Content,
-					"score":      result.Score,
-					"metadata":   result.Metadata,
-					"collection": result.Collection,
-				},
-			})
-		}
+	graph, err := docSvc.BuildGroupKnowledgeGraph(group.ID, "", maxNodes)
+	if err != nil {
+		logger.WithModule("GroupKnowledgeGraph").Error("构建群知识图谱失败", "groupID", group.ID, "error", err)
+		response.Success(c, gin.H{
+			"nodes":           []interface{}{},
+			"edges":           []interface{}{},
+			"total_nodes":     0,
+			"total_edges":     0,
+			"knowledge_count": 0,
+		})
+		return
 	}
 
 	response.Success(c, gin.H{
-		"nodes":       nodes,
-		"edges":       edges,
-		"total_nodes": len(nodes),
-		"total_edges": len(edges),
+		"nodes":           graph.Nodes,
+		"edges":           graph.Edges,
+		"total_nodes":     graph.TotalNodes,
+		"total_edges":     graph.TotalEdges,
+		"knowledge_count": graph.KnowledgeCount,
 	})
 }
 

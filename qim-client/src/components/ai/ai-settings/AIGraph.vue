@@ -10,28 +10,58 @@
       </button>
     </div>
 
-    <div v-if="loading" class="graph-empty">
-      <div class="loading-spinner"></div>
-    </div>
-    <div v-else-if="stats.totalNodes === 0" class="graph-empty">
-      <i class="fas fa-project-diagram"></i>
-      <p>暂无知识图谱。为群知识库绑定并处理文档后，图谱会自动生成。</p>
-    </div>
-    <div v-else ref="graphRef" class="graph-canvas">
-      <EChartsGraph
-        :nodes="graphNodes"
-        :edges="graphEdges"
-        :type-colors="typeColors"
-        :show-legend="false"
-        @node-click="onNodeClick"
-        @blank-click="clearTooltip"
-      />
-    </div>
+    <div class="graph-body">
+      <div class="graph-stage">
+        <div v-if="loading" class="graph-empty">
+          <div class="loading-spinner"></div>
+        </div>
+        <div v-else-if="stats.totalNodes === 0" class="graph-empty">
+          <i class="fas fa-project-diagram"></i>
+          <p>暂无知识图谱。为群知识库绑定并处理文档后，图谱会自动生成。</p>
+        </div>
+        <div v-else ref="graphRef" class="graph-canvas">
+          <EChartsGraph
+            :nodes="graphNodes"
+            :edges="graphEdges"
+            :type-colors="typeColors"
+            :show-legend="false"
+            @node-click="onNodeClick"
+            @blank-click="clearDetail"
+          />
+        </div>
+      </div>
 
-    <!-- 节点详情（浮动 tooltip） -->
-    <div v-if="selectedNode" class="node-tooltip" :style="tooltipStyle">
-      <div class="node-tooltip-title">{{ selectedNode.label }}</div>
-      <div class="node-tooltip-content">{{ selectedNode.data?.content }}</div>
+      <!-- 选中节点详情卡片（固定右侧，与分身影像图谱一致；实体节点展示反查来源） -->
+      <transition name="slide">
+        <div v-if="selectedNode" class="node-detail">
+          <div class="node-detail-head">
+            <span class="node-detail-title">{{ selectedNode.label }}</span>
+            <span class="node-detail-type badge" :class="selectedNode.type">{{ typeLabel(selectedNode.type) }}</span>
+            <button class="node-detail-close" @click="clearDetail"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="node-detail-body">
+            <template v-if="selectedNode.data?.related?.length">
+              <div class="node-detail-meta">出现在以下文档：</div>
+              <ul class="source-list">
+                <li v-for="(r, i) in selectedNode.data.related" :key="i">
+                  <i class="fas fa-file-alt"></i> {{ r }}
+                </li>
+              </ul>
+            </template>
+            <template v-else>
+              <div class="node-detail-meta" v-if="selectedNode.data?.content">
+                内容
+              </div>
+              <div class="node-detail-content" v-if="selectedNode.data?.content">
+                {{ selectedNode.data.content }}
+              </div>
+              <div v-if="!selectedNode.data?.content && !selectedNode.data?.related?.length" class="dim">
+                该节点暂无更多信息
+              </div>
+            </template>
+          </div>
+        </div>
+      </transition>
     </div>
   </div>
 </template>
@@ -50,22 +80,29 @@ const props = defineProps<Props>()
 const graphRef = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const selectedNode = ref<EGNode | null>(null)
-const tooltipStyle = ref<Record<string, string>>({})
 
 const stats = ref({ totalNodes: 0, totalEdges: 0 })
 
-// 归一化后交给统一渲染组件 EChartsGraph 的节点/边；群图谱只有知识节点、无边
+// 归一化后交给统一渲染组件 EChartsGraph 的节点/边；群图谱包含知识文档与实体节点及关系边
 const graphNodes = ref<EGNode[]>([])
 const graphEdges = ref<EGEdge[]>([])
-// 群知识节点：统一青色渐变（由 EChartsGraph 默认配色兜底，这里显式声明更清晰）
+// 群知识图谱：知识文档青 / 实体绿（与 admin 一致），关系边由 EChartsGraph 默认渲染
 const typeColors: Record<string, [string, string]> = {
-  knowledge: ['#5eead4', '#14b8a6'], // 青 · 知识节点
+  knowledge: ['#5eead4', '#14b8a6'],      // 青 · 知识文档节点
+  entity: ['#86efac', '#16a34a'],          // 绿 · 实体节点
+}
+
+const typeLabel = (type: string) => {
+  const map: Record<string, string> = {
+    knowledge: '知识',
+    entity: '实体',
+  }
+  return map[type] || type
 }
 
 async function loadGraph() {
   loading.value = true
-  selectedNode.value = null
-  tooltipStyle.value = {}
+  clearDetail()
   let graph: { nodes: EGNode[]; edges: EGEdge[]; total_nodes?: number; total_edges?: number } | undefined
   try {
     const res = await fetch(
@@ -103,13 +140,10 @@ function renderEmpty() {
 
 function onNodeClick(node: EGNode) {
   selectedNode.value = node
-  // 浮动 tooltip 锚定在图右上角，展示该知识节点内容（不遮挡节点本身）
-  tooltipStyle.value = { right: '12px', top: '12px' }
 }
 
-function clearTooltip() {
+function clearDetail() {
   selectedNode.value = null
-  tooltipStyle.value = {}
 }
 
 onMounted(loadGraph)
@@ -121,13 +155,30 @@ onMounted(loadGraph)
 .graph-stats { display: flex; gap: 16px; font-size: 13px; color: var(--text-secondary, #666); }
 .btn { padding: 4px 12px; font-size: 13px; background: var(--card-bg, #f5f5f5); color: var(--text-color, #333); border: 1px solid var(--border-color, #ddd); border-radius: 6px; cursor: pointer; }
 .btn:hover { background: var(--primary-color-alpha, rgba(99, 102, 241, 0.08)); }
+.graph-body { display: flex; align-items: stretch; }
+.graph-stage { flex: 1; min-width: 0; }
 .graph-canvas { height: 420px; position: relative; }
 .graph-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 320px; color: var(--text-secondary, #999); text-align: center; padding: 24px; }
 .graph-empty i { font-size: 36px; margin-bottom: 8px; color: var(--text-secondary, #bbb); }
 .graph-empty p { font-size: 13px; }
 .loading-spinner { width: 32px; height: 32px; border: 3px solid #eee; border-top: 3px solid var(--primary-color); border-radius: 50%; animation: graphspin 0.8s linear infinite; }
 @keyframes graphspin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-.node-tooltip { position: absolute; z-index: 20; max-width: 260px; background: #fff; border: 1px solid var(--border-color, #ddd); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); padding: 10px 12px; pointer-events: none; }
-.node-tooltip-title { font-size: 13px; font-weight: 600; color: var(--text-color, #333); margin-bottom: 4px; }
-.node-tooltip-content { font-size: 12px; color: var(--text-secondary, #666); line-height: 1.5; word-break: break-all; max-height: 120px; overflow: hidden; }
+
+/* 右侧固定详情卡片（对齐分身影像图谱） */
+.node-detail { width: 240px; flex-shrink: 0; border-left: 1px solid var(--border-color, #eee); background: var(--card-bg, #fff); display: flex; flex-direction: column; max-height: 420px; }
+.node-detail-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border-color, #f0f0f0); }
+.node-detail-title { font-size: 14px; font-weight: 600; color: var(--text-color, #333); flex: 1; word-break: break-all; }
+.node-detail-close { border: none; background: transparent; color: var(--text-secondary, #999); cursor: pointer; padding: 2px 4px; font-size: 12px; }
+.node-detail-close:hover { color: var(--text-color, #333); }
+.node-detail-meta { font-size: 12px; color: var(--text-secondary, #666); padding: 10px 14px 2px; }
+.node-detail-body { flex: 1; overflow-y: auto; padding: 0 14px 14px; }
+.node-detail-content { font-size: 12px; color: var(--text-secondary, #666); line-height: 1.5; word-break: break-all; margin-top: 4px; }
+.badge { font-size: 11px; padding: 1px 8px; border-radius: 10px; }
+.badge.knowledge { background: rgba(20, 184, 166, 0.12); color: #0d9488; }
+.badge.entity { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+.source-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.source-list li { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--primary-color, #6366f1); line-height: 1.5; padding: 4px 0; margin-bottom: 4px; border-bottom: 1px dashed var(--border-color, #eee); }
+.source-list li i { margin-top: 2px; color: var(--text-secondary, #999); }
+.dim { font-size: 12px; color: var(--text-secondary, #999); padding: 10px 14px; }
+.slide-enter-active, .slide-leave-active { transition: max-width 0.18s ease, opacity 0.18s ease; }
 </style>

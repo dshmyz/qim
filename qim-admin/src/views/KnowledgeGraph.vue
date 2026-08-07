@@ -125,6 +125,14 @@
           <el-descriptions-item label="内容" v-if="selectedNode.data?.content">
             {{ selectedNode.data.content }}
           </el-descriptions-item>
+          <el-descriptions-item label="来源" v-if="selectedNode.data?.related?.length">
+            <div class="node-source-list">
+              <div v-for="(r, i) in selectedNode.data.related" :key="i" class="node-source-item">
+                <el-icon><Document /></el-icon>
+                <span>{{ r }}</span>
+              </div>
+            </div>
+          </el-descriptions-item>
           <el-descriptions-item label="分数" v-if="selectedNode.data?.score">
             {{ (selectedNode.data.score * 100).toFixed(1) }}%
           </el-descriptions-item>
@@ -369,5 +377,24 @@ onMounted(() => {
 
 .node-detail {
   padding: 8px 0;
+}
+.node-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.node-source-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--el-color-primary);
+  line-height: 1.5;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--el-border-color-lighter);
+}
+.node-source-item .el-icon {
+  flex-shrink: 0;
+  color: var(--el-text-color-secondary);
 }
 </style>

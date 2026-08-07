@@ -581,6 +581,201 @@ func (s *GroupDocumentService) ExpandGraphKnowledge(groupID uint, query string, 
 	return "【知识图谱】\n" + strings.Join(parts, "\n")
 }
 
+// GroupKnowledgeGraphResult 表示群聊知识图谱的归一化渲染结果，供 admin/client 两个图谱接口共用。
+// 对齐分身 BuildMemoryGraph 的形态：实体/知识节点 + 关系边 + 节点反查（related）。
+type GroupKnowledgeGraphResult struct {
+	Nodes          []map[string]interface{}
+	Edges          []map[string]interface{}
+	TotalNodes     int
+	TotalEdges     int
+	KnowledgeCount int
+}
+
+func emptyGroupKnowledgeGraph() *GroupKnowledgeGraphResult {
+	return &GroupKnowledgeGraphResult{
+		Nodes: []map[string]interface{}{},
+		Edges: []map[string]interface{}{},
+	}
+}
+
+// BuildGroupKnowledgeGraph 从 gracedb 存储图读取某群的知识拓扑并归一化为可渲染数据（GraphRAG）。
+//
+// 相比旧实现（直接平铺向量块、无关系边），这里真正体现"文档→实体"拓扑：取该群全部文档，
+// 对每个 doc 节点做两跳 BFS 采集邻接实体与 mentions/co_occurs 边，并携带实体反查
+// （该实体出现在哪些文档，对应分身 memories[].terms 的关联回查）。无图谱数据时返回
+// 空结构，不报错、不阻断。
+func (s *GroupDocumentService) BuildGroupKnowledgeGraph(groupID uint, query string, maxNodes int) (*GroupKnowledgeGraphResult, error) {
+	if s.gracedbDB == nil {
+		return emptyGroupKnowledgeGraph(), nil
+	}
+	if maxNodes <= 0 {
+		maxNodes = 50
+	}
+
+	// 预加载 File 以拿到文档标题（GetDocumentsByGroup 不预加载，这里单独查一次）
+	var docs []model.GroupDocument
+	if err := s.db.Preload("File").Where("group_id = ?", groupID).Find(&docs).Error; err != nil {
+		return nil, fmt.Errorf("读取群文档失败: %w", err)
+	}
+
+	g := s.gracedbDB.Graph()
+
+	// 节点聚合：以存储图节点 ID（doc:{id} / entity:{name}）为键
+	type aggNode struct {
+		id      string
+		label   string
+		typ     string
+		count   int
+		related []string // 实体反查：所在文档标题
+	}
+	nodeMap := make(map[string]*aggNode)
+	var nodeOrder []string
+	addNode := func(id, label, typ string) *aggNode {
+		a, ok := nodeMap[id]
+		if !ok {
+			a = &aggNode{id: id, label: label, typ: typ}
+			nodeMap[id] = a
+			nodeOrder = append(nodeOrder, id)
+		}
+		return a
+	}
+
+	// 边聚合：以 "from|to" 为键去重并累计权重
+	type aggEdge struct {
+		from, to string
+		label    string
+		weight   float64
+	}
+	edgeMap := make(map[string]*aggEdge)
+	var edgeOrder []string
+	addEdge := func(from, to, label string, w float64) {
+		key := from + "\x00" + to
+		e, ok := edgeMap[key]
+		if !ok {
+			e = &aggEdge{from: from, to: to, label: label}
+			edgeMap[key] = e
+			edgeOrder = append(edgeOrder, key)
+		}
+		e.weight += w
+	}
+
+	for _, d := range docs {
+		title := fmt.Sprintf("文档#%d", d.ID)
+		if d.File.Name != "" {
+			title = d.File.Name
+		}
+		docNodeID := fmt.Sprintf("doc:%d", d.ID)
+		docAgg := addNode(docNodeID, title, "knowledge")
+		docAgg.count++
+
+		res, err := g.BFS(docNodeID, graph.NeighborOptions{MaxDepth: 2})
+		if err != nil || res == nil {
+			continue
+		}
+		for _, n := range res.Nodes {
+			if n.ID == docNodeID || n.Type != "entity" {
+				continue
+			}
+			name := n.ID
+			if v, ok := n.Properties["name"]; ok && v != "" {
+				name = v
+			}
+			a := addNode(n.ID, name, "entity")
+			a.count++
+			if !containsStr(a.related, title) {
+				a.related = append(a.related, title)
+			}
+			addEdge(docNodeID, n.ID, "mentions", 1)
+		}
+		for _, e := range res.Edges {
+			if e.Type == "co_occurs" {
+				addEdge(e.FromNodeID, e.ToNodeID, "co_occurs", e.Weight)
+			}
+		}
+	}
+
+	// 裁剪到 maxNodes：优先保留文档节点，再按出现顺序补实体节点
+	kept := make(map[string]bool)
+	for _, id := range nodeOrder {
+		if len(kept) >= maxNodes {
+			break
+		}
+		kept[id] = true
+	}
+	nodes := make([]map[string]interface{}, 0, len(kept))
+	for _, id := range nodeOrder {
+		if !kept[id] {
+			continue
+		}
+		a := nodeMap[id]
+		data := map[string]interface{}{
+			"content": a.label,
+			"count":   a.count,
+		}
+		if a.typ == "entity" && len(a.related) > 0 {
+			data["related"] = a.related
+		}
+		nodes = append(nodes, map[string]interface{}{
+			"id":    a.id,
+			"label": a.label,
+			"type":  a.typ,
+			"data":  data,
+		})
+	}
+
+	// 只有两端都保留的边才输出
+	edges := make([]map[string]interface{}, 0)
+	for _, key := range edgeOrder {
+		e := edgeMap[key]
+		if !kept[e.from] || !kept[e.to] {
+			continue
+		}
+		edges = append(edges, map[string]interface{}{
+			"source": e.from,
+			"target": e.to,
+			"label":  e.label,
+			"type":   e.label,
+			"weight": e.weight,
+		})
+	}
+
+	// 可选查询节点：连到所有保留的知识节点（保留 admin 旧行为）
+	if query != "" {
+		queryNode := map[string]interface{}{
+			"id":    "query_node",
+			"label": fmt.Sprintf("搜索: %s", query),
+			"type":  "query",
+			"data":  map[string]interface{}{"query": query},
+		}
+		nodes = append(nodes, queryNode)
+		for _, n := range nodes {
+			if t, _ := n["type"].(string); t == "knowledge" {
+				edges = append(edges, map[string]interface{}{
+					"source": "query_node",
+					"target": n["id"],
+					"label":  "related",
+					"type":   "search_relation",
+				})
+			}
+		}
+	}
+
+	knowledgeCount := 0
+	for _, n := range nodes {
+		if t, _ := n["type"].(string); t == "knowledge" {
+			knowledgeCount++
+		}
+	}
+
+	return &GroupKnowledgeGraphResult{
+		Nodes:          nodes,
+		Edges:          edges,
+		TotalNodes:     len(nodes),
+		TotalEdges:     len(edges),
+		KnowledgeCount: knowledgeCount,
+	}, nil
+}
+
 func containsStr(list []string, s string) bool {
 	for _, v := range list {
 		if v == s {

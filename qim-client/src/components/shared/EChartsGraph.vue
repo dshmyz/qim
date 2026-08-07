@@ -95,9 +95,13 @@ async function render() {
     const size = props.sizeByCount && n.count
       ? BASE_SIZE + Math.min(Math.max(n.count, 1), MAX_COUNT_SCALE) * 5
       : BASE_SIZE
+    // ECharts graph 系列的 links[].source/target 按「节点 name」解析（而非 id）。
+    // 各数据源（分身文档/群文档）边都引用节点 id（如 doc:1 / entity:xxx），
+    // 因此这里用 id 作为 name 保证边能解析；真正展示的文字走 label.formatter 用 _raw.label。
+    const nodeId = String(n.id ?? n.label ?? '')
     return {
       id: n.id,
-      name: String(n.label ?? ''),
+      name: nodeId,
       type: n.type,
       count: n.count ?? 1,
       symbolSize: size,
@@ -142,7 +146,8 @@ async function render() {
       formatter: (p: any) => {
         if (p.dataType === 'edge') return ''
         const countStr = props.sizeByCount ? ` · 出现 ${p.data.count ?? 1} 处` : ''
-        return `<b>${p.data.name}</b>${countStr}`
+        const label = p.data?._raw?.label ?? p.data.name
+        return `<b>${label}</b>${countStr}`
       },
     },
     legend: props.showLegend ? [{ data: legendData(), top: 8, left: 'center', textStyle: { fontSize: 12, color: '#666' } }] : undefined,
@@ -173,6 +178,8 @@ async function render() {
           color: '#333',
           position: 'bottom',
           distance: 4,
+          // name 已是 id（用于边解析），显示文案用可读的 _raw.label
+          formatter: (p: any) => p.data?._raw?.label ?? p.data.name ?? '',
         },
         lineStyle: {
           curveness: 0.05,
