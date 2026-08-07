@@ -364,6 +364,135 @@ func (c *BotAPIClient) UpdateEvent(id uint64, fields map[string]any) error {
 	return err
 }
 
+// --- Note API（需 userToken）---
+
+// Note 对齐笔记 API 返回的形态（与 cmd/qim CLI 一致）。
+type Note struct {
+	ID        uint64 `json:"id"`
+	UserID    uint64 `json:"user_id"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	Type      string `json:"type"`
+	Tags      string `json:"tags"` // JSON 数组字符串
+	Summary   string `json:"summary"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// NoteSearchResult 笔记语义检索的命中项。
+type NoteSearchResult struct {
+	Content string  `json:"content"`
+	Score   float64 `json:"score"`
+	Title   string  `json:"title"`
+	NoteID  string  `json:"note_id"`
+}
+
+// ListNotes 列出当前用户的正式笔记（type=note，排除便签）。
+func (c *BotAPIClient) ListNotes(limit int) ([]Note, error) {
+	if c.userToken == "" {
+		return nil, fmt.Errorf("笔记操作需要 userToken")
+	}
+	body, err := c.userGet(c.serverURL + "/api/v1/notes")
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Data []Note `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("解析笔记列表失败: %w", err)
+	}
+	notes := resp.Data
+	if len(notes) > limit {
+		notes = notes[:limit]
+	}
+	return notes, nil
+}
+
+// GetNote 获取单条笔记。
+func (c *BotAPIClient) GetNote(noteID uint64) (*Note, error) {
+	if c.userToken == "" {
+		return nil, fmt.Errorf("笔记操作需要 userToken")
+	}
+	u := fmt.Sprintf("%s/api/v1/notes/%d", c.serverURL, noteID)
+	body, err := c.userGet(u)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Data Note `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("解析笔记失败: %w", err)
+	}
+	return &resp.Data, nil
+}
+
+// CreateNote 创建一条笔记，返回新笔记 ID。
+func (c *BotAPIClient) CreateNote(title, content string) (uint64, error) {
+	if c.userToken == "" {
+		return 0, fmt.Errorf("笔记操作需要 userToken")
+	}
+	payload := map[string]any{"title": title, "content": content}
+	body, _ := json.Marshal(payload)
+	respBody, err := c.userPost(c.serverURL+"/api/v1/notes", body)
+	if err != nil {
+		return 0, err
+	}
+	var resp struct {
+		Data struct {
+			ID uint64 `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return 0, fmt.Errorf("解析创建笔记响应失败: %w", err)
+	}
+	if resp.Data.ID == 0 {
+		return 0, fmt.Errorf("响应缺少笔记 id: %s", truncate(string(respBody), 300))
+	}
+	return resp.Data.ID, nil
+}
+
+// UpdateNote 更新笔记的标题/正文/标签。
+func (c *BotAPIClient) UpdateNote(noteID uint64, title, content string) error {
+	if c.userToken == "" {
+		return fmt.Errorf("笔记操作需要 userToken")
+	}
+	payload := map[string]any{
+		"title":   title,
+		"content": content,
+	}
+	body, _ := json.Marshal(payload)
+	u := fmt.Sprintf("%s/api/v1/notes/%d", c.serverURL, noteID)
+	_, err := c.userPut(u, body)
+	return err
+}
+
+// SearchNotesSemantic 按语义检索当前用户笔记（返回最相关的若干条命中）。
+func (c *BotAPIClient) SearchNotesSemantic(query string, topK int) ([]NoteSearchResult, error) {
+	if c.userToken == "" {
+		return nil, fmt.Errorf("笔记操作需要 userToken")
+	}
+	if topK <= 0 {
+		topK = 5
+	}
+	payload := map[string]any{"query": query, "top_k": topK}
+	body, _ := json.Marshal(payload)
+	respBody, err := c.userPost(c.serverURL+"/api/v1/notes/search", body)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Data struct {
+			Results []NoteSearchResult `json:"results"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, fmt.Errorf("解析笔记检索结果失败: %w", err)
+	}
+	return resp.Data.Results, nil
+}
+
 // --- 底层 HTTP 方法 ---
 
 // Bot Token 认证方法（用于 /api/v1/bot/* 路由）

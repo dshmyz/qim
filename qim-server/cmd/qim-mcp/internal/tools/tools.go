@@ -105,6 +105,33 @@ func Register(s *mcp.Server, a *Adapter) {
 		Name:        "update_event",
 		Description: "更新一条日历事件的字段（需要用户 JWT）。返回 {success:true}。",
 	}, a.updateEvent)
+
+	// --- 笔记管理 ---
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_notes",
+		Description: "列出当前用户的正式笔记（需要用户 JWT）。每行返回一条笔记 JSON（含 id/title/content/tags）。用于了解用户积累的长期知识。",
+	}, a.listNotes)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_note",
+		Description: "按 id 获取当前用户的单条笔记全文（需要用户 JWT）。返回该笔记完整 JSON，含 title/content/tags/summary。",
+	}, a.getNote)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "create_note",
+		Description: "创建一条笔记（需要用户 JWT）。title 和 content 必填。返回 {note_id}。笔记是用户的显式长期记忆，适合把有价值的结论沉淀下来供后续检索。",
+	}, a.createNote)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "update_note",
+		Description: "更新一条已有笔记的标题和正文（需要用户 JWT）。title/content 必填（会用提供值整体覆盖该字段）。返回 {success:true}。",
+	}, a.updateNote)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "search_notes",
+		Description: "按语义检索当前用户的笔记（需要用户 JWT），返回与 query 最相关的若干条命中（含 title/content/score）。用于回答需要查阅用户笔记知识的问题。",
+	}, a.searchNotes)
 }
 
 // --- 参数类型 ---
@@ -192,6 +219,30 @@ type updateEventParams struct {
 	Start    string `json:"start,omitempty"`
 	End      string `json:"end,omitempty"`
 	Reminder int    `json:"reminder,omitempty"`
+}
+
+type listNotesParams struct {
+	Limit int `json:"limit,omitempty"`
+}
+
+type getNoteParams struct {
+	NoteID uint64 `json:"note_id"`
+}
+
+type createNoteParams struct {
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+type updateNoteParams struct {
+	NoteID  uint64 `json:"note_id"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+type searchNotesParams struct {
+	Query string `json:"query"`
+	TopK  int    `json:"top_k,omitempty"`
 }
 
 // --- Handlers ---
@@ -394,6 +445,72 @@ func (a *Adapter) updateEvent(ctx context.Context, req *mcp.CallToolRequest, p u
 		return nil, nil, fmt.Errorf("update_event 失败: %w", err)
 	}
 	return textResult(`{"success":true}`), nil, nil
+}
+
+func (a *Adapter) listNotes(ctx context.Context, req *mcp.CallToolRequest, p listNotesParams) (*mcp.CallToolResult, any, error) {
+	limit := p.Limit
+	if limit == 0 {
+		limit = 50
+	}
+	notes, err := a.api.ListNotes(limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list_notes 失败: %w", err)
+	}
+	var b strings.Builder
+	for _, n := range notes {
+		line, _ := json.Marshal(n)
+		b.Write(line)
+		b.WriteByte('\n')
+	}
+	return textResult(b.String()), nil, nil
+}
+
+func (a *Adapter) getNote(ctx context.Context, req *mcp.CallToolRequest, p getNoteParams) (*mcp.CallToolResult, any, error) {
+	note, err := a.api.GetNote(p.NoteID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get_note 失败: %w", err)
+	}
+	line, _ := json.Marshal(note)
+	return textResult(string(line)), nil, nil
+}
+
+func (a *Adapter) createNote(ctx context.Context, req *mcp.CallToolRequest, p createNoteParams) (*mcp.CallToolResult, any, error) {
+	if p.Title == "" {
+		return nil, nil, fmt.Errorf("create_note 需传入 title")
+	}
+	id, err := a.api.CreateNote(p.Title, p.Content)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create_note 失败: %w", err)
+	}
+	return textResult(fmt.Sprintf(`{"note_id":%d}`, id)), nil, nil
+}
+
+func (a *Adapter) updateNote(ctx context.Context, req *mcp.CallToolRequest, p updateNoteParams) (*mcp.CallToolResult, any, error) {
+	if err := a.api.UpdateNote(p.NoteID, p.Title, p.Content); err != nil {
+		return nil, nil, fmt.Errorf("update_note 失败: %w", err)
+	}
+	return textResult(`{"success":true}`), nil, nil
+}
+
+func (a *Adapter) searchNotes(ctx context.Context, req *mcp.CallToolRequest, p searchNotesParams) (*mcp.CallToolResult, any, error) {
+	if p.Query == "" {
+		return nil, nil, fmt.Errorf("search_notes 需传入 query")
+	}
+	topK := p.TopK
+	if topK == 0 {
+		topK = 5
+	}
+	results, err := a.api.SearchNotesSemantic(p.Query, topK)
+	if err != nil {
+		return nil, nil, fmt.Errorf("search_notes 失败: %w", err)
+	}
+	var b strings.Builder
+	for _, r := range results {
+		line, _ := json.Marshal(r)
+		b.Write(line)
+		b.WriteByte('\n')
+	}
+	return textResult(b.String()), nil, nil
 }
 
 // --- Helpers ---
