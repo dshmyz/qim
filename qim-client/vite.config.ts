@@ -59,6 +59,11 @@ export default defineConfig(({ mode }) => {
             if (id.includes('node_modules/pdfjs-dist')) {
               return 'pdfjs'
             }
+            // ECharts 关系图引擎（echarts + zrender）— 完全按需，只在点开图谱页时才拉取。
+            // 命名成独立 chunk：echarts 仅被 AvatarGraph 动态 import，渲染时才加载，不进首屏。
+            if (id.includes('node_modules/echarts') || id.includes('node_modules/zrender')) {
+              return 'echarts'
+            }
             // 其他 node_modules 统一 vendor
             if (id.includes('node_modules')) {
               return 'vendor'

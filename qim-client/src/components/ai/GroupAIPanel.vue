@@ -48,6 +48,7 @@
         @add="handleAddDocuments"
         @remove="handleRemoveDocument"
         @retry="handleRetryDocument"
+        @refresh="handleRefreshDocuments"
       />
       <!-- 群记忆管理 -->
       <div v-if="activeTab === 'memory'" class="memory-tab">
@@ -75,6 +76,12 @@
           </div>
         </div>
       </div>
+      <!-- 群知识图谱 -->
+      <AIGraph
+        v-if="activeTab === 'graph'"
+        :group-id="groupId"
+        :server-url="serverUrl"
+      />
     </div>
 
     <div class="tab-footer">
@@ -86,11 +93,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import AIBaseSettings from './ai-settings/AIBaseSettings.vue'
 import AIPersonaSettings from './ai-settings/AIPersonaSettings.vue'
 import AITriggerSettings from './ai-settings/AITriggerSettings.vue'
 import AIKnowledgeSettings from './ai-settings/AIKnowledgeSettings.vue'
+import AIGraph from './ai-settings/AIGraph.vue'
 import type { GroupAISettings, GroupDocument, GroupMemory } from '../../types/ai'
 import { request } from '../../composables/useRequest'
 
@@ -141,7 +149,8 @@ const tabs = [
   { key: 'persona', label: '人设风格', icon: 'fas fa-palette' },
   { key: 'trigger', label: '触发规则', icon: 'fas fa-bolt' },
   { key: 'knowledge', label: '知识库', icon: 'fas fa-book' },
-  { key: 'memory', label: '群记忆', icon: 'fas fa-brain' }
+  { key: 'memory', label: '群记忆', icon: 'fas fa-brain' },
+  { key: 'graph', label: '知识图谱', icon: 'fas fa-project-diagram' }
 ]
 
 const settings = ref<GroupAISettings>({
@@ -230,7 +239,33 @@ async function saveSettings() {
 
 const documents = ref<GroupDocument[]>([])
 
+// 文档处理状态轮询：后端处理是异步的（POST /process 起 goroutine 立即返回），
+// 若不定时刷新，列表会一直显示"处理中"，重试后也看不到结果。
+// 这里仅当 knowledge tab 可见且存在非终态（pending/processing）文档时才轮询，
+// 全部进入终态即自动停止，避免无谓的后台请求。
+let docStatusTimer: ReturnType<typeof setInterval> | undefined
+const hasActiveDocProcess = () =>
+  documents.value.some(d => d.process_status === 'pending' || d.process_status === 'processing')
+
+function startDocStatusPolling() {
+  if (docStatusTimer || activeTab.value !== 'knowledge' || !hasActiveDocProcess()) return
+  docStatusTimer = setInterval(() => {
+    loadDocuments()
+  }, 3000)
+}
+
+function stopDocStatusPolling() {
+  if (docStatusTimer) {
+    clearInterval(docStatusTimer)
+    docStatusTimer = undefined
+  }
+}
+
 async function loadDocuments() {
+  if (activeTab.value !== 'knowledge' || !hasActiveDocProcess()) {
+    // 无处理中的文档（或不在知识库页）时停止轮询
+    stopDocStatusPolling()
+  }
   try {
     const response = await fetch(`${props.serverUrl}/api/v1/groups/${props.groupId}/ai-documents`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
@@ -241,7 +276,18 @@ async function loadDocuments() {
     }
   } catch (e) {
     console.error('加载知识库失败', e)
+  } finally {
+    // 每次刷新后评估：存在处理中的文档则开始（或保持）轮询
+    scheduleDocStatusPolling()
   }
+}
+
+function scheduleDocStatusPolling() {
+  if (activeTab.value !== 'knowledge' || !hasActiveDocProcess()) {
+    stopDocStatusPolling()
+    return
+  }
+  startDocStatusPolling()
 }
 
 async function handleAddDocuments(fileIds: number[]) {
@@ -295,6 +341,11 @@ async function handleRetryDocument(doc: any) {
   } catch (e) {
     console.error('重试处理失败', e)
   }
+}
+
+// 手动刷新文档列表与处理状态
+async function handleRefreshDocuments() {
+  await loadDocuments()
 }
 
 // ===== 群记忆 =====
@@ -362,6 +413,21 @@ async function searchMemories() {
 onMounted(() => {
   loadAISettings()
   loadDocuments()
+  scheduleDocStatusPolling()
+})
+
+// 切到知识库 tab：若存在处理中的文档则立即刷新并开始轮询；切走则停止轮询
+watch(activeTab, () => {
+  if (activeTab.value === 'knowledge') {
+    loadDocuments()
+    scheduleDocStatusPolling()
+  } else {
+    stopDocStatusPolling()
+  }
+})
+
+onUnmounted(() => {
+  stopDocStatusPolling()
 })
 </script>
 

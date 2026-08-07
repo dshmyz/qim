@@ -3,10 +3,15 @@
     <div class="setting-section">
       <div class="section-header">
         <label class="section-label">绑定文档</label>
-        <button class="add-btn" @click="toggleFilePicker">
-          <i :class="showFilePicker ? 'fas fa-minus' : 'fas fa-plus'"></i>
-          {{ showFilePicker ? '收起' : '添加文档' }}
-        </button>
+        <div class="header-actions">
+          <button class="add-btn" @click="refresh">
+            <i class="fas fa-sync-alt"></i> 刷新
+          </button>
+          <button class="add-btn" @click="toggleFilePicker">
+            <i :class="showFilePicker ? 'fas fa-minus' : 'fas fa-plus'"></i>
+            {{ showFilePicker ? '收起' : '添加文档' }}
+          </button>
+        </div>
       </div>
 
       <div v-if="documents.length === 0 && !showFilePicker" class="empty-state">
@@ -21,6 +26,9 @@
             <div class="doc-details">
               <div class="doc-name">{{ doc.file?.name || '未知文件' }}</div>
               <div class="doc-size">{{ formatSize(doc.file?.size || 0) }}</div>
+              <div v-if="doc.process_status === 'failed' && doc.process_error" class="doc-error" :title="doc.process_error">
+                {{ doc.process_error }}
+              </div>
             </div>
           </div>
           <div class="doc-status">
@@ -29,13 +37,16 @@
             </span>
             <span v-else-if="doc.process_status === 'processing'" class="status-badge status-processing">
               <i class="fas fa-spinner fa-spin"></i> 处理中...
+              <button v-if="!isRetrying(doc.id)" class="retry-btn" @click="retryDocument(doc)" title="重新处理">重试</button>
             </span>
             <span v-else-if="doc.process_status === 'completed'" class="status-badge status-completed">
               <i class="fas fa-check-circle"></i> 已就绪
             </span>
             <span v-else-if="doc.process_status === 'failed'" class="status-badge status-failed">
               <i class="fas fa-exclamation-circle"></i> 失败
-              <button class="retry-btn" @click="retryDocument(doc)" title="重试">重试</button>
+              <button class="retry-btn" @click="retryDocument(doc)" title="重试" :disabled="isRetrying(doc.id)">
+                {{ isRetrying(doc.id) ? '重试中...' : '重试' }}
+              </button>
             </span>
           </div>
           <button class="remove-btn" @click="removeDocument(doc)" title="移除">
@@ -48,6 +59,18 @@
         <div class="picker-header">
           <span class="picker-title">选择文档</span>
           <div class="picker-actions">
+            <button class="btn btn-secondary" @click="triggerUpload" :disabled="uploading">
+              <i class="fas fa-cloud-upload-alt"></i>
+              {{ uploading ? '上传中...' : '上传文档' }}
+            </button>
+            <input
+              ref="fileInput"
+              type="file"
+              multiple
+              class="file-input-hidden"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,text/markdown"
+              @change="onUpload"
+            />
             <button class="btn btn-secondary" @click="cancelFilePicker">取消</button>
             <button class="btn btn-primary" @click="confirmAddDocuments" :disabled="selectedFileIds.length === 0">
               确认添加
@@ -75,6 +98,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { GroupDocument } from '../../../types/ai'
+import QMessage from '../../../utils/qmessage'
+import { groupFiles } from '../../../api/groupFiles'
+import { uploadFilesWithLimit } from '../../../composables/useFileUpload'
 
 interface Props {
   groupId: number
@@ -86,6 +112,7 @@ interface Emits {
   (e: 'add', fileIds: number[]): void
   (e: 'remove', fileId: number): void
   (e: 'retry', doc: any): void
+  (e: 'refresh'): void
 }
 
 const props = defineProps<Props>()
@@ -94,6 +121,8 @@ const showFilePicker = ref(false)
 const availableFiles = ref<any[]>([])
 const selectedFileIds = ref<number[]>([])
 const loadingFiles = ref(false)
+const uploading = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
 
 function toggleFilePicker() {
   showFilePicker.value = !showFilePicker.value
@@ -129,9 +158,17 @@ async function loadAvailableFiles() {
 
 // 与后端 AddGroupDocument 允许的文档 MIME 白名单保持一致，
 // 保证「可选文档」里列出的都能真正绑定成功（不过滤则会把图片/视频等也列出，点了又报错）。
+//
+// 入参分两种来源，字段名不同需都兼容：
+//  - 后端文件对象（loadAvailableFiles）：MIME 在 mime_type
+//  - 浏览器本地 File 对象（onUpload 上传成功后）：MIME 在 type
+// 只读 mime_type 会把上传的本地 docx 等误判为非文档类型（type 缺失 → 空串 → 未绑定）。
+//
+// 另外 OOXML 文档（docx/xlsx/pptx）是 ZIP 容器，服务端检测成 application/zip 不在白名单，
+// 需用文件扩展名兜底，与后端 AddGroupDocument 的兜底一致，保证列表能勾选且绑定能成功。
 function isBindableDocument(file: any): boolean {
-  const mime = String(file.mime_type || '').split(';')[0].trim()
-  return [
+  const mime = String(file.mime_type ?? (file.type || '')).split(';')[0].trim()
+  const docMimes = [
     'application/pdf',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -142,7 +179,13 @@ function isBindableDocument(file: any): boolean {
     'text/plain',
     'text/csv',
     'text/markdown'
-  ].includes(mime)
+  ]
+  if (docMimes.includes(mime)) return true
+  // 扩展名兜底：OOXML（zip 容器）及历史 mime 异常的文档仍按扩展名识别
+  const name = String(file.name || file.original_name || '')
+  const extMatch = /\.([^.]+)$/.exec(name)
+  const ext = extMatch ? ('.' + extMatch[1]).toLowerCase() : ''
+  return ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.md'].includes(ext)
 }
 
 function isFileSelected(fileId: number) {
@@ -171,13 +214,102 @@ function cancelFilePicker() {
   showFilePicker.value = false
 }
 
+function triggerUpload() {
+  fileInput.value?.click()
+}
+
+/**
+ * 直接上传本地文档到群知识库：
+ * 1. 分片上传 + 挂载到群文件空间（复用群文件面板的通用上传器）
+ * 2. 仅对文档类型（与后端 MIME 白名单一致）的文件自动 emit('add') 触发绑定与向量化
+ */
+async function onUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const list = input.files ? Array.from(input.files) : []
+  input.value = ''
+  if (list.length === 0 || uploading.value) return
+
+  uploading.value = true
+  try {
+    const results = await uploadFilesWithLimit(list, undefined, {
+      onFileUploaded: async (_file, fileId) => {
+        await groupFiles.attach(props.groupId, fileId)
+      }
+    })
+
+    // 仅文档类型可绑定；其余类型（图片/视频等）上报但自动跳过
+    const bound = results.filter(r => r.success && r.fileId && isBindableDocument(r.file))
+    const uploaded = results.filter(r => r.success).length
+    const failed = results.length - uploaded
+
+    if (bound.length > 0) {
+      emit('add', bound.map(r => r.fileId!))
+    }
+
+    if (uploaded > 0 && bound.length < uploaded) {
+      QMessage.warning(`已上传 ${uploaded} 个文件，其中 ${uploaded - bound.length} 个非文档类型未绑定`)
+    } else if (bound.length === 0 && uploaded > 0) {
+      QMessage.warning('上传的文件均非文档类型，未绑定到知识库')
+    } else if (failed > 0 && bound.length === 0) {
+      QMessage.error('上传失败')
+    } else if (bound.length > 0) {
+      QMessage.success(`已上传并绑定 ${bound.length} 个文档`)
+    }
+
+    selectedFileIds.value = []
+    showFilePicker.value = false
+    // 刷新可用文件列表，让上传的非文档文件也能在下次勾选时出现
+    await loadAvailableFiles()
+  } catch (e) {
+    console.error('上传文档失败', e)
+    QMessage.error('上传文档失败')
+  } finally {
+    uploading.value = false
+  }
+}
+
 function removeDocument(doc: any) {
   emit('remove', doc.file_id)
 }
 
+// 手动刷新：左上角「刷新」应同时刷新两边——
+// 上方「已绑定文档」交给父组件重拉（emit refresh），
+// 下方「可添加文档」文件列表本地重载（否则点刷新列表不更新）。
+function refresh() {
+  emit('refresh')
+  loadAvailableFiles()
+}
+
+// 每文档重试 in-flight 标记：点击重试后立即禁用该文档的重试按钮，防止"能一直点"。
+// 仅当父组件刷新后该文档离开处理中（进入终态）才会清除，恢复可重试。
+const retryingIds = ref<Set<number>>(new Set())
+
+function isRetrying(id: number) {
+  return retryingIds.value.has(id)
+}
+
 function retryDocument(doc: any) {
+  const next = new Set(retryingIds.value)
+  next.add(doc.id)
+  retryingIds.value = next
   emit('retry', doc)
 }
+
+// 刷新后的新列表中若某文档已不再处理中，说明重试已进入终态，清除其 in-flight 标记
+watch(
+  () => props.documents,
+  (docs) => {
+    let changed = false
+    const next = new Set<number>()
+    for (const id of retryingIds.value) {
+      const d = docs.find((x) => x.id === id)
+      const active = d && (d.process_status === 'processing' || d.process_status === 'pending')
+      if (active) next.add(id)
+      else changed = true
+    }
+    if (changed) retryingIds.value = next
+  }
+)
 
 function getFileIcon(type: string) {
   if (type.includes('pdf')) return 'fas fa-file-pdf'
@@ -198,28 +330,31 @@ function formatSize(bytes: number) {
 .ai-knowledge-settings { padding: 16px; }
 .setting-section { margin-bottom: 20px; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.header-actions { display: flex; gap: 8px; }
 .section-label { font-size: 14px; font-weight: 500; }
 .add-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 13px; cursor: pointer; }
 .add-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
 .empty-state { text-align: center; padding: 32px; color: var(--text-secondary); }
 .empty-state i { font-size: 40px; margin-bottom: 8px; display: block; }
 .document-list { display: flex; flex-direction: column; gap: 8px; }
-.document-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; }
-.doc-info { display: flex; align-items: center; gap: 10px; }
-.doc-icon { font-size: 20px; color: var(--text-secondary); }
-.doc-details { display: flex; flex-direction: column; gap: 2px; }
-.doc-name { font-size: 14px; }
+.document-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; }
+.doc-info { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.doc-icon { font-size: 20px; color: var(--text-secondary); flex-shrink: 0; }
+.doc-details { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.doc-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-size { font-size: 12px; color: var(--text-secondary); }
-.doc-status { display: flex; align-items: center; gap: 6px; }
-.status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+.doc-error { font-size: 12px; color: #dc2626; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: break-all; }
+.doc-status { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 12px; white-space: nowrap; }
 .status-badge i { font-size: 12px; }
 .status-pending { background: #f0f0f0; color: #666; }
 .status-processing { background: #e0f2fe; color: #0284c7; }
 .status-completed { background: #dcfce7; color: #16a34a; }
 .status-failed { background: #fee2e2; color: #dc2626; }
-.retry-btn { margin-left: 4px; padding: 1px 6px; border: 1px solid #dc2626; border-radius: 4px; background: white; color: #dc2626; font-size: 11px; cursor: pointer; }
+.retry-btn { margin-left: 4px; padding: 1px 6px; border: 1px solid #dc2626; border-radius: 4px; background: white; color: #dc2626; font-size: 11px; cursor: pointer; flex-shrink: 0; }
 .retry-btn:hover { background: #dc2626; color: white; }
-.remove-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; font-size: 14px; border-radius: 4px; }
+.retry-btn:disabled { opacity: 0.5; cursor: not-allowed; background: white; color: #dc2626; }
+.remove-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; font-size: 14px; border-radius: 4px; flex-shrink: 0; }
 .remove-btn:hover { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
 
 .file-picker-section {
@@ -278,6 +413,9 @@ function formatSize(bytes: number) {
 .file-name {
   flex: 1;
   font-size: 14px;
+  /* 覆盖全局 main.css 里的 .file-name{text-align:center}：
+     该全局规则会把「选择文档」列表的文件名居中，需在此显式改回左对齐。 */
+  text-align: left;
 }
 
 .file-size {
@@ -322,5 +460,9 @@ function formatSize(bytes: number) {
 .btn-secondary:hover {
   border-color: var(--primary-color);
   color: var(--primary-color);
+}
+
+.file-input-hidden {
+  display: none;
 }
 </style>

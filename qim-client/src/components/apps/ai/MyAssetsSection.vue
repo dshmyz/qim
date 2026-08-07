@@ -376,11 +376,19 @@ defineEmits([
   margin-bottom: 4px;
 }
 
+.bot-info {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
 .bot-card p {
   font-size: 12px;
   color: var(--text-secondary);
-  margin-bottom: 12px;
-  flex: 1;
+  margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -399,6 +407,7 @@ defineEmits([
 
 .use-btn {
   width: 100%;
+  margin-top: auto;
   padding: 8px;
   border: none;
   border-radius: var(--radius-sm);

@@ -75,6 +75,13 @@
             />
           </div>
         </template>
+
+        <template v-else-if="activeMainTab === 'graph'">
+          <div class="settings-section">
+            <h3 class="section-title">知识图谱</h3>
+            <AvatarGraph />
+          </div>
+        </template>
       </div>
 
       <div class="tab-footer">
@@ -98,6 +105,7 @@ import AvatarMemoryPanel from './AvatarMemoryPanel.vue'
 import AvatarModelSettings from './AvatarModelSettings.vue'
 import AvatarPersonaSettings from './AvatarPersonaSettings.vue'
 import AvatarReplySettings from './AvatarReplySettings.vue'
+import AvatarGraph from './AvatarGraph.vue'
 import { DEFAULT_AVATAR_CONFIG } from '../../types/avatar'
 
 const {
@@ -111,12 +119,13 @@ const {
 
 const { configs: modelConfigs, fetchConfigs } = useModelConfigs()
 
-const activeMainTab = ref<'basic' | 'advanced'>('basic')
+const activeMainTab = ref<'basic' | 'advanced' | 'graph'>('basic')
 const saving = ref(false)
 
 const mainTabs = [
   { key: 'basic' as const, label: '普通设置', icon: 'fas fa-cog' },
-  { key: 'advanced' as const, label: '高级设置', icon: 'fas fa-sliders-h' }
+  { key: 'advanced' as const, label: '高级设置', icon: 'fas fa-sliders-h' },
+  { key: 'graph' as const, label: '知识图谱', icon: 'fas fa-project-diagram' }
 ]
 
 const userId = ref(0)
@@ -129,7 +138,7 @@ onMounted(async () => {
   await Promise.all([fetchConfig(true), fetchConfigs()])
   
   const savedTab = localStorage.getItem('avatar-settings-tab')
-  if (savedTab === 'basic' || savedTab === 'advanced') {
+  if (savedTab === 'basic' || savedTab === 'advanced' || savedTab === 'graph') {
     activeMainTab.value = savedTab
   }
   

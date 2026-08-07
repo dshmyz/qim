@@ -98,6 +98,9 @@ export interface GroupDocument {
     size: number
     type: string
   }
+  process_status?: 'pending' | 'processing' | 'completed' | 'failed'
+  process_error?: string
+  chunk_count?: number
 }
 
 // 群助手群级记忆条目
