@@ -177,3 +177,131 @@ describe('install-update routing', () => {
     // after-install-linux.sh / before-remove-linux.sh 现用于桌面快捷方式（deb 钩子），不再是 sudo 安装辅助
   })
 })
+
+describe('force auto-update (强制自动升级 - 静默路径)', () => {
+  const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
+  const useUI = readFileSync(resolve(__dirname, '../../src/composables/useUI.ts'), 'utf8')
+  const mainDialogs = readFileSync(resolve(__dirname, '../../src/components/modals/MainDialogs.vue'), 'utf8')
+
+  it('starts downloading automatically only for silent (auto-check + force) updates', () => {
+    const availableHandler = updateModule.slice(
+      updateModule.indexOf("autoUpdater.on('update-available'"),
+      updateModule.indexOf("autoUpdater.on('update-not-available'")
+    )
+
+    // 静默路径判定：自动检查 + 强制版本；一旦启动即锁定，不被后续手动检查降级
+    expect(availableHandler).toContain("silentForceActive = forceUpdateActive && currentCheckSource === 'auto'")
+    expect(availableHandler).toContain('if (!silentForceActive && !hasManualPendingDownload) {')
+    // 静默路径自动触发下载，且每段静默流程只下载一次
+    expect(availableHandler).toContain('if (silentForceActive && !silentDownloadStarted) {')
+    expect(availableHandler).toContain("silentDownloadStarted = true")
+    expect(availableHandler).toContain("downloadUpdate('force-auto')")
+  })
+
+  it('locks silent force once started so a manual check cannot downgrade it', () => {
+    // 静默流程开始后(锁定)不再因手动检查重算而降级
+    expect(updateModule).toContain('if (!silentForceActive && !hasManualPendingDownload) {')
+    expect(updateModule).toContain('silentForceActive = forceUpdateActive && currentCheckSource === \'auto\'')
+  })
+
+  it('does not hijack a manual pending-install download into silent force on auto re-announce', () => {
+    const availableHandler = updateModule.slice(
+      updateModule.indexOf("autoUpdater.on('update-available'"),
+      updateModule.indexOf("autoUpdater.on('update-not-available'")
+    )
+
+    // 已有「手动下载完成、等待安装」的包时，自动检查重播同一 update-available 不启动静默强制
+    expect(availableHandler).toContain('const hasManualPendingDownload = !silentForceActive && !!downloadedUpdateInfo')
+    expect(availableHandler).toContain('if (!silentForceActive && !hasManualPendingDownload) {')
+  })
+
+  it('does not discard the downloaded package when the same version is re-announced', () => {
+    const availableHandler = updateModule.slice(
+      updateModule.indexOf("autoUpdater.on('update-available'"),
+      updateModule.indexOf("autoUpdater.on('update-not-available'")
+    )
+
+    // 仅当新版本 ≠ 已下载版本时才清空下载状态，避免周期检查清掉已下载安装包
+    expect(availableHandler).toContain("downloadedUpdateInfo.version !== info.version")
+    expect(availableHandler).toContain('!downloadedUpdateInfo || downloadedUpdateInfo.version !== info.version')
+  })
+
+  it('marks manual check source so manual path is not forced', () => {
+    const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
+
+    expect(updateModule).toContain("currentCheckSource = 'manual'")
+    expect(updateModule).toContain("currentCheckSource = 'auto'")
+    expect(updateModule).toContain('let silentForceActive = false')
+    // 下载失败自动重试仅限静默路径
+    expect(updateModule).toContain('if (silentForceActive) {')
+    expect(updateModule).toContain('handleForceDownloadFailure(error)')
+  })
+
+  it('installs a downloaded silently-forced update immediately (no waiting, no night window)', () => {
+    const downloadedHandler = updateModule.slice(
+      updateModule.indexOf("autoUpdater.on('update-downloaded'"),
+      updateModule.indexOf('const autoCheckForUpdates')
+    )
+
+    expect(downloadedHandler).toContain('if (silentForceActive) {')
+    expect(downloadedHandler).toContain('installDownloadedUpdate()')
+    // 非静默路径仍等待用户确认
+    expect(downloadedHandler).toContain('等待用户确认安装')
+    // 不再有夜间安装窗口逻辑
+    expect(updateModule).not.toContain('FORCE_INSTALL_HOUR_START')
+    expect(updateModule).not.toContain('scheduleForceInstallAtNight')
+    expect(updateModule).not.toContain('isInForceInstallWindow')
+  })
+
+  it('retries silent force download failures with backoff and gives up after N attempts', () => {
+    expect(updateModule).toContain('FORCE_DOWNLOAD_MAX_RETRY = 3')
+    expect(updateModule).toContain('FORCE_DOWNLOAD_RETRY_BASE_MS = 15 * 1000')
+    expect(updateModule).toContain('function handleForceDownloadFailure')
+    expect(updateModule).toContain('forceDownloadRetry >= FORCE_DOWNLOAD_MAX_RETRY')
+    expect(updateModule).toContain('已自动重试')
+  })
+
+  it('releases the silent-force lock after max retries so a later auto-check can recover', () => {
+    // 放弃重试时复位静默锁与「本次已启动下载」标记，避免把用户锁死在无法恢复的弹窗里；
+    // 下一次自动检查可重新进入静默流程，网络恢复后自动续传，无需杀进程。
+    const failureHandler = updateModule.slice(
+      updateModule.indexOf('function handleForceDownloadFailure'),
+      updateModule.indexOf('function checkForUpdates')
+    )
+
+    expect(failureHandler).toContain('forceDownloadRetry >= FORCE_DOWNLOAD_MAX_RETRY')
+    expect(failureHandler).toContain('clearForceUpdate()')
+    expect(failureHandler).toContain('等待应用自动重试')
+  })
+
+  it('uses resetForceDownloadRetry on silent-force download completion (clears pending backoff timer)', () => {
+    const downloadedHandler = updateModule.slice(
+      updateModule.indexOf("autoUpdater.on('update-downloaded'"),
+      updateModule.indexOf('const autoCheckForUpdates')
+    )
+
+    expect(downloadedHandler).toContain('if (silentForceActive) {')
+    expect(downloadedHandler).toContain('resetForceDownloadRetry() // 清除未决的退避重试定时器与计数')
+  })
+
+  it('keeps the silent-force dialog non-dismissible during download failure', () => {
+    const errorHandler = updateModule.slice(
+      updateModule.indexOf("autoUpdater.on('error'"),
+      updateModule.indexOf("autoUpdater.on('download-progress'")
+    )
+
+    expect(errorHandler).toContain('if (silentForceActive) {')
+    expect(errorHandler).toContain('handleForceDownloadFailure(error)')
+  })
+
+  it('gates the auto-install notice and hides manual buttons on silent force in the UI', () => {
+    // 静默路径：下载完成立即安装，不进入等待安装（不显示「立即重启安装」）
+    expect(useUI).toContain('if (info?.silent) {')
+    expect(useUI).toContain('正在重新启动应用完成升级')
+    // 弹窗：静默强制时隐藏「立即升级 / 立即重启安装」，普通/手动强制保留按钮
+    expect(mainDialogs).toContain('isUpdateReadyToInstall && !silentForce')
+    expect(mainDialogs).toContain('hasNewVersion && !isDownloading && !isInstalling && !silentForce')
+    // 手动强制（silent=false）仍不可关闭（保留原 forceUpdate 语义）
+    expect(mainDialogs).toContain('v-if="!forceUpdate"')
+  })
+})

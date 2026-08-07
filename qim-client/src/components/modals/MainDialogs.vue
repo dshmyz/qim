@@ -127,14 +127,17 @@
             </div>
           </div>
           <p v-else class="version-info">当前版本: v{{ APP_CONFIG.version }}</p>
-          <p v-if="forceUpdate && hasNewVersion" class="force-update-tip">
+          <p v-if="silentForce && hasNewVersion" class="force-update-tip">
+            系统检测到必要更新，将自动升级并重启应用。升级过程中请勿操作，升级完成前无法关闭本提示，请提前保存工作。
+          </p>
+          <p v-else-if="forceUpdate && hasNewVersion" class="force-update-tip">
             此版本包含必要修复，需要升级后才能继续使用。
           </p>
         </div>
       </div>
       <div class="update-dialog-footer">
-        <button v-if="isUpdateReadyToInstall" class="update-dialog-button update-button" @click="$emit('installUpdate')">立即重启安装</button>
-        <button v-else-if="hasNewVersion && !isDownloading && !isInstalling" class="update-dialog-button update-button" @click="$emit('downloadUpdate')">立即升级</button>
+        <button v-if="isUpdateReadyToInstall && !silentForce" class="update-dialog-button update-button" @click="$emit('installUpdate')">立即重启安装</button>
+        <button v-else-if="hasNewVersion && !isDownloading && !isInstalling && !silentForce" class="update-dialog-button update-button" @click="$emit('downloadUpdate')">立即升级</button>
         <button v-if="!forceUpdate" class="update-dialog-button" @click="$emit('closeUpdate')">关闭</button>
       </div>
     </div>
@@ -296,6 +299,7 @@ interface Props {
   downloadSizeText?: string
   hasNewVersion: boolean
   forceUpdate: boolean
+  silentForce?: boolean
   updateResult: string
   isInstalling?: boolean
   updatePlatform?: string

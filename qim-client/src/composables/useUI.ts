@@ -197,6 +197,8 @@ export function useUI() {
   const updateResult = ref('')
   const hasNewVersion = ref(false)
   const forceUpdate = ref(false)
+  // 静默强制更新：自动检查发现的强制版本，自动下载并立即自动安装，界面上无手动按钮
+  const silentForce = ref(false)
   const updateInfo = ref<UpdateInfo | null>(null)
 
   // 设置模态框
@@ -565,13 +567,16 @@ export function useUI() {
           downloadTotal.value = 0
           hasNewVersion.value = true
           forceUpdate.value = !!info.forceUpdate
+          silentForce.value = !!info.silent
           updateInfo.value = {
             version: info.version || '',
             releaseDate: info.releaseDate || info.release_date || '',
             releaseNotes: normalizeReleaseNotes(info.releaseNotes || info.release_notes || info.changelog)
           }
           updateResult.value = info.forceUpdate
-            ? `发现新版本 v${info.version}（需要强制更新）`
+            ? (info.silent
+                ? `发现新版本 v${info.version}，系统将自动升级，请在弹窗提示后尽快保存工作`
+                : `发现新版本 v${info.version}（需要强制更新）`)
             : `发现新版本 v${info.version}`
           // 自动检查发现新版本时，弹出更新提示对话框
           showUpdateDialog.value = true
@@ -588,6 +593,8 @@ export function useUI() {
           downloadTransferred.value = 0
           downloadTotal.value = 0
           hasNewVersion.value = false
+          forceUpdate.value = false
+          silentForce.value = false
           updateInfo.value = null
           updateResult.value = '当前已是最新版本'
           // 自动检查无新版本时，不弹窗（仅在用户手动检查时对话框已打开）
@@ -645,13 +652,20 @@ export function useUI() {
       },
       {
         channel: 'update-downloaded',
-        handler: (_event: any, _info: any) => {
+        handler: (_event: any, info: any) => {
           isDownloading.value = false
-          isUpdateReadyToInstall.value = true
+          isUpdateReadyToInstall.value = false
           isInstalling.value = false
           downloadProgress.value = 100
           downloadTransferred.value = downloadTotal.value
-          updateResult.value = '更新已下载完成，是否立即重启安装？'
+          if (info?.silent) {
+            // 静默强制更新：下载完成后不等待用户点击，排队到夜间自动重启安装
+            updateResult.value = '强制更新已下载完成，正在重新启动应用完成升级，请保存工作。'
+            isUpdateReadyToInstall.value = false
+          } else {
+            updateResult.value = '更新已下载完成，是否立即重启安装？'
+            isUpdateReadyToInstall.value = true
+          }
         }
       },
       {
@@ -777,6 +791,7 @@ export function useUI() {
     updateResult,
     hasNewVersion,
     forceUpdate,
+    silentForce,
     updateInfo,
     showSettingsModal,
     activeSettingsTab,
