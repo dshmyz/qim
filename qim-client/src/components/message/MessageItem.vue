@@ -1,8 +1,9 @@
 <template>
   <div
     class="message-item"
-    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage, 'avatar-reply': message.origin === 'avatar', 'at-mention': message.isAtMention, 'private-chat': conversationType === 'single' }"
+    :class="{ self: isSelf, recalled: isRecalled, system: message.type === 'system', ai: isAIMessage, 'avatar-reply': message.origin === 'avatar', 'at-mention': message.isAtMention, 'private-chat': conversationType === 'single', 'selection-paused': selectionMode && selectable }"
     :data-message-id="message.id"
+    @click.capture="handleRowClick"
   >
     <!-- 系统消息 -->
     <SystemMessage v-if="message.type === 'system'" :content="message.content" />
@@ -214,8 +215,11 @@ const props = withDefaults(defineProps<{
   readUsersMap: Record<string, { read_users: any[], total_members: number, read_count?: number }>
   showReadReceipt?: boolean
   serverUrl: string
+  selectionMode?: boolean
+  selectable?: boolean
 }>(), {
-  showReadReceipt: true
+  showReadReceipt: true,
+  selectable: false
 })
 
 const shouldShowReadReceipt = computed(() => {
@@ -281,11 +285,25 @@ const emit = defineEmits<{
   showReadUsers: [message: any]
   imageLoaded: []
   recallEdit: [originalContent: string]
+  toggleSelection: []
 }>()
 
 // 处理消息右键菜单（统一触发 contextmenu 事件）
 const handleContextMenu = (event: MouseEvent) => {
   emit('contextmenu', event, props.message)
+}
+
+// 多选模式下，点击整条消息即选中/取消。
+// 用 capture 阶段终止事件传播：可被选中的消息进入多选后，头像/图片/引用/小程序等
+// 内部点击在到达它们之前即被拦截（互动暂停），避免「又选中又弹窗」的割裂感；
+// 不可选消息不拦截，保留其内部交互。
+// 复选框（.message-selection-control）由自身的 change 事件切换，这里放行以免重复切换。
+const handleRowClick = (event: MouseEvent) => {
+  if (!props.selectionMode || !props.selectable) return
+  const target = event.target as HTMLElement | null
+  if (target && target.closest('.message-selection-control')) return
+  event.stopPropagation()
+  emit('toggleSelection')
 }
 
 // 处理撤回消息的重新编辑
@@ -377,6 +395,15 @@ const convertUrlsToLinks = (text: string): string => {
 .message-item.system {
   justify-content: center;
   margin: 12px 0;
+}
+
+/* 多选模式下整条可点选，显示表意光标；进入此态时会暂停内部互动点击 */
+.message-item.selection-paused {
+  cursor: pointer;
+}
+.message-item.selection-paused .message-content,
+.message-item.selection-paused .message-avatar {
+  cursor: pointer;
 }
 
 @keyframes messageFadeIn {

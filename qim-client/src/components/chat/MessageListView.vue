@@ -30,6 +30,8 @@
           :read-users-map="readUsersMap"
           :show-read-receipt="showReadReceipt"
           :server-url="serverUrl"
+          :selection-mode="selectionMode"
+          :selectable="isMessageSelectionEligible(message)"
           @contextmenu="(e: MouseEvent) => emit('message-contextmenu', e, message)"
           @show-user-profile="(user: any) => emit('show-user-profile', user)"
           @scroll-to-quoted-message="(id: string) => emit('scroll-to-quoted-message', id)"
@@ -41,6 +43,7 @@
           @show-read-users="(msg: Message) => emit('show-read-users', msg)"
           @image-loaded="handleImageLoaded"
           @recall-edit="(originalContent: string) => emit('recall-edit', originalContent)"
+          @toggle-selection="emit('toggle-message-selection', String(message.id))"
         >
           <template #selection-control>
             <label v-if="selectionMode && isMessageSelectionEligible(message)" class="message-selection-control">
