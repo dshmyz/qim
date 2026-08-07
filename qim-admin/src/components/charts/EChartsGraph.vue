@@ -200,15 +200,34 @@ function disposeChart() {
   }
 }
 
+// 容器尺寸变化时同步画布（如右侧详情卡片出现/收起改变容器宽度），
+// 否则 init 时定死的 canvas 会以旧尺寸溢出、盖住相邻面板。
+function handleResize() {
+  if (!chart || !elRef.value) return
+  if (elRef.value.clientWidth <= 0 || elRef.value.clientHeight <= 0) return
+  chart.resize && chart.resize()
+}
+
+let ro: ResizeObserver | null = null
+
 watch(
   () => [props.nodes, props.edges, props.showLegend, props.showEdgeLabel, props.sizeByCount, props.typeColors],
   () => nextTick(render),
   { deep: false }
 )
 
-onMounted(render)
+onMounted(() => {
+  render()
+  if (typeof ResizeObserver !== 'undefined' && elRef.value) {
+    ro = new ResizeObserver(handleResize)
+    ro.observe(elRef.value)
+  }
+})
 
-onBeforeUnmount(disposeChart)
+onBeforeUnmount(() => {
+  if (ro) ro.disconnect()
+  disposeChart()
+})
 </script>
 
 <style scoped>

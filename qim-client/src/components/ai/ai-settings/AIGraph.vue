@@ -164,8 +164,8 @@ onMounted(loadGraph)
 .loading-spinner { width: 32px; height: 32px; border: 3px solid #eee; border-top: 3px solid var(--primary-color); border-radius: 50%; animation: graphspin 0.8s linear infinite; }
 @keyframes graphspin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-/* 右侧固定详情卡片（对齐分身影像图谱） */
-.node-detail { width: 240px; flex-shrink: 0; border-left: 1px solid var(--border-color, #eee); background: var(--card-bg, #fff); display: flex; flex-direction: column; max-height: 420px; }
+/* 右侧固定详情卡片（对齐分身影像图谱）；显式提升到拓扑画布之上，避免被图谱层级压住/数据重叠 */
+.node-detail { position: relative; z-index: 20; width: 240px; flex-shrink: 0; border-left: 1px solid var(--border-color, #eee); background: var(--card-bg, #fff); display: flex; flex-direction: column; max-height: 420px; }
 .node-detail-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border-color, #f0f0f0); }
 .node-detail-title { font-size: 14px; font-weight: 600; color: var(--text-color, #333); flex: 1; word-break: break-all; }
 .node-detail-close { border: none; background: transparent; color: var(--text-secondary, #999); cursor: pointer; padding: 2px 4px; font-size: 12px; }
