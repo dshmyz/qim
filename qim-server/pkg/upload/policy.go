@@ -12,15 +12,16 @@ import (
 
 // 默认限制
 const (
-	DefaultMaxSize          = 500 * 1024 * 1024 // 500MB
-	DefaultChunkMaxSize     = 10 * 1024 * 1024  // 10MB 单分片
-	DefaultImportMaxSize    = 10 * 1024 * 1024  // 10MB CSV 导入
-	DefaultScreenshotMaxSize = 5 * 1024 * 1024  // 5MB 截图
+	DefaultMaxSize           = 500 * 1024 * 1024 // 500MB
+	DefaultChunkMaxSize      = 10 * 1024 * 1024  // 10MB 单分片
+	DefaultImportMaxSize     = 10 * 1024 * 1024  // 10MB CSV 导入
+	DefaultScreenshotMaxSize = 5 * 1024 * 1024   // 5MB 截图
 )
 
-// blockedExtensions 是无论配置如何都禁止上传的扩展名（可执行/可渲染）。
-// 防止通过上传 .html/.svg 等可渲染文件配合 inline 预览造成存储型 XSS，
-// 以及防止 .exe 等可执行文件在内部 IM 中传播木马。
+// blockedExtensions 是"强制下载"的扩展名（可执行/可渲染），不再限制上传。
+// 上传阶段已放开所有扩展名；但服务端出文件时（ShouldForceDownload）仍对这些类型加
+// attachment 强制下载，防止浏览器内联渲染造成存储型 XSS（html/svg/js），
+// 以及防止可执行文件在内部 IM 中传播木马（exe/bat/sh）。
 var blockedExtensions = map[string]bool{
 	".html": true, ".htm": true, ".svg": true, ".js": true, ".mjs": true,
 	".exe": true, ".msi": true, ".bat": true, ".cmd": true, ".sh": true,
@@ -99,18 +100,19 @@ func (p *Policy) ValidateSize(size int64) error {
 	return nil
 }
 
-// ValidateType 校验文件类型。先查黑名单，再查白名单（若开启）。
+// ValidateType 校验文件类型。上传阶段已放开所有扩展名（含可执行/可渲染），
+// 仅保留 MIME 兜底（仅对会内联渲染的文件生效）与可选白名单校验。
 // filename 用于提取扩展名，detectedMime 用于辅助判断。
 func (p *Policy) ValidateType(filename string, detectedMime string) error {
 	ext := strings.ToLower(filepath.Ext(filename))
 
-	// 1. 黑名单始终生效：禁止可执行/可渲染文件
-	if blockedExtensions[ext] {
-		return ErrFileTypeBlocked
-	}
+	// 1. 上传阶段不限制扩展名（黑名单里的 html/svg/exe 等均可上传）；
+	//    它们的安全由服务端出文件时的 ShouldForceDownload 强制下载兜底。
 
-	// 2. MIME 黑名单：禁止危险的 MIME 类型
-	if isDangerousMime(detectedMime) {
+	// 2. MIME 兜底：禁止危险的 MIME 类型，但仅对"会被内联渲染"的文件生效
+	//    （即扩展名不在渲染黑名单 blockedExtensions 中）。扩展名已在 blockedExtensions
+	//    的文件（如 .html）上传后会被强制下载、不会内联渲染，MIME 检测对其无意义。
+	if !blockedExtensions[ext] && isDangerousMime(detectedMime) {
 		return ErrFileTypeBlocked
 	}
 

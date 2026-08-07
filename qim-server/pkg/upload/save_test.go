@@ -50,8 +50,9 @@ func mustMultipartHeader(t *testing.T, field, filename, body string) *multipart.
 	return headers[0]
 }
 
-// TestSaveMultipartFile_SkipTypeCheck 验证 SkipTypeCheck 只对受信任来源放行可执行文件，
-// 普通上传（默认 false）仍被黑名单拦截，防止回归引入"任意可执行文件可上传"。
+// TestSaveMultipartFile_SkipTypeCheck 验证 SkipTypeCheck 语义。
+// 上传阶段已放开所有扩展名，普通上传 .exe 也能通过；SkipTypeCheck 现在主要用于跳过
+// MIME 兜底（受信任的管理员分发来源），其余路径行为保持一致。
 func TestSaveMultipartFile_SkipTypeCheck(t *testing.T) {
 	policy := NewPolicy(DefaultMaxSize, nil, false)
 	body := "\x4d\x5a\x90" // 假 PE/MZ 头，MIME 不会被识别为危险类型
@@ -62,7 +63,7 @@ func TestSaveMultipartFile_SkipTypeCheck(t *testing.T) {
 		skipTypeCheck bool
 		wantErr       bool
 	}{
-		{"普通上传 .exe 仍被拦截（无 SkipTypeCheck）", "installer.exe", false, true},
+		{"普通上传 .exe 通过（上传已放开）", "installer.exe", false, false},
 		{"受信任来源 .exe 放行", "qim-mcp-windows-amd64.exe", true, false},
 		{"受信任来源无扩展名二进制放行", "qim-cli-darwin-arm64", true, false},
 	}

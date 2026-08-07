@@ -83,8 +83,10 @@ func InitUpload(c *gin.Context) {
 		return
 	}
 
-	// 统一类型校验（黑名单始终生效，防止 .html/.exe 等危险文件）
-	// 分片上传在 init 阶段无法读取实际内容，仅按扩展名校验；MIME 在 complete 时由合并文件检测
+	// 类型校验与普通上传一致：上传阶段不限制扩展名，任何类型（含 .html/.exe）均可上传。
+	// 分片 init 无法读取文件内容，此处仅用 OctetStream 占位 MIME（不会触发 MIME 兜底）；
+	// 危险文件的安全由服务端出文件时的统一出口 streamFileResponse 强制下载兜底，
+	// 与普通上传走同一策略。
 	if err := policy.ValidateType(req.Filename, "application/octet-stream"); err != nil {
 		response.BadRequest(c, err.Error())
 		return

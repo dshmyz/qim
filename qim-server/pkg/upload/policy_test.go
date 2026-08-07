@@ -112,9 +112,9 @@ func TestPolicy_ValidateType(t *testing.T) {
 		{"白名单内的PDF", "doc.pdf", "application/pdf", false},
 		{"白名单内的PNG", "img.png", "image/png", false},
 		{"白名单外的DOCX", "doc.docx", "application/octet-stream", true},
-		{"黑名单HTML", "evil.html", "text/html", true},
-		{"黑名单EXE", "malware.exe", "application/x-msdownload", true},
-		{"黑名单SVG", "icon.svg", "image/svg+xml", true},
+		{"白名单外的HTML", "evil.html", "text/html", true},
+		{"白名单外的EXE", "malware.exe", "application/x-msdownload", true},
+		{"白名单外的SVG", "icon.svg", "image/svg+xml", true},
 		{"危险MIME但安全扩展名", "doc.pdf", "text/html", true},
 		{"无扩展名", "noext", "application/octet-stream", true},
 	}
@@ -130,16 +130,34 @@ func TestPolicy_ValidateType(t *testing.T) {
 	}
 }
 
-func TestPolicy_ValidateType_BlacklistAlwaysEnforced(t *testing.T) {
-	// 即使关闭白名单校验，黑名单也应生效
+func TestPolicy_ValidateType_AllExtensionsAllowed(t *testing.T) {
+	// 上传阶段已放开所有扩展名（含可执行/可渲染）：关闭白名单校验时，任何扩展名都应放行
 	policy := NewPolicy(0, nil, false)
 
-	blockedFiles := []string{"evil.html", "malware.exe", "script.js", "shell.sh"}
-	for _, f := range blockedFiles {
-		err := policy.ValidateType(f, "application/octet-stream")
-		if err != ErrFileTypeBlocked {
-			t.Errorf("黑名单未生效: ValidateType(%q) = %v, want ErrFileTypeBlocked", f, err)
+	allowedFiles := []string{"evil.html", "malware.exe", "script.js", "shell.sh", "icon.svg", "doc.pdf"}
+	for _, f := range allowedFiles {
+		if err := policy.ValidateType(f, "application/octet-stream"); err != nil {
+			t.Errorf("上传应放行: ValidateType(%q) = %v, want nil", f, err)
 		}
+	}
+
+	// 但"会被内联渲染"的扩展名（非 blockedExtensions）遇到危险 MIME 仍应拦截，防止伪装扩展名绕过
+	// 例如 .pdf 内容实为 HTML：扩展名不在渲染黑名单，会内联渲染，故 MIME 兜底必须生效
+	if err := policy.ValidateType("doc.pdf", "text/html"); err != ErrFileTypeBlocked {
+		t.Errorf("危险MIME应拦截: ValidateType(\"doc.pdf\", \"text/html\") = %v, want ErrFileTypeBlocked", err)
+	}
+}
+
+func TestShouldForceDownload(t *testing.T) {
+	// 即使所有扩展名均可上传，服务端出文件时对这些可渲染/可执行类型仍强制下载，防存储型 XSS
+	for _, f := range []string{"evil.html", "icon.svg", "script.js", "malware.exe", "shell.sh"} {
+		if !ShouldForceDownload(f) {
+			t.Errorf("ShouldForceDownload(%q) = false, want true", f)
+		}
+	}
+	// 普通文档不应强制下载
+	if ShouldForceDownload("doc.pdf") {
+		t.Error("ShouldForceDownload(\"doc.pdf\") = true, want false")
 	}
 }
 
