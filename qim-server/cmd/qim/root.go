@@ -11,16 +11,18 @@ var outputFmt string
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "qim",
-		Short: "QIM agent CLI — 收发消息、管理任务/日历",
+		Short: "QIM agent CLI — 收发消息、管理任务/日历/笔记",
 		Long: `qim - QIM agent CLI（pull 底座）
 
 纯 HTTP 客户端，不耦合 server 内部（service/handler），只依赖 REST 契约。
-用 Bash 调用本 CLI，即可让 Claude Code/OpenCode 等 agent 在 QIM 内收发消息。
+用 Bash 调用本 CLI，即可让 Claude Code/OpenCode 等 agent 在 QIM 内收发消息、
+管理待办、安排日历、读写笔记。
 
   qim config set --server http://localhost:8080 --token qbot_...
   qim messages list --thread <conv_id>
   qim send --to <user_id> --thread <conv_id> --type markdown --content "hi"
-  echo "增量" | qim stream-stdin --to <user_id> --thread <conv_id>`,
+  echo "增量" | qim stream-stdin --to <user_id> --thread <conv_id>
+  qim note list / qim note get <id> / qim note create --title ...`,
 		SilenceUsage: true, // 出错时不自动打印 usage（我们自己控制）
 	}
 
@@ -42,6 +44,7 @@ func NewRootCmd() *cobra.Command {
 		newStreamStdinCmd(),
 		newTaskCmd(),
 		newEventCmd(),
+		newNotesCmd(),
 	)
 
 	// cobra 自带 shell 补全生成（bash/zsh/fish/powershell）
