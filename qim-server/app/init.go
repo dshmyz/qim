@@ -364,6 +364,30 @@ func tableExists(db *gorm.DB, tableName string) bool {
 	return database.D.TableExists(db, tableName)
 }
 
+// migrateLegacyAIProviderTable 把历史被 GORM 误命名为 a_iprovider(s) 的
+// AI 供应商表改名为规范表名 ai_providers。幂等：目标表已存在或旧表不存在则跳过。
+func migrateLegacyAIProviderTable(db *gorm.DB) error {
+	const target = "ai_providers"
+
+	// 目标表已存在（全新安装或已迁移过），无需处理
+	if tableExists(db, target) {
+		return nil
+	}
+
+	for _, legacy := range []string{"a_iprovider", "a_iproviders"} {
+		if !tableExists(db, legacy) {
+			continue
+		}
+		if err := db.Migrator().RenameTable(legacy, target); err != nil {
+			return fmt.Errorf("重命名 %s -> %s 失败: %w", legacy, target, err)
+		}
+		logger.WithModule("Migrate").Info("AI 供应商表名已迁移",
+			"from", legacy, "to", target)
+		break
+	}
+	return nil
+}
+
 // MigrateDB 自动迁移数据库表（分步迁移策略）
 func MigrateDB(db *gorm.DB) error {
 	if err := migrateCompatibilityColumns(db); err != nil {
@@ -434,6 +458,13 @@ func MigrateDB(db *gorm.DB) error {
 		&model.AvatarToolBinding{},     // 依赖 AvatarConfig
 		&model.AvatarLearnTask{},       // 依赖 User, AvatarConfig
 		&model.DocumentProcessStatus{}, // 依赖 GroupDocument
+	}
+
+	// AIProvider 采用显式表名 ai_providers。历史版本被 GORM 默认命名策略
+	// 误拆成 a_iproviders / a_iprovider，这里在 AutoMigrate 前把旧表改名，
+	// 保留已有供应商数据，避免新建空表导致配置丢失。
+	if err := migrateLegacyAIProviderTable(db); err != nil {
+		return fmt.Errorf("迁移 AIProvider 表名失败: %w", err)
 	}
 
 	// 分阶段迁移
@@ -566,6 +597,30 @@ func migrateCompatibilityColumns(db *gorm.DB) error {
 			} else {
 				logger.WithModule("Migrate").Info("添加 conversation_members.muted_until 字段")
 			}
+		}
+	}
+
+	if tableExists(db, "bot_conversations") {
+		// BotConversation 收敛：去掉 user_id 维度（单聊/群聊由 Conversation.Type +
+		// ConversationMember 表达）。AutoMigrate 不会删列，故手动 DropColumn；
+		// SQLite 删列不自动删关联索引，需先显式 DropIndex 再删列。
+		hasBotUserCol, err := migrationColumnExists(db, &model.BotConversation{}, "user_id")
+		if err != nil {
+			return fmt.Errorf("检查 bot_conversations.user_id 字段: %w", err)
+		}
+		if hasBotUserCol {
+			// 先删关联索引再删列（SQLite 删列不自动删关联索引，残留索引会使 DROP COLUMN 报错）。
+			// 用方言 DropIndexSQL（SQLite: DROP INDEX IF EXISTS；MySQL: DROP INDEX ... ON），
+			// GORM Migrator 的 DropIndex 对 SQLite 会误输出 MySQL 的 ON 语法，故不走它。
+			if err := db.Exec(database.D.DropIndexSQL("idx_bot_conversations_user_id", "bot_conversations")).Error; err != nil {
+				if !strings.Contains(strings.ToLower(err.Error()), "no such index") {
+					return fmt.Errorf("删除 idx_bot_conversations_user_id 索引: %w", err)
+				}
+			}
+			if err := db.Migrator().DropColumn(&model.BotConversation{}, "user_id"); err != nil {
+				return fmt.Errorf("删除 bot_conversations.user_id 字段: %w", err)
+			}
+			logger.WithModule("Migrate").Info("删除 bot_conversations.user_id 字段")
 		}
 	}
 

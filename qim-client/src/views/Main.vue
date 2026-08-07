@@ -388,6 +388,7 @@
                 @editAnnouncement="editAnnouncement"
                 @editGroupName="editGroupNameAction"
                 @openAISettings="showAISettingsModal = true"
+                @addBotToGroup="handleAddBotToGroup($event)"
                 @showMemberContextMenu="(event, member) => showSidebarMemberContextMenu(event, member)"
                 @startPrivateChat="startPrivateChat"
               />
@@ -606,6 +607,7 @@
       :downloadSizeText="downloadSizeText"
       :hasNewVersion="hasNewVersion"
       :forceUpdate="forceUpdate"
+      :silentForce="silentForce"
       :updateResult="updateResult"
       :updateInfo="updateInfo"
       :groupConversations="conversations.filter(c => c.type === 'group')"
@@ -644,6 +646,15 @@
     :visible="showFeedbackModal"
     @close="closeFeedbackModal"
     @success="handleFeedbackSuccess"
+  />
+
+  <!-- 拉外部 agent 机器人进群弹窗 -->
+  <GroupAddBotModal
+    :visible="showAddBotModal"
+    :loading="addBotPickLoading"
+    :bots="addBotCandidates"
+    @update:visible="(v) => (showAddBotModal = v)"
+    @select="confirmAddBot"
   />
 
   <!-- AI 悬浮球 -->
@@ -704,6 +715,7 @@ import AppsPanel from '../components/apps/AppsPanel.vue'
 import SelfProfileModal from '../components/modals/SelfProfileModal.vue'
 const GroupModals = defineAsyncComponent(() => import('../components/modals/GroupModals.vue'))
 const GroupAIPanel = defineAsyncComponent(() => import('../components/ai/GroupAIPanel.vue'))
+const GroupAddBotModal = defineAsyncComponent(() => import('../components/modals/GroupAddBotModal.vue'))
 import MainContextMenus from '../components/menus/MainContextMenus.vue'
 import MainDialogs from '../components/modals/MainDialogs.vue'
 import FeedbackModal from '../components/modals/FeedbackModal.vue'
@@ -725,6 +737,7 @@ import { fetchUserProfile } from '../composables/useUserProfileInfo'
 import { useNetwork } from '../composables/useNetwork'
 import { useWebSocketManager } from '../composables/useWebSocketManager'
 import { useGroup } from '../composables/useGroup'
+import { useBots } from '../composables/useBots'
 import { useMessageActions } from '../composables/useMessageActions'
 import { getProductName, APP_CONFIG } from '../config/appConfig'
 import { versionsApi } from '../api'
@@ -882,12 +895,18 @@ const handleUserStatusChange = (data: any) => {
 
 // 群组相关（使用别名避免与 useUI 中的同名变量冲突）
 const groupState = useGroup()
+const botsState = useBots()
 const {
   isGroupOwnerCheck,
   isGroupAdmin: isGroupAdminCheck,
   groups: userGroups,
   loadGroups: loadUserGroups
 } = groupState
+
+// 「拉外部 agent 机器人进群」弹窗状态
+const showAddBotModal = ref(false)
+const addBotCandidates = ref<any[]>([])
+const addBotPickLoading = ref(false)
 
 let userGroupsRefreshTimer: number | null = null
 
@@ -1016,6 +1035,7 @@ const {
   updateResult,
   hasNewVersion,
   forceUpdate,
+  silentForce,
   updateInfo,
   openUpdateDialog,
   closeUpdateDialog,
@@ -3282,6 +3302,51 @@ const confirmAddMembers = async (members: any[]) => {
 }
 
 // 点击其他地方关闭菜单由showContextMenu和showGroupContextMenu函数内部处理
+
+// 拉外部 agent 机器人进群：打开候选弹窗（仅列可 @ 触发的外部 webhook 机器人）
+const handleAddBotToGroup = async (group?: any) => {
+  const targetGroup = group || selectedGroup.value
+  if (!targetGroup) return
+  selectedGroup.value = targetGroup
+  closeGroupContextMenu()
+
+  showAddBotModal.value = true
+  addBotPickLoading.value = true
+  addBotCandidates.value = []
+  try {
+    const myBots = (await botsState.fetchMyBots()) || []
+    const inGroupMemberNames = new Set((targetGroup.members || []).map((m: any) => m.name))
+    addBotCandidates.value = myBots
+      .filter((bot: any) => {
+        // 仅外部 webhook agent 且已绑定虚拟用户（可被 @ 触发 / 作独立成员）
+        let mode = ''
+        try {
+          mode = (JSON.parse(bot.config || '{}') as any)?.mode || ''
+        } catch { /* 忽略解析失败 */ }
+        return mode === 'external_webhook' && bot.virtual_user_id != null
+      })
+      .map((bot: any) => ({
+        id: bot.id,
+        name: bot.name,
+        description: bot.description || '外部 agent 机器人',
+        inGroup: inGroupMemberNames.has(bot.name)
+      }))
+  } catch (error: any) {
+    logger.error('加载可添加机器人失败:', error)
+    addBotCandidates.value = []
+  } finally {
+    addBotPickLoading.value = false
+  }
+}
+
+// 确认把某个 bot 拉进当前群
+const confirmAddBot = async (bot: any) => {
+  if (!selectedGroup.value || !bot) return
+  const ok = await groupState.addBotToGroup(selectedGroup.value.id, bot.id)
+  if (ok) {
+    showAddBotModal.value = false
+  }
+}
 
 const closeSettingsMenu = () => {
   closeMenu()

@@ -238,6 +238,42 @@ func (s *MessageService) MentionUserIDsForAI(convID uint, content string) []uint
 	return s.resolveMentionUserIDs(convID, mentions, 0)
 }
 
+// HandleGroupBotMention 群聊外部 agent 触发：群消息 @ 到某 bot 虚拟用户时，把该消息
+// 转发给对应外部 webhook agent（thread_id = 群会话 id）。仅在群会话、且 bot 通过
+// BotConversation 关联到本会话时触发——天然克制（不被 @ 就不转发）。
+// 内部 AI bot（assistant/system）暂不接群聊，保持既有单聊行为不变。
+func (s *MessageService) HandleGroupBotMention(convID, senderID uint, mentionedUserIDs []uint, content string) {
+	if len(mentionedUserIDs) == 0 {
+		return
+	}
+	var convType string
+	if err := s.db.Model(&model.Conversation{}).Where("id = ?", convID).Select("type").
+		First(&convType).Error; err != nil || convType != "group" {
+		return // 仅群会话
+	}
+
+	// 反查被 @ 的用户里，哪些是本会话已关联 bot 的虚拟用户。
+	// BotConversation{conversation_id=群} 在 Phase 3「拉 bot 进群」时建立。
+	var bots []model.Bot
+	if err := s.db.
+		Joins("JOIN bot_conversations bc ON bc.bot_id = bots.id AND bc.conversation_id = ?", convID).
+		Where("bots.virtual_user_id IN ?", mentionedUserIDs).
+		Find(&bots).Error; err != nil {
+		logger.WithModule("HandleGroupBotMention").Error("查询群内被 @ 的 bot 失败", "convID", convID, "error", err)
+		return
+	}
+	for _, bot := range bots {
+		if bot.VirtualUserID == nil || !bot.IsActive {
+			continue
+		}
+		cfg := ParseBotConfig(bot.Config)
+		if !cfg.IsExternalWebhook() {
+			continue // 仅外部 webhook agent
+		}
+		s.forwardBotMessageToWebhook(bot, cfg.WebhookURL, cfg.WebhookSecret, senderID, convID, content)
+	}
+}
+
 func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	db := s.db
 

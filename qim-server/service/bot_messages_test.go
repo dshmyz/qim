@@ -25,7 +25,7 @@ func setupReadBot(t *testing.T, db *gorm.DB) (*model.Bot, *model.User, *model.Co
 
 	bot := &model.Bot{Name: "Reader", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &virtualUser.ID}
 	require.NoError(t, db.Create(bot).Error)
-	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, UserID: user.ID, ConversationID: conv.ID}).Error)
+	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, ConversationID: conv.ID}).Error)
 	return bot, user, conv
 }
 

@@ -37,16 +37,39 @@ func (h *BotAPIHandler) SendMessage(c *gin.Context) {
 	}
 
 	var req struct {
-		ToUserID   uint   `json:"to_user_id"`
-		ToUserName string `json:"to_user_name"` // 可选：按用户名/昵称解析
-		Content    string `json:"content"`
-		MsgType    string `json:"msg_type"`
-		ReplyToID  *uint  `json:"reply_to_id"`
-		ThreadID   *uint  `json:"thread_id"`
-		ThreadName string `json:"thread_name"` // 可选：按名称解析已有会话
+		ToUserID       uint   `json:"to_user_id"`
+		ToUserName     string `json:"to_user_name"`     // 可选：按用户名/昵称解析
+		Content        string `json:"content"`
+		MsgType        string `json:"msg_type"`
+		ReplyToID      *uint  `json:"reply_to_id"`
+		ThreadID       *uint  `json:"thread_id"`
+		ThreadName     string `json:"thread_name"`     // 可选：按名称解析已有会话
+		ConversationID uint   `json:"conversation_id"` // 可选：按会话(单聊/群聊)发送，压倒 to_user_id/thread 路径
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "请求参数错误")
+		return
+	}
+
+	// conversation_id 走「按会话发送」（群聊出站/已建单聊），优先于 to_user 解析。
+	if req.ConversationID != 0 {
+		if req.ReplyToID != nil && *req.ReplyToID == 0 {
+			response.BadRequest(c, "reply_to_id 无效")
+			return
+		}
+		msg, err := h.botMessaging.SendOutboundByConversation(bot, req.ConversationID, req.Content, req.MsgType, req.ReplyToID)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		if svc := di.GlobalContainer.OperationLogService; svc != nil {
+			svc.LogUserOperation(c, "bot", "send_message")
+		}
+		response.Success(c, gin.H{
+			"message_id":      msg.ID,
+			"conversation_id": msg.ConversationID,
+			"created_at":      msg.CreatedAt,
+		})
 		return
 	}
 
@@ -94,6 +117,27 @@ func (h *BotAPIHandler) SendMessage(c *gin.Context) {
 		"conversation_id": msg.ConversationID,
 		"created_at":      msg.CreatedAt,
 	})
+}
+
+// ListBotGroups 列出该 bot 已入群的群会话（conversation_id + 群名），供 agent 主动群发前发现群。
+// GET /api/v1/bot/groups  (BotAuthMiddleware)
+func (h *BotAPIHandler) ListBotGroups(c *gin.Context) {
+	botVal, _ := c.Get("bot")
+	bot, ok := botVal.(*model.Bot)
+	if !ok || bot == nil {
+		response.Unauthorized(c, "Bot 身份无效")
+		return
+	}
+
+	groups, err := h.botMessaging.ListBotGroupConversations(bot.ID)
+	if err != nil {
+		response.InternalServerError(c, "查询群会话失败")
+		return
+	}
+	if groups == nil {
+		groups = []service.BotGroupConversation{}
+	}
+	response.Success(c, groups)
 }
 
 // GetBotMessages 外部 agent pull 读取自己会话的消息（增量轮询）。

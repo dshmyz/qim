@@ -20,6 +20,33 @@ func newSendCmd() *cobra.Command {
 		Use:   "send",
 		Short: "发消息（--thread 可选，自动创建会话）",
 		Run: func(cmd *cobra.Command, args []string) {
+			// 按会话发送（群聊/已建单聊）：--conversation <id> 时，--to 可省略
+			if conversation != "" && to == "" {
+				if !isNumeric(conversation) {
+					die("--conversation 需为会话 ID（数字）")
+				}
+				convID, err := strconv.ParseUint(conversation, 10, 64)
+				if err != nil {
+					die("无效的会话 ID: %s", conversation)
+				}
+				// --content - 从 stdin 读取
+				if content == "-" {
+					b, err := io.ReadAll(os.Stdin)
+					if err != nil {
+						die("读取 stdin 失败: %v", err)
+					}
+					content = string(b)
+				}
+				if content == "" {
+					die("--content 或 --file 必填")
+				}
+				id, err := sendMessageToConversation(convID, content, msgType, replyTo)
+				if err != nil {
+					die("%v", err)
+				}
+				out(map[string]any{"message_id": id}, "✅ 消息已发送 (ID: %d)\n", id)
+				return
+			}
 			if to == "" {
 				die("--to 必填")
 			}
@@ -60,9 +87,9 @@ func newSendCmd() *cobra.Command {
 			out(map[string]any{"message_id": id}, "✅ 消息已发送 (ID: %d)\n", id)
 		},
 	}
-	cmd.Flags().StringVar(&to, "to", "", "目标用户名或用户 ID（必填）")
+	cmd.Flags().StringVar(&to, "to", "", "目标用户名或用户 ID（必填，除非用 --conversation 按群会话发送）")
 	cmd.Flags().StringVar(&thread, "thread", "", "会话名或会话 ID（可选，不填自动创建/查找）")
-	cmd.Flags().StringVar(&conversation, "conversation", "", "（--thread 别名）")
+	cmd.Flags().StringVar(&conversation, "conversation", "", "群会话/已建单聊会话 ID（传数字时按会话发送，可省略 --to）")
 	cmd.Flags().Uint64Var(&replyTo, "reply-to", 0, "回复的消息 ID（可选）")
 	cmd.Flags().StringVar(&msgType, "type", "text", "消息类型: text|markdown|card")
 	cmd.Flags().StringVarP(&content, "content", "c", "", "消息内容（card 时为 JSON；- 表示从 stdin 读取）")
@@ -120,6 +147,36 @@ func sendMessage(to, thread, content, msgType string, replyTo uint64) (uint64, e
 		} else {
 			m["thread_name"] = thread
 		}
+	}
+	if replyTo > 0 {
+		m["reply_to_id"] = replyTo
+	}
+	body, _ := json.Marshal(m)
+	respBody, err := httpPost(cfg, cfg.ServerURL+"/api/v1/bot/messages", body)
+	if err != nil {
+		return 0, err
+	}
+	var resp struct {
+		Data struct {
+			MessageID uint64 `json:"message_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return 0, fmt.Errorf("解析响应失败: %w", err)
+	}
+	if resp.Data.MessageID == 0 {
+		return 0, fmt.Errorf("响应缺少 message_id: %s", string(respBody))
+	}
+	return resp.Data.MessageID, nil
+}
+
+// sendMessageToConversation 按会话(群聊/已建单聊)发送消息。
+func sendMessageToConversation(convID uint64, content, msgType string, replyTo uint64) (uint64, error) {
+	cfg := mustConfig()
+	m := map[string]any{
+		"conversation_id": convID,
+		"content":         content,
+		"msg_type":        msgType,
 	}
 	if replyTo > 0 {
 		m["reply_to_id"] = replyTo

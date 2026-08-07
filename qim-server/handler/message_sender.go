@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
@@ -77,6 +78,13 @@ func (s *WebSocketMessageSender) resolveAISender(conversationID uint, assistantN
 }
 
 func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content string, assistantName string) error {
+	// 空/纯空白内容不落库不广播，避免 AI 不可用时出现空白气泡
+	if strings.TrimSpace(content) == "" {
+		logger.WithModule("MessageSender").Info("AI 消息内容为空，跳过发送",
+			"conversationID", conversationID, "assistantName", assistantName)
+		return nil
+	}
+
 	aiUser, groupID, err := s.resolveAISender(conversationID, assistantName)
 	if err != nil {
 		return err

@@ -263,3 +263,37 @@ func TestAuthHeaderPropagated(t *testing.T) {
 	callTool(t, cs, "list_messages", map[string]any{"thread_id": float64(1)})
 	assert.Equal(t, "Bearer qbot_secret_xyz", seen)
 }
+
+func TestListGroupConversations(t *testing.T) {
+	srv, reqs := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		json.NewEncoder(w).Encode(map[string]any{"data": []any{
+			map[string]any{"conversation_id": float64(5), "group_name": "项目组A"},
+			map[string]any{"conversation_id": float64(9), "group_name": "运维群"},
+		}})
+	})
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
+
+	out := callTool(t, cs, "list_group_conversations", map[string]any{})
+	assert.Contains(t, out, `"conversation_id":5`)
+	assert.Contains(t, out, "项目组A")
+	assert.Contains(t, out, `"conversation_id":9`)
+	assert.Contains(t, out, "运维群")
+
+	r := lastReq(reqs)
+	assert.Equal(t, "GET", r.method)
+	assert.Equal(t, "/api/v1/bot/groups", r.path)
+}
+
+func TestSendMessage_ByConversation(t *testing.T) {
+	srv, reqs := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"message_id": float64(55), "conversation_id": float64(5)}})
+	})
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
+
+	out := callTool(t, cs, "send_message", map[string]any{"conversation_id": float64(5), "content": "群公告"})
+	assert.Contains(t, out, `"conversation_id":5`)
+	r := lastReq(reqs)
+	assert.EqualValues(t, 5, r.body["conversation_id"])
+	_, hasToUser := r.body["to_user_id"]
+	assert.False(t, hasToUser, "conversation 路径不应送 to_user_id")
+}

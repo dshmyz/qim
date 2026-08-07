@@ -56,7 +56,7 @@ func setupStreamMessageTest(t *testing.T) (*gin.Engine, *gorm.DB, model.User, mo
 
 	bot := model.Bot{Name: "Writing Bot", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &virtualUser.ID}
 	require.NoError(t, db.Create(&bot).Error)
-	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, UserID: user.ID, ConversationID: conv.ID}).Error)
+	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, ConversationID: conv.ID}).Error)
 
 	router := gin.New()
 	router.POST("/api/v1/conversations/:id/messages/stream", func(c *gin.Context) {

@@ -37,6 +37,7 @@ func NewRootCmd() *cobra.Command {
 		newConversationsCmd(),
 		newMessagesCmd(),
 		newSendCmd(),
+		newGroupsCmd(),
 		newStreamCmd(),
 		newStreamStdinCmd(),
 		newTaskCmd(),

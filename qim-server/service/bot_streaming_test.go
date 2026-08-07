@@ -32,7 +32,7 @@ func setupStreamingBot(t *testing.T, db *gorm.DB) (*model.Bot, *model.User, *mod
 
 	bot := &model.Bot{Name: "Streamer", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &virtualUser.ID}
 	require.NoError(t, db.Create(bot).Error)
-	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, UserID: user.ID, ConversationID: conv.ID}).Error)
+	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, ConversationID: conv.ID}).Error)
 	return bot, user, conv
 }
 

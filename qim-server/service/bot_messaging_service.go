@@ -44,9 +44,13 @@ func (s *BotMessagingService) EnsureBotConversation(botID, userID uint) (*model.
 		return nil, nil, errors.New("bot 未配置虚拟用户")
 	}
 
-	// 查找已有 bot 会话
+	// 查找已有 bot 会话：用户 1:1 bot 会话 = Type=bot 会话且成员含该 user。
+	// 原来按 user_id 反查 BotConversation，现改用 ConversationMember + Type=bot join 等价替代。
 	var botConv model.BotConversation
-	if err := s.db.Where("bot_id = ? AND user_id = ?", botID, userID).
+	if err := s.db.
+		Joins("JOIN conversations c ON c.id = bot_conversations.conversation_id").
+		Joins("JOIN conversation_members cm ON cm.conversation_id = c.id").
+		Where("bot_conversations.bot_id = ? AND c.type = ? AND cm.user_id = ?", botID, "bot", userID).
 		Preload("Conversation").First(&botConv).Error; err == nil && botConv.ID > 0 {
 		// 防御性补齐 bot 虚拟用户成员关系
 		s.ensureMember(botConv.ConversationID, *bot.VirtualUserID)
@@ -69,7 +73,7 @@ func (s *BotMessagingService) EnsureBotConversation(botID, userID uint) (*model.
 		tx.Rollback()
 		return nil, nil, err
 	}
-	botConv = model.BotConversation{BotID: botID, UserID: userID, ConversationID: conv.ID}
+	botConv = model.BotConversation{BotID: botID, ConversationID: conv.ID}
 	if err := tx.Create(&botConv).Error; err != nil {
 		tx.Rollback()
 		return nil, nil, err
@@ -121,10 +125,16 @@ func (s *BotMessagingService) SendOutbound(bot *model.Bot, toUserID uint, conten
 
 	var convID uint
 	if threadID != nil && *threadID != 0 {
-		// 校验会话归属该 bot+用户
+		// 校验会话归属该 bot（bot_conversations 关联）+ 目标用户为其成员。
+		// 原实现按 bot_conversations.user_id 判定，去掉该列后改为成员校验（单聊/群通吃）。
 		var botConv model.BotConversation
-		if err := s.db.Where("conversation_id = ? AND bot_id = ? AND user_id = ?", *threadID, bot.ID, toUserID).
+		if err := s.db.Where("conversation_id = ? AND bot_id = ?", *threadID, bot.ID).
 			First(&botConv).Error; err != nil {
+			return nil, errors.New("会话不属于该 bot")
+		}
+		var member model.ConversationMember
+		if err := s.db.Where("conversation_id = ? AND user_id = ?", *threadID, toUserID).
+			First(&member).Error; err != nil {
 			return nil, errors.New("会话不属于该 bot 与用户")
 		}
 		convID = *threadID
@@ -149,6 +159,13 @@ func (s *BotMessagingService) SendOutbound(bot *model.Bot, toUserID uint, conten
 		}
 	}
 
+	return s.sendToConversation(bot, convID, content, msgType, replyToID)
+}
+
+// sendToConversation 以 bot 身份向指定会话（单聊 type=bot 或群聊 type=group）发一条消息：
+// 创建消息（bot 自身已读）→ 更新会话 last_message → 给非 bot 成员未读 +1 → WS 广播到会话。
+// 供单聊 SendOutbound 与群聊 SendOutboundByConversation 共用。
+func (s *BotMessagingService) sendToConversation(bot *model.Bot, convID uint, content, msgType string, replyToID *uint) (*model.Message, error) {
 	// 创建消息（bot 自身已读）
 	msg := model.Message{
 		ConversationID:  convID,
@@ -191,6 +208,112 @@ func (s *BotMessagingService) SendOutbound(bot *model.Bot, toUserID uint, conten
 	}
 
 	return &msg, nil
+}
+
+// SendOutboundByConversation 以 bot 身份向指定会话发送消息（单聊 type=bot 或群聊 type=group）。
+// 校验 bot 拥有该会话（BotConversation{bot_id, conversation_id} 存在），供 agent 按 conversation_id
+// 群发（MCP/CLI 及 Phase 3 群内出站）。replyToID 非空时要求引用消息属于当前会话。
+func (s *BotMessagingService) SendOutboundByConversation(bot *model.Bot, convID uint, content, msgType string, replyToID *uint) (*model.Message, error) {
+	if bot == nil || bot.VirtualUserID == nil {
+		return nil, errors.New("bot 未配置虚拟用户")
+	}
+	if msgType == "" {
+		msgType = "text"
+	}
+	if msgType == "card" {
+		if err := validateCardContent(content); err != nil {
+			return nil, err
+		}
+	}
+
+	// 校验 bot 拥有该会话（单聊/群通用：bot 通过 BotConversation 关联了该会话即为已入群/已建会话）
+	var botConv model.BotConversation
+	if err := s.db.Where("conversation_id = ? AND bot_id = ?", convID, bot.ID).
+		First(&botConv).Error; err != nil {
+		return nil, errors.New("会话不属于该 bot")
+	}
+
+	if replyToID != nil {
+		if *replyToID == 0 {
+			return nil, errors.New("引用消息 ID 无效")
+		}
+		var quoted model.Message
+		if err := s.db.First(&quoted, *replyToID).Error; err != nil {
+			return nil, errors.New("引用消息不存在")
+		}
+		if quoted.ConversationID != convID {
+			return nil, errors.New("引用消息不属于当前会话")
+		}
+	}
+
+	return s.sendToConversation(bot, convID, content, msgType, replyToID)
+}
+
+// EnsureBotGroupConversation 把 bot 拉进一个群会话（Phase 3「拉 bot 进群」的服务端入口）：
+// 校验会话为群；确保 bot 虚拟用户是 ConversationMember；幂等建 BotConversation{bot_id, conversation_id}。
+// 返回该 bot 会话关联。
+func (s *BotMessagingService) EnsureBotGroupConversation(botID, conversationID uint) (*model.BotConversation, error) {
+	var bot model.Bot
+	if err := s.db.First(&bot, botID).Error; err != nil {
+		return nil, errors.New("bot 不存在")
+	}
+	if bot.VirtualUserID == nil {
+		return nil, errors.New("bot 未配置虚拟用户")
+	}
+	var conv model.Conversation
+	if err := s.db.First(&conv, conversationID).Error; err != nil {
+		return nil, errors.New("会话不存在")
+	}
+	if conv.Type != "group" {
+		return nil, errors.New("仅支持把 bot 拉进群会话")
+	}
+
+	var botConv model.BotConversation
+	if err := s.db.Where("bot_id = ? AND conversation_id = ?", botID, conversationID).
+		First(&botConv).Error; err == nil && botConv.ID > 0 {
+		// 已关联：幂等补齐 bot 虚拟用户成员关系
+		s.ensureMember(conversationID, *bot.VirtualUserID)
+		return &botConv, nil
+	}
+
+	tx := s.db.Begin()
+	if err := tx.Create(&model.ConversationMember{ConversationID: conversationID, UserID: *bot.VirtualUserID, Role: "member"}).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	botConv = model.BotConversation{BotID: botID, ConversationID: conversationID}
+	if err := tx.Create(&botConv).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	return &botConv, nil
+}
+
+// BotGroupConversation 是 bot 已入群的群会话摘要，供 agent 发现群 conversation_id。
+type BotGroupConversation struct {
+	ConversationID uint   `json:"conversation_id"`
+	GroupName      string `json:"group_name"`
+}
+
+// ListBotGroupConversations 列出 bot 已入群的群会话（BotConversation 关联且会话类型为 group）。
+// 供 agent 主动群发前发现可用的群 conversation_id。
+func (s *BotMessagingService) ListBotGroupConversations(botID uint) ([]BotGroupConversation, error) {
+	var rows []BotGroupConversation
+	err := s.db.
+		Table("bot_conversations").
+		Select("bot_conversations.conversation_id AS conversation_id, COALESCE(g.name, '') AS group_name").
+		Joins("JOIN conversations conv ON conv.id = bot_conversations.conversation_id AND conv.type = 'group'").
+		Joins("LEFT JOIN groups g ON g.conversation_id = bot_conversations.conversation_id").
+		Where("bot_conversations.bot_id = ?", botID).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 // cardButton 卡片按钮的最小契约字段。
@@ -248,8 +371,9 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 	if err := s.db.Where("conversation_id = ?", msg.ConversationID).First(&botConv).Error; err != nil {
 		return errors.New("消息不属于 bot 会话")
 	}
-	// 鉴权：仅该 bot↔user 会话的人类成员可操作自己的卡片
-	if botConv.UserID != userID {
+	// 鉴权：仅该会话的人类成员可操作卡片（单聊 user / 群聊任意群成员都算，统一走成员校验）
+	var member model.ConversationMember
+	if err := s.db.Where("conversation_id = ? AND user_id = ?", msg.ConversationID, userID).First(&member).Error; err != nil {
 		return errors.New("无权操作此卡片")
 	}
 
@@ -661,9 +785,14 @@ func (s *BotMessagingService) ResolveBotThread(bot *model.Bot, nameOrID string) 
 		return 0, err
 	}
 
-	// 查 bot_conversations 找 bot 与该用户的会话
+	// 查该用户的 1:1 bot 会话（Type=bot 会话且成员含该 user）。
+	// 原来按 user_id 反查 BotConversation，现改用 ConversationMember + Type=bot join 等价替代。
 	var bc model.BotConversation
-	if err := s.db.Where("bot_id = ? AND user_id = ?", bot.ID, user.ID).First(&bc).Error; err != nil {
+	if err := s.db.
+		Joins("JOIN conversations c ON c.id = bot_conversations.conversation_id").
+		Joins("JOIN conversation_members cm ON cm.conversation_id = c.id").
+		Where("bot_conversations.bot_id = ? AND c.type = ? AND cm.user_id = ?", bot.ID, "bot", user.ID).
+		First(&bc).Error; err != nil {
 		return 0, errors.New("未找到与 " + nameOrID + " 的会话（可能尚未对话）")
 	}
 	return bc.ConversationID, nil

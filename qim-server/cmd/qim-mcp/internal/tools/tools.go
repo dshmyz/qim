@@ -36,8 +36,13 @@ func Register(s *mcp.Server, a *Adapter) {
 	}, a.pollMessages)
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_group_conversations",
+		Description: "列出该 agent 已入群的群会话（conversation_id + 群名）。要在群里主动发言（未被用户 @ 时）前，先调用本工具发现可用的群 conversation_id，再以 send_message 的 conversation_id 参数发到该群。返回每行一条 JSON。",
+	}, a.listGroupConversations)
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "send_message",
-		Description: "向指定用户发送一条消息（thread_id 省略时自动建/复用会话）。msg_type 可选 text|markdown|card（默认 text）；card 时 content 为按钮卡片 JSON。返回 {message_id, conversation_id}。后续 list/poll 用 conversation_id 作 thread_id。\n\n何时用 card：当需要用户在几个明确选项中做决策（确认/取消、批准/拒绝、选择方案）时，优先用 card 而非让用户用文字回复。card 的 content 形如 {\"title\":\"标题\",\"text\":\"说明\",\"buttons\":[{\"id\":\"confirm\",\"text\":\"确认\"},{\"id\":\"cancel\",\"text\":\"取消\"}]}，每个 button 需 id 和 text，可选 style(value=\"primary\")。用户点击后你会通过 poll/list 收到 type=card_action 的消息，含 action_id 字段标识点了哪个按钮。",
+		Description: "向指定用户或群会话发送一条消息。单聊：conversation_id 留空、用 to_user_id（thread_id 省略时自动建/复用会话）；已在群的主动群发：先调 list_group_conversations 拿群 conversation_id，再带 conversation_id（此时可省略 to_user_id）。msg_type 可选 text|markdown|card（默认 text）；card 时 content 为按钮卡片 JSON。返回 {message_id, conversation_id}。后续 list/poll 用 conversation_id 作 thread_id。\n\n何时用 card：当需要用户在几个明确选项中做决策（确认/取消、批准/拒绝、选择方案）时，优先用 card 而非让用户用文字回复。card 的 content 形如 {\"title\":\"标题\",\"text\":\"说明\",\"buttons\":[{\"id\":\"confirm\",\"text\":\"确认\"},{\"id\":\"cancel\",\"text\":\"取消\"}]}，每个 button 需 id 和 text，可选 style(value=\"primary\")。用户点击后你会通过 poll/list 收到 type=card_action 的消息，含 action_id 字段标识点了哪个按钮。",
 	}, a.sendMessage)
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -115,15 +120,17 @@ type pollMessagesParams struct {
 }
 
 type sendMessageParams struct {
-	ToUserID uint64 `json:"to_user_id"`
-	ThreadID uint64 `json:"thread_id,omitempty"`
-	Content  string `json:"content"`
-	MsgType  string `json:"msg_type,omitempty"`
+	ToUserID       uint64 `json:"to_user_id,omitempty"`
+	ThreadID       uint64 `json:"thread_id,omitempty"`
+	ConversationID uint64 `json:"conversation_id,omitempty"` // 可选：按会话(单聊/群聊)发送
+	Content        string `json:"content"`
+	MsgType        string `json:"msg_type,omitempty"`
 }
 
 type startStreamingParams struct {
-	ToUserID uint64 `json:"to_user_id"`
-	ThreadID uint64 `json:"thread_id,omitempty"`
+	ToUserID       uint64 `json:"to_user_id,omitempty"`
+	ThreadID       uint64 `json:"thread_id,omitempty"`
+	ConversationID uint64 `json:"conversation_id,omitempty"` // 可选：按会话(单聊/群聊)开始流式
 }
 
 type appendChunkParams struct {
@@ -197,6 +204,24 @@ func (a *Adapter) listMessages(ctx context.Context, req *mcp.CallToolRequest, p 
 	return textResult(messagesToLines(msgs)), nil, nil
 }
 
+// listGroupConversationsParams 无入参，仅占位（go-sdk 要求 handler 必带 input 参数）。
+type listGroupConversationsParams struct{}
+
+func (a *Adapter) listGroupConversations(ctx context.Context, req *mcp.CallToolRequest, p listGroupConversationsParams) (*mcp.CallToolResult, any, error) {
+	groups, err := a.api.ListBotGroups()
+	if err != nil {
+		return nil, nil, fmt.Errorf("list_group_conversations 失败: %w", err)
+	}
+	var lines []string
+	for _, g := range groups {
+		lines = append(lines, fmt.Sprintf(`{"conversation_id":%d,"group_name":%q}`, g.ConversationID, g.GroupName))
+	}
+	if len(lines) == 0 {
+		lines = append(lines, "(该 agent 尚未被拉入任何群)")
+	}
+	return textResult(strings.Join(lines, "\n")), nil, nil
+}
+
 func (a *Adapter) pollMessages(ctx context.Context, req *mcp.CallToolRequest, p pollMessagesParams) (*mcp.CallToolResult, any, error) {
 	if p.AfterID == 0 {
 		return nil, nil, fmt.Errorf("poll_messages 需传入 after_id（上次最大消息 id）")
@@ -213,7 +238,13 @@ func (a *Adapter) sendMessage(ctx context.Context, req *mcp.CallToolRequest, p s
 	if msgType == "" {
 		msgType = "text"
 	}
-	id, convID, err := a.api.SendMessage(p.ToUserID, p.ThreadID, p.Content, msgType)
+	var id, convID uint64
+	var err error
+	if p.ConversationID != 0 {
+		id, convID, err = a.api.SendMessageToConversation(p.ConversationID, p.Content, msgType)
+	} else {
+		id, convID, err = a.api.SendMessage(p.ToUserID, p.ThreadID, p.Content, msgType)
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("send_message 失败: %w", err)
 	}
@@ -221,7 +252,13 @@ func (a *Adapter) sendMessage(ctx context.Context, req *mcp.CallToolRequest, p s
 }
 
 func (a *Adapter) startStreaming(ctx context.Context, req *mcp.CallToolRequest, p startStreamingParams) (*mcp.CallToolResult, any, error) {
-	id, convID, err := a.api.SendMessage(p.ToUserID, p.ThreadID, "", "streaming")
+	var id, convID uint64
+	var err error
+	if p.ConversationID != 0 {
+		id, convID, err = a.api.SendMessageToConversation(p.ConversationID, "", "streaming")
+	} else {
+		id, convID, err = a.api.SendMessage(p.ToUserID, p.ThreadID, "", "streaming")
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("start_streaming_message 失败: %w", err)
 	}

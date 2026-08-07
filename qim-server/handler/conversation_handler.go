@@ -669,8 +669,7 @@ func CreateSingleConversation(c *gin.Context) {
 		}
 
 		var botConv model.BotConversation
-		db.Where("bot_id = ? AND user_id = ?", *req.BotID, userID.(uint)).
-			Preload("Conversation").First(&botConv)
+		findBotSingleConversation(db, *req.BotID, userID.(uint), &botConv)
 
 		if botConv.ID > 0 {
 			ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
@@ -709,7 +708,6 @@ func CreateSingleConversation(c *gin.Context) {
 
 		if err := tx.Create(&model.BotConversation{
 			BotID:          *req.BotID,
-			UserID:         userID.(uint),
 			ConversationID: conv.ID,
 		}).Error; err != nil {
 			tx.Rollback()
@@ -756,8 +754,7 @@ func CreateSingleConversation(c *gin.Context) {
 
 		// 查找已有 bot 会话
 		var botConv model.BotConversation
-		db.Where("bot_id = ? AND user_id = ?", bot.ID, userID.(uint)).
-			Preload("Conversation").First(&botConv)
+		findBotSingleConversation(db, bot.ID, userID.(uint), &botConv)
 
 		if botConv.ID > 0 {
 			// 恢复会话显示
@@ -799,7 +796,6 @@ func CreateSingleConversation(c *gin.Context) {
 		}
 		if err := tx.Create(&model.BotConversation{
 			BotID:          bot.ID,
-			UserID:         userID.(uint),
 			ConversationID: conv.ID,
 		}).Error; err != nil {
 			tx.Rollback()
@@ -974,8 +970,7 @@ func CreateBotConversation(c *gin.Context) {
 
 	// 查找是否已有会话
 	var botConv model.BotConversation
-	db.Where("bot_id = ? AND user_id = ?", req.BotID, userID.(uint)).
-		Preload("Conversation").First(&botConv)
+	findBotSingleConversation(db, req.BotID, userID.(uint), &botConv)
 
 	if botConv.ID > 0 {
 		ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
@@ -1023,7 +1018,6 @@ func CreateBotConversation(c *gin.Context) {
 
 	if err := tx.Create(&model.BotConversation{
 		BotID:          bot.ID,
-		UserID:         userID.(uint),
 		ConversationID: conv.ID,
 	}).Error; err != nil {
 		tx.Rollback()
@@ -1068,6 +1062,18 @@ func ensureBotConversationMember(db *gorm.DB, conversationID uint, virtualUserID
 		UserID:         *virtualUserID,
 		Role:           "member",
 	})
+}
+
+// findBotSingleConversation 反查某用户对该 bot 的 1:1 bot 会话。
+// 原实现按 BotConversation.user_id 反查，去掉该列后改用
+// ConversationMember(含该 user) + Conversation.Type=bot join 等价替代。
+func findBotSingleConversation(db *gorm.DB, botID, userID uint, out *model.BotConversation) {
+	db.
+		Joins("JOIN conversations c ON c.id = bot_conversations.conversation_id").
+		Joins("JOIN conversation_members cm ON cm.conversation_id = c.id").
+		Where("bot_conversations.bot_id = ? AND c.type = ? AND cm.user_id = ?", botID, "bot", userID).
+		Preload("Conversation").
+		First(out)
 }
 
 func CreateGroupConversation(c *gin.Context) {

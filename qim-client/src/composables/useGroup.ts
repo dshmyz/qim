@@ -275,6 +275,37 @@ export function useGroup() {
   }
 
   /**
+   * 拉外部 agent bot 进群：服务端建成员关系 + BotConversation 关联，之后可 @ 触发 / 群内出站。
+   */
+  const addBotToGroup = async (groupId: string, botID: number) => {
+    try {
+      const response: any = await request(`/api/v1/groups/${groupId}/bots`, {
+        method: 'POST',
+        body: JSON.stringify({ bot_id: botID })
+      })
+
+      if (response.code !== 0) {
+        QMessage.error(response.message || '添加机器人失败')
+        return null
+      }
+      QMessage.success('机器人已加入群聊')
+      // 刷新成员列表（bot 虚拟用户成为新成员）
+      await loadGroupMembers(groupId)
+      if (selectedGroup.value && String(selectedGroup.value.id) === String(groupId)) {
+        const detail: any = await request(`/api/v1/conversations/${groupId}`)
+        if (detail.code === 0 && detail.data) {
+          selectedGroup.value = detail.data
+        }
+      }
+      return response.data
+    } catch (error: any) {
+      console.error('拉机器人进群失败:', error)
+      QMessage.error(error.message || '添加机器人失败')
+      return null
+    }
+  }
+
+  /**
    * 移除群组成员
    */
   const removeGroupMember = async (groupId: string, memberId: string) => {
@@ -482,6 +513,7 @@ export function useGroup() {
     exitGroup,
     updateGroup,
     addGroupMembers,
+    addBotToGroup,
     removeGroupMember,
     setAsAdmin,
     updateAnnouncement,

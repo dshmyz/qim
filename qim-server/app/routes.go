@@ -67,7 +67,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	groupDocSvc := di.GlobalContainer.GroupDocumentService
 	var uk *service.UnifiedKnowledgeService
 	if vectorSvc := di.GlobalContainer.VectorService; vectorSvc != nil {
-		service.NewUnifiedToolBridge(toolRegistry, vectorSvc.GetDB())
+		service.NewUnifiedToolBridge(toolRegistry, vectorSvc.GetDB(), aiSvc)
 
 		fallback := &service.LegacyKnowledgeFallback{
 			SearchFunc: func(query string, groupID uint, limit int) []service.KnowledgeSnippet {
@@ -75,7 +75,6 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			},
 		}
 		uk = service.NewUnifiedKnowledgeService(groupDocSvc, fallback)
-		uk.SetGraphEnhanced(true)
 	}
 
 	handler.InitSmartReplyEngine(aiSvc)
@@ -151,13 +150,20 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		if mention.HasAnyMention(content) && mention.IsAllMentioned(mention.Parse(content)) {
 			return
 		}
+		msgSvc := di.GlobalContainer.MessageService
+		mentionUserIDs := msgSvc.MentionUserIDsForAI(conversationID, content)
+
+		// 群聊外部 agent：群消息 @ 到已入群的 webhook bot 时转发给 agent
+		if msgSvc != nil {
+			msgSvc.HandleGroupBotMention(conversationID, senderID, mentionUserIDs, content)
+		}
 
 		// 待办提取：独立于智能回复，只看群聊 ExtractTodos 配置
 		handler.TryExtractTodos(senderID, conversationID, content)
 
 		// 智能回复：受 Enabled/ReplyMode 等控制
-		if sre != nil && di.GlobalContainer.MessageService != nil {
-			sre.HandleMessage(senderID, conversationID, content, di.GlobalContainer.MessageService.MentionUserIDsForAI(conversationID, content))
+		if sre != nil && msgSvc != nil {
+			sre.HandleMessage(senderID, conversationID, content, mentionUserIDs)
 		}
 	}
 
@@ -326,6 +332,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		botAPI := api.Group("/bot", middleware.BotAuthMiddleware(), middleware.BotRateLimitMiddleware(middleware.NewBotRateLimiter(600, time.Minute)))
 		botAPI.POST("/messages", botAPIHandler.SendMessage)
 		botAPI.GET("/messages", botAPIHandler.GetBotMessages)
+		botAPI.GET("/groups", botAPIHandler.ListBotGroups)
 		botAPI.POST("/messages/:id/stream", botAPIHandler.StreamChunk)
 		botAPI.PUT("/messages/:id", botAPIHandler.UpdateMessage)
 
@@ -415,6 +422,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 群聊管理（群特有功能）
 			handler.RegisterGroupFileRoutes(authed)
 			authed.POST("/groups/:id/members", handler.AddMemberToGroup)
+			// 拉外部 agent bot 进群（建 BotConversation 关联，使 @ 触发/群内出站可工作）
+			authed.POST("/groups/:id/bots", handler.AddBotToGroup)
 			// 移除群成员
 			authed.DELETE("/groups/:id/members/:user_id", handler.RemoveMemberFromGroup)
 			// 退出群聊
@@ -442,6 +451,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/groups/:id/ai-documents/:file_id/status", handler.GetDocumentProcessStatus)
 			authed.POST("/groups/:id/ai-documents/batch-process", handler.BatchProcessDocuments)
 			authed.POST("/groups/:id/ai-documents/batch-retry", handler.BatchRetryDocuments)
+			// 群知识图谱（非管理员，群成员可查看自己群的知识图谱）
+			authed.GET("/groups/:id/knowledge-graph", handler.GetGroupKnowledgeGraph)
 			// 设置/取消管理员
 			authed.PUT("/groups/:id/members/:user_id/role", handler.SetMemberRole)
 			// 转让群主
@@ -697,6 +708,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.DELETE("/ai/providers/:id", handler.DeleteAIProvider)
 				admin.PATCH("/ai/providers/:id/status", handler.ToggleAIProviderStatus)
 				admin.POST("/ai/providers/:id/test", handler.TestAIProviderConnection)
+
+				// AI模型路由管理
+				admin.GET("/ai/router", handler.GetAIRouter)
+				admin.PUT("/ai/router", handler.SaveAIRouter)
+				admin.DELETE("/ai/router", handler.ClearAIRouter)
 
 				// 组织架构同步管理
 				orgSyncHandler := handler.NewOrgSyncHandler()

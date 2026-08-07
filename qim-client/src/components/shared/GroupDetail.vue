@@ -106,6 +106,15 @@
             <i class="fas fa-robot"></i>
             <span>AI 设置</span>
           </button>
+          <button
+            v-if="group.type === 'group' && (isGroupOwner(group) || isGroupAdmin(group))"
+            class="action-btn tertiary"
+            title="拉外部 agent 机器人进群，成员可 @ 触发机器人回复"
+            @click="$emit('addBotToGroup', group)"
+          >
+            <i class="fas fa-robot"></i>
+            <span>添加机器人</span>
+          </button>
         </div>
         
         <!-- 群成员列表 -->
@@ -168,6 +177,7 @@ defineEmits<{
   editAnnouncement: []
   editGroupName: []
   openAISettings: []
+  addBotToGroup: [conversation: Conversation]
   showMemberContextMenu: [event: MouseEvent, member: any]
   startPrivateChat: [user: any]
 }>()

@@ -547,7 +547,7 @@ func TestMessageService_SendMessageToBotPublishesReplyAndUpdatesConversation(t *
 
 	bot := &model.Bot{Name: "Helper", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &virtualUser.ID}
 	require.NoError(t, db.Create(bot).Error)
-	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, UserID: user.ID, ConversationID: conv.ID}).Error)
+	require.NoError(t, db.Create(&model.BotConversation{BotID: bot.ID, ConversationID: conv.ID}).Error)
 
 	router := gin.New()
 	router.GET("/ws", func(c *gin.Context) {

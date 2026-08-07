@@ -6,6 +6,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -18,7 +19,7 @@ func setupBotMessagingTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(
 		&model.User{}, &model.Conversation{}, &model.ConversationMember{},
 		&model.Message{}, &model.Bot{}, &model.BotConversation{},
-		&model.BotWebhookDelivery{}, &model.CardActionRecord{},
+		&model.BotWebhookDelivery{}, &model.CardActionRecord{}, &model.Group{},
 	); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
@@ -57,9 +58,9 @@ func TestSendOutbound_CreatesBotMessageAndUnread(t *testing.T) {
 	assert.Equal(t, 1, humanMember.UnreadCount)
 	assert.Equal(t, 0, botMember.UnreadCount)
 
-	// BotConversation 关联已建
+	// BotConversation 关联已建（按 conversation_id 反查，user_id 维度已移除）
 	var botConv model.BotConversation
-	db.Where("bot_id = ? AND user_id = ?", bot.ID, human.ID).First(&botConv)
+	db.Where("bot_id = ? AND conversation_id = ?", bot.ID, conv.ID).First(&botConv)
 	assert.Equal(t, conv.ID, botConv.ConversationID)
 }
 
@@ -195,8 +196,8 @@ func TestResolveBotThread_RejectsAmbiguousNickname(t *testing.T) {
 	convB := &model.Conversation{Type: "bot"}
 	db.Create(convA)
 	db.Create(convB)
-	db.Create(&model.BotConversation{BotID: bot.ID, UserID: userA.ID, ConversationID: convA.ID})
-	db.Create(&model.BotConversation{BotID: bot.ID, UserID: userB.ID, ConversationID: convB.ID})
+	db.Create(&model.BotConversation{BotID: bot.ID, ConversationID: convA.ID})
+	db.Create(&model.BotConversation{BotID: bot.ID, ConversationID: convB.ID})
 
 	_, err := svc.ResolveBotThread(bot, "同名会话")
 	assert.Error(t, err)
@@ -282,4 +283,160 @@ func TestSendOutbound_RejectsInvalidCard(t *testing.T) {
 		_, err := svc.SendOutbound(bot, human.ID, content, "card", nil, nil)
 		assert.Error(t, err, "case %d 应被拒绝", i)
 	}
+}
+
+// TestEnsureBotGroupConversation 拉 bot 进群：建成员关系 + BotConversation 关联，幂等；非群会话拒绝。
+func TestEnsureBotGroupConversation(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+
+	vUser := &model.User{Username: "gbot_v", Nickname: "群Agent", Type: "bot"}
+	db.Create(vUser)
+	bot := &model.Bot{Name: "GroupAgent", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &vUser.ID}
+	db.Create(bot)
+
+	group := &model.Conversation{Type: "group"}
+	db.Create(group)
+	// 预置一位群成员（人类）以模拟真实群
+	human := &model.User{Username: "gm", Nickname: "GM", Type: "user"}
+	db.Create(human)
+	db.Create(&model.ConversationMember{ConversationID: group.ID, UserID: human.ID, Role: "owner"})
+
+	// 拉 bot 进群
+	botConv, err := svc.EnsureBotGroupConversation(bot.ID, group.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, group.ID, botConv.ConversationID)
+
+	// bot 虚拟用户已为成员
+	var member model.ConversationMember
+	err = db.Where("conversation_id = ? AND user_id = ?", group.ID, vUser.ID).First(&member).Error
+	assert.NoError(t, err)
+	assert.Equal(t, "member", member.Role)
+
+	// BotConversation 关联已建
+	var bc model.BotConversation
+	assert.NoError(t, db.Where("bot_id = ? AND conversation_id = ?", bot.ID, group.ID).First(&bc).Error)
+
+	// 幂等：再次调用不报错、不产生重复关联
+	again, err := svc.EnsureBotGroupConversation(bot.ID, group.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, group.ID, again.ConversationID)
+	var cnt int64
+	db.Model(&model.BotConversation{}).Where("bot_id = ? AND conversation_id = ?", bot.ID, group.ID).Count(&cnt)
+	assert.Equal(t, int64(1), cnt)
+
+	// 非群会话拒绝
+	single := &model.Conversation{Type: "bot"}
+	db.Create(single)
+	_, err = svc.EnsureBotGroupConversation(bot.ID, single.ID)
+	assert.Error(t, err)
+}
+
+// TestSendOutboundByConversation_Group 按群会话发送：创建消息、机器人自身已读、人类成员未读 +1。
+func TestSendOutboundByConversation_Group(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil) // hub=nil，跳过 WS
+
+	vUser := &model.User{Username: "gbot2_v", Nickname: "群Agent2", Type: "bot"}
+	db.Create(vUser)
+	bot := &model.Bot{Name: "GroupAgent2", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &vUser.ID}
+	db.Create(bot)
+
+	group := &model.Conversation{Type: "group"}
+	db.Create(group)
+	alice := &model.User{Username: "ga", Nickname: "GA", Type: "user"}
+	bob := &model.User{Username: "gb", Nickname: "GB", Type: "user"}
+	db.Create(alice)
+	db.Create(bob)
+	db.Create(&model.ConversationMember{ConversationID: group.ID, UserID: alice.ID, Role: "member"})
+	db.Create(&model.ConversationMember{ConversationID: group.ID, UserID: bob.ID, Role: "member"})
+
+	// 先拉 bot 进群
+	_, err := svc.EnsureBotGroupConversation(bot.ID, group.ID)
+	assert.NoError(t, err)
+
+	msg, err := svc.SendOutboundByConversation(bot, group.ID, "群内来自 agent 的发言", "text", nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, msg)
+	assert.Equal(t, group.ID, msg.ConversationID)
+	assert.Equal(t, vUser.ID, msg.SenderID)
+	assert.Equal(t, "bot", msg.Origin)
+
+	// 人类成员未读 +1，bot 虚拟用户自身未读为 0
+	for _, uid := range []uint{alice.ID, bob.ID} {
+		var m model.ConversationMember
+		db.Where("conversation_id = ? AND user_id = ?", group.ID, uid).First(&m)
+		assert.Equal(t, 1, m.UnreadCount)
+	}
+	var botMem model.ConversationMember
+	db.Where("conversation_id = ? AND user_id = ?", group.ID, vUser.ID).First(&botMem)
+	assert.Equal(t, 0, botMem.UnreadCount)
+
+	// 会话 last_message 已更新
+	var conv model.Conversation
+	db.First(&conv, group.ID)
+	assert.NotNil(t, conv.LastMessageID)
+	assert.Equal(t, msg.ID, *conv.LastMessageID)
+}
+
+// TestSendOutboundByConversation_NotOwned 未关联该会话的 bot 无法按会话发送。
+func TestSendOutboundByConversation_NotOwned(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+
+	vUser := &model.User{Username: "gbot3_v", Nickname: "群Agent3", Type: "bot"}
+	db.Create(vUser)
+	bot := &model.Bot{Name: "GroupAgent3", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &vUser.ID}
+	db.Create(bot)
+
+	group := &model.Conversation{Type: "group"}
+	db.Create(group)
+	// 未把 bot 拉进群（无 BotConversation 关联）
+	_, err := svc.SendOutboundByConversation(bot, group.ID, "hi", "text", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "会话不属于该 bot")
+}
+
+// TestListBotGroupConversations 只列出 bot 已入群的群会话（含群名），未入群/非群会话不出现。
+func TestListBotGroupConversations(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+
+	vUser := &model.User{Username: "gbot4_v", Nickname: "群Agent4", Type: "bot"}
+	db.Create(vUser)
+	bot := &model.Bot{Name: "GroupAgent4", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &vUser.ID}
+	db.Create(bot)
+
+	// 群 A：bot 已入群 → 应列出
+	groupA := &model.Conversation{Type: "group"}
+	db.Create(groupA)
+	db.Create(&model.Group{ConversationID: groupA.ID, GroupType: "group", Name: "项目组A", CreatorID: 1})
+	_, err := svc.EnsureBotGroupConversation(bot.ID, groupA.ID)
+	require.NoError(t, err)
+
+	// 群 B：bot 未入群（无关联）→ 不应列出
+	groupB := &model.Conversation{Type: "group"}
+	db.Create(groupB)
+
+	// 单聊 bot 会话：bot 关联但 type=bot → 不应列出
+	single := &model.Conversation{Type: "bot"}
+	db.Create(single)
+	_, _, err = svc.EnsureBotConversation(bot.ID, 99) // 会新建一个 type=bot 会话
+	require.NoError(t, err)
+	_ = single
+
+	groups, err := svc.ListBotGroupConversations(bot.ID)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	assert.Equal(t, groupA.ID, groups[0].ConversationID)
+	assert.Equal(t, "项目组A", groups[0].GroupName)
+
+	// 其它 bot：无任何群
+	otherUser := &model.User{Username: "gbot5_v", Nickname: "Agent5", Type: "bot"}
+	db.Create(otherUser)
+	other := &model.Bot{Name: "Agent5", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &otherUser.ID}
+	db.Create(other)
+	empty, err := svc.ListBotGroupConversations(other.ID)
+	require.NoError(t, err)
+	assert.Len(t, empty, 0)
 }

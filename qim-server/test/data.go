@@ -456,7 +456,10 @@ func InitTestData(db *gorm.DB) {
 			}
 
 			var userBotConvCount int64
-			db.Model(&model.BotConversation{}).Where("user_id = ?", user.ID).Count(&userBotConvCount)
+			db.Model(&model.ConversationMember{}).
+				Joins("JOIN conversations c ON c.id = conversation_members.conversation_id").
+				Where("c.type = ? AND conversation_members.user_id = ?", "bot", user.ID).
+				Count(&userBotConvCount)
 			if userBotConvCount > 0 {
 				continue
 			}
@@ -477,7 +480,6 @@ func InitTestData(db *gorm.DB) {
 				})
 				db.Create(&model.BotConversation{
 					BotID:          systemBot.ID,
-					UserID:         user.ID,
 					ConversationID: systemConv.ID,
 				})
 			}
@@ -498,7 +500,6 @@ func InitTestData(db *gorm.DB) {
 				})
 				db.Create(&model.BotConversation{
 					BotID:          aiBot.ID,
-					UserID:         user.ID,
 					ConversationID: aiConv.ID,
 				})
 				welcomeMsg := model.Message{

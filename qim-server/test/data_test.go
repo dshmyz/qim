@@ -59,10 +59,17 @@ func TestInitTestDataSkipsBotUsersWhenCreatingBotConversations(t *testing.T) {
 	InitTestData(db)
 
 	var botUserConvCount int64
-	require.NoError(t, db.Model(&model.BotConversation{}).Where("user_id = ?", strayBotUser.ID).Count(&botUserConvCount).Error)
+	// BotConversation.user_id 已移除，按「用户是否某 Type=bot 会话成员」等价断言
+	require.NoError(t, db.Model(&model.ConversationMember{}).
+		Joins("JOIN conversations c ON c.id = conversation_members.conversation_id").
+		Where("c.type = ? AND conversation_members.user_id = ?", "bot", strayBotUser.ID).
+		Count(&botUserConvCount).Error)
 	assert.Equal(t, int64(0), botUserConvCount)
 
 	var normalUserConvCount int64
-	require.NoError(t, db.Model(&model.BotConversation{}).Where("user_id = ?", normalUsers[0].ID).Count(&normalUserConvCount).Error)
+	require.NoError(t, db.Model(&model.ConversationMember{}).
+		Joins("JOIN conversations c ON c.id = conversation_members.conversation_id").
+		Where("c.type = ? AND conversation_members.user_id = ?", "bot", normalUsers[0].ID).
+		Count(&normalUserConvCount).Error)
 	assert.Greater(t, normalUserConvCount, int64(0))
 }

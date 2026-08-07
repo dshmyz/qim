@@ -1,6 +1,7 @@
 package model
 
 import (
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -345,15 +346,15 @@ type AIUsageLog struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-// 机器人会话
+// 机器人会话：bot 与会话（单聊 type=bot / 群聊 type=group）的通用关联。
+// 去掉 user_id 维度——单聊/群聊由 Conversation.Type 决定，成员关系由 ConversationMember 表达。
+// 一个 bot 可同时关联多个会话（1:1 bot 会话 或 它所在的群会话）。
 type BotConversation struct {
 	ID             uint         `json:"id" gorm:"primarykey"`
 	BotID          uint         `json:"bot_id" gorm:"not null;index"`
-	UserID         uint         `json:"user_id" gorm:"not null;index"`
 	ConversationID uint         `json:"conversation_id" gorm:"not null;index"`
 	CreatedAt      time.Time    `json:"created_at"`
 	Bot            Bot          `json:"bot,omitempty" gorm:"foreignkey:BotID"`
-	User           User         `json:"user,omitempty" gorm:"foreignkey:UserID"`
 	Conversation   Conversation `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
 }
 
@@ -588,10 +589,17 @@ type AIProvider struct {
 	UpdatedAt  time.Time   `json:"updated_at"`
 }
 
+// TableName AIProvider 走显式表名，避免 GORM 默认把 "AI" 拆成缩写
+// 生成 a_iproviders 这种被误拆的表名。其余模型均是复数 snake_case（如 ai_configs）。
+func (AIProvider) TableName() string { return "ai_providers" }
+
 // StringArray 自定义类型用于存储字符串数组
 type StringArray []string
 
-func (s StringArray) Value() (string, error) {
+// Value 实现 driver.Valuer：返回 JSON 数组字符串。
+// 注意返回值必须是 driver.Value（而非 string），否则不满足 Valuer 接口，
+// GORM/SQLite 会把 []string 当作 SQL 元组处理，触发「row value misused」。
+func (s StringArray) Value() (driver.Value, error) {
 	if s == nil {
 		return "[]", nil
 	}

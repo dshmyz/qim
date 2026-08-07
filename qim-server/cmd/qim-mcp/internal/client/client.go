@@ -94,6 +94,27 @@ func (c *BotAPIClient) ListMessages(threadID, afterID uint64, limit int) ([]Mess
 	return resp.Data.Messages, nil
 }
 
+// BotGroup 是 bot 已入群的群会话摘要。
+type BotGroup struct {
+	ConversationID uint64 `json:"conversation_id"`
+	GroupName      string `json:"group_name"`
+}
+
+// ListBotGroups 列出该 bot 已入群的群会话（conversation_id + 群名），供主动群发前发现群。
+func (c *BotAPIClient) ListBotGroups() ([]BotGroup, error) {
+	body, err := c.get(c.serverURL + "/api/v1/bot/groups")
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Data []BotGroup `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+	return resp.Data, nil
+}
+
 // SendMessage 发送一条消息，返回新消息 ID 与会话 ID。msgType: text|markdown|card|streaming。
 func (c *BotAPIClient) SendMessage(toUserID, threadID uint64, content, msgType string) (msgID, convID uint64, err error) {
 	payload := map[string]any{
@@ -103,6 +124,34 @@ func (c *BotAPIClient) SendMessage(toUserID, threadID uint64, content, msgType s
 	}
 	if threadID > 0 {
 		payload["thread_id"] = threadID
+	}
+	body, _ := json.Marshal(payload)
+	respBody, err := c.post(c.serverURL+"/api/v1/bot/messages", body)
+	if err != nil {
+		return 0, 0, err
+	}
+	var resp struct {
+		Data struct {
+			MessageID      uint64 `json:"message_id"`
+			ConversationID uint64 `json:"conversation_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return 0, 0, fmt.Errorf("解析响应失败: %w", err)
+	}
+	if resp.Data.MessageID == 0 {
+		return 0, 0, fmt.Errorf("响应缺少 message_id: %s", truncate(string(respBody), 300))
+	}
+	return resp.Data.MessageID, resp.Data.ConversationID, nil
+}
+
+// SendMessageToConversation 按会话(单聊/群聊)发送一条消息。返回新消息 ID 与会话 ID。
+// conversationID 非 0 时走群聊/已建单聊会话，threadID 供单聊 thread 场景用。
+func (c *BotAPIClient) SendMessageToConversation(conversationID uint64, content, msgType string) (msgID, convID uint64, err error) {
+	payload := map[string]any{
+		"conversation_id": conversationID,
+		"content":         content,
+		"msg_type":        msgType,
 	}
 	body, _ := json.Marshal(payload)
 	respBody, err := c.post(c.serverURL+"/api/v1/bot/messages", body)

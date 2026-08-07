@@ -206,6 +206,91 @@ func AddMemberToGroup(c *gin.Context) {
 	response.SuccessWithMessage(c, "添加成员成功", addedMembers)
 }
 
+// AddBotToGroup 拉外部 agent bot 进群（Phase 3「拉 bot 进群」的服务端入口）。
+// 权限与 AddMemberToGroup 一致（群主/管理员按 InvitePermission 可邀请）；除了建成员关系外，
+// 还会建 BotConversation{bot_id, conversation_id} 关联，使 @ 触发转发与 agent 群内出站可工作。
+// POST /api/v1/groups/:id/bots   (JWT 用户鉴权)
+func AddBotToGroup(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	convIDStr := c.Param("id")
+
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的群ID")
+		return
+	}
+
+	var req struct {
+		BotID uint `json:"bot_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	convSvc := di.GlobalContainer.ConversationService
+	groupSvc := di.GlobalContainer.GroupService
+	botMessaging := di.GlobalContainer.BotMessagingService
+	if botMessaging == nil {
+		response.InternalServerError(c, "服务未初始化")
+		return
+	}
+
+	conv, err := convSvc.GetConversation(uint(convID))
+	if err != nil {
+		response.NotFound(c, "会话不存在")
+		return
+	}
+	if conv.Type != "group" && conv.Type != "discussion" {
+		response.BadRequest(c, "只能把 bot 拉进群聊或讨论组")
+		return
+	}
+
+	currentMember, err := convSvc.GetMember(uint(convID), userID.(uint))
+	if err != nil {
+		response.Forbidden(c, "无权限操作")
+		return
+	}
+	if conv.Type == "group" {
+		if group, err := groupSvc.GetGroupByConversationID(uint(convID)); err == nil {
+			if group.InvitePermission == "owner_admin" && currentMember.Role != "owner" && currentMember.Role != "admin" {
+				response.Forbidden(c, "只有群主和管理员可以邀请")
+				return
+			}
+		}
+	}
+
+	// bot 必须存在、启用、且为外部 webhook agent
+	var bot model.Bot
+	if err := database.GetDB().First(&bot, req.BotID).Error; err != nil {
+		response.NotFound(c, "机器人不存在")
+		return
+	}
+	if !bot.IsActive {
+		response.Forbidden(c, "机器人未启用")
+		return
+	}
+	if bot.VirtualUserID == nil {
+		response.BadRequest(c, "机器人未配置虚拟用户")
+		return
+	}
+
+	botConv, err := botMessaging.EnsureBotGroupConversation(bot.ID, uint(convID))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if ws.GlobalHub != nil {
+		ws.GlobalHub.UpdateConversationMembers(uint(convID))
+	}
+
+	response.Success(c, gin.H{
+		"bot_id":          bot.ID,
+		"conversation_id": botConv.ConversationID,
+	})
+}
+
 func RemoveMemberFromGroup(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	convIDStr := c.Param("id")

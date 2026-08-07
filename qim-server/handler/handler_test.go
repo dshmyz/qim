@@ -906,3 +906,81 @@ func TestUpdateUser_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
+
+// TestAddBotToGroup_AddsMemberAndBotConversation 拉外部 agent bot 进群：
+// 建成员关系 + BotConversation 关联；非成员无权。
+func TestAddBotToGroup_AddsMemberAndBotConversation(t *testing.T) {
+	r, db := setupTestRouter(t)
+	currentUser := createTestUser(t, db) // id=1，authed 中间件设定 user_id=1
+	require.Equal(t, uint(1), currentUser.ID)
+
+	// bot 及其虚拟用户
+	botUser := &model.User{Username: "extbot_v", PasswordHash: "hash", Nickname: "外部Agent", Type: "bot"}
+	require.NoError(t, db.Create(botUser).Error)
+	bot := &model.Bot{Name: "外部Agent", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &botUser.ID, Config: `{"mode":"external_webhook","webhook_url":"http://127.0.0.1:1/x"}`}
+	require.NoError(t, db.Create(bot).Error)
+
+	// 群会话 + 当前用户为其成员
+	group := &model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(group).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: group.ID, UserID: currentUser.ID, Role: "owner"}).Error)
+
+	// 注册路由
+	authed := r.Group("/api/v1")
+	authed.Use(func(c *gin.Context) { c.Set("user_id", uint(1)); c.Next() })
+	authed.POST("/groups/:id/bots", AddBotToGroup)
+
+	body, _ := json.Marshal(map[string]any{"bot_id": bot.ID})
+	req := httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/bots", group.ID), bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// bot 虚拟用户已为成员
+	var mem model.ConversationMember
+	require.NoError(t, db.Where("conversation_id = ? AND user_id = ?", group.ID, botUser.ID).First(&mem).Error)
+	assert.Equal(t, "member", mem.Role)
+
+	// BotConversation 关联已建
+	var bc model.BotConversation
+	require.NoError(t, db.Where("bot_id = ? AND conversation_id = ?", bot.ID, group.ID).First(&bc).Error)
+	assert.Equal(t, group.ID, bc.ConversationID)
+}
+
+// TestAddBotToGroup_ForbidsNonMember 非群成员无法拉 bot 进群。
+func TestAddBotToGroup_ForbidsNonMember(t *testing.T) {
+	r, db := setupTestRouter(t)
+	createTestUser(t, db) // id=1 authed
+
+	// 另一用户（非成员）作为群内 bot 候选
+	other := &model.User{Username: "outsider", PasswordHash: "hash", Nickname: "外人", Type: "user"}
+	require.NoError(t, db.Create(other).Error)
+
+	botUser := &model.User{Username: "extbot2_v", PasswordHash: "hash", Nickname: "外部Agent2", Type: "bot"}
+	require.NoError(t, db.Create(botUser).Error)
+	bot := &model.Bot{Name: "外部Agent2", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &botUser.ID, Config: `{"mode":"external_webhook"}`}
+	require.NoError(t, db.Create(bot).Error)
+
+	// 群会话：成员是 other（不是 authed 的 id=1），且 user_id 指向 other
+	group := &model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(group).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: group.ID, UserID: other.ID, Role: "owner"}).Error)
+
+	authed := r.Group("/api/v1")
+	authed.Use(func(c *gin.Context) { c.Set("user_id", uint(1)); c.Next() })
+	authed.POST("/groups/:id/bots", AddBotToGroup)
+
+	body, _ := json.Marshal(map[string]any{"bot_id": bot.ID})
+	req := httptest.NewRequest("POST", fmt.Sprintf("/api/v1/groups/%d/bots", group.ID), bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	// 当前用户非群成员 → 403
+	require.Equal(t, http.StatusForbidden, w.Code)
+	var bcCount int64
+	require.NoError(t, db.Model(&model.BotConversation{}).Count(&bcCount).Error)
+	assert.Equal(t, int64(0), bcCount)
+}
