@@ -23,7 +23,7 @@
         <div v-if="expandedDepartments.includes(department.id)" class="tree-children">
           <div v-if="department.employees && department.employees.length > 0">
             <div v-for="employee in department.employees" :key="employee.id" class="tree-node employee-node">
-              <div class="tree-node-content" @click="$emit('selectUser', employee)" @dblclick="$emit('startPrivateChat', employee)" @contextmenu.prevent="$emit('userContextMenu', $event, employee)">
+              <div class="tree-node-content" @click="$emit('selectUser', employee)" @dblclick="$emit('openChat', employee)" @contextmenu.prevent="$emit('userContextMenu', $event, employee)">
                 <span class="employee-avatar-container">
                   <Avatar :src="employee.avatar" :name="employee.name" :alt="employee.name" size="sm" class="employee-avatar" />
                 </span>
@@ -49,7 +49,7 @@
                       <div v-if="expandedSubDepartments[child.id]?.includes(grandChild.id)" class="tree-children">
                         <div v-if="grandChild.employees && grandChild.employees.length > 0">
                           <div v-for="employee in grandChild.employees" :key="employee.id" class="tree-node employee-node">
-                            <div class="tree-node-content" @click="$emit('selectUser', employee)" @dblclick="$emit('startPrivateChat', employee)" @contextmenu.prevent="$emit('userContextMenu', $event, employee)">
+                            <div class="tree-node-content" @click="$emit('selectUser', employee)" @dblclick="$emit('openChat', employee)" @contextmenu.prevent="$emit('userContextMenu', $event, employee)">
                               <span class="employee-avatar-container">
                                 <Avatar :src="employee.avatar" :name="employee.name" :alt="employee.name" size="sm" class="employee-avatar" />
                               </span>
@@ -64,7 +64,7 @@
                 </div>
                 <div v-else-if="child.employees && child.employees.length > 0">
                   <div v-for="employee in child.employees" :key="employee.id" class="tree-node employee-node">
-                    <div class="tree-node-content" @click="$emit('selectUser', employee)" @dblclick="$emit('startPrivateChat', employee)" @contextmenu.prevent="$emit('userContextMenu', $event, employee)">
+                    <div class="tree-node-content" @click="$emit('selectUser', employee)" @dblclick="$emit('openChat', employee)" @contextmenu.prevent="$emit('userContextMenu', $event, employee)">
                       <span class="employee-avatar-container">
                         <Avatar :src="employee.avatar" :name="employee.name" :alt="employee.name" size="sm" class="employee-avatar" />
                       </span>
@@ -103,7 +103,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   (e: 'selectUser', user: any): void
-  (e: 'startPrivateChat', user: any): void
+  (e: 'openChat', user: any): void
   (e: 'userContextMenu', event: MouseEvent, user: any): void
 }>()
 

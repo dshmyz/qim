@@ -80,7 +80,7 @@
         @selectConversation="handleConversationSelect"
         @conversationContextMenu="showContextMenu"
         @selectUser="handleUserClick"
-        @startPrivateChat="startPrivateChat"
+        @openChat="openChat"
         @userContextMenu="showUserContextMenu"
         @selectGroup="handleSelectGroup"
         @enterGroup="handleConversationSelect"
@@ -92,7 +92,7 @@
         @resetApp="selectedAppId = ''"
         @toggleCategory="categoryExpanded[$event] = !categoryExpanded[$event]"
         @searchResultSelect="handleSearchItemClick"
-        @searchResultPrivateChat="startPrivateChat"
+        @searchResultPrivateChat="openChat"
         @searchResultApplyJoin="handleApplyJoinGroup"
         @createChannel="showCreateChannelModal = true"
         @loadMoreConversations="loadMoreConversations"
@@ -129,6 +129,7 @@
             @recall="handleRecallMessage"
             @inviteMembers="handleInviteMembers"
             @switchConversation="handleSwitchConversation"
+            @openChat="openChat"
             @switch-app="handleSwitchApp"
             @loadMore="loadMessages($event, false)"
             @retry-send="handleRetrySendMessage"
@@ -216,7 +217,7 @@
               :user="selectedUser"
               :serverUrl="serverUrl"
               @toggleSidebar="toggleSidebar"
-              @privateChat="startPrivateChat"
+              @privateChat="openChat"
               @showProfile="showUserProfile = true"
               @open-avatar-settings="selectedAppId = 'avatar'; activeOption = 'apps'"
             />
@@ -390,7 +391,7 @@
                 @openAISettings="showAISettingsModal = true"
                 @addBotToGroup="handleAddBotToGroup($event)"
                 @showMemberContextMenu="(event, member) => showSidebarMemberContextMenu(event, member)"
-                @startPrivateChat="startPrivateChat"
+                @openChat="openChat"
               />
             </div>
           </template>
@@ -437,7 +438,7 @@
       @createChannel="createChannel"
       @systemMessage="openSystemMessageModal"
       @viewUserProfile="viewUserProfile"
-      @privateChat="startPrivateChat"
+      @privateChat="openChat"
       @removeMember="removeMemberFromGroup"
       @viewMemberInfo="viewMemberInfo"
       @setAdmin="setAsAdmin"
@@ -463,7 +464,7 @@
       :user="selectedUser"
       :show-action="selectedUser.type !== 'bot'"
       @close="closeUserProfile"
-      @send-private-message="startPrivateChat"
+      @send-private-message="openChat"
     />
     
     <!-- 个人资料弹窗 -->
@@ -2238,7 +2239,7 @@ const handleSearch = async (query) => {
 // 处理搜索项点击
 const handleSearchItemClick = (item) => {
   if (isPrivateChatSearchResult(item)) {
-    startPrivateChat(item)
+    openChat(item)
   } else if (item.type === 'group' || item.type === 'discussion') {
     // 如果是群聊或讨论组，选中该会话
     handleGroupChatSelect(item)
@@ -2359,8 +2360,8 @@ const getPageTitle = (): string => {
   }
 }
 
-// 开始私聊
-const startPrivateChat = async (user: any) => {
+// 打开与某个用户的聊天窗口（统一入口：群聊头像 / 成员列表 / 组织架构 / 搜索结果等）
+const openChat = async (user: any) => {
   // 关闭搜索悬浮框
   searchQuery.value = ''
   searchResults.value = []

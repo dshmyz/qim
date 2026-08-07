@@ -65,7 +65,7 @@ const emit = defineEmits<{
   (e: 'selectConversation', conversation: Conversation): void
   (e: 'conversationContextMenu', event: MouseEvent, conversation: Conversation): void
   (e: 'selectUser', user: any): void
-  (e: 'startPrivateChat', user: any): void
+  (e: 'openChat', user: any): void
   (e: 'userContextMenu', event: MouseEvent, user: any): void
   (e: 'selectGroup', group: any): void
   (e: 'enterGroup', conversation: Conversation): void
@@ -173,7 +173,7 @@ defineExpose({})
             :unassignedUsers="unassignedUsers"
             :searchQuery="searchQuery"
             @selectUser="$emit('selectUser', $event)"
-            @startPrivateChat="$emit('startPrivateChat', $event)"
+            @openChat="$emit('openChat', $event)"
             @userContextMenu="(...args) => $emit('userContextMenu', ...args)"
           />
         </div>

@@ -131,7 +131,7 @@ onUnmounted(() => {
   gap: 8px;
   padding: 8px 16px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--text-color, #333);
   transition: background 0.15s;
 }

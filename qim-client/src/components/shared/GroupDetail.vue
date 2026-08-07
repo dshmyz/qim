@@ -124,7 +124,7 @@
             <h3>群成员列表</h3>
           </div>
           <div class="members-grid">
-            <div v-for="member in group.members" :key="member.id" class="member-item" @click="$emit('startPrivateChat', member)" @contextmenu.prevent="$emit('showMemberContextMenu', $event, member)">
+            <div v-for="member in group.members" :key="member.id" class="member-item" @click="$emit('openChat', member)" @contextmenu.prevent="$emit('showMemberContextMenu', $event, member)">
               <Avatar :src="member.avatar" :name="member.name" :server-url="serverUrl" :alt="member.name" size="sm" class="member-avatar" />
               <span class="member-name">{{ member.name }}</span>
               <span v-if="member.role === 'owner'" class="member-role owner">群主</span>
@@ -179,7 +179,7 @@ defineEmits<{
   openAISettings: []
   addBotToGroup: [conversation: Conversation]
   showMemberContextMenu: [event: MouseEvent, member: any]
-  startPrivateChat: [user: any]
+  openChat: [user: any]
 }>()
 
 // 获取群聊头像

@@ -15,7 +15,7 @@
       @remove-member="handleRemoveMember"
       @set-admin="handleSetAdmin"
       @transfer-owner="handleTransferOwner"
-      @start-private-chat="handleStartPrivateChat"
+      @start-private-chat="(id) => emit('openChat', id)"
       @update-ai-settings="handleUpdateAISettings"
       @update-avatar-enabled="handleUpdateAvatarEnabled"
       @update-avatar-takeover="handleAvatarTakeover"
@@ -69,7 +69,7 @@
       @toggle-member-search="toggleMemberSearch"
       @member-search-focus="() => showMemberSearch = true"
       @show-member-context-menu="handleShowMemberContextMenu"
-      @start-private-chat="(member) => handleStartPrivateChat(String(member.id))"
+      @start-private-chat="(member) => emit('openChat', member)"
       @update:member-search-query="(val) => memberSearchQuery = val"
       @recall-edit="handleRecallEdit"
     />
@@ -181,7 +181,7 @@
       :render-markdown="renderMarkdown"
       :format-time="formatTime"
       @close-user-profile="closeUserProfile"
-      @send-private-message="handleSendPrivateMessage"
+      @send-private-message="(id) => { emit('openChat', id); closeUserProfile() }"
       @close-read-users="showReadUsersModal = false"
       @save-file-as="(d: string) => saveFileAs(d, selectedMessage ? String(selectedMessage.id) : undefined)"
       @download-file="(d: string) => downloadFile(d, selectedMessage ? String(selectedMessage.id) : undefined)"
@@ -589,6 +589,7 @@ const emit = defineEmits<{
   'switch-app': [app: string]
   'loadMore': [conversationId: string]
   'switchConversation': [conversationId: string]
+  'openChat': [user: any]
   'retry-send': [message: any]
   'start-screen-share': []
   'start-voice-call': []
@@ -1980,53 +1981,6 @@ const closeUserProfile = () => {
   selectedUser.value = null
 }
 
-
-
-interface User {
-  id: string | number
-  name: string
-  avatar?: string
-}
-
-const handleSendPrivateMessage = async (user: User | string | number) => {
-  try {
-    // 检查参数类型
-    let processedUserId: string | number
-    if (typeof user === 'object' && user !== null) {
-      processedUserId = user.id
-    } else {
-      processedUserId = user
-    }
-    
-    // 确保userId是数字类型
-    if (typeof processedUserId === 'string') {
-      // 如果是字符串格式（如 'emp1'），尝试提取数字部分
-      if (processedUserId.startsWith('emp')) {
-        processedUserId = processedUserId.replace('emp', '')
-      }
-      // 转换为数字
-      processedUserId = parseInt(processedUserId)
-    }
-    
-    const response = await request('/api/v1/conversations', {
-      method: 'POST',
-      body: JSON.stringify({
-        type: 'single',
-        user_id: processedUserId
-      })
-    })
-    
-    if (response.code === 0) {
-      // 通知父组件切换到新会话
-      emit('switchConversation', response.data.id.toString())
-    }
-  } catch (error) {
-    logger.error('创建私聊失败:', error)
-    $message.error('创建私聊失败，请重试')
-  }
-  closeUserProfile()
-}
-
 // ChatHeaderActions 事件处理方法
 const handleSwitchConversation = (conversationId: string) => {
   emit('switchConversation', conversationId)
@@ -2108,10 +2062,6 @@ const handleTransferOwner = (memberId: string, memberName: string) => {
       QMessage.error('群主转让失败: ' + error.message)
     }
   })
-}
-
-const handleStartPrivateChat = (memberId: string) => {
-  handleSendPrivateMessage(memberId)
 }
 
 // OverlayManager 事件适配函数
@@ -2825,11 +2775,12 @@ const showMessageContextMenu = (event: MouseEvent, message: Message) => {
   if (message.type === 'file' || message.type === 'image') {
     // 可以在这里添加文件或图片特定的菜单选项
   }
-  
-  // 点击其他地方关闭菜单
-  setTimeout(() => {
-    document.addEventListener('click', closeMessageContextMenu)
-  }, 0)
+
+  // 点击外部关闭菜单统一由 UniversalContextMenu（menuId="message"）内部的 capture 监听处理，
+  // 不在 document 上重复注册 bubble 监听。旧实现每次右键都 addEventListener('click', closeMessageContextMenu)
+  // 且从不 remove，导致 document 上累积残留监听：它们会在随后任意一次点击（包括打开工具栏
+  // 语音通话/截图下拉的这次点击）的冒泡阶段再跑一次 closeMenu()，把刚打开的下拉立即关掉，
+  // 表现为「先点消息菜单，再点语音/截图下拉就出不来了」。
 }
 
 // 处理邀请成员
