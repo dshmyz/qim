@@ -1934,6 +1934,10 @@ const handleMessageUpdated = (data: any) => {
 // 处理外部工具调用事件（ai_tool_call）：把一条工具调用追加到对应 AI 流式消息的
 // tool_calls，前端在气泡下方渲染独立工具卡片。与 handleMessageUpdated 按消息 ID
 // 定位流式消息的做法一致。
+//
+// 后端对同一工具调用会先推 status=running、再推终态（start 在前、end 在后，二者
+// 携带相同 id）。这里按 id 找到既有记录则原位更新（running → ok/error），找不到
+// 才追加，避免同一工具的进行态与终态各占一张卡片。
 const handleToolCall = (data: any) => {
   const convId = data.conversation_id?.toString()
   const msgId = data.message_id?.toString()
@@ -1941,6 +1945,7 @@ const handleToolCall = (data: any) => {
   if (!data.tool_label) return
 
   const record: ToolCallRecord = {
+    id: data.id ? String(data.id) : undefined,
     tool_label: String(data.tool_label),
     args: data.args && typeof data.args === 'object' ? data.args : undefined,
     status: data.status ? String(data.status) : undefined,
@@ -1952,7 +1957,15 @@ const handleToolCall = (data: any) => {
   if (idx === -1) return
 
   const target = msgs[idx]
-  const next = { ...target, tool_calls: [...(target.tool_calls || []), record] }
+  const toolCalls = [...(target.tool_calls || [])]
+  const cur = record.id ? toolCalls.findIndex(tc => tc.id === record.id) : -1
+  if (cur === -1) {
+    toolCalls.push(record)
+  } else {
+    toolCalls[cur] = { ...toolCalls[cur], ...record }
+  }
+
+  const next = { ...target, tool_calls: toolCalls }
   const newMsgs = [...msgs]
   newMsgs[idx] = next
   chatStore.messages.set(convId, newMsgs)
@@ -2103,6 +2116,16 @@ const handleNewMessage = async (msg: any) => {
   const conversationId = data.conversation_id.toString()
 
   const newMessage = processMessage(data, conversationId)
+
+  // 流式期间工具调用经 ai_tool_call 独立事件累积；若本帧（流式 chunk / finish 的
+  // new_message）未携带 tool_calls，保留已在 store 中累积的记录，避免 overlay 清空卡片。
+  if (newMessage && newMessage.id && !newMessage.tool_calls?.length) {
+    const existing = chatStore.messages.get(conversationId)?.find(m => m.id === newMessage.id)
+    if (existing?.tool_calls?.length) {
+      newMessage.tool_calls = existing.tool_calls
+    }
+  }
+
   const isCurrentConv = currentConversationId.value === conversationId
   const conv = conversations.value.find(c => sameConversationId(c.id, conversationId))
   const senderName = newMessage.sender?.name || newMessage.sender?.username || ''

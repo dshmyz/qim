@@ -1,14 +1,19 @@
 <template>
-  <div ref="containerRef" class="markdown-message" :class="{ self: isSelf }" v-html="renderedContent" @click="handleLinkClick"></div>
+  <!-- 根节点同时挂 .markdown-message（气泡壳）与 .markdown-content（统一排版单源）。
+       排版由全局 markdown-content.css 提供，与 AIAnswerBubble 的 AI 回答正文共用同一份，
+       消除复制粘贴的 CSS 漂移。此处仅保留壳与 self 差异。 -->
+  <div
+    ref="containerRef"
+    class="markdown-message markdown-content"
+    :class="{ self: isSelf }"
+    v-html="html"
+    @click="handleLinkClick"
+  ></div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { marked } from 'marked'
-import { sanitizeMarkdown } from '../../utils/sanitize'
-import { decodeToPlainText } from '../../utils/mentions'
-import { emojiToHtml, classicToHtml } from '../../utils/emoji'
-import { useCodeHighlight } from '../../composables/useCodeHighlight'
+import { computed } from 'vue'
+import { useMarkdownRender, handleLinkClick } from '../../composables/useMarkdownRender'
 
 const props = withDefaults(
   defineProps<{
@@ -20,171 +25,33 @@ const props = withDefaults(
   }
 )
 
-const handleLinkClick = (event: MouseEvent) => {
-  const target = event.target as HTMLElement
-  const link = target.closest('a')
-
-  if (link && window.electron?.shell?.openExternal) {
-    event.preventDefault()
-    const href = link.getAttribute('href')
-    if (href) {
-      window.electron.shell.openExternal(href)
-    }
-  }
-}
-
-// 使用marked库渲染markdown，并进行消毒处理防止XSS攻击
-const renderedContent = computed(() => {
-  // 先解码 mention token：@{mention:3|张三} → @张三
-  const decodedContent = decodeToPlainText(props.content)
-  const html = marked(decodedContent)
-  const htmlString = typeof html === 'string' ? html : String(html)
-  // 使用 DOMPurify 进行消毒，防止 XSS 攻击，再把表情字符/经典标记替换为 <img>
-  return classicToHtml(emojiToHtml(sanitizeMarkdown(htmlString)))
-})
-
-const containerRef = ref<HTMLElement | null>(null)
-useCodeHighlight(containerRef, renderedContent)
+// 统一走 useMarkdownRender（单一渲染管道：解码 mention → marked → 消毒 → emoji/classic）
+const { html, containerRef } = useMarkdownRender(
+  computed(() => props.content),
+  computed(() => ({ decodeMention: true, withEmoji: true }))
+)
 </script>
 
 <style>
+/* 本组件只保留「气泡壳」+ self 差异；markdown 排版统一由 markdown-content.css 提供，
+   根节点已挂 .markdown-content，与 AIAnswerBubble 的 AI 回答正文共用同一份排版单源。 */
+@import './markdown-content.css';
+
 .markdown-message {
   padding: 10px 14px;
   border-radius: 12px;
-  background: var(--sidebar-bg);
+  /* 与普通文本消息气泡同源（--message-bubble-bg），避免用 --sidebar-bg 与聊天区背景
+     同色而显得没有背景色/线条 */
+  background: var(--message-bubble-bg);
   color: var(--text-color);
   font-size: 14px;
   line-height: 1.6;
   word-break: break-word;
 }
 
-.markdown-message h1,
-.markdown-message h2,
-.markdown-message h3 {
-  margin: 8px 0 4px 0;
-  font-weight: 700;
-  color: var(--text-color);
-}
-
-.markdown-message h1:first-child,
-.markdown-message h2:first-child,
-.markdown-message h3:first-child {
-  margin-top: 0;
-}
-
-.markdown-message h1 { font-size: 1.4em; }
-.markdown-message h2 { font-size: 1.2em; }
-.markdown-message h3 { font-size: 1.05em; }
-
-.markdown-message pre {
-  background: var(--hover-color);
-  padding: 8px 10px;
-  border-radius: 6px;
-  overflow-x: auto;
-  font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-color);
-  margin: 8px 0;
-
-}
-
-.markdown-message code {
-  background: var(--hover-color);
-  padding: 2px 5px;
-  border-radius: 3px;
-  font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
-  font-size: 0.88em;
-  color: var(--primary-color);
-}
-
-.markdown-message pre code {
-  background: transparent;
-  padding: 0;
-  border-radius: 0;
-  color: var(--text-color);
-  font-size: 13px;
-}
-
-.markdown-message blockquote {
-  border-left: 3px solid var(--primary-color);
-  padding-left: 12px;
-  margin: 8px 0;
-  color: var(--text-secondary);
-  opacity: 0.9;
-}
-
-.markdown-message a {
-  color: var(--primary-color);
-  background: transparent;
-  text-decoration: none;
-  transition: color 0.2s ease;
-}
-
-.markdown-message a:hover {
-  text-decoration: underline;
-}
-
-.markdown-message ul,
-.markdown-message ol {
-  margin: 6px 0;
-  padding-left: 20px;
-}
-
-.markdown-message li {
-  margin: 2px 0;
-  line-height: 1.6;
-  color: var(--text-color);
-}
-
-.markdown-message p {
-  margin: 4px 0;
-  line-height: 1.6;
-  color: var(--text-color);
-}
-
-.markdown-message p:first-child {
-  margin-top: 0;
-}
-
-.markdown-message p:last-child {
-  margin-bottom: 0;
-}
-
-.markdown-message strong {
-  font-weight: 700;
-  color: var(--text-color);
-}
-
-.markdown-message em {
-  font-style: italic;
-}
-
-.markdown-message hr {
-  border: none;
-  border-top: 1px solid var(--border-color);
-  margin: 10px 0;
-}
-
-.markdown-message table {
-  border-collapse: collapse;
-  margin: 8px 0;
-  width: 100%;
-}
-
-.markdown-message th,
-.markdown-message td {
-  border: 1px solid var(--border-color);
-  padding: 4px 8px;
-  font-size: 13px;
-}
-
-.markdown-message th {
-  background: var(--hover-color);
-  font-weight: 600;
-}
-
-/* 自己发送的 Markdown 消息：浅色主色背景 + 深色文字 */
+/* 自身发送的 Markdown 消息：浅色主色背景 + 深色文字。
+   排版几何统一由 .markdown-content（markdown-content.css）提供，这里仅覆盖
+   self 气泡底色下的文字/border 颜色，与 AIAnswerBubble 的 im.self 观感一致。 */
 .markdown-message.self {
   background: var(--hover-color);
   background: color-mix(in srgb, var(--primary-color), white 88%);
@@ -195,6 +62,7 @@ useCodeHighlight(containerRef, renderedContent)
 .markdown-message.self h2,
 .markdown-message.self h3,
 .markdown-message.self strong,
+.markdown-message.self em,
 .markdown-message.self li,
 .markdown-message.self p {
   color: var(--text-color);
@@ -249,6 +117,7 @@ useCodeHighlight(containerRef, renderedContent)
 [data-theme="elegant-dark"] .markdown-message.self h2,
 [data-theme="elegant-dark"] .markdown-message.self h3,
 [data-theme="elegant-dark"] .markdown-message.self strong,
+[data-theme="elegant-dark"] .markdown-message.self em,
 [data-theme="elegant-dark"] .markdown-message.self li,
 [data-theme="elegant-dark"] .markdown-message.self p {
   color: white;
@@ -290,10 +159,5 @@ useCodeHighlight(containerRef, renderedContent)
 [data-theme="elegant-dark"] .markdown-message.self th,
 [data-theme="elegant-dark"] .markdown-message.self td {
   border-color: rgba(255, 255, 255, 0.2);
-}
-
-.markdown-message .hljs {
-  background: transparent !important;
-  padding: 0 !important;
 }
 </style>

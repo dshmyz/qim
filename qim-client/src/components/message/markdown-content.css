@@ -1,0 +1,136 @@
+/* AI 渲染能力统一 —— 共享 markdown 排版（单一排版源）。
+   曾散在 MarkdownMessage / StreamingMessage / MarkdownRenderer 里 ~100 行雷同的
+   markdown 元素样式，此处收敛为一处，AIAnswerBubble 统一 import。
+   非 scoped：v-html 注入的 markdown 元素不带 data-v 属性，scoped 下选择器匹配不上。
+   仅作用于 .markdown-content 容器内，不影响外部布局。深色主题适配一并收敛。 */
+
+.markdown-content {
+  min-height: 20px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  margin: 8px 0 4px 0;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.markdown-content h1:first-child,
+.markdown-content h2:first-child,
+.markdown-content h3:first-child {
+  margin-top: 0;
+}
+
+.markdown-content h1 { font-size: 1.4em; }
+.markdown-content h2 { font-size: 1.2em; }
+.markdown-content h3 { font-size: 1.05em; }
+
+.markdown-content strong {
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.markdown-content em {
+  font-style: italic;
+}
+
+.markdown-content pre {
+  background: var(--hover-color);
+  padding: 8px 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-color);
+  margin: 8px 0;
+}
+
+.markdown-content code {
+  background: var(--hover-color);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 0.88em;
+  color: var(--primary-color);
+}
+
+.markdown-content pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  color: var(--text-color);
+  font-size: 13px;
+}
+
+.markdown-content a {
+  color: var(--primary-color);
+  background: transparent;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.markdown-content a:hover {
+  text-decoration: underline;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.markdown-content li {
+  margin: 2px 0;
+  line-height: 1.6;
+  color: var(--text-color);
+}
+
+.markdown-content p {
+  margin: 4px 0;
+  line-height: 1.6;
+  color: var(--text-color);
+}
+
+.markdown-content p:first-child {
+  margin-top: 0;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid var(--primary-color);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+  opacity: 0.9;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid var(--border-color);
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.markdown-content th {
+  background: var(--hover-color);
+  font-weight: 600;
+}
+
+/* 代码高亮容器透明化，与既有实现对齐 */
+.markdown-content .hljs {
+  background: transparent !important;
+  padding: 0 !important;
+}

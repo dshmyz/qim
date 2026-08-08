@@ -50,18 +50,17 @@
         />
         <div class="message-bubble">
           <div class="content">
-            <MarkdownRenderer
-              v-if="msg.type === 'markdown' || msg.senderType === 'bot'"
+            <!-- bot 回答统一走 AIAnswerBubble（markdown 正文 + 思考/typing + 命中笔记来源标签），
+                 与 IM 气泡 AI 渲染同一套能力 -->
+            <AIAnswerBubble
+              v-if="msg.senderType === 'bot'"
               :content="msg.content"
+              :is-streaming="Boolean(msg.isStreaming)"
+              variant="botchat"
+              :knowledge-sources="msg.knowledge_sources"
             />
             <span v-else v-html="previewTextToHtml(msg.content)"></span>
-            <span v-if="msg.isStreaming" class="streaming-cursor"></span>
           </div>
-          <!-- Bot 回复命中笔记时的知识来源折叠标签 -->
-          <KnowledgeSources
-            v-if="msg.senderType === 'bot' && msg.knowledge_sources && msg.knowledge_sources.length > 0"
-            :sources="msg.knowledge_sources"
-          />
           <div class="time">{{ formatTime(msg.timestamp) }}</div>
         </div>
       </div>
@@ -97,9 +96,8 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import Avatar from '../../shared/Avatar.vue'
-import MarkdownRenderer from '../../shared/MarkdownRenderer.vue'
 import ThinkingIndicator from '../../shared/ThinkingIndicator.vue'
-import KnowledgeSources from '../../message/KnowledgeSources.vue'
+import AIAnswerBubble from '../../message/AIAnswerBubble.vue'
 import { previewTextToHtml } from '../../../utils/emoji'
 import type { BotMessage } from '../../../types/bot'
 import QMessageBox from '../../../utils/qmessagebox'
@@ -360,21 +358,6 @@ watch(() => props.isStreaming, () => {
   height: 18px;
   vertical-align: middle;
   margin: 0 1px;
-}
-
-.streaming-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  background: var(--primary-color);
-  animation: blink 1s infinite;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
 }
 
 .error-message {

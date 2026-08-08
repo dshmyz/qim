@@ -56,6 +56,11 @@
       <el-tab-pane label="模型路由" name="router">
         <Router />
       </el-tab-pane>
+
+      <!-- 外部 MCP -->
+      <el-tab-pane label="外部 MCP" name="mcp">
+        <ExternalMCPConfig />
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -69,6 +74,7 @@ import type { AIProvider } from '@/types/ai'
 import ProviderTable from './components/ProviderTable.vue'
 import ProviderFormDialog from './components/ProviderFormDialog.vue'
 import Router from './Router.vue'
+import ExternalMCPConfig from '../components/ExternalMCPConfig.vue'
 
 const activeTab = ref('providers')
 const aiStore = useAIStore()

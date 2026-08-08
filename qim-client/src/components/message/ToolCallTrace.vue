@@ -2,16 +2,19 @@
   <!-- 外部 AI 工具调用追踪：独立卡片，与 markdown 正文视觉分层（参考 capability-console
        的工具卡片 + 现有 KnowledgeSources 折叠标签 idiom）。放在 AI 气泡下方，
        实时由 ai_tool_call WS 事件累积，回放从消息 Extra 解析。 -->
-  <details v-if="calls && calls.length > 0" class="tool-call-trace" :open="open">
-    <summary>
+  <details v-if="calls && calls.length > 0" ref="box" class="tool-call-trace">
+    <summary @click.prevent="toggle">
       <i class="fas fa-wrench"></i>
       <span>工具调用</span>
       <span class="count">{{ calls.length }}</span>
+      <span class="chevron" :class="{ open: opened }"><i class="fas fa-chevron-down"></i></span>
     </summary>
     <ul>
       <li v-for="(call, i) in calls" :key="i" class="trace-row" :class="{ error: call.status === 'error' }">
         <span class="trace-icon" aria-hidden="true">🔧</span>
         <span class="trace-label" :title="call.tool_label">{{ call.tool_label }}</span>
+        <span v-if="call.status === 'running'" class="trace-status running" title="进行中"><span class="spin"></span>进行中</span>
+        <span v-if="call.status === 'ok'" class="trace-status ok" title="已完成">✓</span>
         <span v-if="call.status === 'error'" class="trace-status error">失败</span>
         <span v-if="formatArgs(call.args)" class="trace-args" :title="formatArgs(call.args)">{{ formatArgs(call.args) }}</span>
       </li>
@@ -20,12 +23,38 @@
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import type { ToolCallRecord } from '../../types'
 
-defineProps<{
+const props = defineProps<{
   calls?: ToolCallRecord[]
   open?: boolean
 }>()
+
+// 展开交互（option B）：streaming 期间 open=true 自动展开，结束时 open=false 自动收起；
+// 之后留待用户手动开合。用原生 <details> 未绑定 :open，靠 open prop 的边沿驱动 + 手动
+// toggle，避免终态用户展开后又被任一重渲染 snap 回折叠。
+const box = ref<HTMLDetailsElement | null>(null)
+const opened = ref(false)
+
+const setOpen = (v: boolean) => {
+  opened.value = v
+  if (box.value) box.value.open = v
+}
+
+// 仅在 open prop 发生边沿变化时驱动（进入 streaming 展开 / 结束 streaming 收起），
+// 其余时间不动原生 <details>，把控制权交还用户点击。
+watch(
+  () => props.open,
+  (v, prev) => {
+    if (v === prev) return
+    setOpen(v)
+  }
+)
+
+function toggle() {
+  setOpen(!Boolean(box.value?.open))
+}
 
 // 输入参数摘要：取前若干个 key=value 拼成一行，过长省略（title 全量）。
 function formatArgs(args?: Record<string, unknown>): string {
@@ -63,6 +92,13 @@ function formatArgs(args?: Record<string, unknown>): string {
 }
 .tool-call-trace summary::-webkit-details-marker { display: none; }
 .tool-call-trace summary i { color: #4f7cff; font-size: 11px; }
+.tool-call-trace .chevron {
+  margin-left: auto;
+  font-size: 9px;
+  color: #b0b8c4;
+  transition: transform 0.2s ease;
+}
+.tool-call-trace .chevron.open { transform: rotate(180deg); }
 .tool-call-trace .count {
   display: inline-block;
   min-width: 16px;
@@ -111,6 +147,32 @@ function formatArgs(args?: Record<string, unknown>): string {
   font-size: 11px;
   font-weight: 500;
 }
+.tool-call-trace .trace-status.ok {
+  flex-shrink: 0;
+  color: #52c41a;
+  font-size: 11px;
+  font-weight: 600;
+}
+.tool-call-trace .trace-status.running {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #4f7cff;
+  font-size: 11px;
+  font-weight: 500;
+}
+.tool-call-trace .trace-status.running .spin {
+  width: 9px;
+  height: 9px;
+  border: 2px solid #4f7cff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: toolcall-spin 0.8s linear infinite;
+}
+@keyframes toolcall-spin {
+  to { transform: rotate(360deg); }
+}
 .tool-call-trace .trace-row.error .trace-label { color: #d9534f; }
 
 /* 深色主题适配 */
@@ -121,6 +183,7 @@ function formatArgs(args?: Record<string, unknown>): string {
   color: #aab;
 }
 [data-theme="elegant-dark"] .tool-call-trace summary { color: #8899aa; }
+[data-theme="elegant-dark"] .tool-call-trace .chevron { color: #5a6a80; }
 [data-theme="elegant-dark"] .tool-call-trace .trace-label { color: #d5dde7; }
 [data-theme="elegant-dark"] .tool-call-trace .trace-args { color: #7a8699; }
 [data-theme="elegant-dark"] .tool-call-trace .trace-row { border-top-color: #333a47; }

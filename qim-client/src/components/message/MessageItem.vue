@@ -78,9 +78,17 @@
             <span>已选择：{{ cardActionData.action_text || cardActionData.action_id }}</span>
           </div>
 
-          <!-- AI 消息 (使用 Markdown 渲染，与其他 Markdown 消息统一) -->
-          <!-- type=streaming 的 AI 消息留给下方 StreamingMessage（typing 动画 + 思考中占位），故排除 -->
-          <MarkdownMessage v-else-if="isAIMessage && message.type !== 'streaming'" :content="message.content" :is-self="isSelf" />
+          <!-- AI 消息：统一走 AIAnswerBubble（markdown 正文 + 思考中占位 + 工具卡片 + 来源标签）。
+               streaming 与终态、分身来源均由此处理，取代原 MarkdownMessage/StreamingMessage 双分支 -->
+          <AIAnswerBubble
+            v-else-if="isAIMessage"
+            :content="message.content"
+            :is-streaming="Boolean(message.isStreaming)"
+            :is-self="isSelf"
+            :tool-calls="message.tool_calls"
+            :knowledge-sources="message.knowledge_sources"
+            :avatar-sources="message.origin === 'avatar' ? message.sources : undefined"
+          />
 
           <!-- 图片消息 -->
           <ImageMessage
@@ -141,33 +149,8 @@
             @download="(content, messageId) => $emit('downloadFile', content, messageId)"
             @save-as="(content, messageId) => $emit('saveAs', content, messageId)"
           />
-
-          <!-- 流式消息 -->
-          <StreamingMessage
-            v-else-if="message.type === 'streaming'"
-            :content="message.content"
-            :is-self="isSelf"
-            :is-streaming="message.isStreaming || false"
-          />
           </div>
         </template>
-
-        <!-- Bot 回复命中笔记时的知识来源折叠标签（仅 markdown/streaming 类型且有数据时展示） -->
-        <KnowledgeSources
-          v-if="(message.type === 'markdown' || message.type === 'streaming') && message.knowledge_sources && message.knowledge_sources.length > 0"
-          :sources="message.knowledge_sources"
-        />
-
-        <!-- 外部 AI 工具调用追踪卡片：独立于正文渲染，与最终答案视觉分层。
-             实时由 ai_tool_call 事件累积、回放从 Extra 解析，故 streaming 与终态均展示 -->
-        <ToolCallTrace
-          v-if="message.tool_calls && message.tool_calls.length > 0"
-          :calls="message.tool_calls"
-          :open="Boolean(message.isStreaming)"
-        />
-
-        <!-- 分身回复命中的知识来源（仅 avatar 实时消息且有数据时展示「依据」） -->
-        <AvatarSources v-if="message.origin === 'avatar' && message.sources && message.sources.length > 0" :sources="message.sources" />
 
         <div class="message-meta">
           <span class="message-meta-badge">
@@ -205,13 +188,10 @@ import NewsMessage from './NewsMessage.vue'
 import SystemMessage from './SystemMessage.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
 import MergedForwardMessage from './MergedForwardMessage.vue'
-import StreamingMessage from './StreamingMessage.vue'
+import AIAnswerBubble from './AIAnswerBubble.vue'
 import CardMessage from './CardMessage.vue'
-import KnowledgeSources from './KnowledgeSources.vue'
-import ToolCallTrace from './ToolCallTrace.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
-import AvatarSources from '../avatar/AvatarSources.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
 import { computed } from 'vue'
 import { escapeHTML } from '../../utils/sanitize'

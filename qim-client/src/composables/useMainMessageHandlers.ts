@@ -46,8 +46,13 @@ export function useMainMessageHandlers() {
       disclaimer_style: msg.disclaimer_style || '',
       // Bot 回复命中笔记时的知识来源（后端从 message.Extra 解析后放入响应体顶层）
       knowledge_sources: Array.isArray(msg.knowledge_sources) ? msg.knowledge_sources : undefined,
-      // 外部工具调用记录（后端从 message.Extra 解析后放入响应体顶层，历史回放用）
-      tool_calls: Array.isArray(msg.tool_calls) ? msg.tool_calls : undefined,
+      // 分身回复命中来源（后端从 message.Extra 解析，notes/group/memory），MessageItem 据此渲染「依据」徽章
+      sources: Array.isArray(msg.sources) ? msg.sources : undefined,
+      // 外部工具调用记录（后端从 message.Extra 解析后放入响应体顶层，历史回放用）：
+      // 仅在实际有内容时才赋值，避免 undefined 覆盖 receiveMessage 已累积的流式 tool_calls。
+      tool_calls: (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0)
+        ? msg.tool_calls
+        : (parseExtraToolCalls(msg.extra) || undefined),
       conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',
       // 消息附加信息（撤回时保存原始内容用于重新编辑）
       extra: msg.extra || '',
@@ -182,3 +187,16 @@ export function useMainMessageHandlers() {
     getMessageComments
   }
 }
+
+// 从消息 Extra（JSON 文本列，形如 {"tool_calls":[{tool_label,args,status}]}）解析工具
+// 调用记录。流式 finish 的 new_message 事件与 REST 回放都经由 Extra 这条持久化通道。
+function parseExtraToolCalls(extra?: string): unknown[] | undefined {
+  if (!extra) return undefined
+  try {
+    const parsed = JSON.parse(extra)
+    return Array.isArray(parsed?.tool_calls) ? parsed.tool_calls : undefined
+  } catch {
+    return undefined
+  }
+}
+

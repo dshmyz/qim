@@ -92,10 +92,12 @@ export interface Message {
 }
 
 // ToolCallRecord 外部 AI 工具调用的一条结构化记录（后端 ai_tool_call 事件 / Extra 持久化）。
+// id 为同一工具调用的稳定标识（start/end 一致），前端据此把进行态记录更新为终态而非重复追加。
 export interface ToolCallRecord {
+  id?: string
   tool_label: string
   args?: Record<string, unknown>
-  status?: string // '' | 'ok' | 'error'
+  status?: string // 'running' | 'ok' | 'error' | ''
 }
 
 // KnowledgeSource Bot 回复命中笔记的最小展示结构

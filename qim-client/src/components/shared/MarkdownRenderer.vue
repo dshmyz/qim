@@ -1,12 +1,10 @@
 <template>
-  <div ref="containerRef" class="markdown-renderer" v-html="renderedContent" @click="handleLinkClick"></div>
+  <div ref="containerRef" class="markdown-renderer" v-html="html" @click="handleLinkClick"></div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { marked } from 'marked'
-import { sanitizeMarkdown } from '../../utils/sanitize'
-import { useCodeHighlight } from '../../composables/useCodeHighlight'
+import { computed } from 'vue'
+import { useMarkdownRender, handleLinkClick } from '../../composables/useMarkdownRender'
 
 const props = withDefaults(
   defineProps<{
@@ -17,36 +15,11 @@ const props = withDefaults(
   }
 )
 
-/**
- * 处理链接点击
- * 在 Electron 环境中使用外部浏览器打开链接
- */
-const handleLinkClick = (event: MouseEvent) => {
-  const target = event.target as HTMLElement
-  const link = target.closest('a')
-
-  if (link && window.electron?.shell?.openExternal) {
-    event.preventDefault()
-    const href = link.getAttribute('href')
-    if (href) {
-      window.electron.shell.openExternal(href)
-    }
-  }
-}
-
-/**
- * 渲染 Markdown 内容
- * 使用 marked 库渲染 Markdown，并使用 DOMPurify 进行消毒处理防止 XSS 攻击
- */
-const renderedContent = computed(() => {
-  if (!props.content) return ''
-  const html = marked(props.content)
-  const htmlString = typeof html === 'string' ? html : String(html)
-  return sanitizeMarkdown(htmlString)
-})
-
-const containerRef = ref<HTMLElement | null>(null)
-useCodeHighlight(containerRef, renderedContent)
+// 统一走 useMarkdownRender（单一渲染管道）。BotChatView/NoteEditor 用纯 markdown，不解码 mention、不替换 emoji。
+const { html, containerRef } = useMarkdownRender(
+  computed(() => props.content),
+  computed(() => ({}))
+)
 </script>
 
 <style scoped>
