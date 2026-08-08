@@ -46,6 +46,8 @@ export function useMainMessageHandlers() {
       disclaimer_style: msg.disclaimer_style || '',
       // Bot 回复命中笔记时的知识来源（后端从 message.Extra 解析后放入响应体顶层）
       knowledge_sources: Array.isArray(msg.knowledge_sources) ? msg.knowledge_sources : undefined,
+      // 外部工具调用记录（后端从 message.Extra 解析后放入响应体顶层，历史回放用）
+      tool_calls: Array.isArray(msg.tool_calls) ? msg.tool_calls : undefined,
       conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',
       // 消息附加信息（撤回时保存原始内容用于重新编辑）
       extra: msg.extra || '',

@@ -672,7 +672,7 @@
 
 <script setup lang="ts">
 import { ref, computed, defineComponent, defineAsyncComponent, onMounted, onUnmounted, watch, nextTick, provide } from 'vue'
-import type { Conversation, Message, User } from '../types'
+import type { Conversation, Message, ToolCallRecord, User } from '../types'
 import QMessage from '../utils/qmessage'
 import QMessageBox from '../utils/qmessagebox'
 import axios from 'axios'
@@ -1779,6 +1779,7 @@ const connectWebSocket = () => {
     'message_recalled': handleMessageRecalled,
     'message_deleted': handleMessageDeleted,
     'message_updated': handleMessageUpdated,
+    'ai_tool_call': handleToolCall,
     'group_invitation': handleGroupInvitation,
     'added_to_group': refreshUserGroupsAfter(handleAddedToGroup),
     'group_member_left': refreshUserGroupsAfter(handleGroupMemberLeft),
@@ -1928,6 +1929,33 @@ const handleMessageUpdated = (data: any) => {
       requestAnimationFrame(() => chatWindowRef.value?.scrollToBottom(true))
     })
   }
+}
+
+// 处理外部工具调用事件（ai_tool_call）：把一条工具调用追加到对应 AI 流式消息的
+// tool_calls，前端在气泡下方渲染独立工具卡片。与 handleMessageUpdated 按消息 ID
+// 定位流式消息的做法一致。
+const handleToolCall = (data: any) => {
+  const convId = data.conversation_id?.toString()
+  const msgId = data.message_id?.toString()
+  if (!convId || !msgId) return
+  if (!data.tool_label) return
+
+  const record: ToolCallRecord = {
+    tool_label: String(data.tool_label),
+    args: data.args && typeof data.args === 'object' ? data.args : undefined,
+    status: data.status ? String(data.status) : undefined,
+  }
+
+  const msgs = chatStore.messages.get(convId)
+  if (!msgs) return
+  const idx = msgs.findIndex(m => m.id === msgId)
+  if (idx === -1) return
+
+  const target = msgs[idx]
+  const next = { ...target, tool_calls: [...(target.tool_calls || []), record] }
+  const newMsgs = [...msgs]
+  newMsgs[idx] = next
+  chatStore.messages.set(convId, newMsgs)
 }
 
 // 处理通知

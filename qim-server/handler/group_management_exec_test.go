@@ -105,6 +105,7 @@ func TestExecuteWithToolsMockLLM_KicksMember(t *testing.T) {
 
 // TestExecuteWithToolsMockLLM_RejectsPlainMember 普通成员身份发起时，
 // 工具的群主/管理员校验拒绝执行，被踢者仍在群（callerCtx 用真实 input.UserID）。
+// 注意：MultiStep 会把工具错误回喂给 LLM 生成自然回复，故此处断言无 error + 被踢者未被移除。
 func TestExecuteWithToolsMockLLM_RejectsPlainMember(t *testing.T) {
 	aiSvc := ai.NewAIService(&ai.AIConfig{})
 	aiSvc.SetProviderForTesting("mock", &mockToolProvider{
@@ -151,9 +152,10 @@ func TestExecuteWithToolsMockLLM_RejectsPlainMember(t *testing.T) {
 		AssistantName:   "AI助手",
 	}
 
-	_, err = graph.ExecuteWithTools(context.Background(), input)
-	// 工具执行返回权限不足 error，GetCompletionWithTools 会返回该 error
-	require.Error(t, err, "普通成员发起时工具应返回权限不足错误")
-	assert.Contains(t, err.Error(), "权限不足")
+	reply, err := graph.ExecuteWithTools(context.Background(), input)
+	// MultiStep ReAct 契约：工具执行失败时错误以 tool 角色消息回喂给 LLM，而非向调用方抛出。
+	// 因此普通成员发起时此处不应返回 error，而是返回非空回复；关键不变式是被踢者仍在群。
+	require.NoError(t, err)
+	assert.NotEmpty(t, reply, "AI 应基于权限不足的工具结果生成自然回复")
 	assert.True(t, memberExists(db, conv.ID, victim.ID), "权限不足时被踢者不应被移除")
 }

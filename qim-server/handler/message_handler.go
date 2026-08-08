@@ -367,6 +367,17 @@ func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []
 		resp["avatar_name"] = service.GetAINameCache().GetAvatarName(msg.SenderID)
 	}
 
+	// 解析 Extra：透出外部工具调用记录（tool_calls），供前端渲染独立工具卡片（回放）。
+	// 解析失败或为空时不设置，前端约定 tool_calls 不存在或为空数组。
+	if msg.Extra != "" {
+		var extra map[string]interface{}
+		if err := json.Unmarshal([]byte(msg.Extra), &extra); err == nil {
+			if tc, ok := extra["tool_calls"]; ok {
+				resp["tool_calls"] = tc
+			}
+		}
+	}
+
 	return resp
 }
 

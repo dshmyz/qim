@@ -1346,13 +1346,17 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 		"quoted_message":    msg.QuotedMessage,
 		"mention_user_ids":  mentionUserIDs,
 	}
-	// 解析 Extra：当前只承载 knowledge_sources（Bot 回复命中笔记时的标题/分数）
+	// 解析 Extra：当前承载 knowledge_sources（Bot 回复命中笔记时的标题/分数）
 	// 解析失败或为空时，前端约定 knowledge_sources 不存在或为空数组
 	if msg.Extra != "" {
 		var extra map[string]interface{}
 		if err := json.Unmarshal([]byte(msg.Extra), &extra); err == nil {
 			if ks, ok := extra["knowledge_sources"]; ok {
 				resp["knowledge_sources"] = ks
+			}
+			// 外部工具调用记录（tool_calls）：前端据此渲染独立工具卡片（回放）。
+			if tc, ok := extra["tool_calls"]; ok {
+				resp["tool_calls"] = tc
 			}
 		}
 	}

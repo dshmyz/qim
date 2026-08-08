@@ -17,7 +17,10 @@ import (
 type MessageSender interface {
 	SendAIMessage(conversationID uint, content string, assistantName string) error
 	SendMessageWithContext(conversationID uint, content string, assistantName string, msg *model.Message) error
-	SendStreamingAIMessage(conversationID uint, assistantName string) (func(string) error, func() *model.Message, error)
+	// SendStreamingAIMessage 创建一个流式 AI 消息并返回：
+	//   sendChunk 追加正文块；getMsg 获取流式中的消息（含已落库的 ID，供关联事件用）；
+	//   finish 收尾并返回最终消息。
+	SendStreamingAIMessage(conversationID uint, assistantName string) (sendChunk func(string) error, getMsg func() *model.Message, finish func() *model.Message, err error)
 }
 
 type WebSocketMessageSender struct {
@@ -117,10 +120,10 @@ func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content stri
 	return nil
 }
 
-func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, assistantName string) (func(string) error, func() *model.Message, error) {
+func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, assistantName string) (func(string) error, func() *model.Message, func() *model.Message, error) {
 	aiUser, _, err := s.resolveAISender(conversationID, assistantName)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	aiMessage := model.Message{
@@ -133,16 +136,20 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 	}
 
 	if err := s.db.Create(&aiMessage).Error; err != nil {
-		return nil, nil, fmt.Errorf("保存 AI 消息失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("保存 AI 消息失败: %w", err)
 	}
 
 	var conv model.Conversation
 	if err := s.db.Preload("Members.User").First(&conv, conversationID).Error; err != nil {
 		logger.WithModule("MessageSender").Error("获取会话信息失败", "error", err)
-		return nil, nil, fmt.Errorf("获取会话信息失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("获取会话信息失败: %w", err)
 	}
 
 	accumulatedContent := ""
+
+	getMsg := func() *model.Message {
+		return &aiMessage
+	}
 
 	sendChunk := func(chunk string) error {
 		accumulatedContent += chunk
@@ -198,7 +205,7 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 		return &aiMessage
 	}
 
-	return sendChunk, finish, nil
+	return sendChunk, getMsg, finish, nil
 }
 
 func (s *WebSocketMessageSender) SendMessageWithContext(conversationID uint, content string, assistantName string, msg *model.Message) error {
@@ -312,4 +319,32 @@ func broadcastMessageContentUpdate(msg *model.Message) {
 	wsMsg := ws.WSMessage{Type: "message_updated", Data: msgData}
 	jsonMsg, _ := json.Marshal(wsMsg)
 	ws.GlobalHub.SendToConversation(msg.ConversationID, 0, jsonMsg)
+}
+
+// ToolCallRecord 一条外部工具调用的结构化记录：前端据此渲染独立的工具调用卡片，
+// 不拼进 markdown 正文（参考 capability-console 的工具卡片做法）。tool_label 为
+// 面向用户的中文动作（如「正在查询天气」），args 为调用参数摘要。
+type ToolCallRecord struct {
+	ToolLabel string                 `json:"tool_label"`
+	Args      map[string]interface{} `json:"args,omitempty"`
+	Status    string                 `json:"status,omitempty"` // "" | "ok" | "error"
+}
+
+// SendToolCallEvent 把一条工具调用作为独立 WS 事件推给会话（type=ai_tool_call），
+// 前端按 message_id 把卡片关联到对应流式 AI 消息。实时推送与 Extra 持久化分离：
+// 落库由调用方写 Message.Extra（见 smart_reply_handler）。
+func (s *WebSocketMessageSender) SendToolCallEvent(conversationID uint, msgID uint, record ToolCallRecord) {
+	if s.hub == nil {
+		return
+	}
+	data := gin.H{
+		"message_id":   msgID,
+		"conversation_id": conversationID,
+		"tool_label":   record.ToolLabel,
+		"args":         record.Args,
+		"status":       record.Status,
+	}
+	wsMsg := ws.WSMessage{Type: "ai_tool_call", Data: data}
+	jsonMsg, _ := json.Marshal(wsMsg)
+	s.hub.SendToConversation(conversationID, 0, jsonMsg)
 }

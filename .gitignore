@@ -63,3 +63,7 @@ qim-client/src-tauri/target/
 # Python 缓存
 __pycache__/
 *.pyc
+
+# 运行时数据（gracedb / demo MCP 等进程产物）
+data/
+

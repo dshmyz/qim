@@ -294,6 +294,17 @@ func (g *SmartReplyGraph) ExecuteStreamWithExternalTools(ctx context.Context, in
 		return "", err
 	}
 	historyMessages := g.buildHistoryMessages(input)
+	// 追加一条仅作用于本路径（外部工具 ReAct）的输出组织指引——不写进全局
+	// buildSystemPrompt，避免污染普通流式/管理指令路径。目标：把工具返回结果
+	// 组织成自然简洁的中文段落，直接给答案数值，去掉工具原文前缀与客套尾巴。
+	historyMessages = append(historyMessages, &schema.Message{
+		Role: schema.System,
+		Content: "当你调用外部工具得到结果后，用自然、简洁的中文把答案组织成一个连贯的回复。" +
+			"直接把关键数值/结论给用户（如『3.5 × 7 = 24.5』），不要出现『计算结果』『工具返回』等字段式前缀，" +
+			"不要罗列工具名或过程，" +
+			"不要加『如需进一步查询，请随时告知』之类的客套结尾，" +
+			"不要在回答开头再次称呼/点名提问用户（用户姓名已由界面单独展示）。",
+	})
 	callerCtx := &ai.CallerContext{UserID: input.UserID}
 	return g.aiService.GetCompletionWithToolsMultiStep(
 		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx,

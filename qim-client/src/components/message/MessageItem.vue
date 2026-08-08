@@ -158,6 +158,14 @@
           :sources="message.knowledge_sources"
         />
 
+        <!-- 外部 AI 工具调用追踪卡片：独立于正文渲染，与最终答案视觉分层。
+             实时由 ai_tool_call 事件累积、回放从 Extra 解析，故 streaming 与终态均展示 -->
+        <ToolCallTrace
+          v-if="message.tool_calls && message.tool_calls.length > 0"
+          :calls="message.tool_calls"
+          :open="Boolean(message.isStreaming)"
+        />
+
         <!-- 分身回复命中的知识来源（仅 avatar 实时消息且有数据时展示「依据」） -->
         <AvatarSources v-if="message.origin === 'avatar' && message.sources && message.sources.length > 0" :sources="message.sources" />
 
@@ -200,6 +208,7 @@ import MergedForwardMessage from './MergedForwardMessage.vue'
 import StreamingMessage from './StreamingMessage.vue'
 import CardMessage from './CardMessage.vue'
 import KnowledgeSources from './KnowledgeSources.vue'
+import ToolCallTrace from './ToolCallTrace.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
 import AvatarSources from '../avatar/AvatarSources.vue'

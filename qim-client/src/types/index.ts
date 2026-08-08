@@ -86,6 +86,16 @@ export interface Message {
   sources?: AvatarSource[]
   // 消息附加信息（JSON 字符串），撤回时保存原始内容用于重新编辑
   extra?: string
+  // 外部工具调用记录：前端据此在气泡下方渲染独立工具调用卡片（不拼进正文）。
+  // 实时由 ai_tool_call WS 事件追加，回放从 Extra 解析。参考 capability-console。
+  tool_calls?: ToolCallRecord[]
+}
+
+// ToolCallRecord 外部 AI 工具调用的一条结构化记录（后端 ai_tool_call 事件 / Extra 持久化）。
+export interface ToolCallRecord {
+  tool_label: string
+  args?: Record<string, unknown>
+  status?: string // '' | 'ok' | 'error'
 }
 
 // KnowledgeSource Bot 回复命中笔记的最小展示结构

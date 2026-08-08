@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -541,7 +542,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		return
 	}
 
-	sendChunk, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
+	sendChunk, _, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
 		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
 		return
@@ -673,12 +674,14 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 
 // handleAIMentionWithExternalTools 普通提问（非管理指令）走带外部 MCP 工具的
 // 流式 ReAct 回复。复用 SendStreamingAIMessage 的流式气泡：
-//   - 每步工具执行前（onStep 反馈）向气泡追加一行「🔧 正在调用 xxx…」，
-//     让 tool_call 挂起期间用户看到"正在干什么"，而不是干等/空白（形态 A 追加版）；
-//   - ReAct 循环完成后，把最终答案按句子切子块逐块 sendChunk，保留打字感；
+//   - 工具调用作为独立卡片呈现（参考 capability-console）：onStep 反馈时实时推
+//     ai_tool_call WS 事件，前端在气泡下方渲染独立工具卡片，与最终答案视觉分层，
+//     不再把「🔧 正在调用…」拼进正文（历史"很难看"反馈的根因）；
+//   - ReAct 完成后，把最终答案按句子切子块逐块 sendChunk，保留打字感；
+//   - 工具调用列表写进消息 Extra（tool_calls），回放/刷新后卡片仍可见；
 //   - 最后 finish() 收尾（与普通流式路径一致），出错且无内容时发兜底文案。
 func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint) {
-	sendChunk, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
+	sendChunk, getMsg, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
 		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
 		return
@@ -709,9 +712,25 @@ func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context,
 		}
 	}
 
-	// 每步工具执行后追加过程反馈，让挂起时段可见。
-	feedback := func(_ int, tool string, _ map[string]interface{}, _ interface{}, _ error) {
-		_ = sendChunk("🔧 正在调用 " + tool + "…\n")
+	// 收集本次 ReAct 用到的工具调用，写成结构化记录：实时推 ai_tool_call 事件供
+	// 前端渲染独立工具卡片 + 结束时写入消息 Extra 持久化。不再拼进正文。
+	var toolCalls []ToolCallRecord
+
+	feedback := func(_ int, tool string, args map[string]interface{}, result interface{}, execErr error) {
+		status := "ok"
+		if execErr != nil || result == nil {
+			status = "error"
+		}
+		rec := ToolCallRecord{
+			ToolLabel: friendlyToolLabel(tool),
+			Args:      args,
+			Status:    status,
+		}
+		toolCalls = append(toolCalls, rec)
+		// 实时推送独立事件（含消息 ID 供前端关联到正在流式的气泡）。
+		if msg := getMsg(); msg != nil {
+			e.messageSender.SendToolCallEvent(conversationID, msg.ID, rec)
+		}
 	}
 
 	reply, err := e.smartReplyGraph.ExecuteStreamWithExternalTools(ctx, input, feedback)
@@ -743,11 +762,46 @@ func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context,
 		}
 	}
 
+	// 工具调用记录持久化到消息 Extra（{"tool_calls":[...]}），回放/刷新后卡片仍可见。
+	if len(toolCalls) > 0 {
+		if msg := getMsg(); msg != nil {
+			if b, jerr := json.Marshal(AIToolCallsExtra{ToolCalls: toolCalls}); jerr == nil {
+				msg.Extra = string(b)
+			}
+		}
+	}
+
 	if finish() == nil {
 		log.Printf("[SmartReplyGraph] 完成流式消息失败")
 		return
 	}
-	log.Printf("[SmartReplyGraph] @AI 外部工具回复已完成")
+	log.Printf("[SmartReplyGraph] @AI 外部工具回复已完成, %d 次工具调用", len(toolCalls))
+}
+
+// AIToolCallsExtra 消息 Extra 里持久化工具调用列表的 JSON 容器。
+type AIToolCallsExtra struct {
+	ToolCalls []ToolCallRecord `json:"tool_calls"`
+}
+
+// friendlyToolLabel 把内部工具名映射为面向用户的中文动作文案，隐藏 mcp_demo_* 等
+// 实现细节。已知常用外部工具走具体映射，未命中的退化为通用「调用外部服务」。
+func friendlyToolLabel(tool string) string {
+	switch {
+	case strings.Contains(tool, "calculator"), strings.Contains(tool, "calc"):
+		return "正在计算"
+	case strings.Contains(tool, "weather"):
+		return "正在查询天气"
+	case strings.Contains(tool, "search"), strings.Contains(tool, "query"):
+		return "正在查询"
+	case strings.Contains(tool, "translate"):
+		return "正在翻译"
+	case strings.Contains(tool, "image"), strings.Contains(tool, "img"):
+		return "正在生成图片"
+	case strings.Contains(tool, "pdf"), strings.Contains(tool, "doc"):
+		return "正在处理文档"
+	default:
+		return "正在调用外部服务"
+	}
 }
 
 // splitReplyChunks 把完整回复切成适合逐块送达的小段（尽量在句子/停顿处断开），
@@ -851,7 +905,7 @@ func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uin
 	// 将 system prompt 插入消息列表头部
 	messages = append([]ai.Message{{Role: "system", Content: systemPrompt}}, messages...)
 
-	sendChunk, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
+	sendChunk, _, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
 		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
 		return
