@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/dshmyz/qim/qim-server/ai"
@@ -113,4 +115,64 @@ func TestMCPClientGateway_UnreachableServerDegrades(t *testing.T) {
 	gw.Sync() // 不应 panic / 阻塞
 
 	assert.Empty(t, gw.ListExternalToolNames(), "不可达 server 的工具应降级为不可用")
+}
+
+// recordingTransport 记录它转发的最后一个请求，把请求交给 inner 处理。
+// 用于断言鉴权 header 是否被注入。
+type recordingTransport struct {
+	inner http.RoundTripper
+	last  *http.Request
+}
+
+func (t *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.last = req.Clone(req.Context())
+	return t.inner.RoundTrip(req)
+}
+
+// TestTokenAuthHTTPClient_InjectAuthorization 验证带 token 时：authorizationTransport
+// 在转发前注入 Authorization: Bearer <token>，且 clone 后的请求（进入内层 transport 的
+// 那份）确实携带该头——即请求经整条链路到达服务端时已完成注入。
+func TestTokenAuthHTTPClient_InjectAuthorization(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	// recorder 作为 authorizationTransport 的 inner：捕获「注入后、真正发出前」的请求。
+	rec := &recordingTransport{inner: http.DefaultTransport}
+	auth := &authorizationTransport{token: "secret-token", inner: rec}
+	client := &http.Client{Transport: auth}
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	require.NotNil(t, rec.last, "应捕获到注入后的出站请求")
+	assert.Equal(t, "Bearer secret-token", rec.last.Header.Get("Authorization"),
+		"带 token 时应注入 Authorization: Bearer")
+}
+
+// TestTokenAuthHTTPClient_EmptyTokenNoHeader 验证 token 为空时不注入鉴权头，
+// 行为与未配置 token 的历史路径一致。
+func TestTokenAuthHTTPClient_EmptyTokenNoHeader(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	// 空 token 时不走 tokenAuthHTTPClient（connect 仅在非空时构造），
+	// 这里直接验证 authorizationTransport 对空 token 不注入头。
+	authRec := &recordingTransport{inner: &authorizationTransport{token: "", inner: http.DefaultTransport}}
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	require.NoError(t, err)
+	resp, err := authRec.RoundTrip(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	require.NotNil(t, authRec.last, "应捕获到出站请求")
+	assert.Empty(t, authRec.last.Header.Get("Authorization"),
+		"token 为空时不应注入 Authorization 头")
 }

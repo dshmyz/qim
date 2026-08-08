@@ -23,6 +23,9 @@ import (
 
 type KnowledgeRetriever interface {
 	BuildContext(query string, groupID uint) string
+	// BuildContextWithSources 一次检索同时产出注入提示词的上下文串与命中的知识来源
+	// （仅标题/相关度），供群助手把来源随回复下发。
+	BuildContextWithSources(query string, groupID uint, limit int) (string, []KnowledgeSource)
 }
 
 type LegacyKnowledgeService interface {
@@ -94,6 +97,10 @@ type SmartReplyContext struct {
 	MemoryCtx    string // 长期记忆检索结果
 	ChatHistory  string // 历史对话记录
 	PendingTasks string // 用户待办任务（仅群聊或特定场景）
+	// KnowledgeSources 本条回复实际命中的知识来源（标题/相关度），由 prepareInput 在
+	// 检索群知识库时填充；handler 执行完回复后据此把 knowledge_sources 写入消息 Extra，
+	// 供前端渲染「知识来源」折叠标签。无命中时为空，不展示徽章。
+	KnowledgeSources []KnowledgeSource
 
 	// 扩展配置
 	Group       *model.Group
@@ -249,22 +256,62 @@ var groupAssistantToolWhitelist = []string{
 	"group_management", "create_group_task", "search_messages", "group_summary", "system_notification",
 }
 
-// ExecuteWithTools 带工具的非流式回复，用于 @AI 管理操作指令（踢人/加人/禁言等）。
-// 走 GetCompletionWithToolsMultiStep 注入白名单 AI 工具（含 GroupManagementTool）并多步循环，
-// LLM 返回 tool call 时真实执行。callerCtx 用 input.UserID，isSystemAdmin 校验生效，
-// 即仅群主/管理员发起的管理指令会被工具执行，普通成员指令被工具拒绝。
+// externalToolOutputGuideMessage 外部工具 ReAct 路径追加的输出组织指引。
+// 只作用于该路径，不写进全局 buildSystemPrompt（避免污染普通流式/管理指令路径）；
+// 目标：把工具返回结果组织成自然简洁的中文段落，直接给答案数值，去掉工具原文前缀与客套尾巴。
+func externalToolOutputGuideMessage() *schema.Message {
+	return &schema.Message{
+		Role:    schema.System,
+		Content: "当你调用外部工具得到结果后，用自然、简洁的中文把答案组织成一个连贯的回复。" +
+			"直接把关键数值/结论给用户（如『3.5 × 7 = 24.5』），不要出现『计算结果』『工具返回』等字段式前缀，" +
+			"不要罗列工具名或过程，" +
+			"不要加『如需进一步查询，请随时告知』之类的客套结尾，" +
+			"不要在回答开头再次称呼/点名提问用户（用户姓名已由界面单独展示）。",
+	}
+}
+
+// SmartReplyToolset 群助手带工具回复时可用的工具集：内置群管理工具 或 外部 MCP 工具。
+// 工具轴是调用方的真实选择（普通提问只用外部工具、管理指令只用内置工具），故作为参数传入；
+// 流式/非流式因返回类型与降级语义不同，保留为两个独立方法。
+type SmartReplyToolset int
+
+const (
+	// ToolsetBuiltin 内置群管理工具（groupAssistantAllowedTools）。
+	ToolsetBuiltin SmartReplyToolset = iota
+	// ToolsetExternal 外部 MCP 工具（mcpGateway.ListExternalToolNames），并追加输出组织指引。
+	ToolsetExternal
+)
+
+// toolsetToolNames 返回指定工具集的白名单工具名。
+func (g *SmartReplyGraph) toolsetToolNames(t SmartReplyToolset) []string {
+	if t == ToolsetExternal {
+		return g.mcpGateway.ListExternalToolNames()
+	}
+	return g.groupAssistantAllowedTools()
+}
+
+// ExecuteWithTools 带工具的非流式回复（管理指令/普通提问共用，工具集由 t 指定）。
+// 走 GetCompletionWithToolsMultiStep 注入白名单 AI 工具并多步循环，LLM 返回 tool call 时
+// 真实执行。callerCtx 用 input.UserID，isSystemAdmin 校验生效，即仅群主/管理员发起的
+// 管理指令会被工具执行，普通成员指令被工具拒绝。
 // 采用 MultiStep 而非单轮 core 的原因：工具执行出错时（如"用户不存在"）MultiStep 会把
 // 错误以 tool 角色消息回喂给 LLM（见 ai_service.go 中 ReAct 循环），让群助手基于错误
 // 生成自然回复，而不是像旧路径那样把错误硬抛到 handler 直接静默失败。
-func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartReplyContext) (string, error) {
-	if err := g.prepareInput(input); err != nil {
+// feedback 为可选的每步工具执行回调（variadic，nil 即不回调），供调用方收集工具调用
+// 记录做卡片展示；与外部工具路径共用同一 MultiStep 钩子（ai.ReActStepCallback）。
+func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartReplyContext, t SmartReplyToolset, feedback ...ai.ReActStepCallback) (string, error) {
+	historyMessages, err := g.preparedHistory(input, t)
+	if err != nil {
 		return "", err
 	}
-	historyMessages := g.buildHistoryMessages(input)
 	callerCtx := &ai.CallerContext{UserID: input.UserID}
+	var onStep ai.ReActStepCallback
+	if len(feedback) > 0 {
+		onStep = feedback[0]
+	}
 	return g.aiService.GetCompletionWithToolsMultiStep(
-		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx, g.groupAssistantAllowedTools(),
-		ai.MaxReActSteps, nil,
+		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx, g.toolsetToolNames(t),
+		ai.MaxReActSteps, onStep,
 	)
 }
 
@@ -279,37 +326,38 @@ func (g *SmartReplyGraph) HasExternalTools() bool {
 	return len(g.mcpGateway.ListExternalToolNames()) > 0
 }
 
-// ExecuteStreamWithExternalTools 普通提问（非管理指令）走带外部 MCP 工具的
-// 多步 ReAct 循环，供群 AI 在自然语言下自主调用外部工具；最终返回完整回复文本。
-//
-// 与 ExecuteWithTools 的区别：白名单只用外部 MCP 工具名（mcp_*），不注入内建
-// 群管理工具——普通提问不该被 group_management 等扩权，精确对焦"外部工具在
-// 普通提问可用"。feedback（ReActStepCallback）在每步工具执行后被调用，handler
-// 可借此向流式气泡追加"🔧 正在调用 XXX…"的过程反馈，回应 tool_call 挂起时段。
-//
-// 注：这是"ReAct 循环 + 过程反馈"的非逐 token 变体（复用 GetCompletionWithToolsMultiStep），
-// 不调工具的回合最终答案由调用方切子块发送以保留打字感；真·流式 tool-call 解析留后续。
-func (g *SmartReplyGraph) ExecuteStreamWithExternalTools(ctx context.Context, input *SmartReplyContext, feedback ai.ReActStepCallback) (string, error) {
-	if err := g.prepareInput(input); err != nil {
-		return "", err
+// ExecuteWithToolsStream 真·流式的带工具 ReAct（管理指令/普通提问共用，工具集由 t 指定），
+// 与 ExecuteWithTools 同序（外部工具集含输出组织指引），final 答案逐 token 经 onChunk 流出。
+// 返回 (streamed=true) 表示已走流式逐 token；若 Provider 不支持流式 tool-call 则返回
+// (streamed=false, err=ai.ErrStreamingToolsNotSupported)，调用方降级到非流式 ExecuteWithTools。
+// onStep 与 onChunk 均有意义：工具事件走 onStep（卡片），答案逐 token 走 onChunk。
+func (g *SmartReplyGraph) ExecuteWithToolsStream(ctx context.Context, input *SmartReplyContext, t SmartReplyToolset, onStep ai.ReActStepCallback, onChunk func(chunk ai.StreamChunk) error) (streamed bool, err error) {
+	historyMessages, err := g.preparedHistory(input, t)
+	if err != nil {
+		return false, err
 	}
-	historyMessages := g.buildHistoryMessages(input)
-	// 追加一条仅作用于本路径（外部工具 ReAct）的输出组织指引——不写进全局
-	// buildSystemPrompt，避免污染普通流式/管理指令路径。目标：把工具返回结果
-	// 组织成自然简洁的中文段落，直接给答案数值，去掉工具原文前缀与客套尾巴。
-	historyMessages = append(historyMessages, &schema.Message{
-		Role: schema.System,
-		Content: "当你调用外部工具得到结果后，用自然、简洁的中文把答案组织成一个连贯的回复。" +
-			"直接把关键数值/结论给用户（如『3.5 × 7 = 24.5』），不要出现『计算结果』『工具返回』等字段式前缀，" +
-			"不要罗列工具名或过程，" +
-			"不要加『如需进一步查询，请随时告知』之类的客套结尾，" +
-			"不要在回答开头再次称呼/点名提问用户（用户姓名已由界面单独展示）。",
-	})
 	callerCtx := &ai.CallerContext{UserID: input.UserID}
-	return g.aiService.GetCompletionWithToolsMultiStep(
-		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx,
-		g.mcpGateway.ListExternalToolNames(), ai.MaxReActSteps, feedback,
+	err = g.aiService.GetCompletionWithToolsStreamMultiStep(
+		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx, g.toolsetToolNames(t),
+		ai.MaxReActSteps, onStep, onChunk,
 	)
+	if errors.Is(err, ai.ErrStreamingToolsNotSupported) {
+		return false, ai.ErrStreamingToolsNotSupported
+	}
+	return err == nil, err
+}
+
+// preparedHistory 补齐输入上下文并构造历史消息；外部工具集追加输出组织指引
+// （见 externalToolOutputGuideMessage）。两种流式/非流式路径共用同一准备骨架。
+func (g *SmartReplyGraph) preparedHistory(input *SmartReplyContext, t SmartReplyToolset) ([]*schema.Message, error) {
+	if err := g.prepareInput(input); err != nil {
+		return nil, err
+	}
+	history := g.buildHistoryMessages(input)
+	if t == ToolsetExternal {
+		history = append(history, externalToolOutputGuideMessage())
+	}
+	return history, nil
 }
 
 // prepareInput 补齐 SmartReplyContext 的群/用户/待办/成员/知识库/记忆等上下文，
@@ -375,7 +423,8 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 		if query == "" && input.Group.Name != "" {
 			query = input.Group.Name
 		}
-		knowledgeCtx = g.unifiedKnowledge.BuildContext(query, input.Group.ID)
+		// 一次检索同时产出上下文串与命中的知识来源（标题/相关度）；无命中时两者皆空。
+		knowledgeCtx, input.KnowledgeSources = g.unifiedKnowledge.BuildContextWithSources(query, input.Group.ID, 3)
 	} else if g.legacyKnowledge != nil {
 		knowledgeCtx = g.legacyKnowledge.BuildKnowledgeContext(input.Message)
 	}
@@ -780,7 +829,8 @@ func (g *SmartReplyGraph) createKnowledgeNode() *compose.Lambda {
 			if query == "" && input.Group.Name != "" {
 				query = input.Group.Name
 			}
-			content = g.unifiedKnowledge.BuildContext(query, input.Group.ID)
+			// 一次检索同时产出上下文串与命中的知识来源（供自动回复路径把来源随回复下发）。
+			content, input.KnowledgeSources = g.unifiedKnowledge.BuildContextWithSources(query, input.Group.ID, 3)
 		} else if g.legacyKnowledge != nil {
 			content = g.legacyKnowledge.BuildKnowledgeContext(input.Message)
 		}

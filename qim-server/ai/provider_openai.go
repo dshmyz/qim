@@ -246,6 +246,15 @@ func (p *OpenAIProvider) ChatStreamWithContext(ctx context.Context, messages []M
 	})
 }
 
+// ChatStreamWithTools OpenAI 兼容带工具的真·流式：复用共享 OpenAI chat/completions
+// 流式 tool-call 引擎，逐 token 回传内容 delta、工具调用以 ToolCallDelta 增量回传。
+func (p *OpenAIProvider) ChatStreamWithTools(ctx context.Context, messages []Message, tools []ToolDef, onChunk func(chunk StreamChunk) error) error {
+	if !p.IsConfigured() {
+		return fmt.Errorf("OpenAI API key is not configured")
+	}
+	return streamChatWithToolsOpenAICompat(ctx, p.BaseProvider, p.config.BaseURL, p.config.APIKey, p.config.Model, p.config.ExtraParams, messages, tools, onChunk)
+}
+
 // Embedding 将文本转换为向量（使用 OpenAI 兼容的 /v1/embeddings 接口）
 func (p *OpenAIProvider) Embedding(text string) ([]float32, error) {
 	if !p.IsConfigured() {

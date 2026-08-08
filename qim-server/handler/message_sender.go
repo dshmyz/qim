@@ -15,11 +15,13 @@ import (
 )
 
 type MessageSender interface {
-	SendAIMessage(conversationID uint, content string, assistantName string) error
+	SendAIMessage(conversationID uint, content string, assistantName string, extra map[string]interface{}) error
 	SendMessageWithContext(conversationID uint, content string, assistantName string, msg *model.Message) error
 	// SendStreamingAIMessage 创建一个流式 AI 消息并返回：
-	//   sendChunk 追加正文块；getMsg 获取流式中的消息（含已落库的 ID，供关联事件用）；
-	//   finish 收尾并返回最终消息。
+	//   sendChunk 追加正文块（首个非空块才真正落库创建消息，空块为 no-op）；
+	//   getMsg 获取流式中的消息（含已落库的 ID，供关联事件用；尚未创建时触发创建，
+	//         便于工具卡片在首个正文前锚定消息 ID）；
+	//   finish 收尾并返回最终消息（全程无内容无工具则返回 nil）。
 	SendStreamingAIMessage(conversationID uint, assistantName string) (sendChunk func(string) error, getMsg func() *model.Message, finish func() *model.Message, err error)
 }
 
@@ -80,7 +82,7 @@ func (s *WebSocketMessageSender) resolveAISender(conversationID uint, assistantN
 	return resolveAISender(s.db, s.userSvc, conversationID, assistantName)
 }
 
-func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content string, assistantName string) error {
+func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content string, assistantName string, extra map[string]interface{}) error {
 	// 空/纯空白内容不落库不广播，避免 AI 不可用时出现空白气泡
 	if strings.TrimSpace(content) == "" {
 		logger.WithModule("MessageSender").Info("AI 消息内容为空，跳过发送",
@@ -100,6 +102,12 @@ func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content stri
 		Content:        content,
 		IsRead:         false,
 		Origin:         "assistant",
+	}
+	// 附加元数据（如 knowledge_sources）若有内容则写入 Extra，供刷新/回放后渲染徽章。
+	if len(extra) > 0 {
+		if b, jerr := json.Marshal(extra); jerr == nil {
+			aiMessage.Extra = string(b)
+		}
 	}
 
 	if err := s.db.Create(&aiMessage).Error; err != nil {
@@ -121,88 +129,113 @@ func (s *WebSocketMessageSender) SendAIMessage(conversationID uint, content stri
 }
 
 func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, assistantName string) (func(string) error, func() *model.Message, func() *model.Message, error) {
-	aiUser, _, err := s.resolveAISender(conversationID, assistantName)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	aiMessage := model.Message{
-		ConversationID: conversationID,
-		SenderID:       aiUser.ID,
-		Type:           "text",
-		Content:        "",
-		IsRead:         false,
-		Origin:         "assistant",
-	}
-
-	if err := s.db.Create(&aiMessage).Error; err != nil {
-		return nil, nil, nil, fmt.Errorf("保存 AI 消息失败: %w", err)
-	}
-
-	var conv model.Conversation
-	if err := s.db.Preload("Members.User").First(&conv, conversationID).Error; err != nil {
-		logger.WithModule("MessageSender").Error("获取会话信息失败", "error", err)
-		return nil, nil, nil, fmt.Errorf("获取会话信息失败: %w", err)
-	}
-
+	// 消息采用「懒创建」：不在一进入就落库空消息，而是延迟到首个非空正文块
+	// （sendChunk）或首个工具调用（getMsg）才真正创建。这样 AI 在思考/调用工具阶段
+	// 不会提前插入一个空的流式占位，避免它排在用户后续消息之上造成顺序错乱；
+	// 而一旦有正文或工具调用，消息仍在同一 goroutine 内顺序创建，ID 稳定、卡片可锚定。
+	var created *model.Message
+	var conv *model.Conversation
 	accumulatedContent := ""
 
+	// 幂等创建：已创建则直接返回当前消息；未创建则取 AI 发送者、加载会话、
+	// 构造空流式消息并落库，随后缓存 conv 供 finish 广播复用。全程同一 goroutine 顺序调用。
+	ensureCreated := func() (*model.Message, error) {
+		if created != nil {
+			return created, nil
+		}
+		aiUser, _, err := s.resolveAISender(conversationID, assistantName)
+		if err != nil {
+			return nil, err
+		}
+		aiMessage := model.Message{
+			ConversationID: conversationID,
+			SenderID:       aiUser.ID,
+			Type:           "text",
+			Content:        "",
+			IsRead:         false,
+			Origin:         "assistant",
+			Sender:         *aiUser,
+		}
+		if err := s.db.Create(&aiMessage).Error; err != nil {
+			return nil, fmt.Errorf("保存 AI 消息失败: %w", err)
+		}
+		var c model.Conversation
+		if err := s.db.Preload("Members.User").First(&c, conversationID).Error; err != nil {
+			logger.WithModule("MessageSender").Error("获取会话信息失败", "error", err)
+			return nil, fmt.Errorf("获取会话信息失败: %w", err)
+		}
+		created = &aiMessage
+		conv = &c
+		return created, nil
+	}
+
 	getMsg := func() *model.Message {
-		return &aiMessage
+		// 工具回调（ai_tool_call）经此拿消息 ID；尚未创建则此处触发创建，保证卡片可锚定。
+		m, err := ensureCreated()
+		if err != nil {
+			logger.WithModule("MessageSender").Error("确保流式消息已创建失败", "conversationID", conversationID, "error", err)
+			return nil
+		}
+		return m
 	}
 
 	sendChunk := func(chunk string) error {
 		accumulatedContent += chunk
-		aiMessage.Content = accumulatedContent
-
-		if err := s.db.Save(&aiMessage).Error; err != nil {
+		// 空块（如点亮占位用的 sendChunk("")）为 no-op：不落库、不广播，避免超前空占位。
+		if strings.TrimSpace(accumulatedContent) == "" {
+			return nil
+		}
+		msg, err := ensureCreated()
+		if err != nil {
+			return err
+		}
+		msg.Content = accumulatedContent
+		if err := s.db.Save(msg).Error; err != nil {
 			logger.WithModule("MessageSender").Error("保存流式消息失败", "error", err)
 			return err
 		}
-
-		aiMessage.Sender = *aiUser
-
 		if s.hub != nil {
 			msgData := gin.H{
-				"id":                aiMessage.ID,
+				"id":                msg.ID,
 				"conversation_id":   conversationID,
-				"sender_id":         aiUser.ID,
+				"sender_id":         msg.SenderID,
 				"type":              "markdown",
 				"content":           accumulatedContent,
 				"is_ai_message":     true,
 				"ai_assistant_name": assistantName,
 				"is_streaming":      true,
-				"is_avatar_reply":   aiMessage.Origin == "avatar",
-				"origin":           aiMessage.Origin,
-				"created_at":        aiMessage.CreatedAt,
-				"sender":            aiUser,
+				"is_avatar_reply":   msg.Origin == "avatar",
+				"origin":            msg.Origin,
+				"created_at":        msg.CreatedAt,
+				"sender":            &msg.Sender,
 			}
-
 			wsMsg := ws.WSMessage{
 				Type: "new_message",
 				Data: msgData,
 			}
-
 			jsonMsg, _ := json.Marshal(wsMsg)
 			s.hub.SendToConversation(conversationID, 0, jsonMsg)
 		}
-
 		return nil
 	}
 
 	finish := func() *model.Message {
-		aiMessage.Content = accumulatedContent
-		aiMessage.Type = "markdown"
-		if err := s.db.Save(&aiMessage).Error; err != nil {
+		// 全程无内容无工具调用：未创建消息则直接返回 nil，由调用方已有的
+		// if finish()==nil 保护跳过，避免残留空白空消息卡住气泡。
+		msg, err := ensureCreated()
+		if err != nil {
 			logger.WithModule("MessageSender").Error("完成流式消息失败", "error", err)
 			return nil
 		}
-
-		aiMessage.Sender = *aiUser
-		broadcastNewMessage(&aiMessage, 0, &conv)
-
-		logger.WithModule("MessageSender").Info("流式 AI 消息已完成", "conversationID", conversationID, "msgID", aiMessage.ID, "sender", aiUser.Nickname)
-		return &aiMessage
+		msg.Content = accumulatedContent
+		msg.Type = "markdown"
+		if err := s.db.Save(msg).Error; err != nil {
+			logger.WithModule("MessageSender").Error("完成流式消息失败", "error", err)
+			return nil
+		}
+		broadcastNewMessage(msg, 0, conv)
+		logger.WithModule("MessageSender").Info("流式 AI 消息已完成", "conversationID", conversationID, "msgID", msg.ID, "sender", msg.Sender.Nickname)
+		return msg
 	}
 
 	return sendChunk, getMsg, finish, nil
@@ -321,13 +354,17 @@ func broadcastMessageContentUpdate(msg *model.Message) {
 	ws.GlobalHub.SendToConversation(msg.ConversationID, 0, jsonMsg)
 }
 
-// ToolCallRecord 一条外部工具调用的结构化记录：前端据此渲染独立的工具调用卡片，
+// ToolCallRecord 一条工具调用的结构化记录：前端据此渲染独立的工具调用卡片，
 // 不拼进 markdown 正文（参考 capability-console 的工具卡片做法）。tool_label 为
-// 面向用户的中文动作（如「正在查询天气」），args 为调用参数摘要。
+// 面向用户的中文动作名词（如「查询天气」「计算」），args 为调用参数摘要，
+// status 标记状态（"running" 进行中 | "ok" 已完成 | "error" 失败），由前端渲染
+// 进行态/✓/失败。ID 为同一工具调用的稳定标识（start/end 一致），前端据此把
+// 进行态实时更新为终态；仅 WS 实时通道使用，回放（Extra）为终态静态快照。
 type ToolCallRecord struct {
+	ID        string                 `json:"id,omitempty"`
 	ToolLabel string                 `json:"tool_label"`
 	Args      map[string]interface{} `json:"args,omitempty"`
-	Status    string                 `json:"status,omitempty"` // "" | "ok" | "error"
+	Status    string                 `json:"status,omitempty"` // "running" | "ok" | "error"
 }
 
 // SendToolCallEvent 把一条工具调用作为独立 WS 事件推给会话（type=ai_tool_call），
@@ -338,11 +375,12 @@ func (s *WebSocketMessageSender) SendToolCallEvent(conversationID uint, msgID ui
 		return
 	}
 	data := gin.H{
-		"message_id":   msgID,
+		"message_id":      msgID,
 		"conversation_id": conversationID,
-		"tool_label":   record.ToolLabel,
-		"args":         record.Args,
-		"status":       record.Status,
+		"id":              record.ID,
+		"tool_label":      record.ToolLabel,
+		"args":            record.Args,
+		"status":          record.Status,
 	}
 	wsMsg := ws.WSMessage{Type: "ai_tool_call", Data: data}
 	jsonMsg, _ := json.Marshal(wsMsg)

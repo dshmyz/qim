@@ -365,71 +365,7 @@ func (h *AIHandler) TranslateText(c *gin.Context) {
 		return
 	}
 
-	if h.textProcessGraph != nil {
-		sourceLang := req.SourceLang
-		if sourceLang == "" || sourceLang == "auto" {
-			sourceLang = "自动检测"
-		}
-
-		input := &service.TextProcessInput{
-			Intent:     service.TextProcessTranslate,
-			Text:       req.Text,
-			TargetLang: req.TargetLang,
-			SourceLang: sourceLang,
-		}
-
-		ctx := c.Request.Context()
-		result, err := h.textProcessGraph.Execute(ctx, input)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "翻译失败: " + err.Error()})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"code":    200,
-			"message": "success",
-			"data": gin.H{
-				"translated_text": result.Result,
-				"source_lang":     sourceLang,
-				"target_lang":     req.TargetLang,
-			},
-		})
-		return
-	}
-
-	sourceLang := req.SourceLang
-	if sourceLang == "" || sourceLang == "auto" {
-		sourceLang = "自动检测"
-	}
-
-	promptCtx := &service.PromptContext{
-		SourceLang: sourceLang,
-		TargetLang: req.TargetLang,
-	}
-	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.SceneTranslate, promptCtx)
-
-	messages_input := []ai.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: req.Text},
-	}
-
-	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "翻译失败: " + err.Error()})
-		return
-	}
-
-	result = h.aiService.FilterOutput(result, "ai_translate")
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "success",
-		"data": gin.H{
-			"translated_text": result,
-			"source_lang":     sourceLang,
-			"target_lang":     req.TargetLang,
-		},
-	})
+	h.runTextProcess(c, translateParams(req.Text, req.TargetLang, req.SourceLang), service.TextProcessTranslate)
 }
 
 // RewriteText 改写文本
@@ -445,75 +381,7 @@ func (h *AIHandler) RewriteText(c *gin.Context) {
 		return
 	}
 
-	if h.textProcessGraph != nil {
-		style := req.Style
-		if style == "" {
-			style = "简洁"
-		}
-		tone := req.Tone
-		if tone == "" {
-			tone = "专业"
-		}
-
-		input := &service.TextProcessInput{
-			Intent: service.TextProcessRewrite,
-			Text:   req.Text,
-			Style:  style,
-			Tone:   tone,
-		}
-
-		ctx := c.Request.Context()
-		result, err := h.textProcessGraph.Execute(ctx, input)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "改写失败: " + err.Error()})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"code":    200,
-			"message": "success",
-			"data": gin.H{
-				"rewritten_text": result.Result,
-			},
-		})
-		return
-	}
-
-	style := req.Style
-	if style == "" {
-		style = "简洁"
-	}
-	tone := req.Tone
-	if tone == "" {
-		tone = "专业"
-	}
-
-	promptCtx := &service.PromptContext{
-		Style: style,
-		Tone:  tone,
-	}
-	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.SceneRewrite, promptCtx)
-
-	messages_input := []ai.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: req.Text},
-	}
-
-	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "改写失败: " + err.Error()})
-		return
-	}
-
-	result = h.aiService.FilterOutput(result, "ai_rewrite")
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "success",
-		"data": gin.H{
-			"rewritten_text": result,
-		},
-	})
+	h.runTextProcess(c, rewriteParams(req.Text, req.Style, req.Tone), service.TextProcessRewrite)
 }
 
 // PolishText 润色文本
@@ -529,65 +397,7 @@ func (h *AIHandler) PolishText(c *gin.Context) {
 		return
 	}
 
-	if h.textProcessGraph != nil {
-		lang := req.Language
-		if lang == "" {
-			lang = "中文"
-		}
-
-		input := &service.TextProcessInput{
-			Intent:   service.TextProcessPolish,
-			Text:     req.Text,
-			Language: lang,
-		}
-
-		ctx := c.Request.Context()
-		result, err := h.textProcessGraph.Execute(ctx, input)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "润色失败: " + err.Error()})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"code":    200,
-			"message": "success",
-			"data": gin.H{
-				"polished_text": result.Result,
-			},
-		})
-		return
-	}
-
-	lang := req.Language
-	if lang == "" {
-		lang = "中文"
-	}
-
-	promptCtx := &service.PromptContext{
-		Language: lang,
-	}
-	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.ScenePolish, promptCtx)
-
-	messages_input := []ai.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: req.Text},
-	}
-
-	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "润色失败: " + err.Error()})
-		return
-	}
-
-	result = h.aiService.FilterOutput(result, "ai_polish")
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "success",
-		"data": gin.H{
-			"polished_text": result,
-		},
-	})
+	h.runTextProcess(c, polishParams(req.Text, req.Language), service.TextProcessPolish)
 }
 
 // TextProcess 统一文本处理入口（翻译/改写/润色）
@@ -605,181 +415,154 @@ func (h *AIHandler) TextProcess(c *gin.Context) {
 
 	switch req.Action {
 	case "translate":
-		h.textProcessTranslate(c, req.Text, req.TargetLang, req.SourceLang)
+		h.runTextProcess(c, translateParams(req.Text, req.TargetLang, req.SourceLang), service.TextProcessTranslate)
 	case "rewrite":
-		h.textProcessRewrite(c, req.Text, req.Style, req.Tone)
+		h.runTextProcess(c, rewriteParams(req.Text, req.Style, req.Tone), service.TextProcessRewrite)
 	case "polish":
-		h.textProcessPolish(c, req.Text, req.Language)
+		h.runTextProcess(c, polishParams(req.Text, req.Language), service.TextProcessPolish)
 	default:
 		response.BadRequest(c, "不支持的 action")
 	}
 }
 
-func (h *AIHandler) textProcessTranslate(c *gin.Context, text, targetLang, sourceLang string) {
-	if targetLang == "" {
-		response.BadRequest(c, "翻译需要 target_lang")
-		return
-	}
+// textProcessParams 已规范化的文本处理参数（翻译/改写/润色三种意图共用）。
+type textProcessParams struct {
+	text       string
+	targetLang string
+	sourceLang string
+	style      string
+	tone       string
+	language   string
+}
 
+// promptContext 兜底直调模式用的 PromptContext。
+func (p *textProcessParams) promptContext() *service.PromptContext {
+	return &service.PromptContext{
+		SourceLang: p.sourceLang,
+		TargetLang: p.targetLang,
+		Style:      p.style,
+		Tone:       p.tone,
+		Language:   p.language,
+	}
+}
+
+// graphInput textProcessGraph 模式的输入。
+func (p *textProcessParams) graphInput(intent service.TextProcessIntent) *service.TextProcessInput {
+	return &service.TextProcessInput{
+		Intent:     intent,
+		Text:       p.text,
+		TargetLang: p.targetLang,
+		SourceLang: p.sourceLang,
+		Style:      p.style,
+		Tone:       p.tone,
+		Language:   p.language,
+	}
+}
+
+func translateParams(text, targetLang, sourceLang string) *textProcessParams {
 	if sourceLang == "" || sourceLang == "auto" {
 		sourceLang = "自动检测"
 	}
-
-	if h.textProcessGraph != nil {
-		input := &service.TextProcessInput{
-			Intent:     service.TextProcessTranslate,
-			Text:       text,
-			TargetLang: targetLang,
-			SourceLang: sourceLang,
-		}
-		result, err := h.textProcessGraph.Execute(c.Request.Context(), input)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "翻译失败: " + err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"code":    200,
-			"message": "success",
-			"data": gin.H{
-				"translated_text": result.Result,
-				"source_lang":     sourceLang,
-				"target_lang":     targetLang,
-			},
-		})
-		return
-	}
-
-	promptCtx := &service.PromptContext{
-		SourceLang: sourceLang,
-		TargetLang: targetLang,
-	}
-	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.SceneTranslate, promptCtx)
-	messages_input := []ai.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: text},
-	}
-
-	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "翻译失败: " + err.Error()})
-		return
-	}
-	result = h.aiService.FilterOutput(result, "ai_translate")
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "success",
-		"data": gin.H{
-			"translated_text": result,
-			"source_lang":     sourceLang,
-			"target_lang":     targetLang,
-		},
-	})
+	return &textProcessParams{text: text, targetLang: targetLang, sourceLang: sourceLang}
 }
 
-func (h *AIHandler) textProcessRewrite(c *gin.Context, text, style, tone string) {
+func rewriteParams(text, style, tone string) *textProcessParams {
 	if style == "" {
 		style = "简洁"
 	}
 	if tone == "" {
 		tone = "专业"
 	}
-
-	if h.textProcessGraph != nil {
-		input := &service.TextProcessInput{
-			Intent: service.TextProcessRewrite,
-			Text:   text,
-			Style:  style,
-			Tone:   tone,
-		}
-		result, err := h.textProcessGraph.Execute(c.Request.Context(), input)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "改写失败: " + err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"code":    200,
-			"message": "success",
-			"data": gin.H{
-				"rewritten_text": result.Result,
-			},
-		})
-		return
-	}
-
-	promptCtx := &service.PromptContext{
-		Style: style,
-		Tone:  tone,
-	}
-	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.SceneRewrite, promptCtx)
-	messages_input := []ai.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: text},
-	}
-
-	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "改写失败: " + err.Error()})
-		return
-	}
-	result = h.aiService.FilterOutput(result, "ai_rewrite")
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "success",
-		"data": gin.H{
-			"rewritten_text": result,
-		},
-	})
+	return &textProcessParams{text: text, style: style, tone: tone}
 }
 
-func (h *AIHandler) textProcessPolish(c *gin.Context, text, language string) {
+func polishParams(text, language string) *textProcessParams {
 	if language == "" {
 		language = "中文"
 	}
+	return &textProcessParams{text: text, language: language}
+}
+
+// textProcessMeta 一种文本处理意图的元数据（scene / 兜底过滤标签 / 错误前缀 / 响应 data 形态）。
+type textProcessMeta struct {
+	scene     service.PromptScene
+	filterKey string
+	errLabel  string
+	buildData func(p *textProcessParams, result string) gin.H
+}
+
+var textProcessMetas = map[service.TextProcessIntent]textProcessMeta{
+	service.TextProcessTranslate: {
+		scene:     service.SceneTranslate,
+		filterKey: "ai_translate",
+		errLabel:  "翻译",
+		buildData: func(p *textProcessParams, result string) gin.H {
+			return gin.H{"translated_text": result, "source_lang": p.sourceLang, "target_lang": p.targetLang}
+		},
+	},
+	service.TextProcessRewrite: {
+		scene:     service.SceneRewrite,
+		filterKey: "ai_rewrite",
+		errLabel:  "改写",
+		buildData: func(p *textProcessParams, result string) gin.H {
+			return gin.H{"rewritten_text": result}
+		},
+	},
+	service.TextProcessPolish: {
+		scene:     service.ScenePolish,
+		filterKey: "ai_polish",
+		errLabel:  "润色",
+		buildData: func(p *textProcessParams, result string) gin.H {
+			return gin.H{"polished_text": result}
+		},
+	},
+}
+
+// runTextProcess 执行一次文本处理（翻译/改写/润色）：textProcessGraph 优先、直调兜底。
+// 三种意图共用同一骨架（原 6 处重复实现收敛于此），差异由 textProcessMetas 元数据表决定。
+func (h *AIHandler) runTextProcess(c *gin.Context, p *textProcessParams, intent service.TextProcessIntent) {
+	meta, ok := textProcessMetas[intent]
+	if !ok {
+		response.InternalServerError(c, "不支持的文本处理意图")
+		return
+	}
+
+	// 翻译必须有目标语言
+	if intent == service.TextProcessTranslate && p.targetLang == "" {
+		response.BadRequest(c, "翻译需要 target_lang")
+		return
+	}
 
 	if h.textProcessGraph != nil {
-		input := &service.TextProcessInput{
-			Intent:   service.TextProcessPolish,
-			Text:     text,
-			Language: language,
-		}
-		result, err := h.textProcessGraph.Execute(c.Request.Context(), input)
+		result, err := h.textProcessGraph.Execute(c.Request.Context(), p.graphInput(intent))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "润色失败: " + err.Error()})
+			respondTextProcessError(c, meta.errLabel, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{
-			"code":    200,
-			"message": "success",
-			"data": gin.H{
-				"polished_text": result.Result,
-			},
-		})
+		respondTextProcessOK(c, meta.buildData(p, result.Result))
 		return
 	}
 
-	promptCtx := &service.PromptContext{
-		Language: language,
-	}
-	systemPrompt := service.NewPromptManager().BuildSystemPrompt(service.ScenePolish, promptCtx)
-	messages_input := []ai.Message{
+	systemPrompt := service.NewPromptManager().BuildSystemPrompt(meta.scene, p.promptContext())
+	messages := []ai.Message{
 		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: text},
+		{Role: "user", Content: p.text},
 	}
 
-	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages_input)
+	result, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "润色失败: " + err.Error()})
+		respondTextProcessError(c, meta.errLabel, err)
 		return
 	}
-	result = h.aiService.FilterOutput(result, "ai_polish")
+	result = h.aiService.FilterOutput(result, meta.filterKey)
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "success",
-		"data": gin.H{
-			"polished_text": result,
-		},
-	})
+	respondTextProcessOK(c, meta.buildData(p, result))
+}
+
+func respondTextProcessError(c *gin.Context, label string, err error) {
+	c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": label + "失败: " + err.Error()})
+}
+
+func respondTextProcessOK(c *gin.Context, data gin.H) {
+	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "success", "data": data})
 }

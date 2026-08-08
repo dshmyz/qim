@@ -55,6 +55,8 @@ func main() {
 		if p.City == "" {
 			return nil, nil, fmt.Errorf("city 不能为空")
 		}
+		// 演示用人为延迟：拉长工具执行窗口，便于观察前端「思考中」占位与工具卡片进行态。
+		time.Sleep(4 * time.Second)
 		return textResult(fmt.Sprintf("%s 今天多云，26℃，湿度 65%%，东南风 3 级。", p.City)), nil, nil
 	})
 

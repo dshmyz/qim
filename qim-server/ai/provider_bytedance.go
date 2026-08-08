@@ -152,6 +152,15 @@ func (p *BytedanceProvider) ChatStreamWithContext(ctx context.Context, messages 
 	})
 }
 
+// ChatStreamWithTools 字节跳动 OpenAI 兼容带工具的真·流式：与 OpenAI 同走 /chat/completions
+// 的 delta 流式协议，复用共享引擎注入 tools 并逐 token/工具增量回传。
+func (p *BytedanceProvider) ChatStreamWithTools(ctx context.Context, messages []Message, tools []ToolDef, onChunk func(chunk StreamChunk) error) error {
+	if !p.IsConfigured() {
+		return fmt.Errorf("Bytedance API key is not configured")
+	}
+	return streamChatWithToolsOpenAICompat(ctx, p.BaseProvider, p.config.BaseURL, p.config.APIKey, p.config.Model, p.config.ExtraParams, messages, tools, onChunk)
+}
+
 // Embedding 将文本转换为向量（使用字节跳动 OpenAI 兼容的 /v1/embeddings 接口）
 func (p *BytedanceProvider) Embedding(text string) ([]float32, error) {
 	if !p.IsConfigured() {

@@ -131,6 +131,12 @@ func UpdateSystemConfig(c *gin.Context) {
 		return
 	}
 
+	// 外部 MCP 连接配置变更时，在配置落库后触发网关热同步（必须先于落库结束再同步，
+	// 否则网关会读到旧配置）：让新增/修改/删除的连接立即生效而不必重启服务。
+	if _, touched := req["external_mcp"]; touched {
+		ReSyncExternalMCP()
+	}
+
 	// 动态重新加载速率限制配置
 	middleware.ReloadRateLimitFromDB(func(key string) (string, error) {
 		cfg, err := configSvc.GetConfig(key)

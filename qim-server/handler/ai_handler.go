@@ -472,52 +472,80 @@ func toolDisplayName(toolName string) string {
 }
 
 // streamCompletionWithTools 执行 ReAct 工具调用，实时推送执行进度，最后流式输出最终答案。
+// 走真·流式 GetCompletionWithToolsStreamMultiStep：final 回合内容逐 token 经 onChunk 送出
+// （真·打字机效果），工具事件仍经 onStep 实时推卡片。首回合若 Provider 不支持流式
+// tool-call（如 Anthropic，返回 ErrStreamingToolsNotSupported）则降级到非流式
+// GetCompletionWithToolsMultiStep、以切字块（保留打字感）发送结果。
 func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Message, userID uint, conversationID uint) {
 	callerCtx := &ai.CallerContext{UserID: userID, ConversationID: conversationID}
+	allowedTools := []string{
+		"create_user_task",
+		"list_tasks",
+		"send_message",
+		"search_knowledge",
+		"summarize_conversation",
+	}
 
 	streamSSE(c, func(writeChunk func(string)) error {
 		writeChunk("🤔 正在思考...\n\n")
 
-		// 每步工具执行后实时推送进度
-		onStep := func(step int, toolName string, args map[string]interface{}, result interface{}, err error) {
+		// 每步工具执行后实时推送进度（仅终态；进行态由前端工具卡片处理）
+		onStep := func(step int, toolCallID, phase, toolName string, args map[string]interface{}, result interface{}, err error) {
+			if phase != "end" {
+				return
+			}
 			display := toolDisplayName(toolName)
 			if err != nil {
 				writeChunk(fmt.Sprintf("⚠️ %s失败：%s\n\n", display, err.Error()))
 			} else {
-				writeChunk(fmt.Sprintf("⚙️ 正在%s...\n\n", display))
+				writeChunk(fmt.Sprintf("✅ %s已完成\n\n", display))
 			}
 		}
 
-		finalContent, err := h.aiService.GetCompletionWithToolsMultiStep(
+		streamErr := h.aiService.GetCompletionWithToolsStreamMultiStep(
 			ai.TaskTypeChat,
 			messages,
 			callerCtx,
-			[]string{
-				"create_user_task",
-				"list_tasks",
-				"send_message",
-				"search_knowledge",
-				"summarize_conversation",
-			},
+			allowedTools,
 			0,
 			onStep,
+			func(chunk ai.StreamChunk) error {
+				// final 回合内容逐 token 实时流出（真·打字机）
+				if chunk.Content != "" {
+					writeChunk(chunk.Content)
+				}
+				return nil
+			},
 		)
-
-		if err != nil {
-			writeChunk(fmt.Sprintf("\n[错误：%s]", err.Error()))
+		if streamErr != nil && !errors.Is(streamErr, ai.ErrStreamingToolsNotSupported) {
+			writeChunk(fmt.Sprintf("\n[错误：%s]", streamErr.Error()))
 			return nil
 		}
 
-		// 流式输出最终答案
-		writeChunk("\n")
-		runes := []rune(finalContent)
-		chunkSize := 4
-		for i := 0; i < len(runes); i += chunkSize {
-			end := i + chunkSize
-			if end > len(runes) {
-				end = len(runes)
+		// 首回合不支持流式 tool-call → 降级到非流式，跑完再切字块发送
+		if errors.Is(streamErr, ai.ErrStreamingToolsNotSupported) {
+			finalContent, err := h.aiService.GetCompletionWithToolsMultiStep(
+				ai.TaskTypeChat,
+				messages,
+				callerCtx,
+				allowedTools,
+				0,
+				onStep,
+			)
+			if err != nil {
+				writeChunk(fmt.Sprintf("\n[错误：%s]", err.Error()))
+				return nil
 			}
-			writeChunk(string(runes[i:end]))
+			writeChunk("\n")
+			runes := []rune(finalContent)
+			chunkSize := 4
+			for i := 0; i < len(runes); i += chunkSize {
+				end := i + chunkSize
+				if end > len(runes) {
+					end = len(runes)
+				}
+				writeChunk(string(runes[i:end]))
+			}
 		}
 		return nil
 	})

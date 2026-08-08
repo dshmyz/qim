@@ -98,7 +98,11 @@ func (g *UnifiedSearchGraph) Execute(ctx context.Context, input *UnifiedSearchIn
 	if g.runnable == nil {
 		return nil, fmt.Errorf("UnifiedSearchGraph not built")
 	}
-	return g.runnable.Invoke(ctx, input)
+	// 图内 model 节点编译期写死 userID=0，靠 UserIDToCtx 从 ctx 读取真实用户
+	// （见 EinoChatModel.Generate）。这里统一从显式 input.UserID 注入一次，调用方
+	// 无需知道该内部契约——避免 SearchKnowledgeTool / 侧边栏 cross 各自传空 ctx
+	// 导致 model 二次调工具时 callerCtx.UserID=0 被"需要登录"误拦。
+	return g.runnable.Invoke(UserIDToCtx(ctx, input.UserID), input)
 }
 
 func (g *UnifiedSearchGraph) createRetrieveNode() *compose.Lambda {

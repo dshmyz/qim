@@ -30,6 +30,9 @@ func (f *fakeAvatarProvider) Embedding(text string) ([]float32, error) {
 func (f *fakeAvatarProvider) ChatWithTools(messages []ai.Message, tools []ai.ToolDef) (*ai.ChatResponse, error) {
 	return &ai.ChatResponse{Content: f.reply}, nil
 }
+func (f *fakeAvatarProvider) ChatStreamWithTools(context.Context, []ai.Message, []ai.ToolDef, func(ai.StreamChunk) error) error {
+	return ai.ErrStreamingToolsNotSupported
+}
 func (f *fakeAvatarProvider) IsConfigured() bool { return true }
 func (f *fakeAvatarProvider) WithModel(model string) ai.Provider {
 	// 返回带 model 的副本（保持 reply 不变）

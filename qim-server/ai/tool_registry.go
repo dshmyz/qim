@@ -58,6 +58,15 @@ func (r *ToolRegistry) RegisterTool(tool Tool) {
 	logger.WithModule("ToolRegistry").Info("Registered tool", "tool", tool.Name())
 }
 
+// RemoveTool 按名字移除工具（含其启用状态）。用于外部 MCP 连接在运行时被删除/
+// 禁用后把其工具从注册表摘除，避免残留脏工具。
+func (r *ToolRegistry) RemoveTool(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.tools, name)
+	delete(r.enabledTools, name)
+}
+
 // GetTool 获取工具
 func (r *ToolRegistry) GetTool(name string) (Tool, bool) {
 	r.mu.RLock()

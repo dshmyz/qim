@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
@@ -98,11 +99,16 @@ func (g *MCPClientGateway) loadConns() []MCPConnConfig {
 }
 
 // Sync 读取配置并同步外部工具注册表。失败不阻塞：单连接错误仅跳过。
+// 可安全重复调用：每次先摘除上一轮注册的外部工具（应对连接被删除/禁用/改名），
+// 再按当前配置重新注册，因此运行时可经 ReSyncExternalMCP() 热刷新。
 func (g *MCPClientGateway) Sync() {
-	conns := g.loadConns()
-	if len(conns) == 0 {
-		return
+	// 摘除上一轮注册的外部工具，保证幂等：删除的连接对应的工具不再残留。
+	for name := range g.registered {
+		g.registry.RemoveTool(name)
 	}
+	g.registered = make(map[string]bool)
+
+	conns := g.loadConns()
 	for i := range conns {
 		conn := &conns[i]
 		if !conn.Enabled {
@@ -111,7 +117,7 @@ func (g *MCPClientGateway) Sync() {
 		g.syncConn(conn)
 	}
 	logger.WithModule("MCPClientGateway").Info("外部 MCP 工具同步完成",
-		"registered", len(g.registered))
+		"registered", len(g.registered), "conns", len(conns))
 }
 
 func (g *MCPClientGateway) syncConn(conn *MCPConnConfig) {
@@ -145,6 +151,9 @@ func (g *MCPClientGateway) syncConn(conn *MCPConnConfig) {
 
 // connect 建立到外部 MCP Server 的连接会话。streamable-http 走
 // StreamableClientTransport；stdio 暂不支持（MVP 以远程 HTTP 验证链路）。
+// 若连接配置了 token，通过自定义 RoundTripper 为每次请求注入
+// Authorization: Bearer <token>（go-sdk 的 StreamableClientTransport 无
+// 顶层 header 字段，需经 HTTPClient 挂 RoundTripper）。
 func (g *MCPClientGateway) connect(ctx context.Context, conn *MCPConnConfig) (*mcp.ClientSession, error) {
 	var transport mcp.Transport
 	switch conn.Transport {
@@ -152,7 +161,11 @@ func (g *MCPClientGateway) connect(ctx context.Context, conn *MCPConnConfig) (*m
 		if conn.URL == "" {
 			return nil, fmt.Errorf("streamable-http 连接缺少 url")
 		}
-		transport = &mcp.StreamableClientTransport{Endpoint: conn.URL}
+		streaming := &mcp.StreamableClientTransport{Endpoint: conn.URL}
+		if conn.Token != "" {
+			streaming.HTTPClient = tokenAuthHTTPClient(conn.Token)
+		}
+		transport = streaming
 	case "stdio":
 		return nil, fmt.Errorf("stdio transport 暂不支持，请改用 streamable-http")
 	default:
@@ -170,6 +183,32 @@ func (g *MCPClientGateway) connect(ctx context.Context, conn *MCPConnConfig) (*m
 		return nil, fmt.Errorf("mcp connect %s: %w", conn.URL, err)
 	}
 	return session, nil
+}
+
+// tokenAuthHTTPClient 返回一个在每次出站请求上注入
+// Authorization: Bearer <token> 的 http.Client。用于为需要鉴权的
+// 外部 MCP Server 附加凭据（streamable-http 传输）。
+// 复用默认传输以保证既有连接池/超时行为；仅在 token 非空时构造。
+func tokenAuthHTTPClient(token string) *http.Client {
+	return &http.Client{
+		Transport: &authorizationTransport{
+			token: token,
+			inner: http.DefaultTransport,
+		},
+	}
+}
+
+// authorizationTransport 注入 Authorization: Bearer 头的 RoundTripper。
+type authorizationTransport struct {
+	token string
+	inner http.RoundTripper
+}
+
+func (t *authorizationTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// 复制请求，避免污染复用连接池中的客户端请求对象
+	clone := req.Clone(req.Context())
+	clone.Header.Set("Authorization", "Bearer "+t.token)
+	return t.inner.RoundTrip(clone)
 }
 
 // schemaToMap 把 MCP 工具定义里的 inputSchema（any，通常已是 map）规范化为

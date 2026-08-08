@@ -38,6 +38,11 @@ func getUserIDFromContext(c *gin.Context) (uint, bool) {
 // Global smart reply engine instance
 var smartReplyEngine *SmartReplyEngine
 
+// mcpGateway 外部 MCP 客户端网关的进程内引用。供 UpdateSystemConfig 在外部 MCP
+// 配置变更后触发运行时热同步（无需重启）。与 smartReplyEngine 的注入分离：这里
+// 只负责持引用以响应配置更新，工具可及性的门控走 smartReplyEngine 网关。
+var mcpGateway *service.MCPClientGateway
+
 type reminderLimiterState struct {
 	pending bool
 	lastOK  time.Time
@@ -219,11 +224,23 @@ func SetGroupMemoryService(gms *service.GroupMemoryService) {
 }
 
 // SetMCPGateway 注入外部 MCP 客户端网关到 smart reply 引擎，使群 @AI 白名单
-// 能按位点放行外部工具。smartReplyEngine 可能未初始化时安全跳过。
+// 能按位点放行外部工具；同时保留进程内引用供配置更新后热同步。smartReplyEngine
+// 可能未初始化时安全跳过。
 func SetMCPGateway(gw *service.MCPClientGateway) {
+	mcpGateway = gw
 	if smartReplyEngine != nil {
 		smartReplyEngine.SetMCPGateway(gw)
 	}
+}
+
+// ReSyncExternalMCP 在外部 MCP 配置（external_mcp / external_mcp:group_enabled）
+// 被后台更新后触发网关热同步，使新增/修改/删除的连接立即生效而不必重启服务。
+// 网关未注入时安全跳过（幂等）。
+func ReSyncExternalMCP() {
+	if mcpGateway == nil {
+		return
+	}
+	mcpGateway.Sync()
 }
 
 // InitSmartReplyGraph initializes the Eino Graph for smart reply
@@ -367,13 +384,22 @@ func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []
 		resp["avatar_name"] = service.GetAINameCache().GetAvatarName(msg.SenderID)
 	}
 
-	// 解析 Extra：透出外部工具调用记录（tool_calls），供前端渲染独立工具卡片（回放）。
-	// 解析失败或为空时不设置，前端约定 tool_calls 不存在或为空数组。
+	// 解析 Extra：透出外部工具调用记录（tool_calls）、群助手命中的知识来源
+	// （knowledge_sources）与分身「依据」来源（sources），供前端回放/历史拉取后
+	// 渲染独立工具卡片与「知识来源/依据」徽章。与 service 级 buildMessageResponse
+	// （message_service.go）对齐——否则 WS 实时广播带这些字段，而历史/REST 回放
+	// 只透 tool_calls，刷新后徽章丢失。解析失败或为空时不设置，前端约定不存即空。
 	if msg.Extra != "" {
 		var extra map[string]interface{}
 		if err := json.Unmarshal([]byte(msg.Extra), &extra); err == nil {
 			if tc, ok := extra["tool_calls"]; ok {
 				resp["tool_calls"] = tc
+			}
+			if ks, ok := extra["knowledge_sources"]; ok {
+				resp["knowledge_sources"] = ks
+			}
+			if sc, ok := extra["sources"]; ok {
+				resp["sources"] = sc
 			}
 		}
 	}
@@ -755,6 +781,27 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 	// 分身消息：透出分身名称
 	if msg.Origin == "avatar" {
 		responseData["avatar_name"] = service.GetAINameCache().GetAvatarName(msg.SenderID)
+	}
+
+	// 解析 Extra：透出外部工具调用记录（tool_calls）、群助手命中的知识来源
+	// （knowledge_sources）与分身「依据」来源（sources），供前端实时渲染独立工具卡片
+	// 与「知识来源/依据」徽章。本函数是 SendStreamingAIMessage.finish 与 SendAIMessage
+	// 的实时 WS 广播路径；若只透出 raw extra 字符串而不解析出顶层字段，前端
+	// （useMainMessageHandlers 读 msg.knowledge_sources）在实时通道上收不到徽章数据，
+	// 需刷新改走历史/REST 才可见——与 handler/service 两份 buildMessageResponse 三处对齐。
+	if msg.Extra != "" {
+		var extra map[string]interface{}
+		if err := json.Unmarshal([]byte(msg.Extra), &extra); err == nil {
+			if tc, ok := extra["tool_calls"]; ok {
+				responseData["tool_calls"] = tc
+			}
+			if ks, ok := extra["knowledge_sources"]; ok {
+				responseData["knowledge_sources"] = ks
+			}
+			if sc, ok := extra["sources"]; ok {
+				responseData["sources"] = sc
+			}
+		}
 	}
 
 	if ws.GlobalHub != nil {

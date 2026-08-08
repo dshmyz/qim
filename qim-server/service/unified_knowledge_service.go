@@ -25,6 +25,14 @@ type KnowledgeSnippet struct {
 	Metadata map[string]string
 }
 
+// KnowledgeSource 群助手回复命中的知识来源最小结构（仅标题/相关度），随回复消息下发
+// 供前端渲染「知识来源」折叠标签。与 Bot 命中笔记的 knowledge_sources 结构对齐，
+// 只暴露标题与分数，不回传文档正文/片段，避免消息响应体过大或泄漏。
+type KnowledgeSource struct {
+	Title string  `json:"title"`
+	Score float64 `json:"score"`
+}
+
 func NewUnifiedKnowledgeService(groupDocSvc *GroupDocumentService, fallback *LegacyKnowledgeFallback) *UnifiedKnowledgeService {
 	return &UnifiedKnowledgeService{
 		groupDocSvc:    groupDocSvc,
@@ -68,19 +76,35 @@ func (s *UnifiedKnowledgeService) Search(query string, groupID uint, limit int) 
 }
 
 func (s *UnifiedKnowledgeService) BuildContext(query string, groupID uint) string {
-	snippets := s.Search(query, groupID, 3)
+	ctx, _ := s.BuildContextWithSources(query, groupID, 3)
+	return ctx
+}
+
+// BuildContextWithSources 一次检索同时产出注入提示词的上下文串与命中的知识来源
+// （仅标题/相关度），避免同一查询重复检索两遍。来源不携带文档正文，防止消息响应体过大。
+func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID uint, limit int) (string, []KnowledgeSource) {
+	if s == nil {
+		return "", nil
+	}
+	snippets := s.Search(query, groupID, limit)
 	if len(snippets) == 0 {
-		return ""
+		return "", nil
 	}
 
 	var parts []string
 	parts = append(parts, "📚 群知识库相关内容：")
+	sources := make([]KnowledgeSource, 0, len(snippets))
 	for i, snip := range snippets {
 		sourceTag := fmt.Sprintf("（语义检索，相关度: %.1f%%）", snip.Score*10)
 		parts = append(parts, fmt.Sprintf("[%d] %s %s\n%s", i+1, snip.Title, sourceTag, snip.Content))
+		title := snip.Title
+		if title == "" {
+			title = "未命名"
+		}
+		sources = append(sources, KnowledgeSource{Title: title, Score: snip.Score})
 	}
 
-	return strings.Join(parts, "\n\n")
+	return strings.Join(parts, "\n\n"), sources
 }
 
 func (s *UnifiedKnowledgeService) SetVectorEnabled(enabled bool) {

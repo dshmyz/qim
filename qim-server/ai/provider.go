@@ -33,6 +33,13 @@ type Provider interface {
 	// ChatWithTools 带 function calling 的聊天
 	ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error)
 
+	// ChatStreamWithTools 带 function calling 的流式聊天（真·逐 token ReAct 用）。
+	// 流式过程中把内容 delta 逐片回传 onChunk；遇工具调用则以 StreamChunk.ToolCalls
+	// （ToolCallDelta 增量）回传，由调用方跨 chunk 累积。不支持流式 tool-call 的
+	// Provider（如 Anthropic）由 BaseProvider 提供默认实现返回 not-implemented，
+	// 调用方据此降级到非流式 ChatWithTools。
+	ChatStreamWithTools(ctx context.Context, messages []Message, tools []ToolDef, onChunk func(chunk StreamChunk) error) error
+
 	// IsConfigured 检查提供商是否已正确配置
 	IsConfigured() bool
 
@@ -60,6 +67,13 @@ func NewBaseProvider() *BaseProvider {
 // 每个具体 Provider 应覆盖此方法以提供带 context 取消的流式支持
 func (bp *BaseProvider) ChatStreamWithContext(ctx context.Context, messages []Message, onChunk func(chunk StreamChunk) error) error {
 	return fmt.Errorf("ChatStreamWithContext not implemented")
+}
+
+// ChatStreamWithTools 默认实现：返回 ErrStreamingToolsNotSupported，触发调用方（流式
+// ReAct 引擎）降级到非流式 ChatWithTools。不支持流式 tool-call 的 Provider（如 Anthropic）
+// 不覆盖即自动降级，功能不回归。
+func (bp *BaseProvider) ChatStreamWithTools(ctx context.Context, messages []Message, tools []ToolDef, onChunk func(chunk StreamChunk) error) error {
+	return ErrStreamingToolsNotSupported
 }
 
 // ExecuteWithRetry 执行 HTTP 请求并自动重试

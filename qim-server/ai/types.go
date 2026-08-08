@@ -2,6 +2,19 @@ package ai
 
 import "encoding/json"
 
+// ErrStreamingToolsNotSupported 标记当前 Provider 不支持流式 tool-call（如 Anthropic）。
+// 流式 ReAct 引擎首回合收到此错误时，让调用方降级到非流式 GetCompletionWithToolsMultiStep，
+// 功能不回归；非首回合出现则视为硬错误返回。
+var ErrStreamingToolsNotSupported = &streamingToolsUnsupportedError{}
+
+type streamingToolsUnsupportedError struct{}
+
+func (e *streamingToolsUnsupportedError) Error() string { return "streaming tools not supported by provider" }
+func (e *streamingToolsUnsupportedError) Is(target error) bool {
+	_, ok := target.(*streamingToolsUnsupportedError)
+	return ok
+}
+
 type Message struct {
 	Role       string     `json:"role"`
 	Content    string     `json:"content"`
@@ -74,6 +87,20 @@ type StreamChunk struct {
 	Finish  *string      `json:"finish,omitempty"`
 	Usage   *StreamUsage `json:"usage,omitempty"`
 	Error   *string      `json:"error,omitempty"`
+	// ToolCalls 流式 tool-call 回合的增量：OpenAI 兼容流把 function.arguments 以分片
+	// JSON 字符串多 chunk 发送，逐片透传由调用方（流式 ReAct 引擎）按 index 跨 chunk 累积，
+	// 回合终了再整体 unmarshal。仅流式 tool-call 路径使用，普通流式恒为空。
+	ToolCalls []ToolCallDelta `json:"tool_calls,omitempty"`
+}
+
+// ToolCallDelta 流式 tool-call 的一条增量：Index 标识同一流内第几个 tool call
+// （稳定键），ID/Name/Arguments 分片累积——ID/Name 通常只在首个分片出现，
+// Arguments 为从 0 拼接的原始 JSON 字符串。
+type ToolCallDelta struct {
+	Index     int    `json:"index"`
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
 }
 
 // TokenUsage Token 用量统计

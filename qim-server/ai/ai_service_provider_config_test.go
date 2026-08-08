@@ -26,8 +26,13 @@ func (p *streamUsageFakeProvider) ChatStreamWithContext(_ context.Context, _ []M
 }
 func (p *streamUsageFakeProvider) Embedding(string) ([]float32, error)                        { return nil, nil }
 func (p *streamUsageFakeProvider) ChatWithTools([]Message, []ToolDef) (*ChatResponse, error) { return nil, nil }
-func (p *streamUsageFakeProvider) IsConfigured() bool                                        { return true }
-func (p *streamUsageFakeProvider) WithModel(string) Provider                                 { return p }
+func (p *streamUsageFakeProvider) ChatStreamWithTools(context.Context, []Message, []ToolDef, func(StreamChunk) error) error {
+	return ErrStreamingToolsNotSupported
+}
+func (p *streamUsageFakeProvider) IsConfigured() bool { return true }
+func (p *streamUsageFakeProvider) WithModel(string) Provider {
+	return p
+}
 
 func TestChatStreamWithProviderConfigReportsUsage(t *testing.T) {
 	svc := NewAIService(&AIConfig{})

@@ -68,7 +68,7 @@ func TestExecuteWithToolsRealLLM_KicksMember(t *testing.T) {
 		AssistantName:   "AI助手",
 	}
 
-	reply, err := graph.ExecuteWithTools(context.Background(), input)
+	reply, err := graph.ExecuteWithTools(context.Background(), input, service.ToolsetBuiltin)
 	require.NoError(t, err)
 	t.Logf("AI 回复: %q", reply)
 
