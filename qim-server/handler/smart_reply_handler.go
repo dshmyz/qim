@@ -527,6 +527,14 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		return
 	}
 
+	// 后台开启外部 MCP 群启用时，普通提问也走带外部工具的流式 ReAct：
+	// LLM 可在自然语言下自主调用外部工具，挂起期间向用户发"正在调用…"过程反馈。
+	// 关闭时（默认）保持下面原有纯流式路径，零行为变化。
+	if e.smartReplyGraph.HasExternalTools() {
+		e.handleAIMentionWithExternalTools(ctx, input, conversationID, assistantName, userID)
+		return
+	}
+
 	stream, err := e.smartReplyGraph.ExecuteStream(ctx, input)
 	if err != nil {
 		log.Printf("[SmartReplyGraph] @AI 流式回复失败: %v", err)
@@ -661,6 +669,115 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 		return
 	}
 	log.Printf("[SmartReplyGraph] @AI 带工具回复已完成")
+}
+
+// handleAIMentionWithExternalTools 普通提问（非管理指令）走带外部 MCP 工具的
+// 流式 ReAct 回复。复用 SendStreamingAIMessage 的流式气泡：
+//   - 每步工具执行前（onStep 反馈）向气泡追加一行「🔧 正在调用 xxx…」，
+//     让 tool_call 挂起期间用户看到"正在干什么"，而不是干等/空白（形态 A 追加版）；
+//   - ReAct 循环完成后，把最终答案按句子切子块逐块 sendChunk，保留打字感；
+//   - 最后 finish() 收尾（与普通流式路径一致），出错且无内容时发兜底文案。
+func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint) {
+	sendChunk, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
+	if err != nil {
+		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
+		return
+	}
+
+	// @提问者模式：读取配置（与流式路径一致）。
+	db := database.GetDB()
+	var mentionPrefix string
+	var group model.Group
+	if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err == nil {
+		if group.GetAIConfig().MentionReplyMode == "mention" {
+			var mentionUser model.User
+			if err := db.First(&mentionUser, userID).Error; err == nil {
+				name := mentionUser.Nickname
+				if name == "" {
+					name = mentionUser.Username
+				}
+				mentionPrefix = mention.Encode(userID, name) + "\n\n"
+			}
+		}
+	}
+
+	if mentionPrefix != "" {
+		if err := sendChunk(mentionPrefix); err != nil {
+			log.Printf("[SmartReplyGraph] 发送 @ 前缀失败: %v", err)
+			finish()
+			return
+		}
+	}
+
+	// 每步工具执行后追加过程反馈，让挂起时段可见。
+	feedback := func(_ int, tool string, _ map[string]interface{}, _ interface{}, _ error) {
+		_ = sendChunk("🔧 正在调用 " + tool + "…\n")
+	}
+
+	reply, err := e.smartReplyGraph.ExecuteStreamWithExternalTools(ctx, input, feedback)
+	if err != nil {
+		log.Printf("[SmartReplyGraph] @AI 外部工具回复失败: %v", err)
+		// 完全没产出时发兜底文案，避免残留空白卡住的空气泡
+		if reply == "" {
+			_ = sendChunk("⚠️ 这条消息暂时没能回复（调用出错），请稍后再试。")
+		}
+		finish()
+		return
+	}
+
+	reply = mention.StripTokens(reply)
+	if strings.TrimSpace(reply) == "" {
+		log.Printf("[SmartReplyGraph] @AI 外部工具回复内容为空，跳过保存")
+		finish()
+		return
+	}
+
+	// 按句子切子块流式送出最终答案，保留打字感；空块跳过。
+	for _, chunk := range splitReplyChunks(reply) {
+		if chunk == "" {
+			continue
+		}
+		if err := sendChunk(chunk); err != nil {
+			log.Printf("[SmartReplyGraph] 发送回复分块失败: %v", err)
+			break
+		}
+	}
+
+	if finish() == nil {
+		log.Printf("[SmartReplyGraph] 完成流式消息失败")
+		return
+	}
+	log.Printf("[SmartReplyGraph] @AI 外部工具回复已完成")
+}
+
+// splitReplyChunks 把完整回复切成适合逐块送达的小段（尽量在句子/停顿处断开），
+// 用于在 sendChunk 上保留流式打字感。实现极简：按常见中文/英文标点断句，
+// 单段不超过 maxChunk 个字符，过长则硬截断。
+func splitReplyChunks(reply string) []string {
+	const maxChunk = 160
+	var chunks []string
+	runes := []rune(reply)
+	for i := 0; i < len(runes); {
+		// 在当前段内找尽可能靠后且在 i+maxChunk 以内的断句点
+		cut := i + maxChunk
+		if cut > len(runes) {
+			cut = len(runes)
+		}
+		best := -1
+		for j := cut; j > i; j-- {
+			switch runes[j-1] {
+			case '。', '！', '？', '；', '：', '\n', '.', '!', '?', ';', '，', ',':
+				best = j
+				j = i // 只取离 cut 最近（从后往前第一个）断点
+			}
+		}
+		if best == -1 || best <= i {
+			best = cut
+		}
+		chunks = append(chunks, string(runes[i:best]))
+		i = best
+	}
+	return chunks
 }
 
 // ShouldUseToolsForMention 判断 @AI 提及是否应走带工具路径（管理操作指令）。

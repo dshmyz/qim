@@ -98,12 +98,16 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	if groupMemorySvc := di.GlobalContainer.GroupMemoryService; groupMemorySvc != nil {
 		handler.SetGroupMemoryService(groupMemorySvc)
 	}
-	handler.SetMCPGateway(mcpGateway)
 
 	// 初始化 SmartReplyGraph（使用 Eino 框架编排）
 	if err := handler.InitSmartReplyGraph(); err != nil {
 		logger.WithModule("Routes").Warn("初始化 SmartReplyGraph 失败，将使用旧方法", "error", err)
 	}
+
+	// 注入外部 MCP 客户端网关。必须在 InitSmartReplyGraph 之后调用——
+	// SetMCPGateway 只在 smartReplyGraph 非 nil 时才会传播网关，先于初始化调用会被静默丢弃，
+	// 导致普通提问 HasExternalTools() 恒为 false、外部工具永不生效。
+	handler.SetMCPGateway(mcpGateway)
 
 	aiHandler := handler.NewAIHandler(aiSvc, toolRegistry)
 

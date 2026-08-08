@@ -268,6 +268,39 @@ func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartRepl
 	)
 }
 
+// HasExternalTools 报告群 AI 普通提问路径是否有可用的外部 MCP 工具。
+// 仅当「网关已注入 && 后台开启 external_mcp:group_enabled && 确有已注册外部工具」
+// 才返回 true，用于路由普通提问进带外部工具的流式 ReAct；其余情况（默认关闭）
+// 保持原有纯流式路径，零行为变化。
+func (g *SmartReplyGraph) HasExternalTools() bool {
+	if g.mcpGateway == nil || !g.mcpGateway.GroupEnabled() {
+		return false
+	}
+	return len(g.mcpGateway.ListExternalToolNames()) > 0
+}
+
+// ExecuteStreamWithExternalTools 普通提问（非管理指令）走带外部 MCP 工具的
+// 多步 ReAct 循环，供群 AI 在自然语言下自主调用外部工具；最终返回完整回复文本。
+//
+// 与 ExecuteWithTools 的区别：白名单只用外部 MCP 工具名（mcp_*），不注入内建
+// 群管理工具——普通提问不该被 group_management 等扩权，精确对焦"外部工具在
+// 普通提问可用"。feedback（ReActStepCallback）在每步工具执行后被调用，handler
+// 可借此向流式气泡追加"🔧 正在调用 XXX…"的过程反馈，回应 tool_call 挂起时段。
+//
+// 注：这是"ReAct 循环 + 过程反馈"的非逐 token 变体（复用 GetCompletionWithToolsMultiStep），
+// 不调工具的回合最终答案由调用方切子块发送以保留打字感；真·流式 tool-call 解析留后续。
+func (g *SmartReplyGraph) ExecuteStreamWithExternalTools(ctx context.Context, input *SmartReplyContext, feedback ai.ReActStepCallback) (string, error) {
+	if err := g.prepareInput(input); err != nil {
+		return "", err
+	}
+	historyMessages := g.buildHistoryMessages(input)
+	callerCtx := &ai.CallerContext{UserID: input.UserID}
+	return g.aiService.GetCompletionWithToolsMultiStep(
+		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx,
+		g.mcpGateway.ListExternalToolNames(), ai.MaxReActSteps, feedback,
+	)
+}
+
 // prepareInput 补齐 SmartReplyContext 的群/用户/待办/成员/知识库/记忆等上下文，
 // 供 ExecuteStream 与 ExecuteWithTools 复用。
 func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
