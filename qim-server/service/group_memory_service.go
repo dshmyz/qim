@@ -125,6 +125,11 @@ func (s *GroupMemoryService) Recall(groupID uint, query string, topK int) ([]Sea
 		Scope:     "user",
 		Namespace: groupMemoryNamespace,
 		TopK:      topK,
+		// 提升重要度与新颖度权重：与分身 Recall 对齐，重要且较新的群记忆更靠前。
+		SemanticWeight:   0.55,
+		LexicalWeight:   0.15,
+		ImportanceWeight: 0.20,
+		RecencyWeight:   0.10,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("检索群记忆失败: %w", err)
@@ -173,8 +178,16 @@ func (s *GroupMemoryService) GetGroupMemories(groupID uint, limit int) ([]Memory
 		return []MemoryRecord{}, nil
 	}
 
+	// 懒触发本群的弱群记忆归档：顺带 soft-hide "既弱又长期闲置"的群记忆，
+	// 避免群记忆库无限膨胀拖垮面板/图谱/召回。尽力而为、受冷却节流、失败不阻断。
+	if _, err := lazyArchiveWeakMemories(s.db, fmt.Sprintf("%d", groupID), groupMemoryNamespace); err != nil {
+		logger.WithModule("GroupMemoryService").Warn("懒归档不阻断列表",
+			"groupID", groupID, "error", err)
+	}
+
+	// 空 Query（且无 QueryVector）走内存桶列表路径，精确枚举本群记忆（排除过期/归档），
+	// 按重要度+新颖度排序；比旧版用 "all memories" 做一次无意义语义召回更准确也更省。
 	resp, err := s.db.SearchMemory(types.MemorySearchRequest{
-		Query:     "all memories",
 		UserID:    fmt.Sprintf("%d", groupID),
 		Scope:     "user",
 		Namespace: groupMemoryNamespace,

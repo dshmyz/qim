@@ -1,9 +1,11 @@
 // src/composables/useBotChat.ts
 
 import { ref, computed, type Ref } from 'vue'
-import { getStoredServerUrl } from './useServerUrl'
+import { getStoredServerUrl, useServerUrl } from './useServerUrl'
 import { request, getToken } from './useRequest'
 import { useCurrentUser } from './useCurrentUser'
+import { useProcessConversation } from './useProcessConversation'
+import { useChatStore } from '../stores/chat'
 import type { BotMessage } from '../types/bot'
 
 function normalizeSenderType(msg: any): BotMessage['senderType'] {
@@ -68,6 +70,11 @@ export function useBotChat(botId: Ref<number | null>) {
   // 当前用户信息
   const { currentUser } = useCurrentUser()
 
+  // 最近会话列表实时更新：bot 会话建成后插入 store，与 openChat 私聊路径保持一致
+  const { serverUrl } = useServerUrl()
+  const { processConversation } = useProcessConversation(serverUrl, currentUser)
+  const chatStore = useChatStore()
+
   // 分页状态
   const currentPage = ref(1)
   const pageSize = ref(20)
@@ -96,6 +103,12 @@ export function useBotChat(botId: Ref<number | null>) {
 
       if (response.code === 0 && response.data) {
         conversationId.value = response.data.id || response.data.conversationId
+        // 服务端可能返回的是复用已有会话（findBotSingleConversation），同样规范化后入列
+        const processed = processConversation(response.data) as any
+        const cid = String(response.data.id || response.data.conversationId)
+        if (processed && !chatStore.conversations.some(c => String(c.id) === cid)) {
+          chatStore.addConversation(processed)
+        }
         return true
       } else {
         error.value = response.message || '初始化会话失败'

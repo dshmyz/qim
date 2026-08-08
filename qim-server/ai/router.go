@@ -81,3 +81,15 @@ func (r *ModelRouter) SelectProvider(
 
 	return nil, "", fmt.Errorf("all providers unavailable for %s: %w", taskType, lastErr)
 }
+
+// HasExplicitRoute 报告 taskType 是否配置了独立的显式路由（而不是回退到 defaultTask）。
+// 用于判定多模态任务（如 vision）是否有专门的视觉模型：未配置时会回退到 defaultTask
+// （通常为纯文本 chat 模型），此时把图片 base64 发给它必然 400。调用方据此选择
+// 诚实降级（"当前模型不支持看图"）而非把图片塞给不支持视觉的模型。
+func (r *ModelRouter) HasExplicitRoute(taskType TaskType) bool {
+	route, ok := r.routes[taskType]
+	if !ok {
+		return false
+	}
+	return route.Provider != "" || len(route.Fallback) > 0
+}

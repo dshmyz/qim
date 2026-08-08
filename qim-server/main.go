@@ -70,6 +70,14 @@ func main() {
 	}); err != nil {
 		logger.L().Error("注册僵尸流式清理 cron job 失败", "error", err)
 	}
+	// 上下文污染聚合快照：周期性把 [ContextDiag] 各 label 的「近期/远期自身回复、过滤有效性」
+	// 聚合成一期占比趋势日志（[ContextDiagAgg]），供评估/调参 selfTurnWindow。
+	// 纯读内存自包含计数，无 I/O，10 分钟一期足够看趋势。
+	if err := sched.AddIntervalJob("context-diag-agg", 10*time.Minute, func(ctx context.Context) {
+		service.ContextDiagAggReport()
+	}); err != nil {
+		logger.L().Error("注册上下文污染聚合 cron job 失败", "error", err)
+	}
 	// 组织架构同步：从 DB 加载 OrgSyncConfig 并注册为 cron job
 	syncEngine := syncpkg.NewEngine()
 	syncpkg.SharedEngine = syncEngine

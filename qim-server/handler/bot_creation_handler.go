@@ -364,9 +364,17 @@ func DeleteMyBot(c *gin.Context) {
 
 	db := database.GetDB()
 
-	result := db.Where("id = ? AND creator_id = ?", uint(botID), userID).Delete(&model.Bot{})
-	if result.Error != nil || result.RowsAffected == 0 {
+	// 校验归属：仅创建者能删除自己的 bot（保留原有权限语义）
+	var bot model.Bot
+	if err := db.Where("id = ? AND creator_id = ?", uint(botID), userID).First(&bot).Error; err != nil {
 		response.NotFound(c, "Bot 不存在或无权操作")
+		return
+	}
+
+	// 走统一的 bot 删除服务：删除 bots 行 + 1:1 bot_conversations 配对 + 虚拟用户从所有群 conversation_members 移除。
+	// 若不清理成员关系，被删的 bot 仍残留在群成员列表里，对其发起私聊会因 virtual_user_id 反查失败 404「机器人不存在」。
+	if err := di.GlobalContainer.BotService.DeleteBot(uint(botID)); err != nil {
+		response.InternalServerError(c, "删除 Bot 失败")
 		return
 	}
 

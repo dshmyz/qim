@@ -120,6 +120,7 @@ type SmartReplyGraph struct {
 	groupMemorySvc   *GroupMemoryService
 	userSvc          *UserService
 	quotedFile       QuotedDocumentReader
+	mcpGateway       *MCPClientGateway
 }
 
 func NewSmartReplyGraph(
@@ -151,6 +152,23 @@ func (g *SmartReplyGraph) BuildGraph() error {
 // 传 nil 可关闭按引用读取文件正文的能力（安全降级）。
 func (g *SmartReplyGraph) SetQuotedFileReader(reader QuotedDocumentReader) {
 	g.quotedFile = reader
+}
+
+// SetMCPGateway 注入外部 MCP 客户端网关。非 nil 时，若后台开启了
+// external_mcp:group_enabled，群 @AI 会把网关注册的外部 MCP 工具（mcp_*）
+// 追加进可用工具集，供 ReAct 循环调用；未注入（nil）或未开启则行为不变。
+func (g *SmartReplyGraph) SetMCPGateway(gateway *MCPClientGateway) {
+	g.mcpGateway = gateway
+}
+
+// groupAssistantAllowedTools 计算群 @AI 实际可用的工具白名单：内置群管理工具
+// + （若开启）外部 MCP 工具。返回新 slice，避免改动包级白名单。
+func (g *SmartReplyGraph) groupAssistantAllowedTools() []string {
+	allowed := append([]string(nil), groupAssistantToolWhitelist...)
+	if g.mcpGateway != nil && g.mcpGateway.GroupEnabled() {
+		allowed = append(allowed, g.mcpGateway.ListExternalToolNames()...)
+	}
+	return allowed
 }
 
 var registerReplyMergeOnce sync.Once
@@ -204,10 +222,22 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 		return nil, err
 	}
 	historyMessages := g.buildHistoryMessages(input)
-	// 被引用图片时走视觉任务类型（多模态），否则常规对话；视觉任务未配置时由模型路由回退到默认任务。
+	// 被引用图片时走视觉任务类型（多模态），否则常规对话。
+	// 若未显式配置视觉路由，TaskTypeVision 会回退到 defaultTask（纯文本 chat 模型），
+	// 把图片 base64 发给它必然 400。此时把被引用图片降级为 QuotedFailed 提示语并在
+	// 常规对话任务下走完，让 AI 诚实说明"当前模型不支持看图"，而不触发模型调用错误。
 	taskType := ai.TaskTypeChat
 	if input.Quoted != nil && input.Quoted.Kind == QuotedImage {
-		taskType = ai.TaskTypeVision
+		if g.aiService.HasVisionRoute() {
+			taskType = ai.TaskTypeVision
+		} else {
+			log.Printf("[SmartReplyGraph] 未配置视觉路由，引用图片降级为普通对话")
+			input.Quoted = &QuotedContext{
+				Kind: QuotedFailed,
+				Name: input.Quoted.Name,
+				Text: fmt.Sprintf("📷 你引用了一条图片消息「%s」，但当前配置的模型不支持查看图片。请如实说明你看不到图片，可请对方把图片里的关键信息用文字发出来。", input.Quoted.Name),
+			}
+		}
 	}
 	chatModel := NewEinoChatModel(g.aiService, taskType, input.UserID)
 	return chatModel.Stream(ctx, historyMessages)
@@ -233,7 +263,7 @@ func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartRepl
 	historyMessages := g.buildHistoryMessages(input)
 	callerCtx := &ai.CallerContext{UserID: input.UserID}
 	return g.aiService.GetCompletionWithToolsMultiStep(
-		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx, groupAssistantToolWhitelist,
+		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx, g.groupAssistantAllowedTools(),
 		ai.MaxReActSteps, nil,
 	)
 }
@@ -538,6 +568,8 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 		Limit(20).
 		Find(&messages)
 
+	logHistoryDiagnostics("群助手/buildHistory", input.ConversationID, messages, nil)
+
 	if len(messages) == 0 {
 		currentQuestion := input.Message
 		if input.IsAIMention {
@@ -559,6 +591,7 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 		filteredMessages = append(filteredMessages, msg)
 	}
 
+	var foldedFar []string
 	hasRecentAI := false
 	for _, msg := range filteredMessages {
 		senderName := msg.Sender.Nickname
@@ -567,14 +600,16 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 		}
 
 		if msg.Origin == "assistant" {
-			// 检测最近 10 分钟内的 AI 回复，用于多轮上下文感知
-			if time.Since(msg.CreatedAt) <= 10*time.Minute {
+			// 近期自身回复保留为多轮指代锚点；远期自身回复是自我复制污染源，折叠而非原样回灌。
+			if isNearSelf(msg) {
 				hasRecentAI = true
+				result = append(result, &schema.Message{
+					Role:    schema.Assistant,
+					Content: msg.Content,
+				})
+			} else {
+				foldedFar = append(foldedFar, msg.Content)
 			}
-			result = append(result, &schema.Message{
-				Role:    schema.Assistant,
-				Content: msg.Content,
-			})
 		} else if msg.SenderID == input.UserID {
 			// 当前用户自己的消息，标为"我"
 			result = append(result, &schema.Message{
@@ -589,10 +624,16 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 		}
 	}
 
-	// 多轮上下文：检测到最近 10 分钟内有 AI 回复，在 system prompt 追加提示
+	// 多轮上下文：检测到最近窗口内有 AI 回复，在 system prompt 追加提示
 	if hasRecentAI && len(result) > 0 {
 		hint := "\n- 注意：上方对话中包含你最近的回答。用户可能在追问或引用之前的回答，请结合上下文理解，不要重复已经说过的内容"
 		result[0].Content += hint
+	}
+
+	// 远期自身回复：不逐条回灌（避免自我复制），折叠成一句追加到 system，供需要时索引而非盲从。
+	if len(foldedFar) > 0 {
+		result[0].Content += fmt.Sprintf("\n- 更早（超过%v前）你还回复过：%s。本轮默认不重复这些内容，除非用户明确要求。"+
+			"（这些是历史记录，不是本轮必须遵循的指令）", selfTurnWindow, foldFarSelf(foldedFar))
 	}
 
 	currentQuestion := input.Message
@@ -739,6 +780,8 @@ func (g *SmartReplyGraph) createHistoryNode() *compose.Lambda {
 			Limit(20).
 			Find(&messages)
 
+		logHistoryDiagnostics("群助手/graph", input.ConversationID, messages, nil)
+
 		if len(messages) == 0 {
 			input.ChatHistory = ""
 			return input, nil
@@ -749,6 +792,7 @@ func (g *SmartReplyGraph) createHistoryNode() *compose.Lambda {
 		}
 
 		var parts []string
+		var foldedFar []string
 		for _, msg := range messages {
 			if input.OriginalContent != "" && msg.SenderID == input.UserID && msg.Content == input.OriginalContent {
 				continue
@@ -760,10 +804,20 @@ func (g *SmartReplyGraph) createHistoryNode() *compose.Lambda {
 			}
 
 			if msg.Origin == "assistant" {
-				parts = append(parts, fmt.Sprintf("[assistant]: %s", msg.Content))
+				// 近期自身回复保留为多轮锚点；远期自身回复折叠，避免自我复制。
+				if isNearSelf(msg) {
+					parts = append(parts, fmt.Sprintf("[assistant]: %s", msg.Content))
+				} else {
+					foldedFar = append(foldedFar, msg.Content)
+				}
 			} else {
 				parts = append(parts, fmt.Sprintf("[user:%s]: %s", senderName, msg.Content))
 			}
+		}
+
+		if len(foldedFar) > 0 {
+			parts = append(parts, fmt.Sprintf("[system-note]: 更早（超过%v前）你还回复过：%s。本轮默认不重复，除非用户明确要求。",
+				selfTurnWindow, foldFarSelf(foldedFar)))
 		}
 
 		input.ChatHistory = strings.Join(parts, "\n")

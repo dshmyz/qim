@@ -76,8 +76,8 @@ github.com/dgraph-io/ristretto/v2 v2.1.0 h1:59LjpOJLNDULHh8MC4UaegN52lC4JnO2dITs
 github.com/dgraph-io/ristretto/v2 v2.1.0/go.mod h1:uejeqfYXpUomfse0+lO+13ATz4TypQYLJZzBSAemuB4=
 github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 h1:fAjc9m62+UWV/WAFKLNi6ZS0675eEUC9y3AlwSbQu1Y=
 github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13/go.mod h1:SqUrOPUnsFjfmXRMNPybcSiG0BgUW2AuFH8PAnS2iTw=
-github.com/dshmyz/gracedb v1.1.0 h1:2ZEq3JxN3dnosIzavyn1QaJ8AE5xFZgluzNtPfDf+o8=
-github.com/dshmyz/gracedb v1.1.0/go.mod h1:9KqBl43AKVWUgMmIK/Y5t+ydH0ZkUdt99UVqs8EpNZY=
+github.com/dshmyz/gracedb v1.3.0 h1:BRX+l8wudOwfP1MWD98N62xpH8kmL5afB8Aq3MPqVws=
+github.com/dshmyz/gracedb v1.3.0/go.mod h1:9KqBl43AKVWUgMmIK/Y5t+ydH0ZkUdt99UVqs8EpNZY=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/eino-contrib/jsonschema v1.0.3 h1:2Kfsm1xlMV0ssY2nuxshS4AwbLFuqmPmzIjLVJ1Fsp0=

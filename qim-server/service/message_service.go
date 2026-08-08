@@ -39,6 +39,8 @@ type MessageService struct {
 
 	aiService            *ai.AIService
 	noteSearcher         NoteSearcher // bot 回复时按创建者 scope 检索笔记；nil=降级（不检索）
+	groupMemorySvc       *GroupMemoryService // 群记忆（外部 bot 被 @ 时注入群上下文）；nil=降级（不拼接）
+	groupKnowledgeSvc    *GroupDocumentService // 群知识库；nil=降级（不拼接）
 	sensitiveWordCache   []model.SensitiveWord
 	sensitiveWordCacheMu sync.RWMutex
 	sensitiveWordLoaded  bool
@@ -60,6 +62,14 @@ func (s *MessageService) SetAIService(aiService *ai.AIService) {
 // 传 nil 即可关闭该能力（向量库未配置时安全降级）。
 func (s *MessageService) SetNoteSearcher(searcher NoteSearcher) {
 	s.noteSearcher = searcher
+}
+
+// SetGroupContextServices 注入群记忆 + 群知识库服务，供外部 agent bot 被 @ 时把
+// 群积累上下文注入 webhook payload。两者均可传 nil：任一缺失即跳过对应片段，
+// 不影响主流程（群未开启向量库/记忆时安全降级）。
+func (s *MessageService) SetGroupContextServices(memorySvc *GroupMemoryService, knowledgeSvc *GroupDocumentService) {
+	s.groupMemorySvc = memorySvc
+	s.groupKnowledgeSvc = knowledgeSvc
 }
 
 // loadSensitiveWords 从数据库加载启用的敏感词到内存缓存，返回 DB 错误。
@@ -277,8 +287,78 @@ func (s *MessageService) HandleGroupBotMention(convID, senderID uint, mentionedU
 			s.notifyPullModeBot(convID, senderID, bot.Name)
 			continue
 		}
-		s.forwardBotMessageToWebhook(bot, cfg.WebhookURL, cfg.WebhookSecret, senderID, convID, content)
+		groupContext := s.buildGroupBotContext(convID, content)
+		s.forwardBotMessageToWebhook(bot, cfg.WebhookURL, cfg.WebhookSecret, senderID, convID, content, groupContext)
 	}
+}
+
+// buildGroupBotContext 为群聊外部 agent 被 @ 时，拼接本群「群记忆 + 群知识库」上下文，
+// 注入 webhook payload（GroupContext），让外部 bot 能参考群积累内容回复。
+// 规则与群 AI 助手（smart_reply_graph.go handleAIMention）对齐：
+//   - 仅群会话且本群开启 AI（ai_config.enabled）时拼接；否则返回空串（单聊/未启用群不注入）。
+//   - 记忆取 top2 条，知识取 top3 条；任一服务未注入（nil）或检索失败即跳过对应片段，不阻断投递。
+//
+// 返回空串表示无上下文，调用方直接置空，不影响既有 payload 结构（向后兼容）。
+func (s *MessageService) buildGroupBotContext(convID uint, content string) string {
+	if s.groupMemorySvc == nil && s.groupKnowledgeSvc == nil {
+		return ""
+	}
+	// 反查群：非群会话无 groups 行，快速跳过
+	var group model.Group
+	if err := s.db.Where("conversation_id = ?", convID).First(&group).Error; err != nil {
+		return "" // 非群会话 / 群已解散
+	}
+	// 群未启用 AI 时不注入（与群助手触发条件对齐）
+	if cfg := group.GetAIConfig(); cfg == nil || !cfg.Enabled {
+		return ""
+	}
+
+	var parts []string
+	if s.groupMemorySvc != nil {
+		if memories, err := s.groupMemorySvc.Recall(group.ID, content, 2); err == nil && len(memories) > 0 {
+			memParts := make([]string, 0, len(memories))
+			for _, mem := range memories {
+				if mem.Content == "" {
+					continue
+				}
+				memParts = append(memParts, fmt.Sprintf("• %s（相关度: %.1f%%）", mem.Content, mem.Score*100))
+			}
+			if len(memParts) > 0 {
+				parts = append(parts, "🧠 本群近期记忆：\n"+strings.Join(memParts, "\n"))
+			}
+		} else if err != nil {
+			logger.WithModule("handleBotMessage").Debug("群记忆检索失败，跳过记忆片段",
+				"groupID", group.ID, "convID", convID, "error", err)
+		}
+	}
+	if s.groupKnowledgeSvc != nil {
+		if kn, err := s.groupKnowledgeSvc.SearchKnowledge(group.ID, content, 3); err == nil && len(kn) > 0 {
+			knParts := make([]string, 0, len(kn))
+			for _, k := range kn {
+				if k.Content == "" {
+					continue
+				}
+				prefix := "• "
+				if title := k.Metadata["title"]; title != "" {
+					prefix = fmt.Sprintf("• 【%s】", title)
+				} else if name := k.Metadata["name"]; name != "" {
+					prefix = fmt.Sprintf("• 【%s】", name)
+				}
+				knParts = append(knParts, prefix+k.Content)
+			}
+			if len(knParts) > 0 {
+				parts = append(parts, "📚 本群知识库相关内容：\n"+strings.Join(knParts, "\n"))
+			}
+		} else if err != nil {
+			logger.WithModule("handleBotMessage").Debug("群知识库检索失败，跳过知识片段",
+				"groupID", group.ID, "convID", convID, "error", err)
+		}
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // notifyPullModeBot 在群会话内落一条系统提示消息：被 @ 的外部 bot 未配 webhook 回调（pull 模式），不会自动回复。
@@ -343,8 +423,9 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	}
 
 	// 外部 agent 模式：转发用户消息到 webhook，不再走内部 AI
+	// 单聊（1:1 bot 会话）不注入群上下文——本函数仅群聊 @ 场景需要群记忆/知识。
 	if cfg := ParseBotConfig(bot.Config); cfg.IsExternalWebhook() {
-		s.forwardBotMessageToWebhook(bot, cfg.WebhookURL, cfg.WebhookSecret, userID, convID, content)
+		s.forwardBotMessageToWebhook(bot, cfg.WebhookURL, cfg.WebhookSecret, userID, convID, content, "")
 		return
 	}
 
@@ -520,7 +601,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 // 由 handleBotMessage 在 external_webhook 模式下异步调用（handleBotMessage 本身已 SafeGo）。
 // 经 outbox：先落表再立即 best-effort 投递一次，失败由调度器指数退避重试，超阈值死信。
 // 成功路径与原直发等价（无额外延迟），失败路径由静默丢变为有兜底。
-func (s *MessageService) forwardBotMessageToWebhook(bot model.Bot, webhookURL, webhookSecret string, userID, convID uint, content string) {
+func (s *MessageService) forwardBotMessageToWebhook(bot model.Bot, webhookURL, webhookSecret string, userID, convID uint, content, groupContext string) {
 	var user model.User
 	if err := s.db.First(&user, userID).Error; err != nil {
 		logger.WithModule("handleBotMessage").Error("查询用户失败", "userID", userID, "error", err)
@@ -544,6 +625,7 @@ func (s *MessageService) forwardBotMessageToWebhook(bot model.Bot, webhookURL, w
 		UserAvatar:   user.Avatar,
 		Content:      content,
 		MsgType:      msgType,
+		GroupContext: groupContext,
 	}
 	payloadJSON, _ := json.Marshal(payload)
 
@@ -1026,7 +1108,15 @@ func (s *MessageService) GetMessageReadUsers(msgID, userID uint) ([]model.User, 
 	}
 
 	var totalMembers int64
-	db.Model(&model.ConversationMember{}).Where("conversation_id = ?", msg.ConversationID).Count(&totalMembers)
+	// 分母排除机器人虚拟用户：已读回执只由真人产生（MarkAsRead 仅真人），
+	// 若把 bot 虚拟用户计入总数，会稀释已读比例（bot 永远不可能已读）。
+	// 注意：不按 deleted_at 过滤——即使 bot 记录已被软删除，其虚拟用户仍可能残留在
+	// conversation_members 里（如已删的"代码助手/AI助手"仍显示在群成员），
+	// 它们同样不是真人、不该进分母。凡 user_id 命中某 bot 的 virtual_user_id 一律排除。
+	db.Model(&model.ConversationMember{}).
+		Where("conversation_id = ?", msg.ConversationID).
+		Where("user_id NOT IN (SELECT virtual_user_id FROM bots WHERE virtual_user_id IS NOT NULL)").
+		Count(&totalMembers)
 
 	return readUsers, totalMembers, nil
 }
@@ -1096,9 +1186,12 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 		Count          int64
 	}
 	var convCounts []convCount
+	// 分母排除机器人虚拟用户，与分子（已读回执，仅真人）对齐，避免稀释已读比例。
+	// 不按 deleted_at 过滤：已软删除 bot 的虚拟用户仍可能残留在成员表，同样非真人、须排除。
 	db.Model(&model.ConversationMember{}).
 		Select("conversation_id, COUNT(*) as count").
 		Where("conversation_id IN ?", convIDs).
+		Where("user_id NOT IN (SELECT virtual_user_id FROM bots WHERE virtual_user_id IS NOT NULL)").
 		Group("conversation_id").
 		Scan(&convCounts)
 

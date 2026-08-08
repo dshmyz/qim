@@ -219,6 +219,9 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		// 用户自建 bot（internal_ai 模式）读取创建者笔记作为知识库：
 		// SearchNotes 内部按 user_notes_<userID> 分集合，scope 天然隔离，只能读创建者自己的笔记
 		messageService.SetNoteSearcher(noteVectorSvc)
+		// 群聊外部 agent bot 被 @ 时注入群记忆 + 群知识库上下文到 webhook payload。
+		// groupMemorySvc 在向量服务未初始化时为 nil，setter 内部容忍（对应片段跳过）。
+		messageService.SetGroupContextServices(groupMemorySvc, groupDocumentService)
 	}
 
 	promptManager := service.NewPromptManager()

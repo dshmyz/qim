@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
@@ -285,7 +286,9 @@ func (h *AIBotHandler) DeleteAIBot(c *gin.Context) {
 		return
 	}
 
-	if err := h.db.Delete(&bot).Error; err != nil {
+	// 删除成功后需清理：虚拟用户从所有群 conversation_members 移除、以及 1:1 bot_conversations 配对。
+	// 否则被删的 bot 仍会残留在群成员列表里，对其发起私聊会因 virtual_user_id 反查失败返回 404「机器人不存在」。
+	if err := di.GlobalContainer.BotService.DeleteBot(uint(id)); err != nil {
 		logger.WithModule("aibot").Error("删除 AI 机器人失败", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,

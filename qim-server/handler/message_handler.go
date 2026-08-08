@@ -218,6 +218,14 @@ func SetGroupMemoryService(gms *service.GroupMemoryService) {
 	}
 }
 
+// SetMCPGateway 注入外部 MCP 客户端网关到 smart reply 引擎，使群 @AI 白名单
+// 能按位点放行外部工具。smartReplyEngine 可能未初始化时安全跳过。
+func SetMCPGateway(gw *service.MCPClientGateway) {
+	if smartReplyEngine != nil {
+		smartReplyEngine.SetMCPGateway(gw)
+	}
+}
+
 // InitSmartReplyGraph initializes the Eino Graph for smart reply
 func InitSmartReplyGraph() error {
 	if smartReplyEngine == nil {

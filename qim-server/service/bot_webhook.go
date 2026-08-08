@@ -73,6 +73,10 @@ type BotWebhookPayload struct {
 	// 指明用户在 MessageID 这张卡片上点击的按钮 id 及其 value。
 	ActionID    string `json:"action_id,omitempty"`
 	ActionValue string `json:"action_value,omitempty"`
+	// GroupContext 仅群聊外部 agent 被 @ 时附带：本群启用 AI 时拼接的群记忆 + 群知识库
+	// 上下文（文本块）。agent 可据此参考群积累内容回复。群未启用 AI / 单聊时为空（省略，
+	// 向后兼容，旧客户端/旧 payload 结构不受影响）。
+	GroupContext string `json:"group_context,omitempty"`
 }
 
 // SendBotWebhook 将用户回复转发到外部 agent 的 webhook。

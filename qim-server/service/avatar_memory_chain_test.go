@@ -135,9 +135,8 @@ func TestMemoryGraphChain_SeededLikeReflection(t *testing.T) {
 	}
 }
 
-// fakeVec 的确定性需保证同文本同向量，否则 SearchMemory 顶多检索不中，但上面三组查询词
-// （" ", "工作 生活 学习", "决定 偏好 约定"）中 " " 应能命中所有内容。为稳妥，这里再确
-// 认 GetUserMemories 的结果可被后续聚合，不额外依赖召回排序。
+// fakeVec 的确定性需保证同文本同向量，否则 SearchMemory 顶多检索不中。GetUserMemories
+// 走空查询的内存桶列表路径（不依赖语义召回排序），此处确认该枚举可被后续聚合，独立于排序。
 func TestFakeVec_Deterministic(t *testing.T) {
 	a, b, c := fakeVec("小明"), fakeVec("小明"), fakeVec("团队")
 	if len(a) != 8 || len(b) != 8 || len(c) != 8 {

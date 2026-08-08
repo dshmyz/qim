@@ -404,8 +404,4 @@ const handleStartPrivateChat = (member: Member) => {
 .members-sidebar .bot-member {
   cursor: default;
 }
-
-.members-sidebar .bot-member .member-name {
-  color: var(--text-secondary);
-}
 </style>

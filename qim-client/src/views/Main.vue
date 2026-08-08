@@ -2433,12 +2433,13 @@ const openChat = async (user: any) => {
       setCurrentConversationId(conversationId)
       await loadMessages(conversationId)
     }
-  } catch (error) {
+  } catch (error: any) {
     logger.error('创建私聊失败:', error)
+    // 透出后端真实错误（如 404「机器人不存在」），避免笼统的「创建私聊失败」。
     // API 失败时不伪造本地会话：用 conv_${Date.now()} 这种只在本地存在、后端不认识
     // 的假 id 会留下一个既加载不出消息、也无法移除(服务器 DELETE 永远 400)的空会话。
-    // 这里直接提示失败，避免产生无法清理的幽灵会话。
-    QMessage.error('创建私聊失败，无法打开会话')
+    const detail = error?.message && error.message !== 'UNAUTHORIZED' ? error.message : '无法打开会话'
+    QMessage.error(`创建私聊失败：${detail}`)
   }
   hideUserContextMenu()
 }

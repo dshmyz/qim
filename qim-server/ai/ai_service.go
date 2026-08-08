@@ -99,6 +99,20 @@ func (s *AIService) selectProvider(taskType TaskType, overrides ...Override) (Pr
 	return router.SelectProvider(pool, taskType, overrides...)
 }
 
+// HasVisionRoute 报告是否显式配置了可用的视觉（多模态）任务路由。
+// 未配置时 TaskTypeVision 会回退到 defaultTask（纯文本 chat 模型），
+// 把图片 base64 发给它必然 400。调用方（如群 AI 引用图片路径）据此决定
+// 是走多模态识别，还是把被引用图片降级为"当前模型不支持看图"的提示语。
+func (s *AIService) HasVisionRoute() bool {
+	s.mu.RLock()
+	router := s.router
+	s.mu.RUnlock()
+	if router == nil {
+		return false
+	}
+	return router.HasExplicitRoute(TaskTypeVision)
+}
+
 func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrides ...Override) (string, error) {
 	provider, modelName, err := s.selectProvider(taskType, overrides...)
 	if err != nil {

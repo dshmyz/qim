@@ -493,13 +493,44 @@ func buildCustomProviderExtraParams(maxTokens int, temperature float64) map[stri
 // 不再需要 LLM 二次判断。保留此函数已无调用点，故移除。
 
 func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int, triggerMessage string) string {
+	// 不再一刀切排除 avatar 自回复：近期（selfTurnWindow 内）的 avatar 自回复保留作
+	// 多轮指代锚点（用户可能追问“你刚说的”），只滤掉远期自回复（自我复制污染源）。
+	// 为此多取一段（limit+1），在内存里丢弃远期自回复 + 触发消息后仍尽量满足 limit。
 	var messages []model.Message
 	g.db.Where("conversation_id = ?", conversationID).
 		Where("type = ?", "text").
-		Where("origin IS NULL OR origin != ?", "avatar").
 		Order("created_at DESC").
-		Limit(limit + 1). // 多取 1 条，预留触发消息被剔除后仍满 limit
+		Limit(limit + 8).
 		Find(&messages)
+
+	// 在 Go 侧筛掉远期自身回复；近期自身回复保留。
+	filtered := messages[:0]
+	for _, m := range messages {
+		if m.Origin == "avatar" && !isNearSelf(m) {
+			continue
+		}
+		filtered = append(filtered, m)
+	}
+	messages = filtered
+
+	// 诊断：统计本会话里被过滤排除的『分身自己回复』条数，确认“潜在多轮失忆”
+	// 是否真实发生（分身刚说的话是否被历史排除、导致追问“你刚说的”断链）。
+	var selfFiltered int64
+	g.db.Model(&model.Message{}).
+		Where("conversation_id = ? AND origin = ?", conversationID, "avatar").
+		Count(&selfFiltered)
+	// 已滤远期 = 全量 avatar 回复 - 保留下来的近期 avatar 回复
+	keptAvatar := 0
+	for _, m := range messages {
+		if m.Origin == "avatar" {
+			keptAvatar++
+		}
+	}
+	logHistoryDiagnostics("分身/历史", conversationID, messages, nil)
+	log.Printf("[ContextDiag] 分身/历史 conv=%d avatar总=%d 保留=%d 已滤=%d",
+		conversationID, selfFiltered, keptAvatar, int(selfFiltered)-keptAvatar)
+	// 纳入窗口聚合：分身过滤有效性（保留率/已滤率）供定时快照判断是否仍失忆
+	aggregateAvatarFilter(int(selfFiltered), keptAvatar, int(selfFiltered)-keptAvatar)
 
 	if len(messages) == 0 {
 		return ""

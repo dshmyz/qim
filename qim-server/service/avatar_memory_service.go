@@ -107,6 +107,12 @@ func (s *AvatarMemoryService) Recall(userID uint, query string, topK int) ([]Sea
 		Scope:     "user",
 		Namespace: "avatar",
 		TopK:      topK,
+		// 提升重要度与新颖度的排序权重：反射落库的重要记忆（Importance 1-5 → [0,1]）与
+		// 较新的记忆在召回时更靠前，避免被默认权重（importance 0.10 / recency 0.05）稀释。
+		SemanticWeight:   0.55,
+		LexicalWeight:   0.15,
+		ImportanceWeight: 0.20,
+		RecencyWeight:   0.10,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("检索记忆失败: %w", err)
@@ -166,56 +172,51 @@ func (s *AvatarMemoryService) GetUserMemories(userID uint, limit int) ([]MemoryR
 		return []MemoryRecord{}, nil
 	}
 
-	// 注意：gracedb 无 ListMemories API，只能通过 SearchMemory 近似枚举。
-	// 使用多组查询词并去重，降低单一语义偏向导致的结果缺失。
-	queries := []string{" ", "工作 生活 学习", "决定 偏好 约定"}
-	seen := make(map[string]bool)
-	var records []MemoryRecord
+	// 懒触发本用户的弱记忆归档：顺带把"既弱又长期闲置"的分身记忆 soft-hide，
+	// 避免记忆库随使用无限膨胀拖垮面板列表、知识图谱与召回。尽力而为、受冷却节流、
+	// 失败不阻断列表读取。前端与知识图谱均零改动（归档记忆自动从枚举/召回消失）。
+	if _, err := lazyArchiveWeakMemories(s.db, fmt.Sprintf("%d", userID), "avatar"); err != nil {
+		logger.WithModule("AvatarMemoryService").Warn("懒归档不阻断列表",
+			"userID", userID, "error", err)
+	}
 
-	for _, q := range queries {
-		if len(records) >= limit {
-			break
-		}
-		remaining := limit - len(records)
-		resp, err := s.db.SearchMemory(types.MemorySearchRequest{
-			Query:     q,
-			UserID:    fmt.Sprintf("%d", userID),
-			Scope:     "user",
-			Namespace: "avatar",
-			TopK:      remaining,
-		})
-		if err != nil {
-			logger.WithModule("AvatarMemoryService").Error("获取用户记忆失败", "userID", userID, "query", q, "error", err)
-			continue
-		}
-		for _, hit := range resp.Results {
-			if seen[hit.Memory.ID] {
+	// gracedb 空 Query（且无 QueryVector）时走内存桶列表路径，精确枚举该用户 avatar 桶内的
+	// 全部记忆（排除已过期/已归档），无需像旧版那样用多组查询词做近似召回再删重。
+	resp, err := s.db.SearchMemory(types.MemorySearchRequest{
+		UserID:    fmt.Sprintf("%d", userID),
+		Scope:     "user",
+		Namespace: "avatar",
+		TopK:      limit,
+	})
+	if err != nil {
+		logger.WithModule("AvatarMemoryService").Error("获取用户记忆失败", "userID", userID, "error", err)
+		return nil, err
+	}
+
+	records := make([]MemoryRecord, 0, len(resp.Results))
+	for _, hit := range resp.Results {
+		metadataStr := make(map[string]string)
+		var entities, themes []string
+		for k, v := range hit.Memory.Metadata {
+			if s, ok := v.(string); ok {
+				metadataStr[k] = s
 				continue
 			}
-			seen[hit.Memory.ID] = true
-			metadataStr := make(map[string]string)
-			var entities, themes []string
-			for k, v := range hit.Memory.Metadata {
-				if s, ok := v.(string); ok {
-					metadataStr[k] = s
-					continue
-				}
-				// gracedb 把 map[string]any 的值 JSON 序列化后读回为 []interface{}
-				switch k {
-				case "knowledge_memory_entities":
-					entities = toStringSlice(v)
-				case "knowledge_memory_themes":
-					themes = toStringSlice(v)
-				}
+			// gracedb 把 map[string]any 的值 JSON 序列化后读回为 []interface{}
+			switch k {
+			case "knowledge_memory_entities":
+				entities = toStringSlice(v)
+			case "knowledge_memory_themes":
+				themes = toStringSlice(v)
 			}
-			records = append(records, MemoryRecord{
-				DocID:    hit.Memory.ID,
-				Content:  hit.Memory.Content,
-				Metadata: metadataStr,
-				Entities: entities,
-				Themes:   themes,
-			})
 		}
+		records = append(records, MemoryRecord{
+			DocID:    hit.Memory.ID,
+			Content:  hit.Memory.Content,
+			Metadata: metadataStr,
+			Entities: entities,
+			Themes:   themes,
+		})
 	}
 
 	logger.WithModule("AvatarMemoryService").Info("获取用户记忆成功", "userID", userID, "count", len(records))

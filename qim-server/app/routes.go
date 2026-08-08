@@ -65,6 +65,14 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	handler.RegisterAdminTools(toolRegistry)
 
+	// 外部 MCP 客户端网关：读 system_configs 的 external_mcp 配置并注册外部工具。
+	// Sync 失败不阻塞启动——外部 server 不可达只影响对应工具，不影响主路径。
+	mcpGateway := service.NewMCPClientGateway(
+		di.GlobalContainer.SystemConfigService,
+		toolRegistry,
+	)
+	mcpGateway.Sync()
+
 	groupDocSvc := di.GlobalContainer.GroupDocumentService
 	var uk *service.UnifiedKnowledgeService
 	if vectorSvc := di.GlobalContainer.VectorService; vectorSvc != nil {
@@ -90,6 +98,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	if groupMemorySvc := di.GlobalContainer.GroupMemoryService; groupMemorySvc != nil {
 		handler.SetGroupMemoryService(groupMemorySvc)
 	}
+	handler.SetMCPGateway(mcpGateway)
 
 	// 初始化 SmartReplyGraph（使用 Eino 框架编排）
 	if err := handler.InitSmartReplyGraph(); err != nil {

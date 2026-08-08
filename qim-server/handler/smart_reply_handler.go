@@ -2,7 +2,9 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"strings"
 	"sync"
@@ -75,6 +77,14 @@ func (e *SmartReplyEngine) SetMemoryService(ms *service.AvatarMemoryService) {
 // SetGroupMemoryService 注入群聊助手的群级记忆服务（与分身记忆隔离）。
 func (e *SmartReplyEngine) SetGroupMemoryService(gms *service.GroupMemoryService) {
 	e.groupMemorySvc = gms
+}
+
+// SetMCPGateway 注入外部 MCP 客户端网关，使群 @AI 白名单能按位点放行外部工具。
+// 为 nil 时保持默认白名单，无行为变化。
+func (e *SmartReplyEngine) SetMCPGateway(gw *service.MCPClientGateway) {
+	if e.smartReplyGraph != nil && gw != nil {
+		e.smartReplyGraph.SetMCPGateway(gw)
+	}
 }
 
 func (e *SmartReplyEngine) InitSmartReplyGraph() error {
@@ -548,9 +558,16 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 
 	chunkCount := 0
 	totalLen := 0
+	var streamErr error
 	for {
 		msg, err := stream.Recv()
 		if err != nil {
+			// io.EOF = 正常结束；其余为真实错误（如模型调用失败）。
+			// 之前把两者都当 break 处理，导致模型出错时静默无回复，
+			// 且预创建的流式空消息残留卡住。这里保留真实错误用于兜底。
+			if !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
+				streamErr = err
+			}
 			break
 		}
 		// 剥离 AI 自带的 mention token，避免重复
@@ -568,7 +585,27 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		sendChunk(cleanContent)
 	}
 
-	log.Printf("[SmartReplyGraph] @AI 流式回复完成: %d 个 chunk, 总长度 %d 字符", chunkCount, totalLen)
+	log.Printf("[SmartReplyGraph] @AI 流式回复完成: %d 个 chunk, 总长度 %d 字符, streamErr=%v", chunkCount, totalLen, streamErr)
+
+	// 模型调用出错：不再静默无回复。SendStreamingAIMessage 已预创建一条流式空消息，
+	// 若直接 return 会残留空白卡住的空气泡，且用户得不到任何反馈。
+	// 这里用一个字符都没产出的场景注入可见的兜底文案，然后照常 finish() 收尾。
+	if streamErr != nil {
+		log.Printf("[SmartReplyGraph] @AI 流式回复出错: %v", streamErr)
+		if chunkCount == 0 {
+			fallback := "⚠️ 这条消息暂时没能回复（模型调用出错），请稍后再试。"
+			if mentionPrefix != "" {
+				fallback = mentionPrefix + fallback
+				mentionPrefix = ""
+			}
+			if err := sendChunk(fallback); err != nil {
+				log.Printf("[SmartReplyGraph] 发送兜底文案失败: %v", err)
+			}
+		}
+		// 无论是否已产出内容，都正常收尾，避免残留未完成的流式消息
+		finish()
+		return
+	}
 
 	if chunkCount == 0 {
 		log.Printf("[SmartReplyGraph] AI 回复内容为空，跳过保存")
