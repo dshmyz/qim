@@ -17,6 +17,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/service"
+	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/ws"
 )
 
@@ -33,6 +34,7 @@ type SmartReplyEngine struct {
 	avatarWorkerPool *service.AvatarWorkerPool
 	avatarTriggerSvc AvatarTriggerDecider
 	smartReplyGraph  *service.SmartReplyGraph
+	convReplyWorker  *service.ReplyOrchestrator // 群助手回复的并发控制（限并发+会话串行）
 }
 
 // AvatarTriggerDecider decides whether a configured avatar should reply.
@@ -52,6 +54,11 @@ func NewSmartReplyEngine(aiService *ai.AIService, detector *ai.IntentDetector) *
 		knowledgeSvc:   knowledgeSvc,
 		promptBuilder:  NewSmartPromptBuilder(knowledgeSvc),
 		messageSender:  NewWebSocketMessageSender(ws.GlobalHub, di.GlobalContainer.UserService),
+		// 群助手 / 自动回复的并发控制（限并发+按会话串行），防洪峰+防同会话乱序/重复回复
+		convReplyWorker: service.NewReplyOrchestrator(service.ReplyOrchestratorOpts{
+			Workers:   8,
+			Serialize: true, // 群助手：按会话串行
+		}),
 	}
 }
 
@@ -201,7 +208,9 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 		switch DecideGroupAIReply(*aiConfig, content, assistantName, antiSpamBlocked) {
 		case GroupAIMentionReply:
 			question := extractAIQuestion(content, assistantName)
-			e.handleAIMention(userID, conversationID, question, content, &conv, assistantName, msg)
+			e.submitConvReply(conversationID, func() {
+				e.handleAIMention(userID, conversationID, question, content, &conv, assistantName, msg)
+			})
 			return
 		case GroupAISkipReply:
 			return
@@ -225,8 +234,22 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 	}
 
 	if shouldReply {
-		go e.generateAndSendReply(userID, conversationID, content, intent)
+		e.submitConvReply(conversationID, func() { e.generateAndSendReply(userID, conversationID, content, intent) })
 	}
+}
+
+// submitConvReply 把一次群助手/自动回复提交到按会话串行的异步队列。
+// 队列就绪即异步执行（与原 SafeGo / 裸 go 直发语义一致），worker 内按会话串行，
+// 保证同会话回复不乱序、不重复；worker 缺失或入队超时降级为直接执行，避免回复丢失。
+func (e *SmartReplyEngine) submitConvReply(convID uint, handle func()) {
+	if e.convReplyWorker != nil {
+		if err := e.convReplyWorker.Submit(convID, handle); err == nil {
+			return
+		} else {
+			log.Printf("[SmartReply] 回复入队繁忙，降级直接执行: convID=%d err=%v", convID, err)
+		}
+	}
+	utils.SafeGo(handle)
 }
 
 // generateAndSendReply 生成并发送智能回复
@@ -263,7 +286,8 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 		return
 	}
 
-	err = e.messageSender.SendAIMessage(conversationID, result.Reply, "AI助手")
+	// 命中的知识来源（标题/相关度）随回复写入 Extra，刷新/回放后「知识来源」徽章仍可见。
+	err = e.messageSender.SendAIMessage(conversationID, result.Reply, "AI助手", knowledgeSourcesExtra(input.KnowledgeSources))
 	if err != nil {
 		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
 		return
@@ -281,10 +305,13 @@ func (e *SmartReplyEngine) generateAndSendReplyLegacy(userID uint, conversationI
 
 	systemPrompt := e.promptBuilder.BuildSystemPrompt(ctx)
 
+	var knowledgeSources []service.KnowledgeSource
 	if e.unifiedKnowledge != nil && ctx.Group != nil {
-		knowledgeCtx := e.unifiedKnowledge.BuildContext(userContent, ctx.Group.ID)
-		if knowledgeCtx != "" {
-			systemPrompt += "\n\n" + knowledgeCtx
+		// 一次检索同时产出上下文串与命中的知识来源（供自动回复把来源随回复下发）。
+		var kctx string
+		kctx, knowledgeSources = e.unifiedKnowledge.BuildContextWithSources(userContent, ctx.Group.ID, 3)
+		if kctx != "" {
+			systemPrompt += "\n\n" + kctx
 		}
 	} else if e.knowledgeSvc != nil {
 		knowledgeCtx := e.knowledgeSvc.BuildKnowledgeContext(userContent)
@@ -319,7 +346,8 @@ func (e *SmartReplyEngine) generateAndSendReplyLegacy(userID uint, conversationI
 		return
 	}
 
-	err = e.messageSender.SendAIMessage(conversationID, reply, "AI助手")
+	// 命中的知识来源（标题/相关度）随回复写入 Extra，刷新/回放后「知识来源」徽章仍可见。
+	err = e.messageSender.SendAIMessage(conversationID, reply, "AI助手", knowledgeSourcesExtra(knowledgeSources))
 	if err != nil {
 		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
 		return
@@ -524,7 +552,13 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	// 管理操作指令（踢人/加人/禁言等）走带工具路径：注入 AI 群管理工具，
 	// LLM 返回 tool call 时真实执行。仅系统管理员发起的指令会被工具执行。
 	if intent, derr := e.intentDetector.Detect(question, userID, conversationID); derr == nil && ShouldUseToolsForMention(intent) {
-		e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID)
+		e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID, "带",
+			func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback) (string, error) {
+				return e.smartReplyGraph.ExecuteWithTools(c, i, service.ToolsetBuiltin, fb)
+			},
+			func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback, onChunk func(ai.StreamChunk) error) (bool, error) {
+				return e.smartReplyGraph.ExecuteWithToolsStream(c, i, service.ToolsetBuiltin, fb, onChunk)
+			})
 		return
 	}
 
@@ -542,7 +576,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		return
 	}
 
-	sendChunk, _, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
+	sendChunk, getMsg, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
 		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
 		return
@@ -621,6 +655,9 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		return
 	}
 
+	// 命中的知识来源（标题/相关度）持久化到消息 Extra，刷新/REST 回放后「知识来源」徽章仍可见。
+	e.persistAIMessageExtra(getMsg(), nil, input.KnowledgeSources)
+
 	if finish() == nil {
 		log.Printf("[SmartReplyGraph] 完成流式消息失败")
 		return
@@ -629,18 +666,21 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	log.Printf("[SmartReplyGraph] @AI 流式回复已完成")
 }
 
-// handleAIMentionWithTools 带工具的非流式 @AI 回复，用于管理操作指令（踢人/加人/禁言等）。
-// 走 SmartReplyGraph.ExecuteWithTools（GetCompletionWithTools 注入 AI 群管理工具），
-// LLM 返回 tool call 时真实执行 add_member/remove_member/mute/unmute。
-func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint) {
-	reply, err := e.smartReplyGraph.ExecuteWithTools(ctx, input)
+// handleAIMentionWithTools 带工具的 @AI 回复，用于管理操作指令（踢人/加人/禁言等）与
+// 普通提问（外部 MCP 工具）两种路径共用。优先走真·流式（execStream）：final 答案逐 token
+// 送、工具事件实时推卡片；Provider 不支持流式 tool-call 时降级到非流式（exec +
+// splitReplyChunks 切块打字感）。两路径复用 SendStreamingAIMessage 的流式气泡与同一壳
+// 骨架（创建流式气泡 → @提问者前缀 → 工具卡片收集 → 兜底空答 → Extra 持久化 → 收尾），
+// 避免把整段逻辑复制成两份。
+//
+// 内置/外部工具调用均以独立卡片呈现（onStep 反馈实时推 ai_tool_call 事件，前端在气泡
+// 下方渲染工具卡片，不再拼进正文），工具调用列表写进消息 Extra（tool_calls）供回放/刷新
+// 后卡片仍可见。kind 取 "带"（内置群管理工具）或 "外部"（外部 MCP 工具），用于区分日志。
+// execStream 可为 nil（无流式能力时）——此时直接走下面的非流式路径。
+func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint, kind string, exec func(context.Context, *service.SmartReplyContext, ai.ReActStepCallback) (string, error), execStream func(context.Context, *service.SmartReplyContext, ai.ReActStepCallback, func(ai.StreamChunk) error) (bool, error)) {
+	sendChunk, getMsg, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
-		log.Printf("[SmartReplyGraph] @AI 带工具回复失败: %v", err)
-		return
-	}
-	reply = mention.StripTokens(reply)
-	if reply == "" {
-		log.Printf("[SmartReplyGraph] @AI 带工具回复内容为空，跳过")
+		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
 		return
 	}
 
@@ -661,49 +701,10 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 		}
 	}
 
-	content := reply
-	if mentionPrefix != "" {
-		content = mentionPrefix + content
-	}
-	if err := e.messageSender.SendAIMessage(conversationID, content, assistantName); err != nil {
-		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
-		return
-	}
-	log.Printf("[SmartReplyGraph] @AI 带工具回复已完成")
-}
-
-// handleAIMentionWithExternalTools 普通提问（非管理指令）走带外部 MCP 工具的
-// 流式 ReAct 回复。复用 SendStreamingAIMessage 的流式气泡：
-//   - 工具调用作为独立卡片呈现（参考 capability-console）：onStep 反馈时实时推
-//     ai_tool_call WS 事件，前端在气泡下方渲染独立工具卡片，与最终答案视觉分层，
-//     不再把「🔧 正在调用…」拼进正文（历史"很难看"反馈的根因）；
-//   - ReAct 完成后，把最终答案按句子切子块逐块 sendChunk，保留打字感；
-//   - 工具调用列表写进消息 Extra（tool_calls），回放/刷新后卡片仍可见；
-//   - 最后 finish() 收尾（与普通流式路径一致），出错且无内容时发兜底文案。
-func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint) {
-	sendChunk, getMsg, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
-	if err != nil {
-		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
-		return
-	}
-
-	// @提问者模式：读取配置（与流式路径一致）。
-	db := database.GetDB()
-	var mentionPrefix string
-	var group model.Group
-	if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err == nil {
-		if group.GetAIConfig().MentionReplyMode == "mention" {
-			var mentionUser model.User
-			if err := db.First(&mentionUser, userID).Error; err == nil {
-				name := mentionUser.Nickname
-				if name == "" {
-					name = mentionUser.Username
-				}
-				mentionPrefix = mention.Encode(userID, name) + "\n\n"
-			}
-		}
-	}
-
+	// 仅 @提问者模式需在正文前发送 mention 前缀（非空 → 触发懒创建）。
+	// 普通模式不在此提前建/投递任何消息占位：SendStreamingAIMessage 采用懒创建，
+	// 消息延迟到首个非空正文块或首个工具调用才真正落库，避免空占位排在用户后续
+	// 消息之上、等答案回填后造成顺序错乱。
 	if mentionPrefix != "" {
 		if err := sendChunk(mentionPrefix); err != nil {
 			log.Printf("[SmartReplyGraph] 发送 @ 前缀失败: %v", err)
@@ -712,30 +713,42 @@ func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context,
 		}
 	}
 
-	// 收集本次 ReAct 用到的工具调用，写成结构化记录：实时推 ai_tool_call 事件供
-	// 前端渲染独立工具卡片 + 结束时写入消息 Extra 持久化。不再拼进正文。
+	// 收集本次 ReAct 用到的工具调用：start/end 阶段实时推 ai_tool_call 事件供前端
+	// 渲染工具卡片（进行态→终态按 ID 对齐），终态记录写入消息 Extra 持久化。
 	var toolCalls []ToolCallRecord
+	feedback := newToolCallFeedback(e.messageSender, conversationID, getMsg, &toolCalls)
 
-	feedback := func(_ int, tool string, args map[string]interface{}, result interface{}, execErr error) {
-		status := "ok"
-		if execErr != nil || result == nil {
-			status = "error"
+	// 先尝试真·流式路径：execStream 内 final 答案逐 token 经 onChunk → sendChunk 送出，
+	// 工具事件经 feedback 实时推卡片。streamed=true 表示已走流式逐 token。
+	if execStream != nil {
+		streamed, serr := execStream(ctx, input, feedback, func(chunk ai.StreamChunk) error {
+			return sendChunk(chunk.Content)
+		})
+		if serr != nil && !errors.Is(serr, ai.ErrStreamingToolsNotSupported) {
+			log.Printf("[SmartReplyGraph] @AI %s工具流式回复失败: %v", kind, serr)
+			// 流式中途失败：若已产出正文/工具、且拿到了知识来源，仍需把 Extra 落库，
+			// 否则刷新/REST 回放后工具卡片与「知识来源」徽章丢失（正文已由 finish 收尾）。
+			e.persistAIMessageExtra(getMsg(), toolCalls, input.KnowledgeSources)
+			finish()
+			return
 		}
-		rec := ToolCallRecord{
-			ToolLabel: friendlyToolLabel(tool),
-			Args:      args,
-			Status:    status,
+		if streamed {
+			// 工具调用记录 + 命中的知识来源合并持久化到消息 Extra，回放/刷新后卡片与徽章仍可见。
+			e.persistAIMessageExtra(getMsg(), toolCalls, input.KnowledgeSources)
+			if finish() == nil {
+				log.Printf("[SmartReplyGraph] 完成流式消息失败")
+			} else {
+				log.Printf("[SmartReplyGraph] @AI %s工具流式回复已完成, %d 次工具调用", kind, len(toolCalls))
+			}
+			return
 		}
-		toolCalls = append(toolCalls, rec)
-		// 实时推送独立事件（含消息 ID 供前端关联到正在流式的气泡）。
-		if msg := getMsg(); msg != nil {
-			e.messageSender.SendToolCallEvent(conversationID, msg.ID, rec)
-		}
+		// streamed=false（Provider 不支持流式 tool-call）→ 降级到下面非流式路径。
+		log.Printf("[SmartReplyGraph] @AI %s工具流式不可用，降级到非流式回复", kind)
 	}
 
-	reply, err := e.smartReplyGraph.ExecuteStreamWithExternalTools(ctx, input, feedback)
+	reply, err := exec(ctx, input, feedback)
 	if err != nil {
-		log.Printf("[SmartReplyGraph] @AI 外部工具回复失败: %v", err)
+		log.Printf("[SmartReplyGraph] @AI %s工具回复失败: %v", kind, err)
 		// 完全没产出时发兜底文案，避免残留空白卡住的空气泡
 		if reply == "" {
 			_ = sendChunk("⚠️ 这条消息暂时没能回复（调用出错），请稍后再试。")
@@ -746,7 +759,7 @@ func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context,
 
 	reply = mention.StripTokens(reply)
 	if strings.TrimSpace(reply) == "" {
-		log.Printf("[SmartReplyGraph] @AI 外部工具回复内容为空，跳过保存")
+		log.Printf("[SmartReplyGraph] @AI %s工具回复内容为空，跳过保存", kind)
 		finish()
 		return
 	}
@@ -762,45 +775,128 @@ func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context,
 		}
 	}
 
-	// 工具调用记录持久化到消息 Extra（{"tool_calls":[...]}），回放/刷新后卡片仍可见。
-	if len(toolCalls) > 0 {
-		if msg := getMsg(); msg != nil {
-			if b, jerr := json.Marshal(AIToolCallsExtra{ToolCalls: toolCalls}); jerr == nil {
-				msg.Extra = string(b)
-			}
-		}
-	}
+	// 工具调用记录 + 命中的知识来源合并持久化到消息 Extra，回放/刷新后卡片与徽章仍可见。
+	e.persistAIMessageExtra(getMsg(), toolCalls, input.KnowledgeSources)
 
 	if finish() == nil {
 		log.Printf("[SmartReplyGraph] 完成流式消息失败")
 		return
 	}
-	log.Printf("[SmartReplyGraph] @AI 外部工具回复已完成, %d 次工具调用", len(toolCalls))
+	log.Printf("[SmartReplyGraph] @AI %s工具回复已完成, %d 次工具调用", kind, len(toolCalls))
 }
 
-// AIToolCallsExtra 消息 Extra 里持久化工具调用列表的 JSON 容器。
-type AIToolCallsExtra struct {
-	ToolCalls []ToolCallRecord `json:"tool_calls"`
+// handleAIMentionWithExternalTools 普通提问（非管理指令）走带外部 MCP 工具的流式 ReAct
+// 回复。与 handleAIMentionWithTools 共用骨架，仅工具执行走外部 MCP 工具集，详见其上注释。
+// 传入流式执行器：Provider 支持流式 tool-call 时 final 答案逐 token 送出；否则降级到
+// 非流式 ExecuteWithTools（ToolsetExternal）。
+func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint) {
+	e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID, "外部",
+		func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback) (string, error) {
+			return e.smartReplyGraph.ExecuteWithTools(c, i, service.ToolsetExternal, fb)
+		},
+		func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback, onChunk func(ai.StreamChunk) error) (bool, error) {
+			return e.smartReplyGraph.ExecuteWithToolsStream(c, i, service.ToolsetExternal, fb, onChunk)
+		})
 }
 
-// friendlyToolLabel 把内部工具名映射为面向用户的中文动作文案，隐藏 mcp_demo_* 等
-// 实现细节。已知常用外部工具走具体映射，未命中的退化为通用「调用外部服务」。
+// persistAIMessageExtra 把群助手回复的工具调用与知识来源合并写进消息 Extra（JSON），
+// 供刷新/REST 回放后工具卡片与「知识来源」徽章仍可见。两者任一无内容则只写有内容的键，
+// 全空时不写（消息 Extra 维持默认值）。sources 为命中的知识来源（标题/相关度）。
+func (e *SmartReplyEngine) persistAIMessageExtra(msg *model.Message, toolCalls []ToolCallRecord, sources []service.KnowledgeSource) {
+	if msg == nil {
+		return
+	}
+	extra := map[string]interface{}{}
+	if len(toolCalls) > 0 {
+		extra["tool_calls"] = toolCalls
+	}
+	if len(sources) > 0 {
+		extra["knowledge_sources"] = sources
+	}
+	if len(extra) == 0 {
+		return
+	}
+	if b, err := json.Marshal(extra); err == nil {
+		msg.Extra = string(b)
+	} else {
+		log.Printf("[SmartReplyGraph] 序列化消息 Extra 失败: %v", err)
+	}
+}
+
+// knowledgeSourcesExtra 把命中的知识来源转成供 SendAIMessage 写入 Extra 的 map；
+// 无命中时返回 nil（不写 Extra）。
+func knowledgeSourcesExtra(sources []service.KnowledgeSource) map[string]interface{} {
+	if len(sources) == 0 {
+		return nil
+	}
+	return map[string]interface{}{"knowledge_sources": sources}
+}
+
+// newToolCallFeedback 构造群 @AI 带工具回复的 ReAct 进度回调（内置工具与外部工具路径共用）。
+//
+// 工具调用会触发两次：phase="start" 推一条 status=running 的 ai_tool_call 事件，前端把该
+// 行渲染成「进行中」动画态，回应工具执行那几秒的过程反馈；phase="end" 推终态事件（ok/error）
+// 并把终态记录收进 toolCalls 供结束时写 Extra 持久化。同一工具调用的 start/end 共享
+// toolCallID（即 ai_service 传入的 tc.ID），前端据此按 ID 把进行态更新为终态而非重复追加。
+func newToolCallFeedback(sender *WebSocketMessageSender, conversationID uint, getMsg func() *model.Message, toolCalls *[]ToolCallRecord) ai.ReActStepCallback {
+	return func(_ int, toolCallID, phase, tool string, args map[string]interface{}, result interface{}, execErr error) {
+		if phase == "start" {
+			rec := ToolCallRecord{ID: toolCallID, ToolLabel: friendlyToolLabel(tool), Args: args, Status: "running"}
+			if msg := getMsg(); msg != nil {
+				sender.SendToolCallEvent(conversationID, msg.ID, rec)
+			}
+			return
+		}
+		// end：收集终态记录用于持久化，并实时推送终态事件（前端按 ID 覆盖进行态行）
+		status := "ok"
+		if execErr != nil || result == nil {
+			status = "error"
+		}
+		rec := ToolCallRecord{ID: toolCallID, ToolLabel: friendlyToolLabel(tool), Args: args, Status: status}
+		*toolCalls = append(*toolCalls, rec)
+		if msg := getMsg(); msg != nil {
+			sender.SendToolCallEvent(conversationID, msg.ID, rec)
+		}
+	}
+}
+
+// friendlyToolLabel 把内部工具名映射为面向用户的中文动作名词（表意的工具名，不带
+// 进行时态）。内置群管理工具（group_management/user_management/...）与外部 mcp_*
+// 工具都走这里；未命中的退化为通用「外部服务」。
+//
+// 调用总是发生在工具执行结束后（feedback 闭包在工具返回后才触发），因此标签用
+// 动作名词而非「正在…」进行时；完成/失败由 status + 前端状态徽标体现，避免结束后
+// 卡片仍显示「正在 XX」的奇怪语义。
 func friendlyToolLabel(tool string) string {
 	switch {
+	// 内置群管理工具
+	case strings.Contains(tool, "group_management"):
+		return "群管理操作"
+	case strings.Contains(tool, "user_management"):
+		return "用户管理"
+	case strings.Contains(tool, "group_summary"):
+		return "群聊总结"
+	case strings.Contains(tool, "search_messages"):
+		return "群消息搜索"
+	case strings.Contains(tool, "create_group_task"):
+		return "创建群待办"
+	case strings.Contains(tool, "system_notification"):
+		return "系统通知"
+	// 外部 MCP 工具（mcp_<conn>_<tool>）
 	case strings.Contains(tool, "calculator"), strings.Contains(tool, "calc"):
-		return "正在计算"
+		return "计算"
 	case strings.Contains(tool, "weather"):
-		return "正在查询天气"
+		return "查询天气"
 	case strings.Contains(tool, "search"), strings.Contains(tool, "query"):
-		return "正在查询"
+		return "查询"
 	case strings.Contains(tool, "translate"):
-		return "正在翻译"
+		return "翻译"
 	case strings.Contains(tool, "image"), strings.Contains(tool, "img"):
-		return "正在生成图片"
+		return "生成图片"
 	case strings.Contains(tool, "pdf"), strings.Contains(tool, "doc"):
-		return "正在处理文档"
+		return "处理文档"
 	default:
-		return "正在调用外部服务"
+		return "外部服务"
 	}
 }
 

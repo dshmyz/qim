@@ -44,14 +44,36 @@ type MessageService struct {
 	sensitiveWordCache   []model.SensitiveWord
 	sensitiveWordCacheMu sync.RWMutex
 	sensitiveWordLoaded  bool
+
+	botReplyWorker *ReplyOrchestrator // 专属机器人回复的并发控制（限并发+会话串行）；nil=走旧直发
 }
 
 func NewMessageService(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService) *MessageService {
 	return &MessageService{
-		db:        db,
-		hub:       hub,
-		aiService: aiService,
+		db:             db,
+		hub:            hub,
+		aiService:      aiService,
+		botReplyWorker: NewReplyOrchestrator(ReplyOrchestratorOpts{
+			Workers:   8,
+			Serialize: true, // 专属机器人：按会话串行，防同会话乱序/重复回复
+		}),
 	}
+}
+
+// submitBotReply 把一次专属机器人回复提交到并发控制的异步队列。
+// 队列就绪即异步执行（与原 SafeGo 直发语义一致），worker 内按会话串行，
+// 保证同会话回复不乱序、不重复；入队超时降级为直接执行，避免消息完全丢失。
+func (s *MessageService) submitBotReply(senderID, convID uint, content string) {
+	handle := func() { s.handleBotMessage(senderID, convID, content) }
+	if s.botReplyWorker != nil {
+		if err := s.botReplyWorker.Submit(convID, handle); err == nil {
+			return
+		} else {
+			// 入队超时：降级直发，保底不丢回复
+			logger.WithModule("MessageService").Warn("bot 回复入队繁忙，降级直接执行", "convID", convID, "error", err)
+		}
+	}
+	utils.SafeGo(handle)
 }
 
 func (s *MessageService) SetAIService(aiService *ai.AIService) {
@@ -188,7 +210,7 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	db.Model(&model.Conversation{}).Where("id = ?", convID).Select("type").First(&convType)
 
 	if convType == "bot" {
-		utils.SafeGo(func() { s.handleBotMessage(senderID, convID, content) })
+		s.submitBotReply(senderID, convID, content)
 	} else {
 		// 恢复会话显示：新消息到来时，如果会话被隐藏则恢复显示
 		db.Model(&model.ConversationSession{}).
@@ -1357,6 +1379,11 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 			// 外部工具调用记录（tool_calls）：前端据此渲染独立工具卡片（回放）。
 			if tc, ok := extra["tool_calls"]; ok {
 				resp["tool_calls"] = tc
+			}
+			// 分身回复命中的知识来源（sources：笔记/群知识/记忆），前端据此渲染「依据」徽章（回放）。
+			// 分身发送时由 avatar_worker_pool 持久化到 Extra，与广播下发的 sources 一致。
+			if sc, ok := extra["sources"]; ok {
+				resp["sources"] = sc
 			}
 		}
 	}

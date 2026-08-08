@@ -1,11 +1,9 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/database"
@@ -37,41 +35,44 @@ type avatarSendMeta struct {
 }
 
 // AvatarWorkerPool 分身工作池
+//
+// 队列、worker 并发上限、全局限流、按分身用户限流等通用并发治理统一委托给
+// ReplyOrchestrator；本类型只保留分身专属的处理/发送逻辑（生成、仿真人延迟、
+// 私聊回弹、接管期跳过、WS 通知、来源压缩持久化等），并作为其处理闭包。
 type AvatarWorkerPool struct {
-	queue        chan AvatarTask
-	workers      int
-	limiter      *rate.Limiter
-	userLimiters sync.Map
-	service      *AvatarService
-	db           *gorm.DB
-	delaySem     chan struct{} // 限制延迟发送 goroutine 并发上限
+	orch     *ReplyOrchestrator
+	service  *AvatarService
+	db       *gorm.DB
+	delaySem chan struct{} // 限制延迟发送 goroutine 并发上限
 }
 
-// NewAvatarWorkerPool 创建分身工作池
+// NewAvatarWorkerPool 创建分身工作池。
+// workers 为并发 worker 数；globalRPM 为全局限流（每分钟允许的 AI 调用数）；
+// 并按分身用户做更细的限流（每用户 10/min），分身不要求会话串行（仿真人频率治理优先）。
 func NewAvatarWorkerPool(workers int, globalRPM int, service *AvatarService) *AvatarWorkerPool {
 	pool := &AvatarWorkerPool{
-		queue:    make(chan AvatarTask, 100),
-		workers:  workers,
-		limiter:  rate.NewLimiter(rate.Every(time.Minute/time.Duration(globalRPM)), globalRPM),
+		orch: NewReplyOrchestrator(ReplyOrchestratorOpts{
+			Workers: workers,
+			// 全局：每分钟 globalRPM 次 AI 调用
+			GlobalRate: rate.NewLimiter(rate.Every(time.Minute/time.Duration(globalRPM)), globalRPM),
+			// 每分身用户：10/min，防单个高分身刷屏
+			PerKeyRate:  rate.Every(time.Minute / 10),
+			PerKeyBurst: 10,
+			Serialize:   false,
+		}),
 		delaySem: make(chan struct{}, 100), // 最多 100 个延迟 goroutine 驻留
-		service: service,
-		db:      service.db,
-	}
-
-	for i := 0; i < workers; i++ {
-		go pool.run()
+		service:  service,
+		db:       service.db,
 	}
 
 	return pool
 }
 
-// Submit 提交任务。队列满时不再立即丢弃，而是阻塞等待最多 2 秒；
+// Submit 提交分身任务。队列满时不再立即丢弃，而是阻塞等待最多 2 秒；
 // 仍失败则记 Warn 并通过 WS 通知分身主人“回复被跳过”，避免静默丢失。
+// 并发治理（限并发/限流）由内部 ReplyOrchestrator 承担，processing 闭包携带完整任务。
 func (p *AvatarWorkerPool) Submit(task AvatarTask) error {
-	select {
-	case p.queue <- task:
-		return nil
-	case <-time.After(2 * time.Second):
+	if err := p.orch.Submit(task.UserID, func() { p.process(task) }); err != nil {
 		logger.WithModule("AvatarWorkerPool").Warn("分身任务入队超时，回复被跳过",
 			"userID", task.UserID, "convID", task.ConversationID)
 		if p.service != nil && p.service.wsNotify != nil {
@@ -82,31 +83,13 @@ func (p *AvatarWorkerPool) Submit(task AvatarTask) error {
 		}
 		return fmt.Errorf("分身任务入队超时，回复已跳过")
 	}
+	return nil
 }
 
-// run 运行工作协程
-func (p *AvatarWorkerPool) run() {
-	for task := range p.queue {
-		p.process(task)
-	}
-}
-
-// process 处理任务
+// process 处理分身任务。由 ReplyOrchestrator 的 worker 调用，
+// 全局限流与按用户限流已在编排层完成，这里只处理分身专属逻辑。
 func (p *AvatarWorkerPool) process(task AvatarTask) {
-	ctx := context.Background()
-
 	logger.WithModule("AvatarWorkerPool").Info("开始处理分身任务", "userID", task.UserID, "convID", task.ConversationID, "triggerUserID", task.TriggerUserID)
-
-	if err := p.limiter.Wait(ctx); err != nil {
-		logger.WithModule("AvatarWorkerPool").Error("全局限流等待失败", "userID", task.UserID, "error", err)
-		return
-	}
-
-	userLimiter := p.getUserLimiter(task.UserID)
-	if err := userLimiter.Wait(ctx); err != nil {
-		logger.WithModule("AvatarWorkerPool").Error("用户限流等待失败", "userID", task.UserID, "error", err)
-		return
-	}
 
 	var session model.AvatarSession
 	err := p.db.Where("user_id = ? AND conversation_id = ?", task.UserID, task.ConversationID).First(&session).Error
@@ -190,17 +173,13 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	}
 }
 
-// getUserLimiter 获取用户级别的限流器
-func (p *AvatarWorkerPool) getUserLimiter(userID uint) *rate.Limiter {
-	limiterAny, _ := p.userLimiters.LoadOrStore(userID, rate.NewLimiter(rate.Every(time.Minute/10), 10))
-	return limiterAny.(*rate.Limiter)
-}
-
 // sendReply 把分身回复作为新消息写入指定会话并广播。
 // convID 即回复落点会话：群聊（GroupReplyTarget=private）回触发者私聊时用新建的私聊会话，
 // 否则为原会话。分身侧元数据集中放在 meta，避免参数过多。
 func (p *AvatarWorkerPool) sendReply(task AvatarTask, convID uint, reply string, meta avatarSendMeta) {
-	// 1. 创建消息
+	// 命中知识来源时持久化到 Extra（JSON），与广播下发的 sources 一致，
+	// 使刷新/REST 回放后「依据」徽章不丢（buildMessageResponse 从 Extra 读取）。
+	sources := p.compactSources(meta.sources)
 	msg := model.Message{
 		ConversationID: convID,
 		SenderID:       task.UserID,
@@ -208,6 +187,11 @@ func (p *AvatarWorkerPool) sendReply(task AvatarTask, convID uint, reply string,
 		Content:        reply,
 		IsRead:         false,
 		Origin:         "avatar",
+	}
+	if len(sources) > 0 {
+		if b, err := json.Marshal(map[string]interface{}{"sources": sources}); err == nil {
+			msg.Extra = string(b)
+		}
 	}
 
 	if err := p.db.Create(&msg).Error; err != nil {
@@ -244,7 +228,7 @@ func (p *AvatarWorkerPool) sendReply(task AvatarTask, convID uint, reply string,
 		"sender":           msg.Sender,
 		"avatar_name":      meta.avatarCfgName,
 		"disclaimer_style": meta.disclaimerStyle,
-		"sources":          p.compactSources(meta.sources),
+		"sources":          sources,
 	}
 
 	if ws.GlobalHub != nil {
