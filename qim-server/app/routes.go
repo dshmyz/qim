@@ -139,6 +139,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		logger.WithModule("Routes").Info("UnifiedSearchGraph 初始化成功")
 	}
 
+	// 统一上下文预制：侧边栏 current 模式的历史注入经它声明式装配（与 bot 笔记注入同一套抽象）。
+	contextAsm := service.NewContextAssembler(di.GlobalContainer.DB)
+	contextAsm.SetNoteSearcher(noteVectorSvc) // 可为 nil（向量库未配时安全降级）
+	aiHandler.SetContextAssembler(contextAsm)
+
 	// 注册用户侧 AI 工具（依赖 TaskService/MessageService/SearchGraph/SummaryGraph）
 	service.RegisterUserTools(toolRegistry, di.GlobalContainer.TaskService, di.GlobalContainer.MessageService, unifiedSearchGraph, summaryGraph)
 

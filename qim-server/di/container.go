@@ -63,6 +63,7 @@ type Container struct {
 	AvatarTriggerService *service.AvatarTriggerService
 	BotMessagingService  *service.BotMessagingService
 	PromptManager        *service.PromptManager
+	ContextAssembler     *service.ContextAssembler
 	WebSocketHub         *ws.Hub
 	AuthMiddleware       gin.HandlerFunc
 	// Scheduler 是统一调度器（robfig/cron/v3），由 main.go 在启动时注入

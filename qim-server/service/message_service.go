@@ -45,6 +45,7 @@ type MessageService struct {
 	sensitiveWordCacheMu sync.RWMutex
 	sensitiveWordLoaded  bool
 
+	contextAsm     *ContextAssembler // 上下文注入预制（笔记/记忆/群文档知识源，声明式）；nil=跳过
 	botReplyWorker *ReplyOrchestrator // 专属机器人回复的并发控制（限并发+会话串行）；nil=走旧直发
 }
 
@@ -53,6 +54,7 @@ func NewMessageService(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService) *Messa
 		db:             db,
 		hub:            hub,
 		aiService:      aiService,
+		contextAsm:     NewContextAssembler(db),
 		botReplyWorker: NewReplyOrchestrator(ReplyOrchestratorOpts{
 			Workers:   8,
 			Serialize: true, // 专属机器人：按会话串行，防同会话乱序/重复回复
@@ -82,8 +84,12 @@ func (s *MessageService) SetAIService(aiService *ai.AIService) {
 
 // SetNoteSearcher 注入笔记检索服务（用于 bot internal_ai 模式下读取创建者笔记）。
 // 传 nil 即可关闭该能力（向量库未配置时安全降级）。
+// 同源透传到 contextAsm，保证 bot 笔记注入与统一装配走同一条检索路径。
 func (s *MessageService) SetNoteSearcher(searcher NoteSearcher) {
 	s.noteSearcher = searcher
+	if s.contextAsm != nil {
+		s.contextAsm.SetNoteSearcher(searcher)
+	}
 }
 
 // SetGroupContextServices 注入群记忆 + 群知识库服务，供外部 agent bot 被 @ 时把
@@ -92,6 +98,10 @@ func (s *MessageService) SetNoteSearcher(searcher NoteSearcher) {
 func (s *MessageService) SetGroupContextServices(memorySvc *GroupMemoryService, knowledgeSvc *GroupDocumentService) {
 	s.groupMemorySvc = memorySvc
 	s.groupKnowledgeSvc = knowledgeSvc
+	if s.contextAsm != nil {
+		// 统一装配的长期记忆/群文档源使用与外部 bot 同源的群知识服务；长期记忆面向 bot 用户。
+		s.contextAsm.SetGroupContextServices(nil, knowledgeSvc)
+	}
 }
 
 // loadSensitiveWords 从数据库加载启用的敏感词到内存缓存，返回 DB 错误。
@@ -459,39 +469,25 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 	// 创建者笔记作为知识库：开关开启 + noteSearcher 可用时，按 bot.CreatorID scope 检索
 	// scope 隔离：SearchNotes 内部按 user_notes_<userID> 分集合，只能读到创建者自己的笔记
 	// 降级策略：noteSearcher==nil（向量库未配）或检索出错时静默跳过，不影响主流程
-	// 命中笔记的标题/分数会写入 message.Extra（JSON），前端据此渲染折叠「知识来源」标签
+	// 命中笔记的标题/分数会写入 message.Extra（JSON），前端据此渲染折叠「知识来源」标签。
+	// 统一走 ContextAssembler 声明式装配——后续给 bot 加记忆/群文档源只需在 sources 加一行。
 	botCfg := ParseBotConfig(bot.Config)
 	var knowledgeSources []map[string]interface{}
-	if botCfg.UseCreatorNotes && s.noteSearcher != nil && bot.CreatorID > 0 {
-		noteResults, err := s.noteSearcher.SearchNotes(bot.CreatorID, content, 3)
-		if err == nil && len(noteResults) > 0 {
-			parts := make([]string, 0, len(noteResults))
-			// 记录命中笔记的 ID / 标题 / 分数，便于审计与排查检索质量
-			hitLogs := make([]string, 0, len(noteResults))
-			knowledgeSources = make([]map[string]interface{}, 0, len(noteResults))
-			for _, r := range noteResults {
-				title := r.Metadata["title"]
-				if title == "" {
-					title = "未命名"
-				}
-				parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", title, r.Content))
-				hitLogs = append(hitLogs, fmt.Sprintf("docID=%s title=%s score=%.4f", r.DocID, title, r.Score))
-				// 收集前端展示所需的最小结构（不暴露笔记正文，避免 message 响应体过大/泄漏）
+	if botCfg.UseCreatorNotes && s.noteSearcher != nil && bot.CreatorID > 0 && s.contextAsm != nil {
+		bundle := s.contextAsm.Assemble(context.Background(), content, []ContextSource{
+			{Type: SourceNotes, Key: bot.CreatorID, TopK: 3},
+		})
+		if len(bundle.Messages) > 0 {
+			aiMessages = append(aiMessages, bundle.Messages...)
+		}
+		if len(bundle.KnowledgeSources) > 0 {
+			knowledgeSources = make([]map[string]interface{}, 0, len(bundle.KnowledgeSources))
+			for _, ks := range bundle.KnowledgeSources {
 				knowledgeSources = append(knowledgeSources, map[string]interface{}{
-					"title": title,
-					"score": r.Score,
+					"title": ks.Title,
+					"score": ks.Score,
 				})
 			}
-			logger.WithModule("handleBotMessage").Info("命中创建者笔记",
-				"botID", bot.ID, "creatorID", bot.CreatorID, "hits", len(noteResults), "notes", strings.Join(hitLogs, " | "))
-			aiMessages = append(aiMessages, ai.Message{
-				Role: "system",
-				Content: "以下是创建者的相关笔记，可作为回答参考（请基于笔记内容作答，" +
-					"笔记未覆盖的问题按你的通用能力回答）：\n\n" +
-					strings.Join(parts, "\n\n"),
-			})
-		} else if err != nil {
-			logger.WithModule("handleBotMessage").Warn("笔记检索失败，降级为不注入", "botID", bot.ID, "error", err)
 		}
 	}
 
@@ -1368,26 +1364,34 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 		"quoted_message":    msg.QuotedMessage,
 		"mention_user_ids":  mentionUserIDs,
 	}
-	// 解析 Extra：当前承载 knowledge_sources（Bot 回复命中笔记时的标题/分数）
-	// 解析失败或为空时，前端约定 knowledge_sources 不存在或为空数组
-	if msg.Extra != "" {
-		var extra map[string]interface{}
-		if err := json.Unmarshal([]byte(msg.Extra), &extra); err == nil {
-			if ks, ok := extra["knowledge_sources"]; ok {
-				resp["knowledge_sources"] = ks
-			}
-			// 外部工具调用记录（tool_calls）：前端据此渲染独立工具卡片（回放）。
-			if tc, ok := extra["tool_calls"]; ok {
-				resp["tool_calls"] = tc
-			}
-			// 分身回复命中的知识来源（sources：笔记/群知识/记忆），前端据此渲染「依据」徽章（回放）。
-			// 分身发送时由 avatar_worker_pool 持久化到 Extra，与广播下发的 sources 一致。
-			if sc, ok := extra["sources"]; ok {
-				resp["sources"] = sc
-			}
-		}
+	// 解析 Extra：透出 tool_calls / knowledge_sources / sources，供前端回放渲染
+	for k, v := range ParseMessageExtraFields(msg.Extra) {
+		resp[k] = v
 	}
 	return resp
+}
+
+// ParseMessageExtraFields 解析消息 Extra（JSON 字符串），提取 tool_calls、knowledge_sources、
+// sources 三个顶层字段，返回供消息响应透出的 map。解析失败或为空时返回 nil。
+// handler 和 service 两层的消息响应构造共用此函数，避免三处重复解析逻辑。
+func ParseMessageExtraFields(extra string) map[string]interface{} {
+	if extra == "" {
+		return nil
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(extra), &m); err != nil {
+		return nil
+	}
+	result := make(map[string]interface{})
+	for _, key := range []string{"tool_calls", "knowledge_sources", "sources"} {
+		if v, ok := m[key]; ok {
+			result[key] = v
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 // broadcastMessage 广播消息到会话所有成员（排除发送者）。
