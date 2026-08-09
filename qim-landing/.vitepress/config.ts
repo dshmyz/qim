@@ -39,6 +39,7 @@ export default defineConfig({
           collapsible: true,
           items: [
             { text: '功能介绍', link: '/docs/features' },
+            { text: '详细使用手册', link: '/docs/usage' },
             { text: 'CLI 使用指南', link: '/docs/cli' },
             { text: 'MCP 接入指南', link: '/docs/mcp' },
           ],

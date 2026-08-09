@@ -296,6 +296,8 @@ npm run electron:build    # 打包 Electron 跨平台安装包（electron-dist/�
 
 ## 📖 使用指南 / Usage Guide
 
+> 想要**更完整的操作步骤**（含 AI 分身、群助手记忆/知识库、文件空间，以及 Bot/Webhook/CLI/MCP 对接）请查阅 [**详细使用手册**](docs/USER_MANUAL.md)。
+
 ### 登录 / Login
 
 1. 启动应用，输入用户名、密码
@@ -317,8 +319,8 @@ npm run electron:build    # 打包 Electron 跨平台安装包（electron-dist/�
 ### 使用 AI / Using AI
 
 - **AI 助手**：左侧栏「应用」→「AI 助手」，选择机器人对话
-- **群聊 AI**：群聊中 `@AI` 触发或配置关键词门控自动回复
-- **AI 分身 / Avatar**：创建虚拟形象，配置记忆与知识库后与分身对话；支持手动接管分身
+- **群聊 AI 助手**：群聊中 `@AI` 触发、配置关键词门控，或由代管成员触发自动回复；支持**群级记忆**（自动提炼群共识）与**群知识库**（显式上传文档）
+- **AI 分身 / Avatar**：创建虚拟形象，配置记忆与知识库（Notes/Tasks 开关）后与分身对话；支持多模型、触发决策、手动接管分身
 
 ### 使用应用 / Using apps
 
@@ -326,15 +328,31 @@ npm run electron:build    # 打包 Electron 跨平台安装包（electron-dist/�
 2. 选择统计报表、日历、笔记、便签、文件管理、任务管理、AI 助手等
 3. 在右侧区域操作
 
+### 群文件空间 / File space
+
+- **个人文件空间**：个人文件上传/下载/排序，消息中引用
+- **群文件空间**：群成员共享上传、下载，带集中式权限校验与 scope 隔离
+
 ### 分享内容 / Share content
 
 1. 在笔记、便签或文件中找到要分享的内容
 2. 点击「分享」，选择分享到的用户或群聊
 3. 确认发送
 
+### 开发/集成入口 / Dev & integration
+
+以下功能面向开发者/集成方，**完整用法见 [详细使用手册](docs/USER_MANUAL.md)**：
+
+- **Bot / Webhook**：`external_webhook` 模式把用户回复推送到你的回调地址，outbox 重试 + 死信兜底；管理后台「Bot 运维」可监控投递与手动重投
+- **QIM CLI**：命令行收发消息、任务/日历/笔记、流式 stdin → [CLI 使用指南](docs/CLI使用指南.md)
+- **MCP Server**：stdio + Streamable HTTP，暴露 IM 工具给 Claude/Cursor → [MCP 接入指南](docs/MCP接入指南.md)
+- **外部 Agent 闭环**：外部 Agent ↔ QIM 用户消息互通，卡片动作幂等 + 状态回写、纯 pull 模式
+
 ***
 
 ## 🔌 对外接口 / External Interfaces
+
+> 📖 终端使用 + 开发集成的完整操作指引见 [**详细使用手册**](docs/USER_MANUAL.md)。
 
 | 接口 | 说明 | Docs |
 | --- | --- | --- |
