@@ -462,7 +462,7 @@ type toolCallAccumulator struct {
 // 即时逐 token 呈现（正是目标）。首回合若 Provider 不支持流式 tool-call，返回
 // ErrStreamingToolsNotSupported，调用方据此降级到非流式 GetCompletionWithToolsMultiStep。
 // onChunk 收到 final 回合的内容 delta；调用返回 nil 表示 final 内容已全部流出。
-func (s *AIService) GetCompletionWithToolsStreamMultiStep(taskType TaskType, messages []Message, callerCtx *CallerContext, allowed []string, maxSteps int, onStep ReActStepCallback, onChunk func(chunk StreamChunk) error, overrides ...Override) error {
+func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, taskType TaskType, messages []Message, callerCtx *CallerContext, allowed []string, maxSteps int, onStep ReActStepCallback, onChunk func(chunk StreamChunk) error, overrides ...Override) error {
 	s.mu.RLock()
 	toolRegistry := s.toolRegistry
 	s.mu.RUnlock()
@@ -502,9 +502,9 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(taskType TaskType, mes
 	// callProviderStream 执行本轮流式调用，onChunk 侧实时累积内容与工具增量。
 	callProviderStream := func(msgs []Message, onChunk func(chunk StreamChunk) error) error {
 		if modelName != "" {
-			return provider.WithModel(modelName).ChatStreamWithTools(context.Background(), msgs, toolDefs, onChunk)
+			return provider.WithModel(modelName).ChatStreamWithTools(ctx, msgs, toolDefs, onChunk)
 		}
-		return provider.ChatStreamWithTools(context.Background(), msgs, toolDefs, onChunk)
+		return provider.ChatStreamWithTools(ctx, msgs, toolDefs, onChunk)
 	}
 
 	for step := 1; step <= maxSteps; step++ {
@@ -544,8 +544,15 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(taskType TaskType, mes
 		}
 
 		// 组装本回合 tool calls（arguments 是跨 chunk 拼接的原始 JSON，回合终了整体解析）
+		// 用 maxIndex+1 作为上界遍历，避免非连续 index 时 len(map) < maxIndex+1 导致丢失
 		toolCalls := make([]ToolCall, 0, len(toolCallsByIndex))
-		for idx := 0; idx < len(toolCallsByIndex); idx++ {
+		maxIdx := -1
+		for idx := range toolCallsByIndex {
+			if idx > maxIdx {
+				maxIdx = idx
+			}
+		}
+		for idx := 0; idx <= maxIdx; idx++ {
 			acc := toolCallsByIndex[idx]
 			if acc == nil {
 				continue
@@ -608,7 +615,7 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(taskType TaskType, mes
 
 	// 达到最大步数仍未结束：做最后一次无工具调用获取总结并逐 token 流出
 	aiLog.Info("react(stream) reached max steps, requesting final summary", "maxSteps", maxSteps)
-	return s.GetCompletionStreamWithContext(context.Background(), taskType, workMsgs, onChunk, overrides...)
+	return s.GetCompletionStreamWithContext(ctx, taskType, workMsgs, onChunk, overrides...)
 }
 
 func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, messages []Message, callerCtx *CallerContext, allowed []string, overrides ...Override) (string, error) {
@@ -831,9 +838,11 @@ func (s *AIService) filterMessages(messages []Message) []Message {
 	filtered := make([]Message, len(messages))
 	for i, msg := range messages {
 		filtered[i] = Message{
-			Role:     msg.Role,
-			Content:  s.filterContent(msg.Content),
-			ImageURL: msg.ImageURL,
+			Role:       msg.Role,
+			Content:    s.filterContent(msg.Content),
+			ImageURL:   msg.ImageURL,
+			ToolCalls:  msg.ToolCalls,
+			ToolCallID: msg.ToolCallID,
 		}
 	}
 	return filtered

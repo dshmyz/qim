@@ -11,6 +11,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 
@@ -141,6 +142,7 @@ func prepareSummaryData(req *GenerateSummaryRequest, userID uint) (*summaryPrepa
 
 func buildSummaryMessages(data *summaryPrepareResult) []ai.Message {
 	var sb strings.Builder
+	sb.WriteString(aiprompt.CurrentTimeLine() + "\n\n")
 	sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的对话摘要助手。请根据对话记录生成一份结构化摘要。\n\n")
 
 	sb.WriteString("【输出格式】\n")
@@ -246,9 +248,8 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 		return
 	}
 	if data.MessagesCount == 0 {
-		streamSSE(c, func(writeChunk func(string)) error {
-			writeChunk("该时间段内没有可摘要的消息")
-			return nil
+		streamSSE(c, func(writeChunk func(string) error) error {
+			return writeChunk("该时间段内没有可摘要的消息")
 		})
 		return
 	}
@@ -305,19 +306,18 @@ func (h *AIHandler) GenerateSummaryStream(c *gin.Context) {
 		return
 	}
 	if data.MessagesCount == 0 {
-		streamSSE(c, func(writeChunk func(string)) error {
-			writeChunk("该时间段内没有可摘要的消息")
-			return nil
+		streamSSE(c, func(writeChunk func(string) error) error {
+			return writeChunk("该时间段内没有可摘要的消息")
 		})
 		return
 	}
 
 	messages := buildSummaryMessages(data)
 
-	streamSSE(c, func(writeChunk func(string)) error {
+	streamSSE(c, func(writeChunk func(string) error) error {
 		return h.aiService.GetCompletionStream(ai.TaskTypeAnalysis, messages, func(chunk ai.StreamChunk) error {
 			if chunk.Content != "" {
-				writeChunk(chunk.Content)
+				return writeChunk(chunk.Content)
 			}
 			return nil
 		})

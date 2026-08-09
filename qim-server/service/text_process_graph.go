@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
 
 	"github.com/cloudwego/eino/compose"
@@ -145,6 +146,8 @@ func (g *TextProcessGraph) createFormatNode() *compose.Lambda {
 
 func (g *TextProcessGraph) buildSystemPrompt(input *TextProcessInput) string {
 	var sb strings.Builder
+
+	sb.WriteString(aiprompt.CurrentTimeLine() + "\n\n")
 
 	switch input.Intent {
 	case TextProcessTranslate:

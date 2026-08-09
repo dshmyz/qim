@@ -16,6 +16,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
@@ -76,6 +77,7 @@ type AIHandler struct {
 	textProcessGraph   *service.TextProcessGraph
 	unifiedSearchGraph *service.UnifiedSearchGraph
 	smartDigestGraph   *service.SmartDigestGraph
+	contextAsm         *service.ContextAssembler // 上下文预制（侧边栏 current 模式历史注入）；nil=跳过
 }
 
 // NewAIHandler 创建AI处理器
@@ -105,6 +107,11 @@ func (h *AIHandler) SetUnifiedSearchGraph(graph *service.UnifiedSearchGraph) {
 
 func (h *AIHandler) SetSmartDigestGraph(graph *service.SmartDigestGraph) {
 	h.smartDigestGraph = graph
+}
+
+// SetContextAssembler 注入统一上下文预制组件（侧边栏 current 模式经它声明式装配历史注入）。
+func (h *AIHandler) SetContextAssembler(asm *service.ContextAssembler) {
+	h.contextAsm = asm
 }
 
 // RegisterRoutes 注册路由
@@ -349,7 +356,7 @@ func buildDraftReplyMessages(req DraftReplyRequest, currentUserID uint) ([]ai.Me
 		contextText, targetName, target.Content)
 
 	return []ai.Message{
-		{Role: "system", Content: fmt.Sprintf("你是%s，需要以第一人称回复对方的消息。根据下面的对话上下文，起草一条回复。语气自然、简短，直接返回回复内容，不要加任何前缀、引号或解释。", myName)},
+		{Role: "system", Content: fmt.Sprintf("%s\n\n你是%s，需要以第一人称回复对方的消息。根据下面的对话上下文，起草一条回复。语气自然、简短，直接返回回复内容，不要加任何前缀、引号或解释。", aiprompt.CurrentTimeLine(), myName)},
 		{Role: "user", Content: userPrompt},
 	}, nil
 }
@@ -412,18 +419,22 @@ func (h *AIHandler) DraftReplyStream(c *gin.Context) {
 
 // streamCompletion 将一组消息以 SSE 流式推给前端（GetCompletionStream / DraftReplyStream 共用）
 // streamSSE 设置 SSE 响应头，pump 通过 writeChunk 推送内容块；结束后发 finish 事件。
+// writeChunk 返回 error：客户端断开后写入失败时，pump 可提前终止，避免浪费 AI 调用。
 // pump 返回非 nil error 时改为推送错误事件。供 streamCompletion / streamCompletionFromReader 共用，
 // 避免 SSE 响应头与结束事件逻辑重复。
-func streamSSE(c *gin.Context, pump func(writeChunk func(content string)) error) {
+func streamSSE(c *gin.Context, pump func(writeChunk func(content string) error) error) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 
-	writeChunk := func(content string) {
+	writeChunk := func(content string) error {
 		data, _ := json.Marshal(ai.StreamChunk{Content: content})
-		c.Writer.Write([]byte("data: " + string(data) + "\n\n"))
+		if _, err := c.Writer.Write([]byte("data: " + string(data) + "\n\n")); err != nil {
+			return err
+		}
 		c.Writer.Flush()
+		return nil
 	}
 
 	if err := pump(writeChunk); err != nil {
@@ -443,10 +454,10 @@ func streamSSE(c *gin.Context, pump func(writeChunk func(content string)) error)
 
 // streamCompletion 流式推送一组 messages（经 aiService.GetCompletionStream）
 func (h *AIHandler) streamCompletion(c *gin.Context, messages []ai.Message) {
-	streamSSE(c, func(writeChunk func(string)) error {
+	streamSSE(c, func(writeChunk func(string) error) error {
 		return h.aiService.GetCompletionStream(ai.TaskTypeChat, messages, func(chunk ai.StreamChunk) error {
 			if chunk.Content != "" {
-				writeChunk(chunk.Content)
+				return writeChunk(chunk.Content)
 			}
 			return nil
 		})
@@ -476,18 +487,25 @@ func toolDisplayName(toolName string) string {
 // （真·打字机效果），工具事件仍经 onStep 实时推卡片。首回合若 Provider 不支持流式
 // tool-call（如 Anthropic，返回 ErrStreamingToolsNotSupported）则降级到非流式
 // GetCompletionWithToolsMultiStep、以切字块（保留打字感）发送结果。
+// sidebarAllowedTools 侧边栏 AI 元对话可调用的工具白名单。
+// 单一来源：buildSidebarSystemPrompt 用它注入能力自述，streamCompletionWithTools 用它作为实际 allowlist，
+// 保证「侧边栏 AI 自述的能力」与「它真实能调用的工具」严格一致，避免两处漂移。
+var sidebarAllowedTools = []string{
+	"create_user_task",
+	"list_tasks",
+	"send_message",
+	"search_knowledge",
+	"summarize_conversation",
+}
+
 func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Message, userID uint, conversationID uint) {
 	callerCtx := &ai.CallerContext{UserID: userID, ConversationID: conversationID}
-	allowedTools := []string{
-		"create_user_task",
-		"list_tasks",
-		"send_message",
-		"search_knowledge",
-		"summarize_conversation",
-	}
+	allowedTools := sidebarAllowedTools
 
-	streamSSE(c, func(writeChunk func(string)) error {
-		writeChunk("🤔 正在思考...\n\n")
+	streamSSE(c, func(writeChunk func(string) error) error {
+		if err := writeChunk("🤔 正在思考...\n\n"); err != nil {
+			return err
+		}
 
 		// 每步工具执行后实时推送进度（仅终态；进行态由前端工具卡片处理）
 		onStep := func(step int, toolCallID, phase, toolName string, args map[string]interface{}, result interface{}, err error) {
@@ -496,13 +514,14 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 			}
 			display := toolDisplayName(toolName)
 			if err != nil {
-				writeChunk(fmt.Sprintf("⚠️ %s失败：%s\n\n", display, err.Error()))
+				_ = writeChunk(fmt.Sprintf("⚠️ %s失败：%s\n\n", display, err.Error()))
 			} else {
-				writeChunk(fmt.Sprintf("✅ %s已完成\n\n", display))
+				_ = writeChunk(fmt.Sprintf("✅ %s已完成\n\n", display))
 			}
 		}
 
 		streamErr := h.aiService.GetCompletionWithToolsStreamMultiStep(
+			c.Request.Context(),
 			ai.TaskTypeChat,
 			messages,
 			callerCtx,
@@ -512,13 +531,13 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 			func(chunk ai.StreamChunk) error {
 				// final 回合内容逐 token 实时流出（真·打字机）
 				if chunk.Content != "" {
-					writeChunk(chunk.Content)
+					return writeChunk(chunk.Content)
 				}
 				return nil
 			},
 		)
 		if streamErr != nil && !errors.Is(streamErr, ai.ErrStreamingToolsNotSupported) {
-			writeChunk(fmt.Sprintf("\n[错误：%s]", streamErr.Error()))
+			_ = writeChunk(fmt.Sprintf("\n[错误：%s]", streamErr.Error()))
 			return nil
 		}
 
@@ -533,10 +552,12 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 				onStep,
 			)
 			if err != nil {
-				writeChunk(fmt.Sprintf("\n[错误：%s]", err.Error()))
+				_ = writeChunk(fmt.Sprintf("\n[错误：%s]", err.Error()))
 				return nil
 			}
-			writeChunk("\n")
+			if err := writeChunk("\n"); err != nil {
+				return err
+			}
 			runes := []rune(finalContent)
 			chunkSize := 4
 			for i := 0; i < len(runes); i += chunkSize {
@@ -544,7 +565,9 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 				if end > len(runes) {
 					end = len(runes)
 				}
-				writeChunk(string(runes[i:end]))
+				if err := writeChunk(string(runes[i:end])); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -557,7 +580,7 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 // defer Close 确保客户端断开或出错时释放 reader 端资源。
 func streamCompletionFromReader(c *gin.Context, stream *schema.StreamReader[*schema.Message]) {
 	defer stream.Close()
-	streamSSE(c, func(writeChunk func(string)) error {
+	streamSSE(c, func(writeChunk func(string) error) error {
 		for {
 			msg, err := stream.Recv()
 			if err != nil {
@@ -567,7 +590,9 @@ func streamCompletionFromReader(c *gin.Context, stream *schema.StreamReader[*sch
 				return err
 			}
 			if msg != nil && msg.Content != "" {
-				writeChunk(msg.Content)
+				if err := writeChunk(msg.Content); err != nil {
+					return err
+				}
 			}
 		}
 	})
@@ -942,58 +967,46 @@ func (h *AIHandler) SidebarStream(c *gin.Context) {
 
 // sidebarCurrentConversation 当前会话上下文模式：
 // 注入最近 20 条消息 + 会话元信息，让 AI 基于“刚才讨论的内容”回答。
+// 历史注入统一走 ContextAssembler 声明式装配（future 加笔记/记忆/群文档源只需在 sources 加一行）；
+// 群名属会话元信息（非检索源），保留在此由调用方注入。
 func (h *AIHandler) sidebarCurrentConversation(c *gin.Context, req SidebarStreamRequest, userID uint) {
 	db := database.GetDB()
 
-	systemPrompt := buildSidebarSystemPrompt()
+	systemPrompt := h.buildSidebarSystemPrompt()
 
-	var contextText string
+	aiMessages := []ai.Message{
+		{Role: "system", Content: systemPrompt},
+	}
+
 	if req.ConversationID > 0 {
 		if err := ensureConversationAccess(db, req.ConversationID, userID); err != nil {
 			response.Forbidden(c, "无权访问该会话")
 			return
 		}
 
-		// 加载会话元信息（群名）
+		// 恢复本函数的既有消息结构：group 名会话元信息 + 历史注入块合成单个 user 上下文消息。
+		var contextText string
+		// 群名（会话元信息，非检索源）
 		var group model.Group
 		if db.Where("conversation_id = ?", req.ConversationID).First(&group).Error == nil {
 			contextText += fmt.Sprintf("【当前会话】%s\n", group.Name)
 		}
-
-		// 加载最近 20 条消息
-		var messages []model.Message
-		db.Where("conversation_id = ? AND type IN ?", req.ConversationID, []string{"text", "markdown"}).
-			Preload("Sender").
-			Order("created_at DESC").
-			Limit(20).
-			Find(&messages)
-
-		if len(messages) > 0 {
-			// 反转为时间正序
-			for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-				messages[i], messages[j] = messages[j], messages[i]
+		// 历史注入块（统一走 ContextAssembler 声明式装配）
+		if h.contextAsm != nil {
+			bundle := h.contextAsm.Assemble(c.Request.Context(), req.Message, []service.ContextSource{
+				{Type: service.SourceHistory, Key: req.ConversationID, TopK: 20},
+			})
+			if len(bundle.Messages) > 0 {
+				contextText += bundle.Messages[0].Content
 			}
-			var lines []string
-			for _, msg := range messages {
-				name := msg.Sender.Nickname
-				if name == "" {
-					name = msg.Sender.Username
-				}
-				lines = append(lines, fmt.Sprintf("%s: %s", name, msg.Content))
-			}
-			contextText += "【最近对话记录】\n" + strings.Join(lines, "\n") + "\n"
+		}
+		if contextText != "" {
+			aiMessages = append(aiMessages, ai.Message{Role: "user", Content: contextText})
+			aiMessages = append(aiMessages, ai.Message{Role: "assistant", Content: "已了解当前会话上下文，请提问。"})
 		}
 	}
 
-	aiMessages := []ai.Message{
-		{Role: "system", Content: systemPrompt},
-	}
-	if contextText != "" {
-		aiMessages = append(aiMessages, ai.Message{Role: "user", Content: contextText})
-		aiMessages = append(aiMessages, ai.Message{Role: "assistant", Content: "已了解当前会话上下文，请提问。"})
-	}
 	aiMessages = append(aiMessages, ai.Message{Role: "user", Content: req.Message})
-
 	h.streamCompletionWithTools(c, aiMessages, userID, req.ConversationID)
 }
 
@@ -1010,7 +1023,7 @@ func (h *AIHandler) sidebarCrossConversation(c *gin.Context, req SidebarStreamRe
 	if h.unifiedSearchGraph == nil {
 		// 降级：无搜索图时用纯 LLM 回答
 		aiMessages := []ai.Message{
-			{Role: "system", Content: buildSidebarSystemPrompt()},
+			{Role: "system", Content: h.buildSidebarSystemPrompt()},
 			{Role: "user", Content: req.Message},
 		}
 		h.streamCompletionWithTools(c, aiMessages, userID, req.ConversationID)
@@ -1029,7 +1042,7 @@ func (h *AIHandler) sidebarCrossConversation(c *gin.Context, req SidebarStreamRe
 		logger.WithModule("SidebarStream").Error("跨会话检索失败", "error", err)
 		// 降级：纯 LLM
 		aiMessages := []ai.Message{
-			{Role: "system", Content: buildSidebarSystemPrompt()},
+			{Role: "system", Content: h.buildSidebarSystemPrompt()},
 			{Role: "user", Content: req.Message},
 		}
 		h.streamCompletionWithTools(c, aiMessages, userID, req.ConversationID)
@@ -1047,7 +1060,7 @@ func (h *AIHandler) sidebarCrossConversation(c *gin.Context, req SidebarStreamRe
 	}
 
 	aiMessages := []ai.Message{
-		{Role: "system", Content: buildSidebarSystemPrompt()},
+		{Role: "system", Content: h.buildSidebarSystemPrompt()},
 	}
 	if len(contextParts) > 0 {
 		aiMessages = append(aiMessages, ai.Message{
@@ -1061,9 +1074,12 @@ func (h *AIHandler) sidebarCrossConversation(c *gin.Context, req SidebarStreamRe
 	h.streamCompletionWithTools(c, aiMessages, userID, req.ConversationID)
 }
 
-// buildSidebarSystemPrompt 侧边栏元对话的 system prompt
-func buildSidebarSystemPrompt() string {
-	return fmt.Sprintf(`你是 %s 企业即时通讯系统中的 AI 助手，正在通过侧边栏与用户进行元对话。
+// buildSidebarSystemPrompt 侧边栏元对话的 system prompt。
+// 末尾动态注入能力自述（静态能力 + 侧边栏实际可调工具），让 AI 被问「具备哪些能力」时能如实回答。
+func (h *AIHandler) buildSidebarSystemPrompt() string {
+	prompt := fmt.Sprintf(`%s
+
+你是 %s 企业即时通讯系统中的 AI 助手，正在通过侧边栏与用户进行元对话。
 
 【你的角色】
 - 你是用户的私人智能助理，帮助用户理解、总结、分析当前或历史对话内容
@@ -1077,5 +1093,20 @@ func buildSidebarSystemPrompt() string {
 - 如果用户问“刚才讨论的结论是什么”，从对话记录中提炼
 - 如果用户问“帮我整理待办”，抽取行动项并以 checkbox 格式输出
 - 如果用户说“帮我创建任务”或“设置提醒”，使用 create_user_task 工具创建，并告诉用户已创建成功
-- 如果信息不足，诚实告知并建议用户提供更多上下文`, productname.Name)
+- 如果信息不足，诚实告知并建议用户提供更多上下文`, aiprompt.CurrentTimeLine(), productname.Name)
+
+	// 能力自述：静态能力 + 侧边栏实际可调工具，随 allowlist 动态变化。
+	if capPrompt := h.capabilityPrompt(sidebarAllowedTools); capPrompt != "" {
+		prompt += "\n\n【能力与工具】\n" + capPrompt
+	}
+	return prompt
+}
+
+// capabilityPrompt 生成能力自述文本块（静态能力 + 指定工具集，动态）。
+// 对 aiService / 其注册表为 nil 做安全降级（返回空串，不注入）。
+func (h *AIHandler) capabilityPrompt(allowed []string) string {
+	if h.aiService == nil {
+		return ""
+	}
+	return h.aiService.GetToolRegistry().BuildCapabilityPrompt(allowed)
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 
 	"github.com/cloudwego/eino/components/prompt"
 	"github.com/cloudwego/eino/compose"
@@ -131,9 +132,7 @@ func (g *AvatarReplyGraph) createTemplateVarsNode() *compose.Lambda {
 func (g *AvatarReplyGraph) buildTemplateVars(input *AvatarReplyContext) map[string]any {
 	config := input.Config
 
-	now := time.Now()
-	weekdays := []string{"日", "一", "二", "三", "四", "五", "六"}
-	timeInfo := fmt.Sprintf("【当前时间】\n%s (%s)", now.Format("2006-01-02 15:04"), weekdays[now.Weekday()])
+	timeInfo := aiprompt.CurrentTimeLine()
 
 	personaSection := ""
 	if config.AutoLearnedPersona != "" {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/service/storage"
@@ -255,7 +256,9 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 		return
 	}
 
-	systemPrompt := fmt.Sprintf(`你是一个图片翻译助手。请完成以下步骤：
+	systemPrompt := fmt.Sprintf(`%s
+
+你是一个图片翻译助手。请完成以下步骤：
 
 1. 仔细识别图片中的所有文字内容
 2. 如果图片中没有可识别的文字，直接返回 {"original_text": "未检测到文字", "translated_text": ""}
@@ -264,7 +267,7 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 请严格按以下 JSON 格式输出，不要包含任何其他内容：
 {"original_text": "识别的文字", "translated_text": "翻译结果"}
 
-注意：如果图片中确实没有文字，translated_text 必须为空字符串。不要编造文字。`, langName)
+注意：如果图片中确实没有文字，translated_text 必须为空字符串。不要编造文字。`, aiprompt.CurrentTimeLine(), langName)
 
 	messages_input := []ai.Message{
 		{Role: "system", Content: systemPrompt},

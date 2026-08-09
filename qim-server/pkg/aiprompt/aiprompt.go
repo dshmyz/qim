@@ -14,9 +14,24 @@
 package aiprompt
 
 import (
+	"fmt"
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
 	"strings"
+	"time"
 )
+
+// CurrentTimeLine 返回统一格式的「当前时间」注入行，例如：【当前时间】2026-08-09 01:07 (日)。
+// 全项目各 AI system prompt 统一走此单一来源，保证口径一致（与 prompt 段共用 aiprompt 包思路一致）。
+func CurrentTimeLine() string {
+	return FormatTimeLine(time.Now())
+}
+
+// FormatTimeLine 将指定时间格式化为统一的「当前时间」注入行（不含行尾换行）。
+// 供需要注入特定时刻（而非当前时刻）的调用方使用，格式与 CurrentTimeLine 完全一致。
+func FormatTimeLine(t time.Time) string {
+	weekdays := []string{"日", "一", "二", "三", "四", "五", "六"}
+	return fmt.Sprintf("【当前时间】%s (%s)", t.Format("2006-01-02 15:04"), weekdays[t.Weekday()])
+}
 
 // BuildPersona 返回性格对应的人设文案（不带行尾换行）。
 // 支持 casual / concise / friendly / technical，其余一律返回专业严谨默认人设。

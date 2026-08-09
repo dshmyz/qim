@@ -2,7 +2,9 @@ package service
 
 import (
 	"fmt"
+	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
 	"strings"
 	"time"
@@ -118,10 +120,7 @@ func (pm *PromptManager) buildDefaultPrompt(ctx *PromptContext) string {
 }
 
 func BuildBaseInfo(ctx *PromptContext) string {
-	weekdays := []string{"日", "一", "二", "三", "四", "五", "六"}
-	return fmt.Sprintf("【当前时间】%s (%s)\n\n",
-		ctx.Time.Format("2006-01-02 15:04"),
-		weekdays[ctx.Time.Weekday()])
+	return aiprompt.FormatTimeLine(ctx.Time) + "\n\n"
 }
 
 func BuildUserInfo(ctx *PromptContext) string {
@@ -220,6 +219,14 @@ func (b *BotChatPromptBuilder) BuildSystemPrompt(ctx *PromptContext) string {
 		sb.WriteString(ctx.CustomPrompt)
 	} else {
 		sb.WriteString("你是一个智能助手，帮助用户解决问题。")
+	}
+
+	// 能力自述：注入静态能力，让 Bot 被问「具备哪些能力」时能如实回答（Bot 无工具，故不注入工具段）。
+	if capPrompt := ai.BuildStaticCapabilitiesPrompt(); capPrompt != "" {
+		if !strings.HasSuffix(sb.String(), "\n") {
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n【能力与工具】\n" + capPrompt)
 	}
 
 	return sb.String()

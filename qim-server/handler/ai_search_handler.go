@@ -7,6 +7,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 	"strings"
@@ -165,7 +166,9 @@ func (h *AIHandler) AISearch(c *gin.Context) {
 		searchContext += fmt.Sprintf("ID:%d [%s]: %s\n", msg.ID, senderName, msg.Content)
 	}
 
-	searchPrompt := fmt.Sprintf(`你是一个专业的搜索相关性评估助手。用户搜索: "%s"
+	searchPrompt := fmt.Sprintf(`%s
+
+你是一个专业的搜索相关性评估助手。用户搜索: "%s"
 
 请分析以下消息列表,选出与搜索最相关的消息,并按相关性从高到低排序。
 只返回相关的消息ID列表,用逗号分隔,最多返回20条。
@@ -173,7 +176,7 @@ func (h *AIHandler) AISearch(c *gin.Context) {
 消息列表:
 %s
 
-只返回消息ID列表,例如: 123,456,789`, req.Query, searchContext)
+只返回消息ID列表,例如: 123,456,789`, aiprompt.CurrentTimeLine(), req.Query, searchContext)
 
 	messagesInput := []ai.Message{
 		{Role: "system", Content: searchPrompt},

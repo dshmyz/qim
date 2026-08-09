@@ -11,6 +11,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
 
 	"github.com/cloudwego/eino/compose"
@@ -308,6 +309,7 @@ func (g *SummaryGraph) createFormatNode() *compose.Lambda {
 func (g *SummaryGraph) buildSummarySystemPrompt(sc *summaryContext) string {
 	var sb strings.Builder
 
+	sb.WriteString(aiprompt.CurrentTimeLine() + "\n\n")
 	sb.WriteString("你是 " + productname.Name + " 企业即时通讯系统的对话摘要助手。请根据对话记录生成一份结构化摘要。\n\n")
 
 	sb.WriteString("【输出格式】\n")

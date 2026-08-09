@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
@@ -157,7 +158,7 @@ func (d *IntentDetector) detectByRules(content string) *MessageIntent {
 
 // detectByAI 使用 AI 检测意图
 func (d *IntentDetector) detectByAI(content string, userID uint, conversationID uint) (*MessageIntent, error) {
-	systemPrompt := `你是一个意图识别助手。分析用户消息的意图，并按 JSON 格式返回结果。
+	systemPrompt := aiprompt.CurrentTimeLine() + "\n\n" + `你是一个意图识别助手。分析用户消息的意图，并按 JSON 格式返回结果。
 
 意图类型：
 - "chat": 普通聊天/闲聊

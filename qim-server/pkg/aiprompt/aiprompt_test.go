@@ -2,9 +2,22 @@ package aiprompt
 
 import (
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+func TestCurrentTimeLine(t *testing.T) {
+	got := CurrentTimeLine()
+	// 形如：【当前时间】2026-08-09 01:07 (日)
+	re := regexp.MustCompile(`^【当前时间】\d{4}-\d{2}-\d{2} \d{2}:\d{2} \([一二三四五六日]\)$`)
+	if !re.MatchString(got) {
+		t.Errorf("CurrentTimeLine 格式不正确: %q", got)
+	}
+	if !strings.HasPrefix(got, "【当前时间】") {
+		t.Errorf("应以【当前时间】开头: %q", got)
+	}
+}
 
 func TestBuildPersona(t *testing.T) {
 	// 各性格返回对应人设，且都带当前品牌名

@@ -84,6 +84,7 @@ func TestGetCompletionWithToolsStreamMultiStep(t *testing.T) {
 	}
 
 	err := svc.GetCompletionWithToolsStreamMultiStep(
+		context.Background(),
 		TaskTypeChat,
 		[]Message{{Role: "user", Content: "1+2=?"}},
 		&CallerContext{UserID: 1},
@@ -124,6 +125,7 @@ func TestGetCompletionWithToolsStreamMultiStepFallsBackWhenUnsupported(t *testin
 	svc.SetToolRegistry(registry)
 
 	err := svc.GetCompletionWithToolsStreamMultiStep(
+		context.Background(),
 		TaskTypeChat,
 		[]Message{{Role: "user", Content: "hi"}},
 		&CallerContext{UserID: 1},

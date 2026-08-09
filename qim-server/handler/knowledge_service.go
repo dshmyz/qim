@@ -6,6 +6,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
 	"regexp"
@@ -184,14 +185,16 @@ func (k *KnowledgeService) AnswerWithKnowledge(query string, userID uint) (strin
 	// 先搜索知识库
 	knowledgeCtx := k.BuildKnowledgeContext(query)
 
-	systemPrompt := fmt.Sprintf(`你是 %s 企业即时通讯系统的智能助手。请根据以下信息回答问题。
+	systemPrompt := fmt.Sprintf(`%s
+
+你是 %s 企业即时通讯系统的智能助手。请根据以下信息回答问题。
 
 回答规则：
 - 优先使用知识库中的内容回答
 - 如果知识库中有相关内容，基于该内容给出准确答案，并引用来源
 - 如果知识库中没有相关内容，使用你的通用知识回答，但明确说明"以下回答基于通用知识，建议核实"
 - 回答要简洁、专业、准确
-- 使用中文回答`, productname.Name)
+- 使用中文回答`, aiprompt.CurrentTimeLine(), productname.Name)
 
 	if knowledgeCtx != "" {
 		systemPrompt += "\n\n" + knowledgeCtx

@@ -10,6 +10,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -52,7 +53,7 @@ func AnalyzeNote(c *gin.Context) {
 		return
 	}
 
-	systemPrompt := `你是一个笔记分析助手。分析以下笔记内容，返回 JSON 格式结果：
+	systemPrompt := aiprompt.CurrentTimeLine() + "\n\n" + `你是一个笔记分析助手。分析以下笔记内容，返回 JSON 格式结果：
 1. summary: 笔记摘要（100字以内）
 2. tags: 推荐标签（最多5个，简洁明了）
 3. action_items: 提取的行动项（如果有，最多5个）
