@@ -97,7 +97,7 @@ export interface ToolCallRecord {
   id?: string
   tool_label: string
   args?: Record<string, unknown>
-  status?: string // 'running' | 'ok' | 'error' | ''
+  status?: 'running' | 'ok' | 'error' | ''
 }
 
 // KnowledgeSource Bot 回复命中笔记的最小展示结构

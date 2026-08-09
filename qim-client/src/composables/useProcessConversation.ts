@@ -64,10 +64,18 @@ export function useProcessConversation(serverUrl: Ref<string>, currentUser: Ref<
     let avatar = conv.avatar || ''
     let name = conv.name || ''
     const currentUserId = currentUser.value?.id?.toString() || ''
-    
+
+    // bot 会话的身份由后端统一取自 bots 表（顶层 name/avatar 稳定提供），
+    // 不再走下方 self-chat / 成员对端的覆盖逻辑——否则无虚拟用户成员的 bot
+    // 会因 members.length===1 被误判为「自聊」而显示成用户自己。
+    const isBotConv = conv.type === 'bot'
     const isSelfChat = (conv.type !== 'group' && conv.type !== 'discussion') && members.length === 1 && members[0].id === currentUserId
-    
-    if (isSelfChat) {
+
+    if (isBotConv) {
+      const botMember = members.find((m: any) => m.type === 'bot') || (members.length === 1 ? members[0] : undefined)
+      if (!name) name = botMember?.name || '机器人'
+      if (!avatar) avatar = botMember?.avatar || ''
+    } else if (isSelfChat) {
       avatar = members[0].avatar || avatar || generateAvatar('self')
       name = members[0].name || currentUser.value?.nickname || currentUser.value?.username || '自己'
     } else if ((conv.type !== 'group' && conv.type !== 'discussion') && members.length > 1) {

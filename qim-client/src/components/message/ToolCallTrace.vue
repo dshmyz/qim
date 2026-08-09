@@ -44,12 +44,14 @@ const setOpen = (v: boolean) => {
 
 // 仅在 open prop 发生边沿变化时驱动（进入 streaming 展开 / 结束 streaming 收起），
 // 其余时间不动原生 <details>，把控制权交还用户点击。
+// immediate: 组件首次挂载时若 open 已为 true（流式期间延迟渲染），立即展开。
 watch(
   () => props.open,
   (v, prev) => {
     if (v === prev) return
     setOpen(v)
-  }
+  },
+  { immediate: true }
 )
 
 function toggle() {

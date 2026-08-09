@@ -1,4 +1,4 @@
-import { computed, ref, type ComputedRef, type Ref } from 'vue'
+import { computed, ref, isRef, type ComputedRef, type Ref } from 'vue'
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '../utils/sanitize'
 import { decodeToPlainText } from '../utils/mentions'
@@ -109,7 +109,7 @@ export function useMarkdownRender(
   content: Ref<string>,
   opts: ComputedRef<MarkdownRenderOpts> | MarkdownRenderOpts
 ): MarkdownRenderResult {
-  const optsRef = typeof opts === 'function' ? opts : ref(opts)
+  const optsRef = isRef(opts) ? opts : ref(opts)
   const html = computed(() => renderMarkdown(content.value, optsRef.value))
   const containerRef = ref<HTMLElement | null>(null)
   useCodeHighlight(containerRef, html)

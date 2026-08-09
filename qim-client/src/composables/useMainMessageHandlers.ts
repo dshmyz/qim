@@ -2,7 +2,7 @@ import { Ref } from 'vue'
 import { useCurrentUser } from './useCurrentUser'
 import { logger } from '../utils/logger'
 import QMessage from '../utils/qmessage'
-import type { Message } from '../types'
+import type { Message, ToolCallRecord } from '../types'
 
 export function useMainMessageHandlers() {
   const { currentUser } = useCurrentUser()
@@ -50,9 +50,7 @@ export function useMainMessageHandlers() {
       sources: Array.isArray(msg.sources) ? msg.sources : undefined,
       // 外部工具调用记录（后端从 message.Extra 解析后放入响应体顶层，历史回放用）：
       // 仅在实际有内容时才赋值，避免 undefined 覆盖 receiveMessage 已累积的流式 tool_calls。
-      tool_calls: (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0)
-        ? msg.tool_calls
-        : (parseExtraToolCalls(msg.extra) || undefined),
+      ...(computeToolCalls(msg) ? { tool_calls: computeToolCalls(msg) } : {}),
       conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',
       // 消息附加信息（撤回时保存原始内容用于重新编辑）
       extra: msg.extra || '',
@@ -188,13 +186,21 @@ export function useMainMessageHandlers() {
   }
 }
 
-// 从消息 Extra（JSON 文本列，形如 {"tool_calls":[{tool_label,args,status}]}）解析工具
-// 调用记录。流式 finish 的 new_message 事件与 REST 回放都经由 Extra 这条持久化通道。
-function parseExtraToolCalls(extra?: string): unknown[] | undefined {
-  if (!extra) return undefined
+// 从消息的 tool_calls 字段或 Extra（JSON 文本列，形如 {"tool_calls":[{tool_label,args,status}]}）
+// 解析工具调用记录。流式 finish 的 new_message 事件与 REST 回放都经由这两条通道。
+// 返回 ToolCallRecord[] 或 undefined；无数据时返回 undefined（不设置 key，避免覆盖流式累积值）。
+function computeToolCalls(msg: any): ToolCallRecord[] | undefined {
+  if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+    return msg.tool_calls as ToolCallRecord[]
+  }
+  if (!msg.extra) return undefined
   try {
-    const parsed = JSON.parse(extra)
-    return Array.isArray(parsed?.tool_calls) ? parsed.tool_calls : undefined
+    const parsed = JSON.parse(msg.extra)
+    if (!Array.isArray(parsed?.tool_calls) || parsed.tool_calls.length === 0) {
+      return undefined
+    }
+    // 最小字段校验：每条至少有 tool_label 字符串
+    return parsed.tool_calls.filter((tc: any) => typeof tc?.tool_label === 'string') as ToolCallRecord[]
   } catch {
     return undefined
   }

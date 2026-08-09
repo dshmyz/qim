@@ -1944,19 +1944,29 @@ const handleToolCall = (data: any) => {
   if (!convId || !msgId) return
   if (!data.tool_label) return
 
+  const VALID_STATUSES = ['running', 'ok', 'error', ''] as const
   const record: ToolCallRecord = {
     id: data.id ? String(data.id) : undefined,
     tool_label: String(data.tool_label),
     args: data.args && typeof data.args === 'object' ? data.args : undefined,
-    status: data.status ? String(data.status) : undefined,
+    status: data.status && (VALID_STATUSES as readonly string[]).includes(data.status) ? data.status : undefined,
   }
 
+  // 读取现有消息以计算去重后的 tool_calls 数组
   const msgs = chatStore.messages.get(convId)
   if (!msgs) return
-  const idx = msgs.findIndex(m => m.id === msgId)
-  if (idx === -1) return
+  let target = msgs.find(m => m.id === msgId)
+  // 回退：DB id 尚未到达时，按 stream_ 占位消息查找（60 秒窗口），与 handleMessageUpdated 一致
+  if (!target) {
+    const now = Date.now()
+    target = [...msgs].reverse().find(m =>
+      typeof m.id === 'string' &&
+      m.id.startsWith('stream_') &&
+      now - m.timestamp < 60000
+    )
+  }
+  if (!target) return
 
-  const target = msgs[idx]
   const toolCalls = [...(target.tool_calls || [])]
   const cur = record.id ? toolCalls.findIndex(tc => tc.id === record.id) : -1
   if (cur === -1) {
@@ -1965,10 +1975,8 @@ const handleToolCall = (data: any) => {
     toolCalls[cur] = { ...toolCalls[cur], ...record }
   }
 
-  const next = { ...target, tool_calls: toolCalls }
-  const newMsgs = [...msgs]
-  newMsgs[idx] = next
-  chatStore.messages.set(convId, newMsgs)
+  // 复用 store.updateMessage 统一更新路径，与 handleMessageUpdated 保持一致
+  chatStore.updateMessage(convId, target.id, { tool_calls: toolCalls })
 }
 
 // 处理通知

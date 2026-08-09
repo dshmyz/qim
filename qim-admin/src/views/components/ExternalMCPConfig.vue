@@ -125,7 +125,8 @@ const removeConn = (index: number) => {
 }
 
 const handleSave = async () => {
-  if (conns.value.some(c => !c.name.trim() || !c.url.trim())) {
+  // 验证只检查启用的连接（禁用连接保存时会被过滤剔除，无需校验）
+  if (conns.value.filter(c => c.enabled).some(c => !c.name.trim() || !c.url.trim())) {
     ElMessage.warning('每条启用中的连接都需要填写名称与端点 URL')
     return
   }
