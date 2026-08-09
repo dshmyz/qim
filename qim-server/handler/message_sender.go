@@ -220,8 +220,12 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 	}
 
 	finish := func() *model.Message {
-		// 全程无内容无工具调用：未创建消息则直接返回 nil，由调用方已有的
-		// if finish()==nil 保护跳过，避免残留空白空消息卡住气泡。
+		// 全程无内容无工具调用：消息从未被创建（sendChunk 正文或 getMsg 工具回调都未触发）
+		// 则直接返回 nil，由调用方已有的 if finish()==nil 保护跳过，避免残留空白空消息卡住气泡。
+		// 一旦有正文/工具，ensureCreated 已被上述路径置 created，此处不会重复创建空消息。
+		if created == nil {
+			return nil
+		}
 		msg, err := ensureCreated()
 		if err != nil {
 			logger.WithModule("MessageSender").Error("完成流式消息失败", "error", err)

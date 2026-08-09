@@ -52,6 +52,72 @@ func decodeConversationCursor(encoded string) (conversationCursor, time.Time, er
 	return cursor, activity, nil
 }
 
+// botConvIdentity 是 bot 会话的稳定显示身份，取自 bots 表（与 virtual_user 虚拟用户无关）。
+type botConvIdentity struct {
+	Name string
+	Avatar string
+	BotID  uint
+}
+
+// resolveBotConvIdentities 批量解析 bot 会话（type=bot）的显示身份。
+//
+// bot 会话的对端身份应以 bots 表为准（bot_conversations.bot_id -> bots.id），
+// 而不是从"虚拟用户成员"散点解析——后者在 bot 未设置 virtual_user_id（未作为成员加入会话）时
+// 解析不出任何身份，导致同一会话在创建时与刷新列表时显示不一致（如自聊/无名空行）。
+// 此 helper 供创建/列表/详情/搜索四处统一收敛。
+func resolveBotConvIdentities(db *gorm.DB, convIDs []uint) map[uint]botConvIdentity {
+	out := make(map[uint]botConvIdentity, len(convIDs))
+	if len(convIDs) == 0 {
+		return out
+	}
+	type row struct {
+		ConversationID uint
+		Name           string
+		Avatar         string
+		BotID          uint
+	}
+	var rows []row
+	if err := db.Table("bot_conversations").
+		Select("bot_conversations.conversation_id, bots.name, bots.avatar, bots.id AS bot_id").
+		Joins("JOIN bots ON bots.id = bot_conversations.bot_id").
+		Where("bot_conversations.conversation_id IN ?", convIDs).
+		Scan(&rows).Error; err != nil {
+		return out
+	}
+	for _, r := range rows {
+		out[r.ConversationID] = botConvIdentity{Name: r.Name, Avatar: r.Avatar, BotID: r.BotID}
+	}
+	return out
+}
+
+// botConversationResponse 把 bot 会话序列化为带稳定显示身份的响应（name/avatar 取自 bots 表）。
+// 用于创建 bot 会话的两条路径（req.BotID 与 recipient.Type=="bot"）的返回，保证"发起时"前端能立即
+// processConversation 出正确的 bot 名，而不被 self-chat / 成员解析覆盖（与刷新列表的 GetConversations 一致）。
+func botConversationResponse(conv model.Conversation, bot model.Bot) gin.H {
+	resp := gin.H{
+		"id":                conv.ID,
+		"type":              conv.Type,
+		"name":              bot.Name,
+		"avatar":            bot.Avatar,
+		"other_member_id":   nil,
+		"other_member_name": bot.Name,
+		"other_member_type": "bot",
+		"is_deleted":        conv.IsDeleted,
+		"last_message_id":   conv.LastMessageID,
+		"last_message_at":   conv.LastMessageAt,
+		"created_at":        conv.CreatedAt,
+		"updated_at":        conv.UpdatedAt,
+		"members":           conv.Members,
+	}
+	if bot.VirtualUserID != nil {
+		resp["other_member_id"] = *bot.VirtualUserID
+	}
+	if conv.LastMessage != nil {
+		resp["last_message"] = conv.LastMessage
+	}
+	return resp
+}
+
 func GetConversations(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	uid := userID.(uint)
@@ -361,6 +427,17 @@ func GetConversations(c *gin.Context) {
 	var sessionsToCreate []model.ConversationSession
 	now := time.Now()
 
+	// 预解析本页 bot 会话的稳定显示身份（取自 bots 表，与 virtual_user 无关）。
+	// 无 virtual_user 的 bot 未作为成员加入会话，成员解析无法得到对端身份，故统一走此来源，
+	// 保证与创建时（botConversationResponse）返回的 name/avatar 一致。
+	var botConvIDs []uint
+	for _, cm := range convMembers {
+		if conversationMap[cm.ConversationID].Type == "bot" {
+			botConvIDs = append(botConvIDs, cm.ConversationID)
+		}
+	}
+	botIdentityMap := resolveBotConvIdentities(db, botConvIDs)
+
 	for _, cm := range convMembers {
 		convID := cm.ConversationID
 		conv := conversationMap[convID]
@@ -415,7 +492,16 @@ func GetConversations(c *gin.Context) {
 		}
 
 		if conv.Type == "single" || conv.Type == "bot" {
-			if otherUserID, ok := otherMemberMap[convID]; ok {
+			if conv.Type == "bot" {
+				// bot 会话身份固定取自 bots 表，不依赖虚拟用户成员，保证创建/列表一致。
+				if bi, ok := botIdentityMap[convID]; ok {
+					convWithPin.Name = bi.Name
+					convWithPin.Avatar = bi.Avatar
+					convWithPin.OtherMemberName = bi.Name
+					convWithPin.OtherMemberType = "bot"
+					convWithPin.OtherMemberID = 0
+				}
+			} else if otherUserID, ok := otherMemberMap[convID]; ok {
 				if otherUser, ok := userMap[otherUserID]; ok {
 					convWithPin.IP = otherUser.IP
 					convWithPin.Status = otherUser.Status
@@ -520,6 +606,29 @@ func GetConversation(c *gin.Context) {
 
 	// 对于单聊和 Bot 会话，从对方成员（虚拟用户）获取名称、头像等信息
 	if conv.Type == "single" || conv.Type == "bot" {
+		if conv.Type == "bot" {
+			// bot 会话身份固定取自 bots 表，不依赖虚拟用户成员，保证与列表/创建一致。
+			if bi, ok := resolveBotConvIdentities(db, []uint{conv.ID})[conv.ID]; ok {
+				response.Success(c, gin.H{
+					"id":                conv.ID,
+					"type":              conv.Type,
+					"name":              bi.Name,
+					"avatar":            bi.Avatar,
+					"other_member_id":   0,
+					"other_member_name": bi.Name,
+					"other_member_type": "bot",
+					"signature":         "",
+					"status":            "",
+					"is_deleted":        conv.IsDeleted,
+					"last_message_id":   conv.LastMessageID,
+					"last_message_at":   conv.LastMessageAt,
+					"created_at":        conv.CreatedAt,
+					"updated_at":        conv.UpdatedAt,
+					"members":           conv.Members,
+				})
+				return
+			}
+		}
 		for _, m := range conv.Members {
 			if m.UserID != userID.(uint) && m.UserID > 0 {
 				responseData := gin.H{
@@ -577,13 +686,16 @@ func SearchConversations(c *gin.Context) {
 	var convs []model.Conversation
 	db.Where("id IN ?", convIDs).Find(&convs)
 
-	// 区分群聊和单聊
+	// 区分群聊、bot 会话和单聊
 	groupConvIDs := make([]uint, 0)
 	singleConvIDs := make([]uint, 0)
+	botConvIDs := make([]uint, 0)
 	for _, conv := range convs {
 		if conv.Type == "group" || conv.Type == "discussion" {
 			groupConvIDs = append(groupConvIDs, conv.ID)
-		} else if conv.Type == "single" || conv.Type == "bot" {
+		} else if conv.Type == "bot" {
+			botConvIDs = append(botConvIDs, conv.ID)
+		} else if conv.Type == "single" {
 			singleConvIDs = append(singleConvIDs, conv.ID)
 		}
 	}
@@ -601,6 +713,21 @@ func SearchConversations(c *gin.Context) {
 				"name":   g.Name,
 				"avatar": g.Avatar,
 			})
+		}
+	}
+
+	// bot 会话：按 bots 表名称匹配（身份固定取自 bots 表，不依赖虚拟用户成员）
+	if len(botConvIDs) > 0 {
+		lowerQuery := strings.ToLower(query)
+		for convID, bi := range resolveBotConvIdentities(db, botConvIDs) {
+			if strings.Contains(strings.ToLower(bi.Name), lowerQuery) {
+				results = append(results, gin.H{
+					"id":     convID,
+					"type":   "bot",
+					"name":   bi.Name,
+					"avatar": bi.Avatar,
+				})
+			}
 		}
 	}
 
@@ -675,7 +802,7 @@ func CreateSingleConversation(c *gin.Context) {
 			ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
 			db.Preload("Conversation.Members").Preload("Conversation.Members.User").
 				First(&botConv, botConv.ID)
-			response.Success(c, botConv.Conversation)
+			response.Success(c, botConversationResponse(botConv.Conversation, bot))
 			return
 		}
 
@@ -722,7 +849,7 @@ func CreateSingleConversation(c *gin.Context) {
 		}
 
 		db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
-		response.Success(c, conv)
+		response.Success(c, botConversationResponse(conv, bot))
 		return
 	}
 
@@ -764,7 +891,7 @@ func CreateSingleConversation(c *gin.Context) {
 			ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
 			db.Preload("Conversation.Members").Preload("Conversation.Members.User").
 				First(&botConv, botConv.ID)
-			response.Success(c, botConv.Conversation)
+			response.Success(c, botConversationResponse(botConv.Conversation, bot))
 			return
 		}
 
@@ -808,7 +935,7 @@ func CreateSingleConversation(c *gin.Context) {
 			return
 		}
 		db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
-		response.Success(c, conv)
+		response.Success(c, botConversationResponse(conv, bot))
 		return
 	}
 
@@ -976,7 +1103,7 @@ func CreateBotConversation(c *gin.Context) {
 		ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
 		db.Preload("Conversation.Members").Preload("Conversation.Members.User").
 			First(&botConv, botConv.ID)
-		response.Success(c, botConv.Conversation)
+		response.Success(c, botConversationResponse(botConv.Conversation, bot))
 		return
 	}
 
@@ -1032,7 +1159,7 @@ func CreateBotConversation(c *gin.Context) {
 	}
 
 	db.Preload("Members").Preload("Members.User").First(&conv, conv.ID)
-	response.Success(c, conv)
+	response.Success(c, botConversationResponse(conv, bot))
 }
 
 func ensureHumanConversationInitiator(c *gin.Context, db *gorm.DB, userID uint) bool {

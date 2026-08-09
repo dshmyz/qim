@@ -17,7 +17,7 @@ func TestPersistAIMessageExtra_MergesToolCallsAndSources(t *testing.T) {
 	t.Run("工具调用与知识来源合并写入", func(t *testing.T) {
 		msg := &model.Message{}
 		e := &SmartReplyEngine{}
-		e.persistAIMessageExtra(msg, []ToolCallRecord{{
+		e.persistAIMessageExtra(func() *model.Message { return msg }, []ToolCallRecord{{
 			ID: "call_1", ToolLabel: "计算器", Status: "ok",
 		}}, []service.KnowledgeSource{{Title: "Q3 规划", Score: 0.92}})
 
@@ -37,17 +37,19 @@ func TestPersistAIMessageExtra_MergesToolCallsAndSources(t *testing.T) {
 		assert.Equal(t, 0.92, first["score"])
 	})
 
-	t.Run("无内容时不写 Extra", func(t *testing.T) {
+	t.Run("无内容时不写 Extra 且不调用 getMsg", func(t *testing.T) {
 		msg := &model.Message{}
 		e := &SmartReplyEngine{}
-		e.persistAIMessageExtra(msg, nil, nil)
+		var getMsgCalled bool
+		e.persistAIMessageExtra(func() *model.Message { getMsgCalled = true; return msg }, nil, nil)
 		assert.Empty(t, msg.Extra, "全空时不应写 Extra")
+		assert.False(t, getMsgCalled, "全空时不应触发 getMsg()（惰性：避免懒创建空消息）")
 	})
 
 	t.Run("仅知识来源", func(t *testing.T) {
 		msg := &model.Message{}
 		e := &SmartReplyEngine{}
-		e.persistAIMessageExtra(msg, nil, []service.KnowledgeSource{{Title: "会议纪要", Score: 0.88}})
+		e.persistAIMessageExtra(func() *model.Message { return msg }, nil, []service.KnowledgeSource{{Title: "会议纪要", Score: 0.88}})
 		require.NotEmpty(t, msg.Extra)
 		var extra map[string]interface{}
 		require.NoError(t, json.Unmarshal([]byte(msg.Extra), &extra))
@@ -60,6 +62,6 @@ func TestPersistAIMessageExtra_MergesToolCallsAndSources(t *testing.T) {
 
 	t.Run("nil 消息安全", func(t *testing.T) {
 		e := &SmartReplyEngine{}
-		e.persistAIMessageExtra(nil, []ToolCallRecord{{ID: "x"}}, nil) // 不应 panic
+		e.persistAIMessageExtra(func() *model.Message { return nil }, []ToolCallRecord{{ID: "x"}}, nil) // 不应 panic
 	})
 }

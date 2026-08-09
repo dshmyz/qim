@@ -15,6 +15,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/utils"
@@ -583,21 +584,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	}
 
 	// @提问者模式：读取配置
-	db := database.GetDB()
-	var mentionPrefix string
-	var group model.Group
-	if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err == nil {
-		if group.GetAIConfig().MentionReplyMode == "mention" {
-			var mentionUser model.User
-			if err := db.First(&mentionUser, userID).Error; err == nil {
-				name := mentionUser.Nickname
-				if name == "" {
-					name = mentionUser.Username
-				}
-				mentionPrefix = mention.Encode(userID, name) + "\n\n"
-			}
-		}
-	}
+	mentionPrefix := e.buildMentionPrefix(conversationID, userID)
 
 	chunkCount := 0
 	totalLen := 0
@@ -630,9 +617,9 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 
 	log.Printf("[SmartReplyGraph] @AI 流式回复完成: %d 个 chunk, 总长度 %d 字符, streamErr=%v", chunkCount, totalLen, streamErr)
 
-	// 模型调用出错：不再静默无回复。SendStreamingAIMessage 已预创建一条流式空消息，
-	// 若直接 return 会残留空白卡住的空气泡，且用户得不到任何反馈。
-	// 这里用一个字符都没产出的场景注入可见的兜底文案，然后照常 finish() 收尾。
+	// 模型调用出错：不再静默无回复。SendStreamingAIMessage 采用懒创建——
+	// 首个非空正文块才创建消息，因此若 chunkCount == 0 则无消息残留；
+	// 若已产出部分内容则发送兜底文案收尾，保证用户得到反馈。
 	if streamErr != nil {
 		log.Printf("[SmartReplyGraph] @AI 流式回复出错: %v", streamErr)
 		if chunkCount == 0 {
@@ -645,7 +632,9 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 				log.Printf("[SmartReplyGraph] 发送兜底文案失败: %v", err)
 			}
 		}
-		// 无论是否已产出内容，都正常收尾，避免残留未完成的流式消息
+		// 与 handleAIMentionWithTools 错误路径一致：若已收集到知识来源，仍需把 Extra 落库，
+	// 否则刷新/REST 回放后「知识来源」徽章丢失。
+	e.persistAIMessageExtra(getMsg, nil, input.KnowledgeSources)
 		finish()
 		return
 	}
@@ -656,7 +645,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	}
 
 	// 命中的知识来源（标题/相关度）持久化到消息 Extra，刷新/REST 回放后「知识来源」徽章仍可见。
-	e.persistAIMessageExtra(getMsg(), nil, input.KnowledgeSources)
+	e.persistAIMessageExtra(getMsg, nil, input.KnowledgeSources)
 
 	if finish() == nil {
 		log.Printf("[SmartReplyGraph] 完成流式消息失败")
@@ -685,21 +674,7 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 	}
 
 	// @提问者模式：读取配置（与流式路径一致）
-	db := database.GetDB()
-	var mentionPrefix string
-	var group model.Group
-	if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err == nil {
-		if group.GetAIConfig().MentionReplyMode == "mention" {
-			var mentionUser model.User
-			if err := db.First(&mentionUser, userID).Error; err == nil {
-				name := mentionUser.Nickname
-				if name == "" {
-					name = mentionUser.Username
-				}
-				mentionPrefix = mention.Encode(userID, name) + "\n\n"
-			}
-		}
-	}
+	mentionPrefix := e.buildMentionPrefix(conversationID, userID)
 
 	// 仅 @提问者模式需在正文前发送 mention 前缀（非空 → 触发懒创建）。
 	// 普通模式不在此提前建/投递任何消息占位：SendStreamingAIMessage 采用懒创建，
@@ -728,13 +703,13 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 			log.Printf("[SmartReplyGraph] @AI %s工具流式回复失败: %v", kind, serr)
 			// 流式中途失败：若已产出正文/工具、且拿到了知识来源，仍需把 Extra 落库，
 			// 否则刷新/REST 回放后工具卡片与「知识来源」徽章丢失（正文已由 finish 收尾）。
-			e.persistAIMessageExtra(getMsg(), toolCalls, input.KnowledgeSources)
+			e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
 			finish()
 			return
 		}
 		if streamed {
 			// 工具调用记录 + 命中的知识来源合并持久化到消息 Extra，回放/刷新后卡片与徽章仍可见。
-			e.persistAIMessageExtra(getMsg(), toolCalls, input.KnowledgeSources)
+			e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
 			if finish() == nil {
 				log.Printf("[SmartReplyGraph] 完成流式消息失败")
 			} else {
@@ -753,6 +728,9 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 		if reply == "" {
 			_ = sendChunk("⚠️ 这条消息暂时没能回复（调用出错），请稍后再试。")
 		}
+		// 与流式路径一致：若已收集到工具调用/知识来源，仍需把 Extra 落库，
+		// 否则刷新/REST 回放后工具卡片与「知识来源」徽章丢失。
+		e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
 		finish()
 		return
 	}
@@ -776,7 +754,7 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 	}
 
 	// 工具调用记录 + 命中的知识来源合并持久化到消息 Extra，回放/刷新后卡片与徽章仍可见。
-	e.persistAIMessageExtra(getMsg(), toolCalls, input.KnowledgeSources)
+	e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
 
 	if finish() == nil {
 		log.Printf("[SmartReplyGraph] 完成流式消息失败")
@@ -802,10 +780,12 @@ func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context,
 // persistAIMessageExtra 把群助手回复的工具调用与知识来源合并写进消息 Extra（JSON），
 // 供刷新/REST 回放后工具卡片与「知识来源」徽章仍可见。两者任一无内容则只写有内容的键，
 // 全空时不写（消息 Extra 维持默认值）。sources 为命中的知识来源（标题/相关度）。
-func (e *SmartReplyEngine) persistAIMessageExtra(msg *model.Message, toolCalls []ToolCallRecord, sources []service.KnowledgeSource) {
-	if msg == nil {
-		return
-	}
+//
+// 入参为 getMsg func()（惰性）：仅在确有工具调用或知识来源需落库时才调用 getMsg() 触发
+// 懒创建，避免把 getMsg() 作为参数无条件求值——否则在流式一开始就失败、既无正文也无工具
+// 或无知识来源的路径上，会强制落库一条空消息并在收尾时广播空白气泡（配合 finish 在
+// created==nil 时跳过以彻底杜绝）。全部调用点原先传 getMsg() 返回值，现改为传 getMsg 函数。
+func (e *SmartReplyEngine) persistAIMessageExtra(getMsg func() *model.Message, toolCalls []ToolCallRecord, sources []service.KnowledgeSource) {
 	extra := map[string]interface{}{}
 	if len(toolCalls) > 0 {
 		extra["tool_calls"] = toolCalls
@@ -814,6 +794,10 @@ func (e *SmartReplyEngine) persistAIMessageExtra(msg *model.Message, toolCalls [
 		extra["knowledge_sources"] = sources
 	}
 	if len(extra) == 0 {
+		return
+	}
+	msg := getMsg()
+	if msg == nil {
 		return
 	}
 	if b, err := json.Marshal(extra); err == nil {
@@ -830,6 +814,29 @@ func knowledgeSourcesExtra(sources []service.KnowledgeSource) map[string]interfa
 		return nil
 	}
 	return map[string]interface{}{"knowledge_sources": sources}
+}
+
+// buildMentionPrefix 查询群 AI 配置：如果 mention_reply_mode == "mention"，
+// 返回 "@用户昵称\n\n" 前缀（供 AI 回复时 @ 提问者）；否则返回空串。
+// handleAIMentionWithGraph 和 handleAIMentionWithTools 共用此函数。
+func (e *SmartReplyEngine) buildMentionPrefix(conversationID, userID uint) string {
+	db := database.GetDB()
+	var group model.Group
+	if err := db.Where("conversation_id = ?", conversationID).First(&group).Error; err != nil {
+		return ""
+	}
+	if group.GetAIConfig().MentionReplyMode != "mention" {
+		return ""
+	}
+	var mentionUser model.User
+	if err := db.First(&mentionUser, userID).Error; err != nil {
+		return ""
+	}
+	name := mentionUser.Nickname
+	if name == "" {
+		name = mentionUser.Username
+	}
+	return mention.Encode(userID, name) + "\n\n"
 }
 
 // newToolCallFeedback 构造群 @AI 带工具回复的 ReAct 进度回调（内置工具与外部工具路径共用）。
@@ -1007,12 +1014,21 @@ func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uin
 		return
 	}
 
+	chunkCount := 0
 	err = e.aiService.GetCompletionStream(ai.TaskTypeChat, messages, func(chunk ai.StreamChunk) error {
+		if chunk.Content != "" {
+			chunkCount++
+		}
 		return sendChunk(chunk.Content)
 	})
 
 	if err != nil {
 		log.Printf("[SmartReply] AI 流式回复失败: %v", err)
+		// 与 handleAIMentionWithGraph 一致：已产出内容时需 finish() 收尾广播，
+		// 避免残留未完成的流式消息；懒创建模式下无内容则 finish() 安全跳过。
+		if chunkCount > 0 {
+			finish()
+		}
 		return
 	}
 
@@ -1119,7 +1135,7 @@ func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
 		messagesText += senderName + ": " + msg.Content + "\n"
 	}
 
-	systemPrompt := `你是一个群聊总结助手。请分析以下群聊记录，生成简洁的每日总结。
+	systemPrompt := aiprompt.CurrentTimeLine() + "\n\n" + `你是一个群聊总结助手。请分析以下群聊记录，生成简洁的每日总结。
 
 总结格式：
 📋 【群聊日报】- {日期}

@@ -384,24 +384,10 @@ func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []
 		resp["avatar_name"] = service.GetAINameCache().GetAvatarName(msg.SenderID)
 	}
 
-	// 解析 Extra：透出外部工具调用记录（tool_calls）、群助手命中的知识来源
-	// （knowledge_sources）与分身「依据」来源（sources），供前端回放/历史拉取后
-	// 渲染独立工具卡片与「知识来源/依据」徽章。与 service 级 buildMessageResponse
-	// （message_service.go）对齐——否则 WS 实时广播带这些字段，而历史/REST 回放
-	// 只透 tool_calls，刷新后徽章丢失。解析失败或为空时不设置，前端约定不存即空。
-	if msg.Extra != "" {
-		var extra map[string]interface{}
-		if err := json.Unmarshal([]byte(msg.Extra), &extra); err == nil {
-			if tc, ok := extra["tool_calls"]; ok {
-				resp["tool_calls"] = tc
-			}
-			if ks, ok := extra["knowledge_sources"]; ok {
-				resp["knowledge_sources"] = ks
-			}
-			if sc, ok := extra["sources"]; ok {
-				resp["sources"] = sc
-			}
-		}
+	// 解析 Extra：透出 tool_calls / knowledge_sources / sources，供前端回放/历史拉取后
+	// 渲染独立工具卡片与「知识来源/依据」徽章。与 service 级 buildMessageResponse 对齐。
+	for k, v := range service.ParseMessageExtraFields(msg.Extra) {
+		resp[k] = v
 	}
 
 	return resp
@@ -783,25 +769,10 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 		responseData["avatar_name"] = service.GetAINameCache().GetAvatarName(msg.SenderID)
 	}
 
-	// 解析 Extra：透出外部工具调用记录（tool_calls）、群助手命中的知识来源
-	// （knowledge_sources）与分身「依据」来源（sources），供前端实时渲染独立工具卡片
-	// 与「知识来源/依据」徽章。本函数是 SendStreamingAIMessage.finish 与 SendAIMessage
-	// 的实时 WS 广播路径；若只透出 raw extra 字符串而不解析出顶层字段，前端
-	// （useMainMessageHandlers 读 msg.knowledge_sources）在实时通道上收不到徽章数据，
-	// 需刷新改走历史/REST 才可见——与 handler/service 两份 buildMessageResponse 三处对齐。
-	if msg.Extra != "" {
-		var extra map[string]interface{}
-		if err := json.Unmarshal([]byte(msg.Extra), &extra); err == nil {
-			if tc, ok := extra["tool_calls"]; ok {
-				responseData["tool_calls"] = tc
-			}
-			if ks, ok := extra["knowledge_sources"]; ok {
-				responseData["knowledge_sources"] = ks
-			}
-			if sc, ok := extra["sources"]; ok {
-				responseData["sources"] = sc
-			}
-		}
+	// 解析 Extra：透出 tool_calls / knowledge_sources / sources，供前端实时渲染独立工具卡片
+	// 与「知识来源/依据」徽章。与 handler/service 两份 buildMessageResponse 对齐。
+	for k, v := range service.ParseMessageExtraFields(msg.Extra) {
+		responseData[k] = v
 	}
 
 	if ws.GlobalHub != nil {
