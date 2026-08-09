@@ -126,8 +126,3 @@ func (t *ExternalMCPTool) Execute(params map[string]interface{}, ctx *ai.CallerC
 	}
 	return strings.Join(texts, "\n"), nil
 }
-
-// SetSession 更新会话（连接重建/失效时由网关调用）。nil 表示降级为不可用。
-func (t *ExternalMCPTool) SetSession(session *mcp.ClientSession) {
-	t.session = session
-}

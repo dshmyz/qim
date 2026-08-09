@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
@@ -41,10 +42,13 @@ type MCPConnConfig struct {
 type MCPClientGateway struct {
 	configSvc *SystemConfigService
 	registry  *ai.ToolRegistry
+	mu        sync.RWMutex // 保护 registered / connClients / sessions 的并发读写
 	// registered 记录本次 Sync 已注册的外部工具名，用于 re-sync 去重/覆盖
 	registered map[string]bool
 	// connClients 按连接名缓存 mcp client（供工具 Execute 复用同一 HTTP 连接池）
 	connClients map[string]*mcp.Client
+	// sessions 按连接名追踪活跃 session，re-sync 时关闭旧 session 防泄漏
+	sessions map[string]*mcp.ClientSession
 }
 
 // NewMCPClientGateway 构造网关。配置经 configSvc 读取、工具注册到 registry。
@@ -57,6 +61,7 @@ func NewMCPClientGateway(configSvc *SystemConfigService, registry *ai.ToolRegist
 		registry:    registry,
 		registered:  make(map[string]bool),
 		connClients: make(map[string]*mcp.Client),
+		sessions:    make(map[string]*mcp.ClientSession),
 	}
 }
 
@@ -68,6 +73,8 @@ func (g *MCPClientGateway) Registry() *ai.ToolRegistry {
 // ListExternalToolNames 返回当前已注册的外部 MCP 工具名（mcp_*），
 // 供群 AI 白名单门控放行。
 func (g *MCPClientGateway) ListExternalToolNames() []string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 	names := make([]string, 0, len(g.registered))
 	for n := range g.registered {
 		names = append(names, n)
@@ -102,12 +109,15 @@ func (g *MCPClientGateway) loadConns() []MCPConnConfig {
 // 可安全重复调用：每次先摘除上一轮注册的外部工具（应对连接被删除/禁用/改名），
 // 再按当前配置重新注册，因此运行时可经 ReSyncExternalMCP() 热刷新。
 func (g *MCPClientGateway) Sync() {
-	// 摘除上一轮注册的外部工具，保证幂等：删除的连接对应的工具不再残留。
+	// 持写锁：摘除上一轮注册的外部工具，保证幂等。
+	g.mu.Lock()
 	for name := range g.registered {
 		g.registry.RemoveTool(name)
 	}
 	g.registered = make(map[string]bool)
+	g.mu.Unlock()
 
+	// 无锁：加载配置、连接外部 MCP Server（网络 IO，不阻塞 ListExternalToolNames 等读取者）
 	conns := g.loadConns()
 	for i := range conns {
 		conn := &conns[i]
@@ -116,13 +126,24 @@ func (g *MCPClientGateway) Sync() {
 		}
 		g.syncConn(conn)
 	}
+	g.mu.RLock()
+	registeredCount := len(g.registered)
+	g.mu.RUnlock()
 	logger.WithModule("MCPClientGateway").Info("外部 MCP 工具同步完成",
-		"registered", len(g.registered), "conns", len(conns))
+		"registered", registeredCount, "conns", len(conns))
 }
 
 func (g *MCPClientGateway) syncConn(conn *MCPConnConfig) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+
+	// 关闭同名的旧 session，防止 re-sync 时 HTTP 连接池泄漏
+	g.mu.Lock()
+	if old, ok := g.sessions[conn.Name]; ok {
+		_ = old.Close()
+		delete(g.sessions, conn.Name)
+	}
+	g.mu.Unlock()
 
 	session, err := g.connect(ctx, conn)
 	if err != nil {
@@ -135,9 +156,13 @@ func (g *MCPClientGateway) syncConn(conn *MCPConnConfig) {
 	if err != nil {
 		logger.WithModule("MCPClientGateway").Warn("拉取外部 MCP 工具列表失败",
 			"conn", conn.Name, "error", err)
+		_ = session.Close()
 		return
 	}
 
+	// 持写锁：注册工具到 registry 和 registered，并记录 session
+	g.mu.Lock()
+	g.sessions[conn.Name] = session
 	for _, tool := range result.Tools {
 		schema := schemaToMap(tool.InputSchema)
 		extTool := NewExternalMCPTool(conn.Name, tool.Name, schema, session)
@@ -147,6 +172,7 @@ func (g *MCPClientGateway) syncConn(conn *MCPConnConfig) {
 		logger.WithModule("MCPClientGateway").Info("注册外部 MCP 工具",
 			"conn", conn.Name, "tool", tool.Name, "localName", name)
 	}
+	g.mu.Unlock()
 }
 
 // connect 建立到外部 MCP Server 的连接会话。streamable-http 走
@@ -172,12 +198,16 @@ func (g *MCPClientGateway) connect(ctx context.Context, conn *MCPConnConfig) (*m
 		return nil, fmt.Errorf("未知 transport: %s", conn.Transport)
 	}
 
+	// 持写锁：访问 connClients 缓存（可能被 Sync 并发写）
+	g.mu.Lock()
 	client := g.connClients[conn.Name]
 	if client == nil {
 		client = mcp.NewClient(&mcp.Implementation{Name: "qim-mcp-client", Version: "1.0.0"}, nil)
 		g.connClients[conn.Name] = client
 	}
+	g.mu.Unlock()
 
+	// 网络连接不持锁，避免阻塞其他读取者
 	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
 		return nil, fmt.Errorf("mcp connect %s: %w", conn.URL, err)

@@ -23,17 +23,69 @@ const maxDocumentSize = 20 * 1024 * 1024
 // 防止压缩比极高的恶意 zip bomb 解压后撑爆内存
 const maxZipEntrySize = 20 * 1024 * 1024
 
+// anydocBackend 抽象的 anydoc 增强后端，供 DocumentParser 调用。
+// 生产实现是 *AnydocConverter（调 anydoc CLI）；测试注入假实现以隔离外部二进制。
+type anydocBackend interface {
+	// Available 报告后端当前是否可用（二进制存在）。
+	Available() bool
+	// Convert 把 filePath 指向的文档转成 Markdown 返回。
+	Convert(filePath string) (string, error)
+}
+
 // DocumentParser 文档内容解析器
-type DocumentParser struct{}
+type DocumentParser struct {
+	// anydoc 可选的 anydoc CLI 增强后端（nil 表示未初始化，Parse 时惰性创建）。
+	// anydoc 补上老格式（.doc/.xls/.ppt/.rtf/.odt/.ods/.odp/.epub）与更好提取的
+	// PDF，且不需要 LibreOffice。二进制缺失/调用失败时回退到下方原生解析器。
+	anydoc anydocBackend
+}
 
 // NewDocumentParser 创建文档解析器实例
 func NewDocumentParser() *DocumentParser {
 	return &DocumentParser{}
 }
 
+// SetAnydoc 注入 anydoc 增强后端（供测试注入假实现/关闭）。传 nil 关闭。
+func (p *DocumentParser) SetAnydoc(c anydocBackend) {
+	p.anydoc = c
+}
+
+// anydocConverter 惰性获取 anydoc 后端：未设置时按 PATH/env 探测一次。
+// 返回非 nil 的不可用实例（Available()==false），调用方自然回退原生解析。
+func (p *DocumentParser) anydocConverter() anydocBackend {
+	if p.anydoc == nil {
+		p.anydoc = NewAnydocConverter()
+	}
+	return p.anydoc
+}
+
+// anydocSupportedExts 交给 anydoc 尝试的扩展名集合。
+// 覆盖 DocumentParser 原生支持之外的多数办公格式；anydoc 失败时由 Parse 决定
+// 回退（原生支持者）或维持「不支持」（原生不支持者）。
+func anydocSupportedExts() map[string]bool {
+	return map[string]bool{
+		// 原生已支持，anydoc 作为更强提取后端优先使用，失败回退原生
+		"pdf": true, "docx": true, "pptx": true, "xlsx": true,
+		// 老格式：原生不支持，anydoc 成功即补上，失败维持「不支持」
+		"doc": true, "xls": true, "ppt": true, "rtf": true,
+		"odt": true, "ods": true, "odp": true, "epub": true,
+	}
+}
+
 // Parse 根据文件扩展名解析文档内容
 func (p *DocumentParser) Parse(filePath string) (string, error) {
 	ext := strings.ToLower(filePath[strings.LastIndex(filePath, ".")+1:])
+
+	// anydoc 增强：对命中扩展名优先尝试，成功即返回（含更多格式细节的 Markdown）。
+	// 失败时：原生支持者回退到下方 switch 的原生解析；原生不支持者落入 default 的
+	// 「不支持」分支。anydoc 不可用（未装二进制）时该分支整体跳过，行为与现状一致。
+	if anydocSupportedExts()[ext] {
+		if converter := p.anydocConverter(); converter.Available() {
+			if text, err := converter.Convert(filePath); err == nil {
+				return text, nil
+			}
+		}
+	}
 
 	var text string
 	var err error
@@ -50,9 +102,11 @@ func (p *DocumentParser) Parse(filePath string) (string, error) {
 		text, err = p.parseXlsx(filePath)
 	default:
 		// 未知扩展名：直接拒绝，不尝试按纯文本读取。
-		// 覆盖 .doc/.xls/.ppt（OLE 二进制老格式）等没有解析分支的格式——
-		// 与其读进二进制字节再被下方 UTF-8 校验拦下，不如明确告知不支持该格式。
-		return "", fmt.Errorf("不支持的文件类型 .%s（支持 txt/md/csv/json/pdf/docx/pptx/xlsx）", ext)
+		// 覆盖项目未支持、且 anydoc 也无法转换的格式（如加密/扫描文档等）。
+		// anydoc 可转换的老格式（.doc/.xls/.ppt/.rtf/.odt/.ods/.odp/.epub）会先在
+		// 上方 anydoc 分支命中；走到这里说明 either anydoc 未装、或 it 报「不可转换」，
+		// 故维持明确拒绝并提示可用格式。
+		return "", fmt.Errorf("不支持的文件类型 .%s（支持 txt/md/csv/json/pdf/docx/pptx/xlsx，及 anydoc 可转换的 doc/xls/ppt/rtf/odt/ods/odp/epub）", ext)
 	}
 	if err != nil {
 		return "", err
