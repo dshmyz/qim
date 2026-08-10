@@ -63,6 +63,7 @@ func (p *OpenAIProvider) Chat(messages []Message) (string, error) {
 			}
 			return 0.7
 		}(),
+		FrequencyPenalty: extraFloat(p.config.ExtraParams, "frequency_penalty", 0.3),
 	}
 
 	resp, err := p.ExecuteWithRetry(func() (*http.Request, error) {
@@ -118,6 +119,7 @@ func (p *OpenAIProvider) ChatWithUsage(messages []Message) (string, *TokenUsage,
 			}
 			return 0.7
 		}(),
+		FrequencyPenalty: extraFloat(p.config.ExtraParams, "frequency_penalty", 0.3),
 	}
 
 	resp, err := p.ExecuteWithRetry(func() (*http.Request, error) {
@@ -173,11 +175,12 @@ func (p *OpenAIProvider) ChatStreamWithContext(ctx context.Context, messages []M
 	logger.WithModule("OpenAI").Debug("Making streaming request", "model", p.config.Model)
 
 	reqBody := struct {
-		Model       string    `json:"model"`
-		Messages    []Message `json:"messages"`
-		MaxTokens   int       `json:"max_tokens,omitempty"`
-		Temperature float64   `json:"temperature,omitempty"`
-		Stream      bool      `json:"stream"`
+		Model            string    `json:"model"`
+		Messages         []Message `json:"messages"`
+		MaxTokens        int       `json:"max_tokens,omitempty"`
+		Temperature      float64   `json:"temperature,omitempty"`
+		FrequencyPenalty float64   `json:"frequency_penalty,omitempty"`
+		Stream           bool      `json:"stream"`
 	}{
 		Model:    p.config.Model,
 		Messages: messages,
@@ -193,7 +196,8 @@ func (p *OpenAIProvider) ChatStreamWithContext(ctx context.Context, messages []M
 			}
 			return 0.7
 		}(),
-		Stream: true,
+		FrequencyPenalty: extraFloat(p.config.ExtraParams, "frequency_penalty", 0.3),
+		Stream:           true,
 	}
 
 	req, _, err := CreateJSONRequestWithContext(ctx,
@@ -330,11 +334,12 @@ func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*Ch
 	logger.WithModule("OpenAI").Debug("Making request with tools", "model", p.config.Model, "tools_count", len(tools))
 
 	reqBody := struct {
-		Model       string    `json:"model"`
-		Messages    []Message `json:"messages"`
-		MaxTokens   int       `json:"max_tokens,omitempty"`
-		Temperature float64   `json:"temperature,omitempty"`
-		Tools       []struct {
+		Model            string    `json:"model"`
+		Messages         []Message `json:"messages"`
+		MaxTokens        int       `json:"max_tokens,omitempty"`
+		Temperature      float64   `json:"temperature,omitempty"`
+		FrequencyPenalty float64   `json:"frequency_penalty,omitempty"`
+		Tools            []struct {
 			Type     string `json:"type"`
 			Function struct {
 				Name        string                 `json:"name"`
@@ -357,6 +362,7 @@ func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*Ch
 			}
 			return 0.7
 		}(),
+		FrequencyPenalty: extraFloat(p.config.ExtraParams, "frequency_penalty", 0.3),
 	}
 
 	if len(tools) > 0 {

@@ -59,10 +59,20 @@ func (m Message) MarshalJSON() ([]byte, error) {
 }
 
 type ChatCompletionRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Temperature float64   `json:"temperature,omitempty"`
+	Model            string    `json:"model"`
+	Messages         []Message `json:"messages"`
+	MaxTokens        int       `json:"max_tokens,omitempty"`
+	Temperature      float64   `json:"temperature,omitempty"`
+	FrequencyPenalty float64   `json:"frequency_penalty,omitempty"`
+}
+
+// extraFloat 从 ExtraParams 读取一个 float 参数，缺失时返回 def。
+// 供各 provider 统一解析 frequency_penalty 等可选生成参数。
+func extraFloat(extra map[string]interface{}, key string, def float64) float64 {
+	if v, ok := extra[key].(float64); ok {
+		return v
+	}
+	return def
 }
 
 type ChatCompletionResponse struct {

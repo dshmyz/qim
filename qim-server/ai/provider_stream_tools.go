@@ -30,19 +30,21 @@ func streamChatWithToolsOpenAICompat(ctx context.Context, bp *BaseProvider, base
 	}
 
 	reqBody := struct {
-		Model       string      `json:"model"`
-		Messages    []Message   `json:"messages"`
-		MaxTokens   int         `json:"max_tokens,omitempty"`
-		Temperature float64     `json:"temperature,omitempty"`
-		Stream      bool        `json:"stream"`
-		Tools       []toolDefBody `json:"tools,omitempty"`
+		Model            string        `json:"model"`
+		Messages         []Message     `json:"messages"`
+		MaxTokens        int           `json:"max_tokens,omitempty"`
+		Temperature      float64       `json:"temperature,omitempty"`
+		FrequencyPenalty float64       `json:"frequency_penalty,omitempty"`
+		Stream           bool          `json:"stream"`
+		Tools            []toolDefBody `json:"tools,omitempty"`
 	}{
-		Model:       model,
-		Messages:    messages,
-		MaxTokens:   maxTokens,
-		Temperature: temperature,
-		Stream:      true,
-		Tools:       buildOpenAICompatTools(tools),
+		Model:            model,
+		Messages:         messages,
+		MaxTokens:        maxTokens,
+		Temperature:      temperature,
+		FrequencyPenalty: extraFloat(extra, "frequency_penalty", 0.3),
+		Stream:           true,
+		Tools:            buildOpenAICompatTools(tools),
 	}
 
 	req, _, err := CreateJSONRequestWithContext(ctx,

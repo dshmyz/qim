@@ -57,8 +57,9 @@ func (p *AlibabaProvider) Chat(messages []Message) (string, error) {
 			"messages": messages,
 		},
 		"parameters": map[string]interface{}{
-			"temperature": p.config.ExtraParams["temperature"],
-			"max_tokens":  p.config.ExtraParams["max_tokens"],
+			"temperature":      p.config.ExtraParams["temperature"],
+			"max_tokens":       p.config.ExtraParams["max_tokens"],
+			"frequency_penalty": extraFloat(p.config.ExtraParams, "frequency_penalty", 0.3),
 		},
 	}
 
@@ -108,9 +109,10 @@ func (p *AlibabaProvider) ChatStreamWithContext(ctx context.Context, messages []
 			"messages": messages,
 		},
 		"parameters": map[string]interface{}{
-			"temperature": p.config.ExtraParams["temperature"],
-			"max_tokens":  p.config.ExtraParams["max_tokens"],
-			"stream":      true,
+			"temperature":       p.config.ExtraParams["temperature"],
+			"max_tokens":        p.config.ExtraParams["max_tokens"],
+			"frequency_penalty": extraFloat(p.config.ExtraParams, "frequency_penalty", 0.3),
+			"stream":            true,
 		},
 	}
 
