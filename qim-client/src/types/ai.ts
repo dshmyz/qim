@@ -110,6 +110,7 @@ export interface GroupMemory {
   metadata?: {
     conversation_id?: string
     remembered_at?: string
+    importance?: string
   }
   score?: number
 }

@@ -28,6 +28,9 @@
           <p>{{ memory.content }}</p>
         </div>
         <div class="memory-meta">
+          <span v-if="memory.metadata?.importance" class="memory-importance" :title="'重要度 ' + Math.round(Number(memory.metadata.importance)) + '/5'">
+            {{ '★'.repeat(Math.round(Number(memory.metadata.importance))) }}{{ '☆'.repeat(5 - Math.round(Number(memory.metadata.importance))) }}
+          </span>
           <span class="memory-time">{{ formatTime(memory.metadata?.remembered_at) }}</span>
           <button class="forget-btn" @click="handleForgetMemory(memory)" title="删除记忆">
             <i class="fas fa-trash"></i>
@@ -76,6 +79,7 @@ interface MemoryRecord {
     conversation_id?: string
     remembered_at?: string
     type?: string
+    importance?: string
   }
 }
 
@@ -253,6 +257,12 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-top: 8px;
+}
+
+.memory-importance {
+  color: #f5a623;
+  letter-spacing: 1px;
+  font-size: 11px;
 }
 
 .memory-time {

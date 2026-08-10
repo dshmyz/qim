@@ -70,6 +70,9 @@
           <div v-for="m in memories" :key="m.doc_id" class="memory-item">
             <div class="memory-content">{{ m.content }}</div>
             <div class="memory-meta">
+              <span v-if="m.metadata?.importance" class="memory-importance" :title="'重要度 ' + Math.round(Number(m.metadata.importance)) + '/5'">
+                {{ '★'.repeat(Math.round(Number(m.metadata.importance))) }}{{ '☆'.repeat(5 - Math.round(Number(m.metadata.importance))) }}
+              </span>
               <span v-if="m.metadata?.remembered_at" class="memory-time">{{ formatMemoryTime(m.metadata.remembered_at) }}</span>
               <button class="btn-link" @click="deleteMemory(m.doc_id)">删除</button>
             </div>
@@ -462,6 +465,7 @@ onUnmounted(() => {
 .memory-item { padding: 12px; border: 1px solid var(--border-color, #eee); border-radius: 8px; background: var(--card-bg, #fafafa); }
 .memory-content { font-size: 14px; line-height: 1.6; color: var(--text-color, #333); white-space: pre-wrap; word-break: break-word; }
 .memory-meta { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 12px; color: var(--text-secondary, #999); }
+.memory-importance { color: #f5a623; letter-spacing: 1px; font-size: 11px; }
 .btn-link { background: none; border: none; color: #e5484d; cursor: pointer; font-size: 12px; padding: 0; }
 .btn-link:hover { text-decoration: underline; }
 </style>
