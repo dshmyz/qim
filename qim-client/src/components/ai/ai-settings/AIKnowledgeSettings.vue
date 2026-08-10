@@ -34,6 +34,10 @@
           <div class="doc-status">
             <span v-if="!doc.process_status || doc.process_status === 'pending'" class="status-badge status-pending">
               <i class="fas fa-clock"></i> 等待处理
+              <!-- pending 也可能是绑定后未能触达（如向量服务当时未就绪）而卡住的文档，
+                   给一个「重新处理」入口，点击后复用 /process 幂等触发，与 failed 一致可恢复。 -->
+              <button v-if="!isRetrying(doc.id)" class="retry-btn" @click="retryDocument(doc)" title="重新处理">重新处理</button>
+              <button v-else class="retry-btn" :disabled="true">处理中...</button>
             </span>
             <span v-else-if="doc.process_status === 'processing'" class="status-badge status-processing">
               <i class="fas fa-spinner fa-spin"></i> 处理中...

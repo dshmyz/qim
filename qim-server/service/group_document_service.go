@@ -144,8 +144,34 @@ func (s *GroupDocumentService) GetDocumentsWithStatus(groupID uint) ([]map[strin
 	return results, nil
 }
 
+// ensureDocProcessStatus 读取该文档最新的处理状态记录；不存在则创建一条 pending。
+// 保证即使处理在早期前置条件（如向量服务未初始化）就失败，也能把失败落到状态上，
+// 不会出现"无状态记录 → 前端 GetDocumentsWithStatus 显示为等待处理并永远卡住"。
+func ensureDocProcessStatus(db *gorm.DB, groupDocID uint) (*model.DocumentProcessStatus, error) {
+	var status model.DocumentProcessStatus
+	if err := db.Where("group_doc_id = ?", groupDocID).Order("created_at DESC").First(&status).Error; err != nil {
+		if err != gorm.ErrRecordNotFound {
+			return nil, err
+		}
+		status = model.DocumentProcessStatus{GroupDocID: groupDocID, Status: "pending"}
+		if err := db.Create(&status).Error; err != nil {
+			return nil, err
+		}
+	}
+	return &status, nil
+}
+
 func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 	if s.gracedbDB == nil {
+		// 向量服务/RAG 未初始化（常见于服务启动时 NewVectorService 失败）时无法处理，
+		// 但仍要落一条 failed 状态记录，否则前端 GetDocumentsWithStatus 因找不到状态
+		// 记录而把所有文档显示为 pending（"等待处理"）并永远卡住、用户无法重试。
+		if status, serr := ensureDocProcessStatus(s.db, groupDocID); serr == nil {
+			s.db.Model(status).Updates(map[string]interface{}{
+				"status": "failed",
+				"error":  "向量服务未初始化，无法处理文档",
+			})
+		}
 		return fmt.Errorf("向量服务未初始化")
 	}
 
@@ -170,14 +196,17 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 		return fmt.Errorf("文档不存在")
 	}
 
-	// 用于 panic 兜底：status 在下方赋值，defer 闭包见到的即函数结束时最后写入的值。
+	// 用于 panic 兜底：status 在下方初始化，defer 闭包见到的即函数结束时最后写入的值。
 	// 若处理过程 panic，先把状态落成 failed（而非卡死在 processing），再原样抛出交由
 	// 上层 SafeGoWithLabel 记录，避免僵尸 processing 让用户无法重试。
-	var status model.DocumentProcessStatus
+	status, err := ensureDocProcessStatus(s.db, groupDocID)
+	if err != nil {
+		return fmt.Errorf("初始化处理状态失败: %w", err)
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			if status.ID > 0 {
-				s.db.Model(&status).Updates(map[string]interface{}{
+				s.db.Model(status).Updates(map[string]interface{}{
 					"status": "failed",
 					"error":  fmt.Sprintf("处理过程异常: %v", r),
 				})
@@ -186,24 +215,14 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 		}
 	}()
 
-	s.db.Where("group_doc_id = ?", groupDocID).Order("created_at DESC").First(&status)
-
-	if status.ID == 0 {
-		status = model.DocumentProcessStatus{
-			GroupDocID: groupDocID,
-			Status:     "pending",
-		}
-		s.db.Create(&status)
-	}
-
-	s.db.Model(&status).Updates(map[string]interface{}{
+	s.db.Model(status).Updates(map[string]interface{}{
 		"status": "processing",
 	})
 
 	// 通过存储抽象读取文件内容到临时文件，再交给 parser（pdf/docx 库需要文件路径）
 	reader, err := s.store.GetByPath(context.Background(), doc.File.StoragePath)
 	if err != nil {
-		s.db.Model(&status).Updates(map[string]interface{}{
+		s.db.Model(status).Updates(map[string]interface{}{
 			"status": "failed",
 			"error":  fmt.Sprintf("读取文件失败: %v", err),
 		})
@@ -212,7 +231,7 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 	tmpFile, err := os.CreateTemp("", "qim-doc-*"+filepath.Ext(doc.File.Name))
 	if err != nil {
 		reader.Close()
-		s.db.Model(&status).Updates(map[string]interface{}{
+		s.db.Model(status).Updates(map[string]interface{}{
 			"status": "failed",
 			"error":  fmt.Sprintf("创建临时文件失败: %v", err),
 		})
@@ -223,7 +242,7 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 		reader.Close()
 		tmpFile.Close()
 		os.Remove(tmpPath)
-		s.db.Model(&status).Updates(map[string]interface{}{
+		s.db.Model(status).Updates(map[string]interface{}{
 			"status": "failed",
 			"error":  fmt.Sprintf("写入临时文件失败: %v", err),
 		})
@@ -235,15 +254,15 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 
 	text, err := s.parser.Parse(tmpPath)
 	if err != nil {
-		s.db.Model(&status).Updates(map[string]interface{}{
+		s.db.Model(status).Updates(map[string]interface{}{
 			"status": "failed",
-			"error":  fmt.Sprintf("文档解析失败: %v", err),
+			"error":  "文档解析失败: " + describeParseError(err),
 		})
 		return err
 	}
 
 	if text == "" || len(text) < 10 {
-		s.db.Model(&status).Updates(map[string]interface{}{
+		s.db.Model(status).Updates(map[string]interface{}{
 			"status": "failed",
 			"error":  "文档内容为空或太短",
 		})
@@ -258,7 +277,7 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 
 	// 确保群集合存在（gracedb Upsert 不会自动建集合）
 	if err := ensureGracedbCollection(s.gracedbDB, collectionName); err != nil {
-		s.db.Model(&status).Updates(map[string]interface{}{
+		s.db.Model(status).Updates(map[string]interface{}{
 			"status": "failed",
 			"error":  fmt.Sprintf("创建向量集合失败: %v", err),
 		})
@@ -285,7 +304,7 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 		}
 		embedding, err := s.aiService.Embed(chunk.Content)
 		if err != nil {
-			s.db.Model(&status).Updates(map[string]interface{}{
+			s.db.Model(status).Updates(map[string]interface{}{
 				"status": "failed",
 				"error":  fmt.Sprintf("切片向量化失败: %v", err),
 			})
@@ -317,7 +336,7 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 			metas = append(metas, p.meta)
 		}
 		if err := s.gracedbDB.UpsertBatch(collectionName, vectors, contents, docIDs, metas); err != nil {
-			s.db.Model(&status).Updates(map[string]interface{}{
+			s.db.Model(status).Updates(map[string]interface{}{
 				"status": "failed",
 				"error":  fmt.Sprintf("切片批量存储失败: %v", err),
 			})
@@ -334,7 +353,7 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 		logger.WithModule("GroupDocument").Warn("构建文档知识图谱失败", "doc_id", doc.ID, "error", err)
 	}
 
-	s.db.Model(&status).Updates(map[string]interface{}{
+	s.db.Model(status).Updates(map[string]interface{}{
 		"status":      "completed",
 		"chunk_count": chunkCount,
 	})
