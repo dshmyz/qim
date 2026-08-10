@@ -27,11 +27,12 @@ func TestBuildContextWithSources_SingleRetrieval(t *testing.T) {
 	require.Len(t, sources, 2)
 	assert.Equal(t, "Q3 规划", sources[0].Title)
 	assert.Equal(t, 0.92, sources[0].Score)
+	assert.Equal(t, "knowledge", sources[0].Source, "知识库命中应标记 source=knowledge")
 	assert.Equal(t, "未命名", sources[1].Title, "空标题回退为「未命名」")
-	// 只暴露最小结构，不携带正文：序列化后仅含 title/score 两个键
+	// 只暴露最小结构，不携带正文：序列化后仅含 title/score/source 三个键
 	raw, err := json.Marshal(sources[0])
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"title":"Q3 规划","score":0.92}`, string(raw))
+	assert.JSONEq(t, `{"title":"Q3 规划","score":0.92,"source":"knowledge"}`, string(raw))
 }
 
 // TestBuildContextWithSources_EmptyWhenNoHit
@@ -83,4 +84,27 @@ func TestBuildContextWithSources_DedupSameDocChunks(t *testing.T) {
 	assert.Contains(t, ctx, "规范内容")
 	assert.NotContains(t, ctx, "第二段内容", "同文档低分块不应注入提示词")
 	assert.NotContains(t, ctx, "第三段内容", "同文档低分块不应注入提示词")
+}
+
+// TestMemoryResultsToSources
+// 群记忆 Recall 结果应转为 KnowledgeSource，保留 score 并标记 source=memory。
+func TestMemoryResultsToSources(t *testing.T) {
+	results := []SearchResult{
+		{Content: "项目截止日期 3 月 15 日", Score: 0.87, DocID: "mem_1", Metadata: map[string]string{"title": "项目排期"}},
+		{Content: "张三负责后端", Score: 0.65, DocID: "mem_2"},
+	}
+	sources := memoryResultsToSources(results)
+	require.Len(t, sources, 2)
+	assert.Equal(t, "项目排期", sources[0].Title)
+	assert.Equal(t, 0.87, sources[0].Score)
+	assert.Equal(t, "memory", sources[0].Source)
+	assert.Equal(t, "未命名", sources[1].Title, "无 title 时回退为未命名")
+	assert.Equal(t, "memory", sources[1].Source)
+}
+
+// TestMemoryResultsToSources_Empty
+// 空记忆结果应返回空切片（非 nil），前端据此不渲染额外条目。
+func TestMemoryResultsToSources_Empty(t *testing.T) {
+	sources := memoryResultsToSources(nil)
+	assert.Empty(t, sources)
 }

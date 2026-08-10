@@ -453,6 +453,8 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 				parts = append(parts, r.Content)
 			}
 			memoryCtx = "💡 群聊记忆：\n" + strings.Join(parts, "\n")
+			// 群记忆分数透出到「知识来源」徽章，供用户看到 AI 为什么记住了这条
+			input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults)...)
 		}
 	}
 	input.MemoryCtx = memoryCtx
@@ -900,6 +902,8 @@ func (g *SmartReplyGraph) recallGroupMemory(input *SmartReplyContext) string {
 	for _, r := range memoryResults {
 		parts = append(parts, r.Content)
 	}
+	// 群记忆分数透出到「知识来源」徽章
+	input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults)...)
 	return "💡 群聊记忆：\n" + strings.Join(parts, "\n")
 }
 

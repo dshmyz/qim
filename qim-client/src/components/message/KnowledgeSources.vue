@@ -8,6 +8,7 @@
     </summary>
     <ul>
       <li v-for="(src, i) in sources" :key="i">
+        <span v-if="src.source" class="source-tag">{{ sourceLabel(src.source) }}</span>
         <span class="title" :title="src.title">{{ src.title || '未命名' }}</span>
         <span class="score">{{ formatScore(src.score) }}</span>
       </li>
@@ -26,6 +27,12 @@ defineProps<{
 const formatScore = (score: number) => {
   if (typeof score !== 'number' || isNaN(score)) return ''
   return Math.round(score * 100) + '%'
+}
+
+// 来源标签映射
+const sourceLabel = (source: string) => {
+  const labels: Record<string, string> = { knowledge: '知识库', notes: '笔记', memory: '群记忆' }
+  return labels[source] || source
 }
 </script>
 
@@ -76,6 +83,17 @@ const formatScore = (score: number) => {
   border-top: 1px dashed #eef1f6;
 }
 .knowledge-sources li:first-child { border-top: none; }
+.knowledge-sources .source-tag {
+  flex-shrink: 0;
+  padding: 0 4px;
+  height: 14px;
+  line-height: 14px;
+  font-size: 9px;
+  border-radius: 3px;
+  background: #e8ecf3;
+  color: #888;
+  white-space: nowrap;
+}
 .knowledge-sources .title {
   flex: 1;
   overflow: hidden;

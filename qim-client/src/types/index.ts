@@ -100,10 +100,11 @@ export interface ToolCallRecord {
   status?: 'running' | 'ok' | 'error' | ''
 }
 
-// KnowledgeSource Bot 回复命中笔记的最小展示结构
+// KnowledgeSource 群助手/Bot 回复命中知识来源的最小展示结构
 export interface KnowledgeSource {
   title: string
   score: number
+  source?: 'knowledge' | 'notes' | 'memory'
 }
 
 // AvatarSource 分身回复命中的知识来源，用于在气泡下展示「依据」

@@ -25,12 +25,29 @@ type KnowledgeSnippet struct {
 	Metadata map[string]string
 }
 
-// KnowledgeSource 群助手回复命中的知识来源最小结构（仅标题/相关度），随回复消息下发
-// 供前端渲染「知识来源」折叠标签。与 Bot 命中笔记的 knowledge_sources 结构对齐，
-// 只暴露标题与分数，不回传文档正文/片段，避免消息响应体过大或泄漏。
+// KnowledgeSource 群助手回复命中的知识来源最小结构，随回复消息下发
+// 供前端渲染「知识来源」折叠标签。只暴露标题/分数/来源类型，不回传正文。
 type KnowledgeSource struct {
-	Title string  `json:"title"`
-	Score float64 `json:"score"`
+	Title  string  `json:"title"`
+	Score  float64 `json:"score"`
+	Source string  `json:"source,omitempty"` // "knowledge" | "notes" | "memory"
+}
+
+// memoryResultsToSources 把群记忆 Recall 结果转为 KnowledgeSource，
+// 保留原始分数并标记 source=memory，供前端「知识来源」徽章区分展示。
+func memoryResultsToSources(results []SearchResult) []KnowledgeSource {
+	if len(results) == 0 {
+		return nil
+	}
+	out := make([]KnowledgeSource, 0, len(results))
+	for _, r := range results {
+		title := r.Metadata["title"]
+		if title == "" {
+			title = "未命名"
+		}
+		out = append(out, KnowledgeSource{Title: title, Score: r.Score, Source: "memory"})
+	}
+	return out
 }
 
 func NewUnifiedKnowledgeService(groupDocSvc *GroupDocumentService, fallback *LegacyKnowledgeFallback) *UnifiedKnowledgeService {
@@ -111,7 +128,7 @@ func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID 
 		idx++
 		sourceTag := fmt.Sprintf("（语义检索，相关度: %.1f%%）", snip.Score*100)
 		parts = append(parts, fmt.Sprintf("[%d] %s %s\n%s", idx, snip.Title, sourceTag, snip.Content))
-		sources = append(sources, KnowledgeSource{Title: title, Score: snip.Score})
+		sources = append(sources, KnowledgeSource{Title: title, Score: snip.Score, Source: "knowledge"})
 	}
 
 	return strings.Join(parts, "\n\n"), sources
