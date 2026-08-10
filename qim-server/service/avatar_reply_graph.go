@@ -397,6 +397,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	input.GroupKnowledge = groupKnowledge
 
 	memoryCtx := ""
+	bestMemoryScore := 0.0
 	if g.memorySvc != nil {
 		memoryResults, err := g.memorySvc.Recall(input.UserID, input.Message, 2)
 		if err == nil && len(memoryResults) > 0 {
@@ -404,6 +405,9 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 			for _, r := range memoryResults {
 				parts = append(parts, r.Content)
 				input.Sources = append(input.Sources, AvatarSource{Type: "memory", Snippet: r.Content})
+				if r.Score > bestMemoryScore {
+					bestMemoryScore = r.Score
+				}
 			}
 			memoryCtx = "【相关记忆】\n" + strings.Join(parts, "\n\n")
 		}
@@ -453,10 +457,11 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 
 	// 范围外静默（硬门控）：ReplyOutOfScope=false 时，分身只应回复「与自身知识/上下文相关」的消息。
 	// 有笔记/群知识命中 → 属于范围内，正常回复；无任何知识命中 → 属于范围外，直接静默。
-	// 分身记忆（memoryCtx）不参与范围内判定——记忆是"之前学到的背景"，不是"当前问题的知识命中"。
-	// 若记忆也参与，用户问任何无关问题，只要 Recall 出历史记忆就会回复，违背"范围外不回复"的字面语义。
+	// 记忆参与判定但需过相关度阈值（≥0.5）：低分噪音记忆不算"知识命中"，避免无关问题
+	// 因 Recall 出历史记忆而误回复；高分记忆（用户确实问过相关内容）则正常放行。
 	// 任务不参与范围内判定（任务只是附加注入的知识，不应让"有任务就什么都回"旁路门控）。
-	hasKnowledge := noteCtx != "" || groupKnowledge != ""
+	memoryHit := memoryCtx != "" && bestMemoryScore >= 0.5
+	hasKnowledge := noteCtx != "" || groupKnowledge != "" || memoryHit
 	if !input.ReplyStrategy.ReplyOutOfScope && !hasKnowledge {
 		input.SkipReply = true
 	}

@@ -59,11 +59,11 @@ func TestAvatarReplyGraphPrepareOutOfScopeSkip(t *testing.T) {
 	assert.True(t, in4.SkipReply, "无知识/记忆命中时，Tasks 不构成范围内依据，范围外硬静默")
 }
 
-// TestAvatarReplyGraphPrepare_MemoryAloneDoesNotBypassScope
-// 分身记忆（memorySvc.Recall）命中时，不应让 hasKnowledge=true，
-// 否则"知识之外不回复"会被记忆绕过——用户问无关问题，只要 Recall 出
-// 任何历史记忆就回复，违背"范围外静默"的字面语义。
-func TestAvatarReplyGraphPrepare_MemoryAloneDoesNotBypassScope(t *testing.T) {
+// TestAvatarReplyGraphPrepare_MemoryThreshold
+// 分身记忆参与范围外静默判定，但需过相关度阈值（≥0.5）：
+// - 无关问题 → Recall 低分噪音 → hasKnowledge=false → 静默
+// - 相关问题 → Recall 高分记忆 → hasKnowledge=true → 回复
+func TestAvatarReplyGraphPrepare_MemoryThreshold(t *testing.T) {
 	db := setupServiceTestDB(t)
 	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
 	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
@@ -82,16 +82,21 @@ func TestAvatarReplyGraphPrepare_MemoryAloneDoesNotBypassScope(t *testing.T) {
 	defer gdb.Close()
 	vecSvc := &VectorService{db: gdb}
 	memSvc := NewAvatarMemoryService(vecSvc, nil)
-	require.NoError(t, memSvc.Remember(1, 99, "项目截止日期是3月15日", 4))
+	require.NoError(t, memSvc.Remember(1, 99, "项目截止日期是3月15日，目前进度正常", 4))
 
-	// noteSvc / groupDocSvc nil，只有 memorySvc 非 nil
 	g := &AvatarReplyGraph{db: db, memorySvc: memSvc}
-	in := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "今天天气怎么样"}
-	require.NoError(t, g.prepare(context.Background(), in, nil))
 
-	// 记忆被 Recall 到了（MemoryContext 非空），但 hasKnowledge 不应包含记忆
-	assert.NotEmpty(t, in.MemoryContext, "记忆应被 Recall 到")
-	assert.True(t, in.SkipReply, "仅记忆命中不应绕过范围外静默——记忆不是'知识命中'")
+	// case1: 无关问题 → Recall 低分（<0.5）→ 静默
+	in1 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "hi"}
+	require.NoError(t, g.prepare(context.Background(), in1, nil))
+	assert.NotEmpty(t, in1.MemoryContext, "无关问题也可能 Recall 到记忆（低分）")
+	assert.True(t, in1.SkipReply, "低分记忆（<0.5）不应绕过范围外静默")
+
+	// case2: 相同内容查询 → Recall 高分 → 回复
+	in2 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "项目截止日期是3月15日"}
+	require.NoError(t, g.prepare(context.Background(), in2, nil))
+	assert.NotEmpty(t, in2.MemoryContext, "相关问题应 Recall 到高分记忆")
+	assert.False(t, in2.SkipReply, "高分记忆应绕过范围外静默——用户在问相关问题")
 }
 
 func TestAvatarReplyGraphPrepareTaskContext(t *testing.T) {
