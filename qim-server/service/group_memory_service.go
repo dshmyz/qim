@@ -65,13 +65,19 @@ func (s *GroupMemoryService) Remember(groupID uint, conversationID uint, content
 // 群记忆被后续召回。knowledge 由调用方用自建 searchHybrid 语义召回后传入（本服务不持
 // 有 groupDocSvc，避免循环依赖）。context 为最近几条对话消息（可选）。
 // 返回是否真的落库。
-func (s *GroupMemoryService) ConsolidateGroupMessage(groupID, conversationID uint, content string, knowledge []string, context []string) (bool, error) {
+func (s *GroupMemoryService) ConsolidateGroupMessage(groupID, conversationID uint, content string, knowledge []string, context []string, existingMemories ...SearchResult) (bool, error) {
 	if s.db == nil {
 		return false, nil
 	}
-	memories, err := s.Recall(groupID, content, 3)
-	if err != nil {
-		memories = nil
+	var memories []SearchResult
+	if len(existingMemories) > 0 {
+		memories = existingMemories
+	} else {
+		var err error
+		memories, err = s.Recall(groupID, content, 3)
+		if err != nil {
+			memories = nil
+		}
 	}
 	memSnippets := make([]string, 0, len(memories))
 	for _, m := range memories {

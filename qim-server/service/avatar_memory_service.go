@@ -52,13 +52,19 @@ func (s *AvatarMemoryService) Remember(userID uint, conversationID uint, content
 //
 // context 为最近几条对话消息（可选），帮助 LLM 理解"这句话在讨论什么"再判断是否值得记。
 // 返回是否真的落库（ShouldRemember=false 时为 false）。
-func (s *AvatarMemoryService) ConsolidateMessage(userID, conversationID uint, content string, context []string) (bool, error) {
+func (s *AvatarMemoryService) ConsolidateMessage(userID, conversationID uint, content string, context []string, existingMemories ...SearchResult) (bool, error) {
 	if s.db == nil {
 		return false, nil
 	}
-	memories, err := s.Recall(userID, content, 3)
-	if err != nil {
-		memories = nil
+	var memories []SearchResult
+	if len(existingMemories) > 0 {
+		memories = existingMemories
+	} else {
+		var err error
+		memories, err = s.Recall(userID, content, 3)
+		if err != nil {
+			memories = nil
+		}
 	}
 	memSnippets := make([]string, 0, len(memories))
 	for _, m := range memories {

@@ -1136,14 +1136,15 @@ func (e *SmartReplyEngine) maybeRememberSenderMessage(senderID uint, conversatio
 		if err := db.Select("enabled").Where("user_id = ?", senderID).First(&config).Error; err != nil || !config.Enabled {
 			return
 		}
-		// 去重：已有高度相似记忆则跳过
-		if existing, err := e.memorySvc.Recall(senderID, content, 1); err == nil && len(existing) > 0 && existing[0].Score > 0.85 {
-			return
+		// 一次 Recall(top-3)：top-1 用于去重，全部传给 Consolidate 避免二次查询
+		existing, _ := e.memorySvc.Recall(senderID, content, 3)
+		if len(existing) > 0 && existing[0].Score > 0.85 {
+			return // 已有高度相似记忆，跳过
 		}
 		// 对话上下文：取最近 5 条消息，帮助 LLM 理解"这句话在讨论什么"
 		ctx := fetchRecentMessages(db, conversationID, content, 5)
-		// 记忆反射闭环：内部完成"是否值得记 + 重要度 + 折叠既有记忆"，仅在值得记时落库
-		if ok, err := e.memorySvc.ConsolidateMessage(senderID, conversationID, content, ctx); err != nil {
+		// 记忆反射闭环：传入预取记忆，内部不再重复 Recall
+		if ok, err := e.memorySvc.ConsolidateMessage(senderID, conversationID, content, ctx, existing...); err != nil {
 			log.Printf("[AvatarMemory] 反射失败: user=%d err=%v", senderID, err)
 		} else if ok {
 			log.Printf("[AvatarMemory] 反射记忆已写入 user=%d", senderID)
@@ -1162,9 +1163,10 @@ func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationI
 		return
 	}
 	go func() {
-		// 去重：本群已有高度相似记忆则跳过
-		if existing, err := e.groupMemorySvc.Recall(groupID, content, 1); err == nil && len(existing) > 0 && existing[0].Score > 0.85 {
-			return
+		// 一次 Recall(top-3)：top-1 用于去重，全部传给 Consolidate 避免二次查询
+		existing, _ := e.groupMemorySvc.Recall(groupID, content, 3)
+		if len(existing) > 0 && existing[0].Score > 0.85 {
+			return // 已有高度相似记忆，跳过
 		}
 		db := database.GetDB()
 		// 对话上下文：取最近 5 条消息
@@ -1179,7 +1181,7 @@ func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationI
 			}
 		}
 		// 群记忆反射闭环：内部完成"是否值得记 + 重要度 + 折叠既有群记忆/群知识"，仅值得记时落库
-		if ok, err := e.groupMemorySvc.ConsolidateGroupMessage(groupID, conversationID, content, knowledge, ctx); err != nil {
+		if ok, err := e.groupMemorySvc.ConsolidateGroupMessage(groupID, conversationID, content, knowledge, ctx, existing...); err != nil {
 			log.Printf("[GroupMemory] 反射失败: group=%d err=%v", groupID, err)
 		} else if ok {
 			log.Printf("[GroupMemory] 反射记忆已写入 group=%d", groupID)
@@ -1187,20 +1189,26 @@ func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationI
 	}()
 }
 
-// fetchRecentMessages 从 DB 查最近 N 条消息（排除当前消息本身），格式化为
+// fetchRecentMessages 从 DB 查最近 N 条消息（不含当前消息），格式化为
 // "[发言人]: 内容" 供记忆反射的 LLM 理解对话语境。查不到时返回 nil（向后兼容）。
+// 当前消息是最新的一条（触发本函数的那条），DESC 排序后跳过第一条即可。
 func fetchRecentMessages(db *gorm.DB, conversationID uint, currentContent string, limit int) []string {
 	var messages []model.Message
 	db.Where("conversation_id = ? AND type IN ?", conversationID, []string{"text", "markdown"}).
 		Preload("Sender").
 		Order("created_at DESC").
-		Limit(limit + 5). // 多取几条以防当前消息在窗口内
+		Limit(limit + 1). // +1 是当前消息，跳过
 		Find(&messages)
 
 	var result []string
+	skippedCurrent := false
 	for _, msg := range messages {
-		if msg.Content == currentContent {
-			continue // 排除当前消息本身
+		// 跳过当前消息：DESC 排序下第一条就是最新的（当前消息），
+		// 用 content 匹配兜底（极端情况下两条消息内容相同时仍可能误跳，
+		// 但概率极低且影响仅为少一条上下文，可接受）。
+		if !skippedCurrent && msg.Content == currentContent {
+			skippedCurrent = true
+			continue
 		}
 		name := msg.Sender.Nickname
 		if name == "" {
