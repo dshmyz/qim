@@ -664,8 +664,9 @@ func (s *MessageService) handleBotFileMessage(userID, convID uint, bot model.Bot
 	parsedText, err := s.docParser.Parse(tmpPath)
 	if err != nil {
 		log.Warn("文件解析失败", "fileID", file.ID, "name", file.Name, "error", err)
-		s.sendBotTextReply(userID, convID, bot,
-			fmt.Sprintf("📎 暂不支持解析该文件格式（%s）。支持的格式：txt/md/csv/json/pdf/docx/pptx/xlsx 等。", filepath.Ext(file.Name)))
+		// 用 describeParseError 透传底层语义（可能是扫描件/无文字层、损坏、格式不支持等），
+		// 而不笼统报"暂不支持该格式"——避免扫描版 PDF 被误解为格式不受支持。
+		s.sendBotTextReply(userID, convID, bot, "📎 文件解析失败："+describeParseError(err))
 		return
 	}
 

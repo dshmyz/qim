@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -127,6 +128,28 @@ func (p *DocumentParser) Parse(filePath string) (string, error) {
 	return text, nil
 }
 
+// parsePathRegexp 匹配错误信息中内嵌的文件路径 token。
+// 各解析错误会把待解析文件的（临时）绝对路径拼进文案，形如
+//   "PDF /var/folders/zl/xxx/T/qim-doc-123.pdf 无法提取文本内容：..."、
+//   "打开 PDF /tmp/qim-456.pdf 失败: ..."
+// 这类路径无空格、含扩展名；`/\S+\.\w{1,4}` 可整段命中。
+var parsePathRegexp = regexp.MustCompile(`/\S+\.\w{1,4}`)
+
+// describeParseError 把 DocumentParser.Parse 返回的错误整理成一条对用户友好的单行提示。
+// 底层错误已区分「格式不支持」「扫描件/无文字层」「损坏/非 UTF-8」等真实语义，但会
+// 内嵌服务端临时文件的绝对路径（如 /var/folders/.../qim-doc-xxx.pdf）——直接展示既不
+// 友好也暴露内部目录结构。这里把整段路径替换为其文件名（basename），保留其余语义。
+// 供群文档上传状态、bot 文件会话等需要直接展示给用户的地方统一使用。
+func describeParseError(err error) string {
+	msg := err.Error()
+	return parsePathRegexp.ReplaceAllStringFunc(msg, func(p string) string {
+		if i := strings.LastIndex(p, "/"); i >= 0 {
+			return p[i+1:]
+		}
+		return p
+	})
+}
+
 // parseText 解析纯文本文件
 // 先 stat 检查文件大小，防止超大文件一次性读入内存
 func (p *DocumentParser) parseText(filePath string) (string, error) {
@@ -179,7 +202,10 @@ func (p *DocumentParser) parsePDF(filePath string) (string, error) {
 	}
 
 	if len(texts) == 0 {
-		return "", fmt.Errorf("PDF %s 无法提取文本内容", filePath)
+		// PDF 本身是受支持的格式，能打开但提取不到任何文字——几乎都是扫描/图片型
+		// PDF（页面只有图像、没有可复制的文字层）。若上层把这类错误笼统报成
+		// 「格式不支持」会误导用户，故这里明确点出可能因「扫描件/无文字层」导致。
+		return "", fmt.Errorf("PDF %s 无法提取文本内容：该文件可能是扫描件/图片型 PDF（无文字层），如需解析请上传可复制的文字版 PDF 或 txt/md 文件", filePath)
 	}
 	return strings.Join(texts, "\n\n"), nil
 }
