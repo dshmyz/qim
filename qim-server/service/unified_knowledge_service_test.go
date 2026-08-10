@@ -52,3 +52,33 @@ func TestBuildContextWithSources_NilServiceSafe(t *testing.T) {
 	assert.Empty(t, ctx)
 	assert.Nil(t, sources)
 }
+
+// TestBuildContextWithSources_DedupSameDocChunks
+// 文档按 800 字分块入库，同一文档的多个块可能同时命中检索。
+// 「知识来源」徽章应按标题去重，同文档只保留得分最高的一条；
+// 但上下文串仍保留各块不同正文（供模型参考文档不同段落）。
+func TestBuildContextWithSources_DedupSameDocChunks(t *testing.T) {
+	svc := NewUnifiedKnowledgeService(nil, &LegacyKnowledgeFallback{
+		SearchFunc: func(_ string, _ uint, _ int) []KnowledgeSnippet {
+			return []KnowledgeSnippet{
+				{Title: "产品需求文档", Score: 0.92, Content: "第一段内容"},
+				{Title: "产品需求文档", Score: 0.85, Content: "第二段内容"},
+				{Title: "产品需求文档", Score: 0.78, Content: "第三段内容"},
+				{Title: "设计规范", Score: 0.80, Content: "规范内容"},
+			}
+		},
+	})
+
+	ctx, sources := svc.BuildContextWithSources("问题", 1, 3)
+
+	// 同标题文档去重后只剩 2 条
+	require.Len(t, sources, 2)
+	assert.Equal(t, "产品需求文档", sources[0].Title)
+	assert.Equal(t, 0.92, sources[0].Score, "同文档多块应保留最高分")
+	assert.Equal(t, "设计规范", sources[1].Title)
+
+	// 上下文串仍包含所有命中块的不同正文（供模型参考不同段落）
+	assert.Contains(t, ctx, "第一段内容")
+	assert.Contains(t, ctx, "第二段内容")
+	assert.Contains(t, ctx, "第三段内容")
+}

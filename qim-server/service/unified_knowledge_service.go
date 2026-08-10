@@ -93,7 +93,11 @@ func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID 
 
 	var parts []string
 	parts = append(parts, "📚 群知识库相关内容：")
+	// 同一文档被分成多个块，多个块可能同时命中检索。上下文串保留各块不同正文
+	// （供模型参考文档不同段落），但「知识来源」徽章按标题去重，同文档只保留
+	// 得分最高的一条，避免同一文档名重复展示好几条。
 	sources := make([]KnowledgeSource, 0, len(snippets))
+	bestScore := make(map[string]float64, len(snippets))
 	for i, snip := range snippets {
 		sourceTag := fmt.Sprintf("（语义检索，相关度: %.1f%%）", snip.Score*10)
 		parts = append(parts, fmt.Sprintf("[%d] %s %s\n%s", i+1, snip.Title, sourceTag, snip.Content))
@@ -101,7 +105,19 @@ func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID 
 		if title == "" {
 			title = "未命名"
 		}
-		sources = append(sources, KnowledgeSource{Title: title, Score: snip.Score})
+		if prev, ok := bestScore[title]; !ok || snip.Score > prev {
+			bestScore[title] = snip.Score
+		}
+	}
+	for _, snip := range snippets {
+		title := snip.Title
+		if title == "" {
+			title = "未命名"
+		}
+		if snip.Score == bestScore[title] {
+			sources = append(sources, KnowledgeSource{Title: title, Score: snip.Score})
+			delete(bestScore, title) // 只取第一条达到最高分的块
+		}
 	}
 
 	return strings.Join(parts, "\n\n"), sources
