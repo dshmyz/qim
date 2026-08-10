@@ -43,23 +43,24 @@ func TestMergeRRF_CapsTopK(t *testing.T) {
 	}
 }
 
-func TestHybridDisplayScores_PreservesSemanticKeepsFTSFallback(t *testing.T) {
+func TestHybridDisplayScores_PreservesSemantic_RankBasedFTS(t *testing.T) {
 	semantic := []types.ScoredEmbedding{sc(0, 0.85), sc(1, 0.6)}
-	// merged 里 mixed：doc a（语义 0.85）、doc a2 仅 FTS、doc b（语义 0.6）
+	// merged 里 mixed：doc a（语义 0.85）、doc x 仅 FTS、doc b（语义 0.6）
 	merged := []types.ScoredEmbedding{sc(0, 0.0), {Embedding: types.Embedding{ID: "x", DocID: "x"}, Score: 0.0}, sc(1, 0.0)}
+	fts := []types.ScoredEmbedding{{Embedding: types.Embedding{ID: "x", DocID: "x"}}}
 
-	out := hybridDisplayScores(merged, semantic)
+	out := hybridDisplayScores(merged, semantic, fts)
 	scores := map[string]float32{}
 	for _, m := range out {
 		scores[m.DocID] = m.Score
 	}
 	if scores["a"] != 0.85 {
-		t.Errorf("语义命中 doc=a 应保留余弦分 0.85, got %v", scores["a"])
+		t.Errorf("仅语义命中 doc=a 应保留余弦分 0.85, got %v", scores["a"])
 	}
 	if scores["b"] != 0.6 {
-		t.Errorf("语义命中 doc=b 应保留余弦分 0.6, got %v", scores["b"])
+		t.Errorf("仅语义命中 doc=b 应保留余弦分 0.6, got %v", scores["b"])
 	}
-	if scores["x"] != 0.5 {
-		t.Errorf("仅 FTS 命中 doc=x 应回退到 0.5, got %v", scores["x"])
+	if scores["x"] != 0.8 {
+		t.Errorf("仅 FTS 命中 doc=x（排名第1）应得 0.8, got %v", scores["x"])
 	}
 }

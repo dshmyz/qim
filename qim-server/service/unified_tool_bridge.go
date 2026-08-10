@@ -105,11 +105,11 @@ func (t *KnowledgeSearchTool) Execute(params map[string]interface{}, ctx *ai.Cal
 	case len(semanticRes) == 0 && len(ftsRes) == 0:
 		scored = nil
 	case len(semanticRes) == 0:
-		scored = hybridDisplayScores(ftsRes, nil)
+		scored = hybridDisplayScores(ftsRes, nil, ftsRes)
 	case len(ftsRes) == 0:
 		scored = semanticRes
 	default:
-		scored = hybridDisplayScores(mergeRRF(semanticRes, ftsRes, topK), semanticRes)
+		scored = hybridDisplayScores(mergeRRF(semanticRes, ftsRes, topK), semanticRes, ftsRes)
 	}
 
 	type hit struct {

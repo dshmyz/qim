@@ -906,7 +906,7 @@ func (s *GroupDocumentService) searchHybrid(collectionName, query string, topK i
 
 	// 仅一路有结果时直接使用，避免无谓 RRF
 	if len(semanticRes) == 0 {
-		ftsRes = hybridDisplayScores(ftsRes, nil)
+		ftsRes = hybridDisplayScores(ftsRes, nil, ftsRes)
 		return s.hitsFromScored(collectionName, query, ftsRes), nil
 	}
 	if len(ftsRes) == 0 {
@@ -914,8 +914,8 @@ func (s *GroupDocumentService) searchHybrid(collectionName, query string, topK i
 	}
 
 	merged := mergeRRF(semanticRes, ftsRes, topK)
-	// 尽量保留语义余弦分用于展示；FTS 独占的用 0.5 兜底
-	display := hybridDisplayScores(merged, semanticRes)
+	// 尽量保留语义余弦分用于展示；FTS 独占的按排名给分
+	display := hybridDisplayScores(merged, semanticRes, ftsRes)
 	return s.hitsFromScored(collectionName, query, display), nil
 }
 
@@ -989,10 +989,15 @@ func mergeRRF(semantic, fts []types.ScoredEmbedding, topK int) []types.ScoredEmb
 	return out
 }
 
-// hybridDisplayScores 让展示分数尽量保留语义余弦相似度（0-1）语义：
-// 命中语义结果的用其余弦分；仅词法命中的用 0.5 中性值兜底，避免前端显示 0%。
-func hybridDisplayScores(scored, semantic []types.ScoredEmbedding) []types.ScoredEmbedding {
-	semScore := make(map[string]float32)
+// hybridDisplayScores 把 RRF 融合后的展示分数还原为对用户有意义的 0-1 值：
+//   - 语义+词法双路命中：余弦分 + 0.08 加成（上限 1.0），双路确认 = 更高置信度
+//   - 仅语义命中：保持原始余弦相似度
+//   - 仅词法命中：按 FTS 排名递减（第1名 ~0.8 → 末名 ~0.5），不再一律 0.5
+//
+// RRF 分数尺度极小（~0.016）不适合直接展示，故还原为余弦语义；FTS 独占命中
+// 无余弦分可用，按排名给出有区分度的展示分而非扁平的 0.5。
+func hybridDisplayScores(scored, semantic, fts []types.ScoredEmbedding) []types.ScoredEmbedding {
+	semScore := make(map[string]float32, len(semantic))
 	for _, se := range semantic {
 		id := se.ID
 		if id == "" {
@@ -1000,15 +1005,42 @@ func hybridDisplayScores(scored, semantic []types.ScoredEmbedding) []types.Score
 		}
 		semScore[id] = se.Score
 	}
+	ftsRank := make(map[string]int, len(fts))
+	for i, se := range fts {
+		id := se.ID
+		if id == "" {
+			id = se.DocID
+		}
+		ftsRank[id] = i
+	}
+	ftsTotal := len(fts)
+
 	out := make([]types.ScoredEmbedding, 0, len(scored))
 	for _, se := range scored {
 		id := se.ID
 		if id == "" {
 			id = se.DocID
 		}
-		if v, ok := semScore[id]; ok {
-			se.Score = v
-		} else {
+		semVal, inSem := semScore[id]
+		rank, inFTS := ftsRank[id]
+
+		switch {
+		case inSem && inFTS:
+			// 双路命中：余弦分 + 加成，截断 1.0
+			se.Score = semVal + 0.08
+			if se.Score > 1.0 {
+				se.Score = 1.0
+			}
+		case inSem:
+			// 仅语义：保持原始余弦分
+			se.Score = semVal
+		case inFTS && ftsTotal > 0:
+			// 仅词法：按 FTS 排名递减，第1名 0.8 → 末名 0.5
+			se.Score = 0.8 - 0.3*float32(rank)/float32(ftsTotal)
+			if se.Score < 0.5 {
+				se.Score = 0.5
+			}
+		default:
 			se.Score = 0.5
 		}
 		out = append(out, se)
