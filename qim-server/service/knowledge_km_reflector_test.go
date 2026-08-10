@@ -8,7 +8,7 @@ import (
 // reflectConsolidated 在 aiService 为 nil 时应安全降级：
 // evaluateRemember 返回 ShouldRemember=false（不落库），summary 用确定性兜底生成，不 panic。
 func TestReflectConsolidated_NilAI_NoPanic(t *testing.T) {
-	ref, verdict, err := reflectConsolidated(nil, "我们决定周五下午开例会", []string{"之前约定每周五例会"}, []string{})
+	ref, verdict, err := reflectConsolidated(nil, "我们决定周五下午开例会", []string{"之前约定每周五例会"}, []string{}, nil)
 	if err != nil {
 		t.Fatalf("nil aiService 不应报错: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestReflectConsolidated_NilAI_NoPanic(t *testing.T) {
 
 func TestReflectConsolidated_MergesMemory(t *testing.T) {
 	// 有既有记忆时，确定性兜底 summary 应包含该记忆（折叠合并的原材料）
-	ref, _, _ := reflectConsolidated(nil, "新消息", []string{"旧记忆A", "旧记忆A"}, []string{"知识1"})
+	ref, _, _ := reflectConsolidated(nil, "新消息", []string{"旧记忆A", "旧记忆A"}, []string{"知识1"}, nil)
 	if !strings.Contains(ref.Summary, "旧记忆A") {
 		t.Errorf("summary 应包含既有记忆，got %q", ref.Summary)
 	}
@@ -68,7 +68,7 @@ func TestParseReflectionJSON_Entities(t *testing.T) {
 
 func TestReflectionExtractPrompt_ComposesContext(t *testing.T) {
 	// 结构化反射提示应包含消息与既有记忆/知识，便于 LLM 折叠合并。
-	p := reflectionExtractPrompt("我们周五开会", []string{"旧记忆"}, []string{"知识片段"})
+	p := reflectionExtractPrompt("我们周五开会", []string{"旧记忆"}, []string{"知识片段"}, nil)
 	if !strings.Contains(p, "旧记忆") {
 		t.Error("反射提示应包含既有记忆")
 	}
@@ -86,6 +86,43 @@ func TestParseReflectionJSON_Invalid(t *testing.T) {
 	}
 }
 
+
+// TestRememberTaskPrompt_IncludesContext
+// 记忆判定提示应包含对话上下文（最近几条消息），让 LLM 理解"这句话在讨论什么"
+// 再判断是否值得记。无上下文时向后兼容，不报错。
+func TestRememberTaskPrompt_IncludesContext(t *testing.T) {
+	ctx := []string{"[张三]: 项目截止日期是什么时候？", "[我]: 截止日期是3月15日"}
+	p := rememberTaskPrompt("好的，那就3月15日吧", nil, nil, ctx)
+	if !strings.Contains(p, "张三") {
+		t.Error("提示应包含对话上下文中的发言人")
+	}
+	if !strings.Contains(p, "截止日期是3月15日") {
+		t.Error("提示应包含对话上下文中的历史消息")
+	}
+	if !strings.Contains(p, "好的，那就3月15日吧") {
+		t.Error("提示应包含当前消息")
+	}
+
+	// 无上下文时向后兼容
+	pNoCtx := rememberTaskPrompt("测试消息", nil, nil, nil)
+	if !strings.Contains(pNoCtx, "测试消息") {
+		t.Error("无上下文时仍应包含当前消息")
+	}
+}
+
+// TestReflectionExtractPrompt_IncludesContext
+// 结构化反射提示也应包含对话上下文。
+func TestReflectionExtractPrompt_IncludesContext(t *testing.T) {
+	ctx := []string{"[李四]: 下周一开始加班", "[我]: 好的收到"}
+	p := reflectionExtractPrompt("加班安排已确认", nil, nil, ctx)
+	if !strings.Contains(p, "李四") {
+		t.Error("反射提示应包含对话上下文")
+	}
+	if !strings.Contains(p, "加班安排已确认") {
+		t.Error("反射提示应包含当前消息")
+	}
+}
+
 func TestTruncateForSummary(t *testing.T) {
 	long := strings.Repeat("长", 200)
 	if got := truncateForSummary(long); len([]rune(got)) > 121 {
@@ -95,3 +132,7 @@ func TestTruncateForSummary(t *testing.T) {
 		t.Errorf("短文本不应截断，got %q", got)
 	}
 }
+
+// TestRememberTaskPrompt_IncludesContext
+// 记忆判定提示应包含对话上下文（最近几条消息），让 LLM 理解"这句话在讨论什么"
+// 再判断是否值得记。无上下文时向后兼容，不报错。

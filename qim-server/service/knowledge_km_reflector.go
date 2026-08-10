@@ -20,17 +20,18 @@ type MemoryReflection struct {
 }
 
 // reflectConsolidated 执行记忆反射闭环：
-//  1. 输入当前消息 + 已召回的相关记忆(memories) + 相关群知识(knowledge)
+//  1. 输入当前消息 + 已召回的相关记忆(memories) + 相关群知识(knowledge) + 对话上下文(context)
 //  2. 用一个 LLM 调用把信息折叠成 Summary/Facts/Themes
 //  3. 复用 evaluateRemember 判定"是否值得记 + 重要度档位"
 //
 // 返回 verdict.ShouldRemember=false 表示无需记（调用方跳过落库）。
+// context 为最近几条对话消息（可选），帮助 LLM 理解"这句话在讨论什么"再判断是否值得记。
 // 与 gracedb KnowledgeMemory 的"Recall→Reflect→Consolidate"一致，但知识召回那一路
 // 由调用方传入自建 searchHybrid 的语义结果（避开 gracedb 内部已弃用的纯词法 SearchKnowledge）。
-func reflectConsolidated(aiService *ai.AIService, message string, memories []string, knowledge []string) (MemoryReflection, RememberVerdict, error) {
+func reflectConsolidated(aiService *ai.AIService, message string, memories []string, knowledge []string, context []string) (MemoryReflection, RememberVerdict, error) {
 	ref := MemoryReflection{}
 	// 默认判定：沿用现有 evaluateRemember 的"值得记 + 重要度"
-	verdict, err := evaluateRemember(aiService, rememberTaskPrompt(message, memories, knowledge), message)
+	verdict, err := evaluateRemember(aiService, rememberTaskPrompt(message, memories, knowledge, context), message)
 	if err != nil {
 		return ref, verdict, err
 	}
@@ -45,7 +46,7 @@ func reflectConsolidated(aiService *ai.AIService, message string, memories []str
 	// 仅当判定值得记时才做结构化反射（产出 Summary/Facts/Themes/Entities 供知识图谱等使用）。
 	// 不值得记就不浪费这次 LLM 调用；反射失败不阻断（保留上面的 deterministic summary 兜底）。
 	if verdict.ShouldRemember && aiService != nil {
-		if s, ok := reflectStructure(aiService, message, memories, knowledge); ok {
+		if s, ok := reflectStructure(aiService, message, memories, knowledge, context); ok {
 			if strings.TrimSpace(s.Summary) != "" {
 				ref.Summary = s.Summary
 			}
@@ -60,11 +61,11 @@ func reflectConsolidated(aiService *ai.AIService, message string, memories []str
 // reflectStructure 用一次 LLM 调用从消息+既有记忆/知识中提取结构化反射：
 // summary（折叠后的记忆摘要）、facts、themes（主题）、entities（实体）。
 // 返回 ok=false 表示 LLM 调用失败或未能解析出有效 summary（调用方保留降级 summary）。
-func reflectStructure(aiService *ai.AIService, message string, memories []string, knowledge []string) (MemoryReflection, bool) {
+func reflectStructure(aiService *ai.AIService, message string, memories []string, knowledge []string, context []string) (MemoryReflection, bool) {
 	if aiService == nil {
 		return MemoryReflection{}, false
 	}
-	aiMessages := []ai.Message{{Role: "user", Content: reflectionExtractPrompt(message, memories, knowledge)}}
+	aiMessages := []ai.Message{{Role: "user", Content: reflectionExtractPrompt(message, memories, knowledge, context)}}
 	out, err := aiService.GetCompletion(ai.TaskTypeAnalysis, aiMessages)
 	if err != nil {
 		return MemoryReflection{}, false
@@ -74,7 +75,8 @@ func reflectStructure(aiService *ai.AIService, message string, memories []string
 
 // reflectionExtractPrompt 构造"结构化反射"的 LLM 提示：把消息+既有记忆折叠成带主题/实体的摘要。
 // 与 rememberTaskPrompt（判定是否值得记）不同，这里专注产出可入图谱的结构（summary/facts/themes/entities）。
-func reflectionExtractPrompt(message string, memories []string, knowledge []string) string {
+// context 为最近几条对话消息（可选），帮助 LLM 理解语境后提取更准确的结构化记忆。
+func reflectionExtractPrompt(message string, memories []string, knowledge []string, context []string) string {
 	var b strings.Builder
 	b.WriteString("请把以下对话信息折叠合并成一条结构化记忆，提取关键实体与主题。\n")
 	b.WriteString("仅返回 JSON，形如 {\"summary\":\"...\",\"facts\":[\"...\"],\"themes\":[\"...\"],\"entities\":[\"...\"]}\n")
@@ -82,6 +84,15 @@ func reflectionExtractPrompt(message string, memories []string, knowledge []stri
 	b.WriteString("- facts: 明确的事实要点列表\n")
 	b.WriteString("- themes: 2-5 个主题词（如“项目、偏好、约定”）\n")
 	b.WriteString("- entities: 关键实体/人名/项目名（如“团队A、张三”）\n")
+	if len(context) > 0 {
+		b.WriteString("\n对话上下文（最近几条消息，帮助理解语境）：\n")
+		for i, c := range context {
+			if i >= 5 {
+				break
+			}
+			b.WriteString("- " + c + "\n")
+		}
+	}
 	if len(memories) > 0 {
 		b.WriteString("\n已有相关记忆（可能重复提及同一件事）：\n")
 		for i, m := range memories {
@@ -106,9 +117,19 @@ func reflectionExtractPrompt(message string, memories []string, knowledge []stri
 
 // rememberTaskPrompt 构造反射用的 LLM 提示：让模型识别主题/事实并把相关记忆折叠。
 // 说明：evaluateRemember 关注"是否值得记 + 重要度"，这里补充上下文让判定更准（合并去重）。
-func rememberTaskPrompt(message string, memories []string, knowledge []string) string {
+// context 为最近几条对话消息（可选），帮助 LLM 理解"这句话在讨论什么"再判断是否值得记。
+func rememberTaskPrompt(message string, memories []string, knowledge []string, context []string) string {
 	var b strings.Builder
 	b.WriteString("判断以下对话内容是否包含值得记忆的长期信息，并给出主题与要点。\n")
+	if len(context) > 0 {
+		b.WriteString("\n对话上下文（最近几条消息，帮助理解当前消息的语境）：\n")
+		for i, c := range context {
+			if i >= 5 {
+				break
+			}
+			b.WriteString("- " + c + "\n")
+		}
+	}
 	if len(memories) > 0 {
 		b.WriteString("\n用户/群已有相关记忆（可能重复提及，属于同一件事）：\n")
 		for i, m := range memories {

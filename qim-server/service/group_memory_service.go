@@ -59,13 +59,13 @@ func (s *GroupMemoryService) Remember(groupID uint, conversationID uint, content
 }
 
 // ConsolidateGroupMessage 群记忆反射闭环（Recall→Consolidate）：召回本群既有的相关记忆
-// + 传入的群知识片段，连同当前群消息一起 LLM 折叠成带主题/摘要的结构化记忆再落库。
+// + 传入的群知识片段，连同当前群消息+对话上下文一起 LLM 折叠成带主题/摘要的结构化记忆再落库。
 //
 // 相比直接 Remember 原始消息：能折叠重复提及的同一事实、产出结构化摘要，作为更高层
 // 群记忆被后续召回。knowledge 由调用方用自建 searchHybrid 语义召回后传入（本服务不持
-// 有 groupDocSvc，避免循环依赖）。用户作用域与 Namespace 保持 group_assistant 隔离不变。
+// 有 groupDocSvc，避免循环依赖）。context 为最近几条对话消息（可选）。
 // 返回是否真的落库。
-func (s *GroupMemoryService) ConsolidateGroupMessage(groupID, conversationID uint, content string, knowledge []string) (bool, error) {
+func (s *GroupMemoryService) ConsolidateGroupMessage(groupID, conversationID uint, content string, knowledge []string, context []string) (bool, error) {
 	if s.db == nil {
 		return false, nil
 	}
@@ -80,7 +80,7 @@ func (s *GroupMemoryService) ConsolidateGroupMessage(groupID, conversationID uin
 		}
 	}
 
-	ref, verdict, err := reflectConsolidated(s.aiService, content, memSnippets, knowledge)
+	ref, verdict, err := reflectConsolidated(s.aiService, content, memSnippets, knowledge, context)
 	if err != nil {
 		return false, err
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
+	"gorm.io/gorm"
 	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/service"
@@ -1139,8 +1140,10 @@ func (e *SmartReplyEngine) maybeRememberSenderMessage(senderID uint, conversatio
 		if existing, err := e.memorySvc.Recall(senderID, content, 1); err == nil && len(existing) > 0 && existing[0].Score > 0.85 {
 			return
 		}
+		// 对话上下文：取最近 5 条消息，帮助 LLM 理解"这句话在讨论什么"
+		ctx := fetchRecentMessages(db, conversationID, content, 5)
 		// 记忆反射闭环：内部完成"是否值得记 + 重要度 + 折叠既有记忆"，仅在值得记时落库
-		if ok, err := e.memorySvc.ConsolidateMessage(senderID, conversationID, content); err != nil {
+		if ok, err := e.memorySvc.ConsolidateMessage(senderID, conversationID, content, ctx); err != nil {
 			log.Printf("[AvatarMemory] 反射失败: user=%d err=%v", senderID, err)
 		} else if ok {
 			log.Printf("[AvatarMemory] 反射记忆已写入 user=%d", senderID)
@@ -1163,6 +1166,9 @@ func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationI
 		if existing, err := e.groupMemorySvc.Recall(groupID, content, 1); err == nil && len(existing) > 0 && existing[0].Score > 0.85 {
 			return
 		}
+		db := database.GetDB()
+		// 对话上下文：取最近 5 条消息
+		ctx := fetchRecentMessages(db, conversationID, content, 5)
 		// 群知识片段：语义召回本群知识库，作为反射的折叠素材（群记忆可以借用群知识）
 		var knowledge []string
 		if e.unifiedKnowledge != nil {
@@ -1173,12 +1179,43 @@ func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationI
 			}
 		}
 		// 群记忆反射闭环：内部完成"是否值得记 + 重要度 + 折叠既有群记忆/群知识"，仅值得记时落库
-		if ok, err := e.groupMemorySvc.ConsolidateGroupMessage(groupID, conversationID, content, knowledge); err != nil {
+		if ok, err := e.groupMemorySvc.ConsolidateGroupMessage(groupID, conversationID, content, knowledge, ctx); err != nil {
 			log.Printf("[GroupMemory] 反射失败: group=%d err=%v", groupID, err)
 		} else if ok {
 			log.Printf("[GroupMemory] 反射记忆已写入 group=%d", groupID)
 		}
 	}()
+}
+
+// fetchRecentMessages 从 DB 查最近 N 条消息（排除当前消息本身），格式化为
+// "[发言人]: 内容" 供记忆反射的 LLM 理解对话语境。查不到时返回 nil（向后兼容）。
+func fetchRecentMessages(db *gorm.DB, conversationID uint, currentContent string, limit int) []string {
+	var messages []model.Message
+	db.Where("conversation_id = ? AND type IN ?", conversationID, []string{"text", "markdown"}).
+		Preload("Sender").
+		Order("created_at DESC").
+		Limit(limit + 5). // 多取几条以防当前消息在窗口内
+		Find(&messages)
+
+	var result []string
+	for _, msg := range messages {
+		if msg.Content == currentContent {
+			continue // 排除当前消息本身
+		}
+		name := msg.Sender.Nickname
+		if name == "" {
+			name = msg.Sender.Username
+		}
+		result = append(result, fmt.Sprintf("[%s]: %s", name, msg.Content))
+		if len(result) >= limit {
+			break
+		}
+	}
+	// 倒序：让结果按时间正序（旧→新）
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
+	}
+	return result
 }
 
 // looksMemorable 便宜预筛，过滤明显不值得记的消息（短消息、纯 @AI 指令）。

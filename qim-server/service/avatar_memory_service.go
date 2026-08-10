@@ -44,15 +44,15 @@ func (s *AvatarMemoryService) Remember(userID uint, conversationID uint, content
 }
 
 // ConsolidateMessage 记忆反射闭环（Recall→Consolidate）：先把该用户既有的相关记忆
-// 召回进来，连同当前消息一起 LLM 折叠成带主题/摘要的结构化记忆，再落库。
+// 召回进来，连同当前消息+对话上下文一起 LLM 折叠成带主题/摘要的结构化记忆，再落库。
 //
 // 相比直接 Remember 原始消息，反射能：
 //   - 折叠重复提及的同一事实（合并去重）
 //   - 产出 Summary/Themes 结构，能在回落时作为更高层记忆被召回
 //
-// 群知识片段不在 sender 分身记忆范围内（那是群级记忆的事），此处只折叠个人既有记忆。
+// context 为最近几条对话消息（可选），帮助 LLM 理解"这句话在讨论什么"再判断是否值得记。
 // 返回是否真的落库（ShouldRemember=false 时为 false）。
-func (s *AvatarMemoryService) ConsolidateMessage(userID, conversationID uint, content string) (bool, error) {
+func (s *AvatarMemoryService) ConsolidateMessage(userID, conversationID uint, content string, context []string) (bool, error) {
 	if s.db == nil {
 		return false, nil
 	}
@@ -67,7 +67,7 @@ func (s *AvatarMemoryService) ConsolidateMessage(userID, conversationID uint, co
 		}
 	}
 
-	ref, verdict, err := reflectConsolidated(s.aiService, content, memSnippets, nil)
+	ref, verdict, err := reflectConsolidated(s.aiService, content, memSnippets, nil, context)
 	if err != nil {
 		return false, err
 	}
