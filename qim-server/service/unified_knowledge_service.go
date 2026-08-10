@@ -99,7 +99,7 @@ func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID 
 	sources := make([]KnowledgeSource, 0, len(snippets))
 	bestScore := make(map[string]float64, len(snippets))
 	for i, snip := range snippets {
-		sourceTag := fmt.Sprintf("（语义检索，相关度: %.1f%%）", snip.Score*10)
+		sourceTag := fmt.Sprintf("（语义检索，相关度: %.1f%%）", snip.Score*100)
 		parts = append(parts, fmt.Sprintf("[%d] %s %s\n%s", i+1, snip.Title, sourceTag, snip.Content))
 		title := snip.Title
 		if title == "" {

@@ -23,6 +23,7 @@ func TestBuildContextWithSources_SingleRetrieval(t *testing.T) {
 
 	ctx, sources := svc.BuildContextWithSources("问题", 1, 3)
 	assert.Contains(t, ctx, "Q3 规划", "上下文串应包含命中标题")
+	assert.Contains(t, ctx, "相关度: 92.0%", "提示词相关度标签应为 score*100，与前端徽章一致")
 	require.Len(t, sources, 2)
 	assert.Equal(t, "Q3 规划", sources[0].Title)
 	assert.Equal(t, 0.92, sources[0].Score)
