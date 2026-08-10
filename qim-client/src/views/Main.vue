@@ -1790,6 +1790,7 @@ const connectWebSocket = () => {
     'group_announcement_updated': refreshUserGroupsAfter(handleGroupAnnouncementUpdated),
     'notification': handleNotification,
     'new_notification': handleNewNotification,
+    'approval_notification': handleApprovalNotification,
     'system_config_updated': (data: any) => systemConfigStore.updateFromServer(data),
     'system_message': handleSystemMessage,
     // 用户状态变化
@@ -2050,6 +2051,25 @@ const syncAssistantMember = (group: any, member: any) => {
   const stored = chatStore.conversations.find(c => sameConversationId(c.id, group.id))
   if (stored) {
     chatStore.patchConversation(stored.id, { members: patchMembers(stored.members || []) })
+  }
+}
+
+// 处理审批通知：审批通过/拒绝后，刷新对应实体状态。
+// 目前关键场景是「频道审批」——admin 审批通过后后端更新频道 status=pending→active
+// 并广播 approval_notification，这里刷新频道列表并更新已打开频道的状态，
+// 让创建者无需手动刷新即可看到频道可用。
+const handleApprovalNotification = (data: any) => {
+  logger.log('收到审批通知:', data)
+  if (!data || data.entity_type === 'channel') {
+    // 频道审批通过 → 主动刷新频道列表，使 pending 频道转为 active 可见
+    channelStore.fetchChannels()
+    const channelId = data?.extra_context?.channel_id
+    if (channelId && data.action === 'approved') {
+      const channel = channelStore.channels.find((c: any) => String(c.id) === String(channelId))
+      if (channel && channel.status === 'pending') {
+        channel.status = 'active'
+      }
+    }
   }
 }
 

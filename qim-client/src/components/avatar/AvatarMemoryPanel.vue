@@ -137,7 +137,8 @@ async function performSearch() {
 const handleSearch = debounce(performSearch, 300)
 
 async function handleForgetMemory(memory: MemoryRecord) {
-  if (!confirm('确定要删除这条记忆吗？')) return
+  const result = await window.$QMessageBox.confirm('确定要删除这条记忆吗？', '删除记忆')
+  if (result.action !== 'confirm') return
 
   try {
     const data = await request<{ code: number }>(`/api/v1/avatar/memory/${memory.doc_id}`, { method: 'DELETE' })
