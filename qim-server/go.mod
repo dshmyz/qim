@@ -33,7 +33,7 @@ require (
 )
 
 require (
-	github.com/dshmyz/gracedb v1.3.0
+	github.com/dshmyz/gracedb v1.3.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/term v0.45.0
