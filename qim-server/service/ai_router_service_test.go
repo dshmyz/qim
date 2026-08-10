@@ -112,6 +112,31 @@ func TestAIRouter_SaveRouter_RejectsUnknownProvider(t *testing.T) {
 	assert.False(t, has)
 }
 
+// 纯 config.yaml 部署（DB 无供应商）时，运行时池子回退 config.yaml 供应商，
+// 路由引用该 provider 应被放行（运行时能用则保存应通过），而非误报“未配置”。
+func TestAIRouter_SaveRouter_AcceptsConfigProviderWhenDBEmpty(t *testing.T) {
+	db := setupAIRouterTestDB(t)
+	svc := NewAIRouterService(db)
+	svc.SetDefaultRouterFunc(defaultRouterForTest)
+
+	// DB 不登记任何供应商；AIService 仅靠 config.yaml 的 openai 配置初始化池子
+	aiSvc := ai.NewAIService(&ai.AIConfig{OpenAI: ai.OpenAIConfig{APIKey: "test-key", Model: "deepseek-v4-flash", BaseURL: "https://example.com"}})
+	assert.Contains(t, aiSvc.ProviderNames(), "openai", "config.yaml openai 应在运行时池中")
+
+	rc := &ai.RouterConfig{
+		DefaultTask: ai.TaskTypeChat,
+		Routes: map[ai.TaskType]ai.Route{
+			ai.TaskTypeChat: {Provider: "openai", Model: "deepseek-v4-flash"},
+		},
+	}
+	// 修复前：openai 不在 DB -> ErrUnknownRouterProvider；修复后：池子含 openai -> 放行
+	require.NoError(t, svc.SaveRouter(aiSvc, rc))
+
+	got, _, err := svc.GetEffectiveRouter()
+	require.NoError(t, err)
+	assert.Equal(t, "openai", got.Routes[ai.TaskTypeChat].Provider)
+}
+
 // 供应商启用了但 model 未登记，若其 models 非空则拒绝；models 为空允许自由输入
 func TestAIRouter_SaveRouter_ModelValidation(t *testing.T) {
 	db := setupAIRouterTestDB(t)

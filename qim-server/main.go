@@ -129,7 +129,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Shutdown 完成后关闭 DB
+	// Shutdown 完成后：先关闭各回复编排引擎（拒绝新提交、回收 worker goroutine），再关 DB。
+	// HTTP 已停，不会再有新 Submit；RWMutex 保证与残余在途 Submit 互斥不 panic。
+	if di.GlobalContainer.MessageService != nil {
+		di.GlobalContainer.MessageService.Close()
+	}
+	if as := di.GlobalContainer.AvatarService; as != nil && as.GetWorkerPool() != nil {
+		as.GetWorkerPool().Close()
+	}
+	if sre := handler.GetSmartReplyEngine(); sre != nil {
+		sre.Close()
+	}
 	database.Close(db)
 	logger.L().Info("服务器已关闭")
 	os.Exit(0)

@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { useRequest, request } from './useRequest'
 import { getStoredServerUrl } from './useServerUrl'
-import type { Note, AIAnalyzeResult } from '../types/note'
+import type { Note, AIAnalyzeResult, NoteVectorSearchResult } from '../types/note'
 
 export function useNotes() {
   const { get, post, put, delete: del } = useRequest()
@@ -128,6 +128,25 @@ export function useNotes() {
     }
   }
 
+  // 逐笔记切换「允许分身读取」：true=分身可检索，false=分身检索不到
+  const setNoteAiAccessible = async (id: number, accessible: boolean): Promise<Note | null> => {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await request<any>(`/api/v1/notes/${id}/access`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ai_accessible: accessible })
+      })
+      const note = response?.data
+      return note ? { ...note, tags: parseTags(note.tags) } : null
+    } catch (e: any) {
+      error.value = e.message
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   const exportNote = async (id: number, title: string) => {
     const token = localStorage.getItem('token')
     const baseUrl = getStoredServerUrl()
@@ -181,6 +200,7 @@ export function useNotes() {
     updateNoteTags,
     updateNoteSummary,
     exportNote,
+    setNoteAiAccessible,
     searchNotesSemantic
   }
 }

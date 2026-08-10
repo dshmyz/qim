@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -81,6 +80,13 @@ func (e *SmartReplyEngine) SetAvatarTriggerService(triggerSvc AvatarTriggerDecid
 // SetMemoryService sets the avatar memory service for the smart reply engine
 func (e *SmartReplyEngine) SetMemoryService(ms *service.AvatarMemoryService) {
 	e.memorySvc = ms
+}
+
+// Close 关闭群助手回复编排引擎，回收 worker goroutine。供服务优雅退出时调用。
+func (e *SmartReplyEngine) Close() {
+	if e.convReplyWorker != nil {
+		e.convReplyWorker.Close()
+	}
 }
 
 // SetGroupMemoryService 注入群聊助手的群级记忆服务（与分身记忆隔离）。
@@ -201,8 +207,9 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 		log.Printf("[SmartReply] 群聊 AI 配置: enabled=%v replyMode=%s triggerKeywords=%s",
 			aiConfig.Enabled, aiConfig.ReplyMode, aiConfig.TriggerKeywords)
 
-		// 群级记忆写入：群 AI 启用时，异步把值得记的群消息择要写入本群记忆库（不阻塞主流程）。
-		if aiConfig.Enabled {
+		// 群级记忆写入：群 AI 启用且未显式关闭学习时，异步把值得记的群消息择要写入本群记忆库。
+		// LearnEnabled 为 opt-out：默认学习（GetAIConfig 默认 true），仅显式 false 才停写。
+		if aiConfig.Enabled && aiConfig.LearnEnabled {
 			e.maybeRememberGroupMessage(group.ID, conversationID, content)
 		}
 
@@ -633,8 +640,8 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 			}
 		}
 		// 与 handleAIMentionWithTools 错误路径一致：若已收集到知识来源，仍需把 Extra 落库，
-	// 否则刷新/REST 回放后「知识来源」徽章丢失。
-	e.persistAIMessageExtra(getMsg, nil, input.KnowledgeSources)
+		// 否则刷新/REST 回放后「知识来源」徽章丢失。
+		e.persistAIMessageExtra(getMsg, nil, input.KnowledgeSources)
 		finish()
 		return
 	}
@@ -786,25 +793,7 @@ func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context,
 // 或无知识来源的路径上，会强制落库一条空消息并在收尾时广播空白气泡（配合 finish 在
 // created==nil 时跳过以彻底杜绝）。全部调用点原先传 getMsg() 返回值，现改为传 getMsg 函数。
 func (e *SmartReplyEngine) persistAIMessageExtra(getMsg func() *model.Message, toolCalls []ToolCallRecord, sources []service.KnowledgeSource) {
-	extra := map[string]interface{}{}
-	if len(toolCalls) > 0 {
-		extra["tool_calls"] = toolCalls
-	}
-	if len(sources) > 0 {
-		extra["knowledge_sources"] = sources
-	}
-	if len(extra) == 0 {
-		return
-	}
-	msg := getMsg()
-	if msg == nil {
-		return
-	}
-	if b, err := json.Marshal(extra); err == nil {
-		msg.Extra = string(b)
-	} else {
-		log.Printf("[SmartReplyGraph] 序列化消息 Extra 失败: %v", err)
-	}
+	service.PersistAIMessageExtra(getMsg, toolCalls, sources)
 }
 
 // knowledgeSourcesExtra 把命中的知识来源转成供 SendAIMessage 写入 Extra 的 map；
@@ -840,71 +829,16 @@ func (e *SmartReplyEngine) buildMentionPrefix(conversationID, userID uint) strin
 }
 
 // newToolCallFeedback 构造群 @AI 带工具回复的 ReAct 进度回调（内置工具与外部工具路径共用）。
-//
-// 工具调用会触发两次：phase="start" 推一条 status=running 的 ai_tool_call 事件，前端把该
-// 行渲染成「进行中」动画态，回应工具执行那几秒的过程反馈；phase="end" 推终态事件（ok/error）
-// 并把终态记录收进 toolCalls 供结束时写 Extra 持久化。同一工具调用的 start/end 共享
-// toolCallID（即 ai_service 传入的 tc.ID），前端据此按 ID 把进行态更新为终态而非重复追加。
+// 逻辑已下沉到 service.NewToolCallFeedback（与专属机器人回复路径共用，避免重复），
+// 此处仅做类型适配：*WebSocketMessageSender 满足 service.StreamingAISender 接口。
 func newToolCallFeedback(sender *WebSocketMessageSender, conversationID uint, getMsg func() *model.Message, toolCalls *[]ToolCallRecord) ai.ReActStepCallback {
-	return func(_ int, toolCallID, phase, tool string, args map[string]interface{}, result interface{}, execErr error) {
-		if phase == "start" {
-			rec := ToolCallRecord{ID: toolCallID, ToolLabel: friendlyToolLabel(tool), Args: args, Status: "running"}
-			if msg := getMsg(); msg != nil {
-				sender.SendToolCallEvent(conversationID, msg.ID, rec)
-			}
-			return
-		}
-		// end：收集终态记录用于持久化，并实时推送终态事件（前端按 ID 覆盖进行态行）
-		status := "ok"
-		if execErr != nil || result == nil {
-			status = "error"
-		}
-		rec := ToolCallRecord{ID: toolCallID, ToolLabel: friendlyToolLabel(tool), Args: args, Status: status}
-		*toolCalls = append(*toolCalls, rec)
-		if msg := getMsg(); msg != nil {
-			sender.SendToolCallEvent(conversationID, msg.ID, rec)
-		}
-	}
+	return service.NewToolCallFeedback(sender, conversationID, getMsg, toolCalls)
 }
 
-// friendlyToolLabel 把内部工具名映射为面向用户的中文动作名词（表意的工具名，不带
-// 进行时态）。内置群管理工具（group_management/user_management/...）与外部 mcp_*
-// 工具都走这里；未命中的退化为通用「外部服务」。
-//
-// 调用总是发生在工具执行结束后（feedback 闭包在工具返回后才触发），因此标签用
-// 动作名词而非「正在…」进行时；完成/失败由 status + 前端状态徽标体现，避免结束后
-// 卡片仍显示「正在 XX」的奇怪语义。
+// friendlyToolLabel 把内部工具名映射为面向用户的中文动作名词。逻辑已下沉到
+// service.FriendlyToolLabel，此处保留薄包装供 handler 内既有调用点零改动。
 func friendlyToolLabel(tool string) string {
-	switch {
-	// 内置群管理工具
-	case strings.Contains(tool, "group_management"):
-		return "群管理操作"
-	case strings.Contains(tool, "user_management"):
-		return "用户管理"
-	case strings.Contains(tool, "group_summary"):
-		return "群聊总结"
-	case strings.Contains(tool, "search_messages"):
-		return "群消息搜索"
-	case strings.Contains(tool, "create_group_task"):
-		return "创建群待办"
-	case strings.Contains(tool, "system_notification"):
-		return "系统通知"
-	// 外部 MCP 工具（mcp_<conn>_<tool>）
-	case strings.Contains(tool, "calculator"), strings.Contains(tool, "calc"):
-		return "计算"
-	case strings.Contains(tool, "weather"):
-		return "查询天气"
-	case strings.Contains(tool, "search"), strings.Contains(tool, "query"):
-		return "查询"
-	case strings.Contains(tool, "translate"):
-		return "翻译"
-	case strings.Contains(tool, "image"), strings.Contains(tool, "img"):
-		return "生成图片"
-	case strings.Contains(tool, "pdf"), strings.Contains(tool, "doc"):
-		return "处理文档"
-	default:
-		return "外部服务"
-	}
+	return service.FriendlyToolLabel(tool)
 }
 
 // splitReplyChunks 把完整回复切成适合逐块送达的小段（尽量在句子/停顿处断开），

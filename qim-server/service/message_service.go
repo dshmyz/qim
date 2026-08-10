@@ -2,9 +2,15 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +53,17 @@ type MessageService struct {
 
 	contextAsm     *ContextAssembler // 上下文注入预制（笔记/记忆/群文档知识源，声明式）；nil=跳过
 	botReplyWorker *ReplyOrchestrator // 专属机器人回复的并发控制（限并发+会话串行）；nil=走旧直发
+
+	// streamingSender 流式 AI 消息发送 + 工具调用事件推送能力（handler.WebSocketMessageSender 实现）。
+	// 注入后专属机器人 1:1 回复走流式逐 token + 工具调用（与群 @AI 同款基建）；nil=降级到老的
+	// 「collect 全文 -> 单条消息广播」非流式路径。
+	streamingSender StreamingAISender
+
+	// 文件处理能力：bot 会话收到 file/image 消息时，下载+解析文件内容注入 AI 上下文。
+	// storageAccessor 用于从存储后端读取文件，docParser 用于解析文档提取文本。
+	// 两者均 nil 时文件消息跳过 bot 回复（降级：不解析、不触发 AI）。
+	storageAccessor StorageAccessor
+	docParser       *DocumentParser
 }
 
 func NewMessageService(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService) *MessageService {
@@ -62,11 +79,18 @@ func NewMessageService(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService) *Messa
 	}
 }
 
+// Close 关闭专属机器人回复编排引擎，回收 worker goroutine。供服务优雅退出时调用。
+func (s *MessageService) Close() {
+	if s.botReplyWorker != nil {
+		s.botReplyWorker.Close()
+	}
+}
+
 // submitBotReply 把一次专属机器人回复提交到并发控制的异步队列。
 // 队列就绪即异步执行（与原 SafeGo 直发语义一致），worker 内按会话串行，
 // 保证同会话回复不乱序、不重复；入队超时降级为直接执行，避免消息完全丢失。
-func (s *MessageService) submitBotReply(senderID, convID uint, content string) {
-	handle := func() { s.handleBotMessage(senderID, convID, content) }
+func (s *MessageService) submitBotReply(senderID, convID uint, msgType, content string) {
+	handle := func() { s.handleBotMessage(senderID, convID, msgType, content) }
 	if s.botReplyWorker != nil {
 		if err := s.botReplyWorker.Submit(convID, handle); err == nil {
 			return
@@ -102,6 +126,21 @@ func (s *MessageService) SetGroupContextServices(memorySvc *GroupMemoryService, 
 		// 统一装配的长期记忆/群文档源使用与外部 bot 同源的群知识服务；长期记忆面向 bot 用户。
 		s.contextAsm.SetGroupContextServices(nil, knowledgeSvc)
 	}
+}
+
+// SetStreamingAISender 注入流式 AI 消息发送器，使专属机器人 1:1 回复走流式逐 token +
+// 工具调用（复用群 @AI 的 SendStreamingAIMessage / GetCompletionWithToolsStreamMultiStep
+// / SendToolCallEvent 基建）。nil=降级到非流式老路径（保底不丢回复能力）。
+func (s *MessageService) SetStreamingAISender(sender StreamingAISender) {
+	s.streamingSender = sender
+}
+
+// SetFileCapabilities 注入文件处理能力（存储访问 + 文档解析），使 bot 会话收到
+// file/image 消息时能下载解析文件内容并注入 AI 上下文。两者均可传 nil：
+// 缺失时文件消息跳过 bot 回复（降级：不解析、不触发 AI）。
+func (s *MessageService) SetFileCapabilities(store StorageAccessor, parser *DocumentParser) {
+	s.storageAccessor = store
+	s.docParser = parser
 }
 
 // loadSensitiveWords 从数据库加载启用的敏感词到内存缓存，返回 DB 错误。
@@ -220,7 +259,7 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 	db.Model(&model.Conversation{}).Where("id = ?", convID).Select("type").First(&convType)
 
 	if convType == "bot" {
-		s.submitBotReply(senderID, convID, content)
+		s.submitBotReply(senderID, convID, msgType, content)
 	} else {
 		// 恢复会话显示：新消息到来时，如果会话被隐藏则恢复显示
 		db.Model(&model.ConversationSession{}).
@@ -435,7 +474,7 @@ func (s *MessageService) notifyPullModeBot(convID, senderID uint, botName string
 	}
 }
 
-func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
+func (s *MessageService) handleBotMessage(userID, convID uint, msgType, content string) {
 	db := s.db
 
 	var botConv model.BotConversation
@@ -461,34 +500,41 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		return
 	}
 
+	// 消息类型分流：文本走流式+工具，文件/图片走解析+注入，其他类型跳过
+	switch msgType {
+	case "file":
+		s.handleBotFileMessage(userID, convID, bot, content)
+		return
+	case "image":
+		s.handleBotImageMessage(userID, convID, bot, content)
+		return
+	case "text", "markdown":
+		// 继续走下面的文本处理路径
+	default:
+		return // sticker/system 等不触发 bot 回复
+	}
+
 	var messages []model.Message
 	db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
 
 	aiMessages := make([]ai.Message, 0, len(messages)+1)
 
-	// 创建者笔记作为知识库：开关开启 + noteSearcher 可用时，按 bot.CreatorID scope 检索
-	// scope 隔离：SearchNotes 内部按 user_notes_<userID> 分集合，只能读到创建者自己的笔记
-	// 降级策略：noteSearcher==nil（向量库未配）或检索出错时静默跳过，不影响主流程
-	// 命中笔记的标题/分数会写入 message.Extra（JSON），前端据此渲染折叠「知识来源」标签。
-	// 统一走 ContextAssembler 声明式装配——后续给 bot 加记忆/群文档源只需在 sources 加一行。
 	botCfg := ParseBotConfig(bot.Config)
-	var knowledgeSources []map[string]interface{}
-	if botCfg.UseCreatorNotes && s.noteSearcher != nil && bot.CreatorID > 0 && s.contextAsm != nil {
+
+	// 创建者笔记作为知识库：仅当开关开启 + 创建者本人在和自己 bot 对话时注入。
+	// 隐私：他人和 bot 对话时（userID != bot.CreatorID）不注入创建者笔记，避免泄漏创建者
+	// 私有数据；此时 bot 改经 search_knowledge 工具按 talker scope 检索其自己的笔记/知识。
+	// 降级：noteSearcher==nil（向量库未配）或检索出错时静默跳过，不影响主流程。
+	// 命中笔记写入 knowledgeSources，供消息 Extra 持久化（前端「知识来源」徽章）。
+	var knowledgeSources []KnowledgeSource
+	if botCfg.UseCreatorNotes && s.noteSearcher != nil && bot.CreatorID > 0 && s.contextAsm != nil && userID == bot.CreatorID {
 		bundle := s.contextAsm.Assemble(context.Background(), content, []ContextSource{
 			{Type: SourceNotes, Key: bot.CreatorID, TopK: 3},
 		})
 		if len(bundle.Messages) > 0 {
 			aiMessages = append(aiMessages, bundle.Messages...)
 		}
-		if len(bundle.KnowledgeSources) > 0 {
-			knowledgeSources = make([]map[string]interface{}, 0, len(bundle.KnowledgeSources))
-			for _, ks := range bundle.KnowledgeSources {
-				knowledgeSources = append(knowledgeSources, map[string]interface{}{
-					"title": ks.Title,
-					"score": ks.Score,
-				})
-			}
-		}
+		knowledgeSources = bundle.KnowledgeSources
 	}
 
 	for _, msg := range messages {
@@ -502,14 +548,398 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 		})
 	}
 
+	// 流式 + 工具路径（streamingSender 已注入）：复用群 @AI 同款基建，逐 token 流出 +
+	// 工具调用卡片 + Extra 持久化。未注入（测试/降级）走 handleBotMessageLegacy 老路径。
+	// TODO(v2.1): streamingSender mandatory 注入 + 生产验证稳定后，移除 legacy 分支。
+	s.dispatchBotReply(userID, convID, bot, botCfg, aiMessages, knowledgeSources)
+}
+
+// dispatchBotReply 统一分发 bot 回复到流式或遗留路径。
+// 消除 handleBotMessage / handleBotFileMessage / handleBotImageMessage 中重复的
+// if streamingSender != nil { streaming } else { legacy } 分支。
+func (s *MessageService) dispatchBotReply(userID, convID uint, bot model.Bot, botCfg BotConfig, aiMessages []ai.Message, knowledgeSources []KnowledgeSource) {
+	if s.streamingSender != nil && s.aiService != nil {
+		s.handleBotMessageStreaming(userID, convID, bot, botCfg, aiMessages, knowledgeSources)
+	} else {
+		s.handleBotMessageLegacy(userID, convID, bot, botCfg, aiMessages, knowledgeSources)
+	}
+}
+
+// buildBotHistory 从 bot 1:1 会话中提取最近 N 条消息，转为 ai.Message 格式。
+// bot 虚拟用户的消息标记为 "assistant"，人类消息标记为 "user"。
+// 供 handleBotMessage / handleBotFileMessage / handleBotImageMessage 共用。
+func (s *MessageService) buildBotHistory(bot model.Bot, convID uint, limit int) []ai.Message {
+	var messages []model.Message
+	s.db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(limit).Find(&messages)
+	aiMessages := make([]ai.Message, 0, len(messages))
+	for _, msg := range messages {
+		role := "user"
+		if bot.VirtualUserID != nil && msg.SenderID == *bot.VirtualUserID {
+			role = "assistant"
+		}
+		aiMessages = append(aiMessages, ai.Message{Role: role, Content: msg.Content})
+	}
+	return aiMessages
+}
+
+// botFileContentJSON 从文件消息 content JSON 中解析出 {url, id, name, size}。
+// url 即 StoragePath，id 即 model.File.ID。
+type botFileContentJSON struct {
+	URL  string `json:"url"`
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+// handleBotFileMessage 处理 bot 1:1 会话中的文件消息（type="file"）。
+// 下载文件到临时文件 → DocumentParser 解析纯文本 → 注入 aiMessages 作为上下文 →
+// 走流式+工具回复路径。不支持的格式回复友好提示；文件过大/读取失败等降级为错误回复。
+func (s *MessageService) handleBotFileMessage(userID, convID uint, bot model.Bot, content string) {
+	log := logger.WithModule("handleBotMessage")
+
+	// 依赖缺失：存储或解析器未注入 → 跳过
+	if s.storageAccessor == nil || s.docParser == nil {
+		log.Warn("文件处理能力未注入（storageAccessor/docParser），跳过", "convID", convID)
+		s.sendBotTextReply(userID, convID, bot, "📎 文件处理能力暂不可用，请稍后再试。")
+		return
+	}
+
+	var fc botFileContentJSON
+	if err := json.Unmarshal([]byte(content), &fc); err != nil {
+		log.Warn("文件消息 content 解析失败", "convID", convID, "error", err)
+		s.sendBotTextReply(userID, convID, bot, "📎 文件消息格式异常，请重新发送。")
+		return
+	}
+	if fc.ID == 0 {
+		log.Warn("文件消息缺少有效 ID", "convID", convID)
+		s.sendBotTextReply(userID, convID, bot, "📎 文件消息格式异常，请重新发送。")
+		return
+	}
+
+	// 查文件记录
+	var file model.File
+	if err := s.db.First(&file, fc.ID).Error; err != nil {
+		log.Warn("文件记录不存在", "fileID", fc.ID, "error", err)
+		s.sendBotTextReply(userID, convID, bot, "📎 文件不存在或已被删除。")
+		return
+	}
+
+	// 大小门控：与群 AI 引用文件一致（20MB）
+	const maxFileSize int64 = 20 * 1024 * 1024
+	if file.Size > maxFileSize {
+		s.sendBotTextReply(userID, convID, bot,
+			fmt.Sprintf("📎 文件「%s」过大（%.1fMB），当前支持的最大文件为 20MB。请压缩后重新发送。",
+				file.Name, float64(file.Size)/(1024*1024)))
+		return
+	}
+
+	// 下载到临时文件
+	reader, err := s.storageAccessor.GetByPath(context.Background(), file.StoragePath)
+	if err != nil {
+		log.Error("读取文件失败", "fileID", file.ID, "storagePath", file.StoragePath, "error", err)
+		s.sendBotTextReply(userID, convID, bot, "📎 读取文件失败，请稍后重试。")
+		return
+	}
+	tmpFile, err := os.CreateTemp("", "qim-bot-*"+filepath.Ext(file.Name))
+	if err != nil {
+		reader.Close()
+		log.Error("创建临时文件失败", "error", err)
+		s.sendBotTextReply(userID, convID, bot, "📎 读取文件失败，请稍后重试。")
+		return
+	}
+	tmpPath := tmpFile.Name()
+	if _, err := io.Copy(tmpFile, reader); err != nil {
+		reader.Close()
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		log.Error("写入临时文件失败", "error", err)
+		s.sendBotTextReply(userID, convID, bot, "📎 读取文件失败，请稍后重试。")
+		return
+	}
+	reader.Close()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	// 解析文件内容
+	parsedText, err := s.docParser.Parse(tmpPath)
+	if err != nil {
+		log.Warn("文件解析失败", "fileID", file.ID, "name", file.Name, "error", err)
+		s.sendBotTextReply(userID, convID, bot,
+			fmt.Sprintf("📎 暂不支持解析该文件格式（%s）。支持的格式：txt/md/csv/json/pdf/docx/pptx/xlsx 等。", filepath.Ext(file.Name)))
+		return
+	}
+
+	if strings.TrimSpace(parsedText) == "" {
+		s.sendBotTextReply(userID, convID, bot, "📎 文件内容为空，无法处理。")
+		return
+	}
+
+	// 截断过长内容，避免撑爆 token 上限
+	const maxFileContextLen = 30000 // ~30KB 文本
+	if len(parsedText) > maxFileContextLen {
+		parsedText = parsedText[:maxFileContextLen] + "\n\n...（内容过长，已截断）"
+	}
+
+	// 构造 aiMessages：历史 + 文件内容作为用户消息
+	aiMessages := s.buildBotHistory(bot, convID, 20)
+	aiMessages = append(aiMessages, ai.Message{
+		Role:    "user",
+		Content: fmt.Sprintf("用户发送了文件「%s」，内容如下：\n\n%s", file.Name, parsedText),
+	})
+
+	// 走流式+工具回复（复用 handleBotMessage 的分流逻辑）
+	botCfg := ParseBotConfig(bot.Config)
+	s.dispatchBotReply(userID, convID, bot, botCfg, aiMessages, nil)
+}
+
+// handleBotImageMessage 处理 bot 1:1 会话中的图片消息（type="image"）。
+// 读取图片字节转 base64 data URL → 设 ai.Message.ImageURL（多模态）→ 走流式+工具回复。
+// Provider 不支持多模态时 AI 只看到文字提示"请识别其内容"然后诚实回复看不了——合理降级。
+func (s *MessageService) handleBotImageMessage(userID, convID uint, bot model.Bot, content string) {
+	log := logger.WithModule("handleBotMessage")
+
+	if s.storageAccessor == nil {
+		log.Warn("存储未注入，跳过图片处理", "convID", convID)
+		s.sendBotTextReply(userID, convID, bot, "📎 图片处理能力暂不可用，请稍后再试。")
+		return
+	}
+
+	var fc botFileContentJSON
+	if err := json.Unmarshal([]byte(content), &fc); err != nil {
+		log.Warn("图片消息 content 解析失败", "convID", convID, "error", err)
+		s.sendBotTextReply(userID, convID, bot, "📎 图片消息格式异常，请重新发送。")
+		return
+	}
+	if fc.ID == 0 {
+		log.Warn("图片消息缺少有效 ID", "convID", convID)
+		s.sendBotTextReply(userID, convID, bot, "📎 图片消息格式异常，请重新发送。")
+		return
+	}
+
+	var file model.File
+	if err := s.db.First(&file, fc.ID).Error; err != nil {
+		log.Warn("图片文件记录不存在", "fileID", fc.ID, "error", err)
+		s.sendBotTextReply(userID, convID, bot, "📎 图片文件不存在或已被删除。")
+		return
+	}
+
+	// 大小门控：与群 AI 引用图片一致（5MB）
+	const maxImageSize int64 = 5 * 1024 * 1024
+	if file.Size > maxImageSize {
+		s.sendBotTextReply(userID, convID, bot,
+			fmt.Sprintf("🖼️ 图片「%s」过大（%.1fMB），当前支持的最大图片为 5MB。请压缩后重新发送。",
+				file.Name, float64(file.Size)/(1024*1024)))
+		return
+	}
+
+	// 读取图片字节
+	reader, err := s.storageAccessor.GetByPath(context.Background(), file.StoragePath)
+	if err != nil {
+		log.Error("读取图片失败", "fileID", file.ID, "error", err)
+		s.sendBotTextReply(userID, convID, bot, "📎 读取图片失败，请稍后重试。")
+		return
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		log.Error("读取图片字节失败", "error", err)
+		s.sendBotTextReply(userID, convID, bot, "📎 读取图片失败，请稍后重试。")
+		return
+	}
+	if len(data) > int(maxImageSize) {
+		log.Warn("图片实际大小超过限制", "fileID", file.ID, "actualSize", len(data))
+		s.sendBotTextReply(userID, convID, bot,
+			fmt.Sprintf("🖼️ 图片实际大小超出限制（%.1fMB），请压缩后重新发送。", float64(len(data))/(1024*1024)))
+		return
+	}
+
+	// 构造 base64 data URL
+	contentType := mime.TypeByExtension(filepath.Ext(file.Name))
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+	dataURL := "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
+
+	// 构造 aiMessages：历史 + 图片（多模态）
+	aiMessages := s.buildBotHistory(bot, convID, 20)
+	aiMessages = append(aiMessages, ai.Message{
+		Role:     "user",
+		Content:  fmt.Sprintf("用户发送了一张图片「%s」，请识别其内容。", file.Name),
+		ImageURL: dataURL,
+	})
+
+	botCfg := ParseBotConfig(bot.Config)
+	s.dispatchBotReply(userID, convID, bot, botCfg, aiMessages, nil)
+}
+
+// sendBotTextReply 直接发送一条 bot 纯文本消息（不经过 AI 管道）。
+// 用于文件/图片处理降级时的用户反馈——错误提示必须原样送达，不得被 AI 重写。
+// 复用 handleBotMessageLegacy 的落库 + 广播逻辑，跳过 AI completion。
+func (s *MessageService) sendBotTextReply(userID, convID uint, bot model.Bot, reply string) {
+	log := logger.WithModule("sendBotTextReply")
+	db := s.db
+
+	botReply := model.Message{
+		ConversationID: convID,
+		SenderID:       *bot.VirtualUserID,
+		Type:           "markdown",
+		Content:        reply,
+		Origin:         "assistant",
+		IsRead:         true,
+	}
+	if err := db.Create(&botReply).Error; err != nil {
+		log.Error("创建 bot 兜底消息失败", "error", err, "convID", convID)
+		return
+	}
+
+	// 预加载 Sender 供前端渲染头像
+	if err := db.Preload("Sender").First(&botReply, botReply.ID).Error; err != nil {
+		log.Error("预加载 bot 兜底消息发送者失败", "error", err, "msgID", botReply.ID)
+	}
+
+	now := time.Now()
+	if err := db.Model(&model.Conversation{}).
+		Where("id = ?", convID).
+		Updates(map[string]interface{}{
+			"last_message_id": botReply.ID,
+			"last_message_at": now,
+		}).Error; err != nil {
+		log.Error("更新会话最后消息失败", "error", err, "convID", convID)
+		return
+	}
+
+	if s.hub != nil {
+		wsMsg := ws.WSMessage{
+			Type: "new_message",
+			Data: s.buildMessageResponse(botReply, nil),
+		}
+		jsonMsg, _ := json.Marshal(wsMsg)
+		s.hub.SendToUser(userID, jsonMsg)
+	}
+
+	log.Info("bot 兜底消息已发送", "convID", convID, "content", reply)
+}
+
+// botAllowedTools 专属机器人 1:1 会话可调用的工具白名单。
+// 按 talker scope（CallerContext.UserID = 和 bot 对话的用户），不暴露创建者私有数据：
+// list_tasks / create_user_task / search_knowledge 均按 ctx.UserID 检索，别人和 bot 对话
+// 只能读到他自己的任务/知识。不含 send_message（防 bot 代用户向其他会话发消息，滥用风险）；
+// 不含 summarize_conversation（群场景导向，1:1 价值有限）。
+var botAllowedTools = []string{
+	"list_tasks",
+	"create_user_task",
+	"search_knowledge",
+}
+
+// handleBotMessageStreaming 专属机器人 1:1 流式 + 工具调用回复。
+//
+// 复用群 @AI 的 SendStreamingAIMessage（懒创建流式消息）+ GetCompletionWithToolsStreamMultiStep
+// （带工具的流式 ReAct）+ SendToolCallEvent（工具卡片实时反馈）基建，使 bot 回复具备逐 token
+// 打字感与工具调用能力。工具按 talker scope（CallerContext.UserID = 和 bot 对话的用户），
+// 不暴露创建者私有数据。
+//
+// 模型路径：
+//   - 系统默认：带工具流式 ReAct；Provider 不支持流式 tool-call 时降级纯流式（无工具）。
+//   - 自定义模型（创建者自选 provider）：纯流式、不带工具（不能假设其 provider 支持 tool-call）；
+//     生成失败且未流出内容时回退系统默认（带工具），兑现「不阻断回复」契约。
+func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot model.Bot, botCfg BotConfig, aiMessages []ai.Message, knowledgeSources []KnowledgeSource) {
+	sendChunk, getMsg, finish, err := s.streamingSender.SendStreamingAIMessage(convID, bot.Name)
+	if err != nil {
+		logger.WithModule("handleBotMessage").Error("创建流式消息失败，降级到非流式", "error", err, "convID", convID)
+		s.handleBotMessageLegacy(userID, convID, bot, botCfg, aiMessages, knowledgeSources)
+		return
+	}
+
+	// 工具调用进度回调：start 推 running 卡片，end 推终态 + 收集记录供 Extra 持久化
+	var toolCalls []ToolCallRecord
+	feedback := NewToolCallFeedback(s.streamingSender, convID, getMsg, &toolCalls)
+
+	// 隐私关键：callerCtx 用 talker(userID)，工具按 talker scope 检索任务/知识，不读创建者私有数据
+	callerCtx := &ai.CallerContext{UserID: userID}
+
+	// contentProduced 跟踪是否已流出正文：用于自定义模型失败时判断是否回退（已流出则保留部分内容，
+	// 流式中途无法干净衔接重试）。与老路径 builder.Len()==0 判断等价。
+	var contentProduced bool
+	onChunk := func(chunk ai.StreamChunk) error {
+		if chunk.Content != "" {
+			contentProduced = true
+		}
+		return sendChunk(chunk.Content)
+	}
+
+	// 自定义模型来源：bot 配置了「使用我的自定义配置」（!UseSystemConfig 且 UserConfigID 非空）时，
+	// 解析出创建者自选的 provider。解析失败（配置被删/禁用/密钥解密失败）-> 回退系统默认。
+	var custom *customProvider
+	if !botCfg.UseSystemConfig && botCfg.UserConfigID != nil {
+		custom = resolveUserAIConfigProvider(s.db, bot.CreatorID, *botCfg.UserConfigID)
+		if custom == nil || custom.ProviderName == "" {
+			logger.WithModule("handleBotMessage").Warn("bot 自定义模型解析失败，回退系统默认",
+				"botID", bot.ID, "userConfigID", *botCfg.UserConfigID)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	var streamErr error
+	if custom != nil && custom.ProviderName != "" {
+		// 自定义模型：纯流式、不带工具（不能假设创建者自选 provider 支持 tool-call）
+		streamErr = s.aiService.ChatStreamWithProviderConfig(ctx, ai.TaskTypeChat, aiMessages, custom.ProviderName, custom.Config, onChunk)
+		// 生成期失败（密钥失效/配额耗尽/网络错/模型名错误）且尚未流出内容时，回退系统默认（带工具），
+		// 兑现「回退系统默认…不阻断回复」契约——单条用户自定义配置出问题不应拖垮整个 bot 回复。
+		// 已流出部分内容则保留（流式中途无法干净衔接重试）。
+		if streamErr != nil && !contentProduced {
+			logger.WithModule("handleBotMessage").Warn("bot 自定义模型生成失败，回退系统默认",
+				"botID", bot.ID, "provider", custom.ProviderName, "error", streamErr)
+			streamErr = s.aiService.GetCompletionWithToolsStreamMultiStep(ctx, ai.TaskTypeChat, aiMessages, callerCtx, botAllowedTools, ai.MaxReActSteps, feedback, onChunk)
+			if errors.Is(streamErr, ai.ErrStreamingToolsNotSupported) {
+				streamErr = s.aiService.GetCompletionStreamWithContext(ctx, ai.TaskTypeChat, aiMessages, onChunk)
+			}
+		}
+	} else {
+		// 系统默认：带工具的流式 ReAct
+		streamErr = s.aiService.GetCompletionWithToolsStreamMultiStep(ctx, ai.TaskTypeChat, aiMessages, callerCtx, botAllowedTools, ai.MaxReActSteps, feedback, onChunk)
+		if errors.Is(streamErr, ai.ErrStreamingToolsNotSupported) {
+			// Provider 不支持流式 tool-call -> 降级纯流式（无工具）
+			logger.WithModule("handleBotMessage").Info("bot 流式工具不可用，降级纯流式", "convID", convID)
+			streamErr = s.aiService.GetCompletionStreamWithContext(ctx, ai.TaskTypeChat, aiMessages, onChunk)
+		}
+	}
+
+	if streamErr != nil {
+		logger.WithModule("handleBotMessage").Error("bot 流式回复出错", "error", streamErr, "convID", convID)
+		// 完全无产出（无正文且无工具调用）-> 发兜底文案，保证用户得到反馈，避免残留空气泡。
+		// 已有正文/工具调用则保留（finish 收尾），不覆盖。
+		if !contentProduced && len(toolCalls) == 0 {
+			_ = sendChunk("抱歉，AI 服务暂时不可用，请稍后再试。")
+		}
+	}
+
+	// 工具调用记录 + 命中的知识来源合并持久化到消息 Extra，回放/刷新后卡片与徽章仍可见
+	PersistAIMessageExtra(getMsg, toolCalls, knowledgeSources)
+
+	if finish() == nil {
+		logger.WithModule("handleBotMessage").Warn("bot 流式回复无内容产出", "convID", convID)
+	} else {
+		logger.WithModule("handleBotMessage").Info("bot 流式回复完成", "convID", convID, "toolCalls", len(toolCalls))
+	}
+}
+
+// handleBotMessageLegacy 专属机器人 1:1 非流式回复（降级路径）。
+//
+// 当 streamingSender 未注入（测试场景 / 装配缺失）或流式消息创建失败时使用：collect 全文到
+// builder -> 一次性建消息 -> hub.SendToUser 广播。无流式打字感、无工具调用，但保底不丢回复。
+// 保留原 60s 超时 + 自定义模型回退系统默认的契约。
+//
+// TODO(v2.1): 当 streamingSender mandatory 注入且生产验证稳定后移除此路径。
+func (s *MessageService) handleBotMessageLegacy(userID, convID uint, bot model.Bot, botCfg BotConfig, aiMessages []ai.Message, knowledgeSources []KnowledgeSource) {
+	db := s.db
 	var builder strings.Builder
 	var streamErr error
 	if s.aiService == nil {
 		streamErr = fmt.Errorf("AI 服务未配置")
 	} else {
-		// 自定义模型来源：bot 配置了「使用我的自定义配置」（!UseSystemConfig 且 UserConfigID 非空）时，
-		// 解析出创建者自选的 provider。解析失败（配置被删/禁用/密钥解密失败）→ 回退系统默认。
-		// external_webhook 已在前面 return，走到这里必定是 internal_ai。
+		// 自定义模型来源：解析失败 -> 回退系统默认（与流式路径一致）。
 		var custom *customProvider
 		if !botCfg.UseSystemConfig && botCfg.UserConfigID != nil {
 			custom = resolveUserAIConfigProvider(db, bot.CreatorID, *botCfg.UserConfigID)
@@ -530,8 +960,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 			}
 			if custom != nil && custom.ProviderName != "" {
 				streamErr = s.aiService.ChatStreamWithProviderConfig(ctx, ai.TaskTypeChat, aiMessages, custom.ProviderName, custom.Config, onChunk)
-				// 生成期失败（密钥失效/配额耗尽/网络错/模型名错误）且尚未流出内容时，回退系统默认，
-				// 兑现「回退系统默认…不阻断回复」契约——单条用户自定义配置出问题不应拖垮整个 bot 回复。
+				// 生成期失败且尚未流出内容时，回退系统默认，兑现「不阻断回复」契约。
 				// 已流出部分内容则保留（流式中途无法干净衔接重试）。
 				if streamErr != nil && builder.Len() == 0 {
 					logger.WithModule("handleBotMessage").Warn("bot 自定义模型生成失败，回退系统默认",
@@ -557,24 +986,21 @@ func (s *MessageService) handleBotMessage(userID, convID uint, content string) {
 
 	response := builder.String()
 	// 自定义模型已流出部分内容后中途失败（builder.Len()>0）：保留已生成的部分，兑现
-	// 「已流出部分内容则保留」注释契约，而不是把整个回复降级成统一错误文案。
-	// 仅在完全没流出任何内容（含回退系统默认也失败）时，才用兜底错误文案。
+	// 「已流出部分内容则保留」契约。仅在完全没流出任何内容（含回退系统默认也失败）时用兜底文案。
 	if response == "" && streamErr != nil {
 		logger.WithModule("handleBotMessage").Error("AI API error", "error", streamErr)
 		response = "抱歉，AI 服务暂时不可用，请稍后再试。"
 	}
 
-	senderID := *bot.VirtualUserID
 	botReply := model.Message{
 		ConversationID: convID,
-		SenderID:       senderID,
+		SenderID:       *bot.VirtualUserID,
 		Type:           "markdown",
 		Content:        response,
 		Origin:         "assistant",
 		IsRead:         true, // Bot 回复默认已读
 	}
 	// 命中笔记时把 knowledge_sources 写入 Extra，供前端折叠展示
-	// 无命中时留空（默认值），前端按空字符串判断不展示
 	if len(knowledgeSources) > 0 {
 		if extraBytes, err := json.Marshal(map[string]interface{}{
 			"knowledge_sources": knowledgeSources,

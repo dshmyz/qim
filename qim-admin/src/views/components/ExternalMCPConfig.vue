@@ -94,7 +94,7 @@ const loadConfig = async () => {
   try {
     const { data } = await getSystemConfig()
     const raw = data.data as any
-    groupEnabled.value = raw['external_mcp:group_enabled'] === 'true'
+    groupEnabled.value = String(raw['external_mcp:group_enabled']) === 'true'
     const rawConns = raw.external_mcp
     if (rawConns) {
       const parsed: MCPConn[] = typeof rawConns === 'string' ? JSON.parse(rawConns) : rawConns
@@ -146,7 +146,7 @@ const handleSave = async () => {
       'external_mcp': JSON.stringify(cleaned),
       'external_mcp:group_enabled': groupEnabled.value ? 'true' : 'false'
     } as any)
-    ElMessage.success('外部 MCP 配置已保存并热同步')
+    ElMessage.success('外部 MCP 配置已保存，后台热同步中')
   } catch (e) {
     ElMessage.error('保存失败')
   } finally {

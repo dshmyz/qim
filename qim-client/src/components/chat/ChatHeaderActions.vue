@@ -161,7 +161,7 @@ const props = withDefaults(defineProps<Props>(), {
   aiMentionReplyMode: 'mention',
   aiAntiSpamInterval: 0,
   aiTriggerKeywords: () => [],
-  aiLearnEnabled: false
+  aiLearnEnabled: true
 })
 
 // Emits 定义

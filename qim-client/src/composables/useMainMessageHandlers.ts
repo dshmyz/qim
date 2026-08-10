@@ -199,8 +199,10 @@ function computeToolCalls(msg: any): ToolCallRecord[] | undefined {
     if (!Array.isArray(parsed?.tool_calls) || parsed.tool_calls.length === 0) {
       return undefined
     }
-    // 最小字段校验：每条至少有 tool_label 字符串
-    return parsed.tool_calls.filter((tc: any) => typeof tc?.tool_label === 'string') as ToolCallRecord[]
+    // 最小字段校验：每条至少有 tool_label 字符串；过滤后为空视为无数据返回 undefined
+    // （空数组 [] 为 truthy，若返回 [] 会在调用处覆盖流式累积的 tool_calls）
+    const filtered = parsed.tool_calls.filter((tc: any) => typeof tc?.tool_label === 'string') as ToolCallRecord[]
+    return filtered.length > 0 ? filtered : undefined
   } catch {
     return undefined
   }

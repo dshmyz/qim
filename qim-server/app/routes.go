@@ -147,6 +147,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	// 注册用户侧 AI 工具（依赖 TaskService/MessageService/SearchGraph/SummaryGraph）
 	service.RegisterUserTools(toolRegistry, di.GlobalContainer.TaskService, di.GlobalContainer.MessageService, unifiedSearchGraph, summaryGraph)
 
+	// 给专属机器人 1:1 回复注入流式 AI 消息发送器，使其复用群 @AI 同款流式逐 token +
+	// 工具调用基建（SendStreamingAIMessage / GetCompletionWithToolsStreamMultiStep / SendToolCallEvent）。
+	// 与 SmartReplyEngine 同源 sender（同一 hub + UserService）；未注入则 bot 走非流式老路径降级。
+	di.GlobalContainer.MessageService.SetStreamingAISender(
+		handler.NewWebSocketMessageSender(ws.GlobalHub, di.GlobalContainer.UserService),
+	)
+
 	smartDigestGraph := service.NewSmartDigestGraph(aiSvc, aiCache)
 	if err := smartDigestGraph.Build(); err != nil {
 		logger.WithModule("Routes").Warn("Failed to build SmartDigestGraph", "error", err)
@@ -514,6 +521,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/notes/:id/export", handler.ExportNote)
 			authed.PATCH("/notes/:id/tags", handler.UpdateNoteTags)
 			authed.PATCH("/notes/:id/summary", handler.UpdateNoteSummary)
+			authed.PATCH("/notes/:id/access", handler.SetNoteAiAccessible)
 			authed.POST("/notes/search", handler.NoteVectorSearch)
 
 			// 文件夹管理

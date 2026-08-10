@@ -11,7 +11,253 @@
     "host": "localhost:8080",
     "basePath": "/api/v1",
     "paths": {
-        "/api/ai/completion": {
+        "/api/ai/summary/stream": {
+            "post": {
+                "description": "根据对话记录流式生成会话摘要，使用 SSE 返回",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "流式生成会话摘要",
+                "parameters": [
+                    {
+                        "description": "摘要请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.GenerateSummaryRequest"
+                        }
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/v1/admin/ai/dashboard": {
+            "get": {
+                "description": "获取AI运维面板的统计数据",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "运维面板数据",
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/ai/router": {
+            "get": {
+                "description": "返回当前生效路由（DB 覆盖优先，否则 config.yaml 默认）；同时返回已配置供应商作为 provider 下拉候选",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "获取 AI 模型路由",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "将任务→provider/model 路由写入 SystemConfig 并热更新 AIService，无需重启",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "保存 AI 模型路由",
+                "parameters": [
+                    {
+                        "description": "路由配置 {defaultTask, routes}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除 DB 路由覆盖并热更新回 config.yaml 配置，无需重启",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "恢复 config.yaml 默认路由",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/knowledge-graph": {
+            "get": {
+                "description": "获取指定集合的知识图谱节点和关系数据",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "知识图谱"
+                ],
+                "summary": "获取知识图谱数据",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "集合名称",
+                        "name": "collection",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "搜索查询",
+                        "name": "query",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "最大节点数",
+                        "name": "max_nodes",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/tool-registry/tools": {
+            "get": {
+                "description": "列出所有 AI 工具及其启用状态，用于管理后台配置",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI工具管理"
+                ],
+                "summary": "列出所有 AI 工具（管理后台）",
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/tool-registry/tools/{tool_name}": {
+            "put": {
+                "description": "启用或禁用指定的 AI 工具",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI工具管理"
+                ],
+                "summary": "更新 AI 工具配置",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "工具名称",
+                        "name": "tool_name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "工具配置请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.ToolRegistryConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "工具不存在",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/completion": {
             "post": {
                 "description": "根据消息获取AI完成",
                 "consumes": [
@@ -57,7 +303,7 @@
                 }
             }
         },
-        "/api/ai/completion/stream": {
+        "/api/v1/ai/completion/stream": {
             "post": {
                 "description": "流式获取AI完成，使用服务器发送事件(SSE)返回统一JSON格式",
                 "consumes": [
@@ -103,16 +349,30 @@
                 }
             }
         },
-        "/api/ai/ops/dashboard": {
-            "get": {
-                "description": "获取AI运维面板的统计数据",
+        "/api/v1/ai/draft-reply": {
+            "post": {
+                "description": "根据目标消息及上下文生成回复草稿",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "AI"
                 ],
-                "summary": "运维面板数据",
+                "summary": "帮我回复",
+                "parameters": [
+                    {
+                        "description": "起草请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.DraftReplyRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "成功响应",
@@ -123,21 +383,229 @@
                 }
             }
         },
-        "/api/ai/tools": {
+        "/api/v1/ai/draft-reply/stream": {
+            "post": {
+                "description": "根据目标消息及上下文流式生成回复草稿，使用 SSE 返回",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "流式帮我回复",
+                "parameters": [
+                    {
+                        "description": "起草请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.DraftReplyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "流式输出",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/sidebar/stream": {
+            "post": {
+                "description": "在任意会话旁边随时问 AI，不改变对话本身的社交动态。\nscope=current: 注入当前会话最近消息作为上下文；\nscope=cross: 跨会话检索用户全部消息/笔记/知识库后综合回答。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "侧边栏 AI 元对话",
+                "parameters": [
+                    {
+                        "description": "侧边栏请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.SidebarStreamRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "流式输出",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/tools": {
             "get": {
-                "description": "列出所有可用的AI工具",
+                "description": "列出所有可用的 AI 工具",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "AI"
                 ],
-                "summary": "列出所有AI工具",
+                "summary": "列出所有 AI 工具",
                 "responses": {
                     "200": {
                         "description": "成功响应",
                         "schema": {
                             "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cli/download": {
+            "get": {
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "CLI"
+                ],
+                "summary": "CLI 二进制下载",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "目标操作系统（默认按请求检测）",
+                        "name": "os",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "目标架构（默认按请求检测）",
+                        "name": "arch",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/cli/version": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CLI"
+                ],
+                "summary": "CLI 版本查询",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/notes/{id}/access": {
+            "patch": {
+                "description": "打开后笔记向量化进分身知识库集合，关闭后移除该笔记向量",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "笔记"
+                ],
+                "summary": "切换笔记「允许分身读取」状态",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "笔记ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "可见性开关",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "ai_accessible": {
+                                    "type": "boolean"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的笔记",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "笔记不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
                         }
                     }
                 }
@@ -151,7 +619,33 @@
                 "content": {
                     "type": "string"
                 },
+                "image_url": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
                 "role": {
+                    "type": "string"
+                },
+                "tool_call_id": {
+                    "type": "string"
+                },
+                "tool_calls": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ai.ToolCall"
+                    }
+                }
+            }
+        },
+        "ai.ToolCall": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 }
             }
@@ -168,19 +662,38 @@
                 }
             }
         },
-        "handler.CommandGenerationRequest": {
+        "handler.DraftReplyRequest": {
             "type": "object",
             "required": [
-                "description"
+                "conversation_id",
+                "message_id"
             ],
             "properties": {
-                "description": {
+                "conversation_id": {
+                    "type": "integer"
+                },
+                "message_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.GenerateSummaryRequest": {
+            "type": "object",
+            "required": [
+                "conversation_id"
+            ],
+            "properties": {
+                "conversation_id": {
+                    "type": "integer"
+                },
+                "end_time": {
                     "type": "string"
                 },
-                "format": {
+                "start_time": {
                     "type": "string"
                 },
-                "platform": {
+                "time_range": {
+                    "description": "\"1h\", \"today\", \"7d\", \"custom\"",
                     "type": "string"
                 }
             }
@@ -199,67 +712,45 @@
                 }
             }
         },
-        "handler.IntelligentAlertRequest": {
+        "handler.SidebarStreamRequest": {
             "type": "object",
             "required": [
-                "alert_content"
+                "message"
             ],
             "properties": {
-                "alert_content": {
+                "conversation_id": {
+                    "description": "可选：当前会话 ID，传入则注入该会话上下文",
+                    "type": "integer"
+                },
+                "message": {
+                    "description": "用户问题",
                     "type": "string"
                 },
-                "service": {
-                    "type": "string"
-                },
-                "severity": {
+                "scope": {
+                    "description": "\"current\"(默认) 或 \"cross\"(跨会话检索)",
                     "type": "string"
                 }
             }
         },
-        "handler.IntelligentTroubleshootingRequest": {
+        "handler.ToolRegistryConfigRequest": {
             "type": "object",
             "required": [
-                "symptom"
+                "enabled"
             ],
             "properties": {
-                "logs": {
-                    "type": "string"
-                },
-                "server": {
-                    "type": "string"
-                },
-                "symptom": {
-                    "type": "string"
+                "enabled": {
+                    "type": "boolean"
                 }
             }
         },
-        "handler.LogAnalysisRequest": {
+        "response.Response": {
             "type": "object",
-            "required": [
-                "log_content"
-            ],
             "properties": {
-                "log_content": {
-                    "type": "string"
+                "code": {
+                    "type": "integer"
                 },
-                "service": {
-                    "type": "string"
-                },
-                "severity": {
-                    "type": "string"
-                }
-            }
-        },
-        "handler.OpsKnowledgeRequest": {
-            "type": "object",
-            "required": [
-                "question"
-            ],
-            "properties": {
-                "category": {
-                    "type": "string"
-                },
-                "question": {
+                "data": {},
+                "message": {
                     "type": "string"
                 }
             }

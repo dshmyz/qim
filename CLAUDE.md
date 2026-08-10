@@ -104,7 +104,7 @@ npm run e2e               # E2E 测试
 
 # 后端 Swagger 文档
 cd qim-server
-swag init                  # 重新生成 API 文档
+swag init -o docs/swagger  # 重新生成 API 文档（生成物在 docs/swagger，package 名 swagger）
 ```
 
 ## 编码约定

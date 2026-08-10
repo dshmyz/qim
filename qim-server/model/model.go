@@ -153,6 +153,8 @@ func (g *Group) GetAIConfig() *GroupAIConfig {
 			// 防刷屏间隔默认关闭（0=不启用）。此前默认 5 分钟会让新用户以为 AI 坏了：
 			// 未配置该参数时，AI 回复后 5 分钟内不再回复。默认关掉,由用户自行决定是否开启。
 			AntiSpamInterval: 0,
+			// 群记忆 opt-out：默认学习（true）。仅当用户显式关闭 LearnEnabled 时才停写群记忆。
+			LearnEnabled: true,
 		}
 	}
 	var config GroupAIConfig
@@ -166,6 +168,7 @@ func (g *Group) GetAIConfig() *GroupAIConfig {
 			MaxLength:        "medium",
 			MentionReplyMode: "mention",
 			AntiSpamInterval: 0,
+			LearnEnabled:     true,
 		}
 	}
 	return &config
@@ -280,6 +283,9 @@ type Note struct {
 	Style     string         `json:"style" gorm:"type:text"`
 	Tags      string         `json:"tags" gorm:"type:text"`    // JSON 数组字符串
 	Summary   string         `json:"summary" gorm:"type:text"` // AI 生成的摘要
+	// AiAccessible 是否允许分身（AI）读取本篇笔记。默认 true（可见），关闭后该笔记
+	// 不再被向量化进入 user_notes_{userID} 集合，分身检索不到。
+	AiAccessible bool         `json:"ai_accessible" gorm:"default:true;not null"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
@@ -325,8 +331,6 @@ type Bot struct {
 	VirtualUserID   *uint          `json:"virtual_user_id" gorm:"index"` // 关联虚拟用户 ID
 	GroupID         *uint          `json:"group_id" gorm:"index"`        // 群聊AI助手关联的群ID
 	IsTemplate      bool           `json:"is_template" gorm:"default:false"`
-	UserConfigID    *uint          `json:"user_config_id" gorm:"index"`
-	UseSystemConfig bool           `json:"use_system_config" gorm:"default:true"`
 }
 
 // AI使用日志

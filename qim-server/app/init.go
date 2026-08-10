@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -484,6 +485,7 @@ func MigrateDB(db *gorm.DB) error {
 	seedApprovalConfigs(db)
 	seedMessageRemindWebhook(db)
 	seedRenderRules(db)
+	migrateGroupLearnEnabledOptOut(db)
 
 	if err := migrateStoragePaths(db); err != nil {
 		return fmt.Errorf("迁移存储路径失败: %w", err)
@@ -975,6 +977,54 @@ func seedRenderRules(db *gorm.DB) {
 	}
 	db.Where("config_key = ?", defaultCfg.ConfigKey).FirstOrCreate(&defaultCfg)
 	logger.WithModule("Migrate").Info("渲染增强规则配置初始化完成")
+}
+
+// migrateGroupLearnEnabledOptOut 把存量群 AI 配置的 learn_enabled 规范化为 true。
+// 背景：群记忆写入门控此前只检查 aiConfig.Enabled、忽略 LearnEnabled，所有 AI 启用
+// 的群实际都在写群记忆；而 UI 默认开关为关、保存时落了 false。现将门控改为 opt-out
+// （默认学习，显式 false 才停写），必须把存量 false/缺失归一为 true，否则这些群会从
+// “一直在学习”突变为“停写”——行为回归。一次性迁移，标记位保证只跑一次；之后用户的
+// 显式关闭由新门控生效。
+func migrateGroupLearnEnabledOptOut(db *gorm.DB) {
+	if isMigrationCompleted(db, "group_learn_enabled_optout") {
+		return
+	}
+
+	var groups []model.Group
+	// 仅扫有 AI 配置的群；AIConfigJSON 为空（从未配置 AI）的群无需处理。
+	if err := db.Where("ai_config <> ''").Find(&groups).Error; err != nil {
+		logger.WithModule("Migration").Error("扫描群 AI 配置失败", "error", err)
+		return
+	}
+
+	migrated := 0
+	for i := range groups {
+		var cfg model.GroupAIConfig
+		if err := json.Unmarshal([]byte(groups[i].AIConfigJSON), &cfg); err != nil {
+			logger.WithModule("Migration").Warn("解析群 AI 配置失败，跳过",
+				"groupID", groups[i].ID, "error", err)
+			continue
+		}
+		if cfg.LearnEnabled {
+			continue // 已是 true，无需写回
+		}
+		cfg.LearnEnabled = true
+		data, err := json.Marshal(cfg)
+		if err != nil {
+			continue
+		}
+		if err := db.Model(&model.Group{}).Where("id = ?", groups[i].ID).
+			Update("ai_config", string(data)).Error; err != nil {
+			logger.WithModule("Migration").Warn("回写群 AI 配置失败",
+				"groupID", groups[i].ID, "error", err)
+			continue
+		}
+		migrated++
+	}
+
+	markMigrationCompleted(db, "group_learn_enabled_optout")
+	logger.WithModule("Migration").Info("群记忆 LearnEnabled opt-out 规范化完成",
+		"total", len(groups), "migrated", migrated)
 }
 
 // seedApprovalConfigs 初始化审批配置

@@ -1,5 +1,5 @@
 <template>
-  <div ref="containerRef" class="markdown-renderer" v-html="html" @click="handleLinkClick"></div>
+  <div ref="containerRef" class="markdown-content" v-html="html" @click="handleLinkClick"></div>
 </template>
 
 <script setup lang="ts">
@@ -22,128 +22,9 @@ const { html, containerRef } = useMarkdownRender(
 )
 </script>
 
-<style scoped>
-.markdown-renderer {
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.markdown-renderer h1 {
-  font-size: 1.5em;
-  font-weight: 600;
-  margin: 1em 0 0.5em 0;
-  color: var(--text-color);
-}
-
-.markdown-renderer h2 {
-  font-size: 1.3em;
-  font-weight: 600;
-  margin: 0.8em 0 0.4em 0;
-  color: var(--text-color);
-}
-
-.markdown-renderer h3 {
-  font-size: 1.1em;
-  font-weight: 600;
-  margin: 0.6em 0 0.3em 0;
-  color: var(--text-color);
-}
-
-.markdown-renderer strong {
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.markdown-renderer em {
-  font-style: italic;
-  color: var(--text-color);
-}
-
-.markdown-renderer pre {
-  background-color: var(--hover-color);
-  padding: 12px;
-  border-radius: 4px;
-  margin: 10px 0;
-  overflow-x: auto;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 14px;
-  line-height: 1.4;
-  color: var(--text-color);
-}
-
-.markdown-renderer code {
-  background-color: var(--hover-color);
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 13px;
-  color: var(--text-color);
-}
-
-.markdown-renderer pre code {
-  background-color: transparent;
-  padding: 0;
-  border-radius: 0;
-}
-
-.markdown-renderer a {
-  color: var(--primary-color);
-  background: transparent;
-  text-decoration: none;
-  transition: color 0.2s ease;
-}
-
-.markdown-renderer a:hover {
-  color: var(--primary-hover);
-  text-decoration: underline;
-}
-
-.markdown-renderer ul,
-.markdown-renderer ol {
-  margin: 10px 0;
-  padding-left: 20px;
-}
-
-.markdown-renderer li {
-  margin: 5px 0;
-  color: var(--text-color);
-}
-
-.markdown-renderer p {
-  margin: 10px 0;
-  color: var(--text-color);
-}
-
-.markdown-renderer blockquote {
-  border-left: 4px solid var(--primary-color);
-  padding: 8px 16px;
-  margin: 10px 0;
-  background: var(--hover-color);
-  border-radius: 0 6px 6px 0;
-  color: var(--text-secondary);
-}
-
-.markdown-renderer table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 10px 0;
-}
-
-.markdown-renderer th,
-.markdown-renderer td {
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  text-align: left;
-}
-
-.markdown-renderer th {
-  background: var(--hover-color);
-  font-weight: 600;
-}
-
-.markdown-renderer .hljs {
-  background: transparent !important;
-  padding: 0 !important;
-}
+<style>
+/* 排版统一由 markdown-content.css 提供（与 MarkdownMessage / AIAnswerBubble 共用同一份单源），
+   消除此前自带 scoped CSS 与单源的数值漂移。根节点挂 .markdown-content 命中选择器；
+   非 scoped：v-html 注入的元素不带 data-v，scoped 下选择器匹配不上。 */
+@import '../message/markdown-content.css';
 </style>

@@ -224,6 +224,9 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		// groupMemorySvc 在向量服务未初始化时为 nil，setter 内部容忍（对应片段跳过）。
 		messageService.SetGroupContextServices(groupMemorySvc, groupDocumentService)
 	}
+	// 文件处理能力：bot 会话收到 file 消息时下载+解析文件内容注入 AI 上下文。
+	// storageAccessor 已在上方创建；DocumentParser 轻量（仅含可选 anydoc 后端），直接新建。
+	messageService.SetFileCapabilities(storageAccessor, service.NewDocumentParser())
 
 	promptManager := service.NewPromptManager()
 

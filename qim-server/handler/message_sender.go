@@ -314,30 +314,6 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 
 	broadcastNewMessage(&aiMessage, 0, &conv)
 
-	if ws.GlobalHub != nil {
-		msgData := gin.H{
-			"id":                aiMessage.ID,
-			"conversation_id":   conversationID,
-			"sender_id":         aiUser.ID,
-			"type":              "text",
-			"content":           content,
-			"is_ai_message":     true,
-			"ai_assistant_name": assistantName,
-			"origin":           aiMessage.Origin,
-			"is_avatar_reply":   aiMessage.Origin == "avatar",
-			"created_at":        aiMessage.CreatedAt,
-			"sender":            aiUser,
-		}
-
-		wsMsg := ws.WSMessage{
-			Type: "new_message",
-			Data: msgData,
-		}
-
-		jsonMsg, _ := json.Marshal(wsMsg)
-		ws.GlobalHub.SendToConversation(conversationID, 0, jsonMsg)
-	}
-
 	logger.WithModule("BroadcastAIMessage").Info("AI 消息已推送到会话", "conversationID", conversationID, "groupID", groupID, "msgID", aiMessage.ID)
 	return nil
 }
@@ -358,18 +334,12 @@ func broadcastMessageContentUpdate(msg *model.Message) {
 	ws.GlobalHub.SendToConversation(msg.ConversationID, 0, jsonMsg)
 }
 
-// ToolCallRecord 一条工具调用的结构化记录：前端据此渲染独立的工具调用卡片，
-// 不拼进 markdown 正文（参考 capability-console 的工具卡片做法）。tool_label 为
-// 面向用户的中文动作名词（如「查询天气」「计算」），args 为调用参数摘要，
-// status 标记状态（"running" 进行中 | "ok" 已完成 | "error" 失败），由前端渲染
-// 进行态/✓/失败。ID 为同一工具调用的稳定标识（start/end 一致），前端据此把
-// 进行态实时更新为终态；仅 WS 实时通道使用，回放（Extra）为终态静态快照。
-type ToolCallRecord struct {
-	ID        string                 `json:"id,omitempty"`
-	ToolLabel string                 `json:"tool_label"`
-	Args      map[string]interface{} `json:"args,omitempty"`
-	Status    string                 `json:"status,omitempty"` // "running" | "ok" | "error"
-}
+// ToolCallRecord 是 service.ToolCallRecord 的类型别名。
+// 该结构体已下沉到 service 包（service/streaming_ai_sender.go），使 service 层
+// （专属机器人回复路径）能在不 import handler 的前提下复用流式 + 工具调用基建。
+// 此处保留别名，handler 内所有引用零改动；WebSocketMessageSender.SendToolCallEvent
+// 的形参类型即 service.ToolCallRecord，天然满足 service.StreamingAISender 接口。
+type ToolCallRecord = service.ToolCallRecord
 
 // SendToolCallEvent 把一条工具调用作为独立 WS 事件推给会话（type=ai_tool_call），
 // 前端按 message_id 把卡片关联到对应流式 AI 消息。实时推送与 Extra 持久化分离：

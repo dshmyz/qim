@@ -40,6 +40,7 @@
             @edit="editNote(note)"
             @delete="handleDelete(note.id)"
             @filter-tag="selectedTag = $event"
+            @toggle-ai-access="toggleAiAccess(note.id, note.ai_accessible === false)"
           />
           <div v-if="filteredNotes.length === 0" class="empty-notes">
             <p>没有找到匹配的笔记</p>
@@ -55,6 +56,8 @@
             :save-status="saveStatus"
             :analyzing="analyzing"
             :fullscreen="isFullscreen"
+            :ai-accessible="selectedNote.ai_accessible !== false"
+            @update:ai-accessible="toggleAiAccess(selectedNote.id, $event)"
             @format="handleFormat"
             @insert-link="handleInsertLink"
             @save="handleSave"
@@ -114,15 +117,16 @@ import type { Note, AIAnalyzeResult } from '../../types/note'
 
 const emit = defineEmits(['back', 'toggleSidebar'])
 
-const { 
-  fetchNotes, 
-  createNote, 
-  updateNote, 
-  deleteNote, 
+const {
+  fetchNotes,
+  createNote,
+  updateNote,
+  deleteNote,
   analyzeNote,
   updateNoteTags,
   updateNoteSummary,
   exportNote,
+  setNoteAiAccessible,
   error: notesError
 } = useNotes()
 
@@ -282,6 +286,20 @@ function handleShare() {
   window.dispatchEvent(new CustomEvent('openShareModal', {
     detail: { type: 'note', data: selectedNote.value }
   }))
+}
+
+// 切换「允许分身读取」：打开→向量化进分身知识库；关闭→移除向量。成功后同步本地状态。
+async function toggleAiAccess(id: number, accessible: boolean) {
+  const updated = await setNoteAiAccessible(id, accessible)
+  if (!updated) {
+    QMessage.error(notesError.value || '设置失败')
+    return
+  }
+  const idx = notes.value.findIndex(n => n.id === id)
+  if (idx !== -1) notes.value[idx] = updated
+  if (selectedNoteId.value === id) {
+    selectedNote.value = { ...updated, tags: updated.tags }
+  }
 }
 
 async function handleDelete(id: number) {

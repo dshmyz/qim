@@ -9,6 +9,13 @@
     <div class="note-card-header">
       <h3 class="note-title">{{ note.title }}</h3>
       <div class="note-actions" v-show="showActions">
+        <button
+          class="note-action-btn"
+          @click.stop="$emit('toggle-ai-access')"
+          :title="note.ai_accessible === false ? '分身不可见，点击改为可见' : '分身可见，点击改为不可见'"
+        >
+          <i :class="note.ai_accessible === false ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+        </button>
         <button class="note-action-btn" @click.stop="$emit('edit')" title="编辑">
           <i class="fas fa-edit"></i>
         </button>
@@ -29,6 +36,13 @@
       </span>
     </div>
     <div class="note-footer">
+      <span
+        v-if="note.ai_accessible === false"
+        class="note-ai-hidden"
+        title="分身读不到这篇笔记"
+      >
+        <i class="fas fa-eye-slash"></i> 分身不可见
+      </span>
       <span class="note-date">{{ formatDate(note.updated_at) }}</span>
     </div>
   </div>
@@ -48,6 +62,7 @@ defineEmits<{
   edit: []
   delete: []
   'filter-tag': [tag: string]
+  'toggle-ai-access': []
 }>()
 
 const showActions = ref(false)
@@ -188,11 +203,26 @@ const formatDate = (dateStr: string) => {
 
 .note-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-ai-hidden {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  padding: 1px 6px;
 }
 
 .note-date {
   font-size: 10px;
   color: var(--text-secondary);
+  margin-left: auto;
 }
 </style>

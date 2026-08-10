@@ -148,22 +148,27 @@ func (s *VectorService) DeleteByFilter(ctx context.Context, collection string, f
 		return 0, fmt.Errorf("列出集合向量失败: %w", err)
 	}
 
-	deletedCount := 0
+	// 收集命中的 embedding ID（ListEmbeddingIDs 返回的是随机 UUID，而非 DocID）。
+	// 删除必须按 embedding ID 走 DeleteEmbeddingBatch —— 若误把 UUID 当 docID 传给
+	// DeleteByDocID，会因 DocID 恒不相等而静默删不掉（DeleteByDocID 只匹配 emb.DocID）。
+	toDelete := make([]string, 0, len(ids))
 	for _, id := range ids {
 		emb, err := s.db.GetEmbedding(collection, id, true)
 		if err != nil || emb == nil {
 			continue
 		}
 		if matchesFilter(emb.Metadata, filter) {
-			if err := s.db.DeleteByDocID(collection, id); err != nil {
-				logger.WithModule("VectorService").Error("删除向量失败", "collection", collection, "docID", id, "error", err)
-				continue
-			}
-			deletedCount++
+			toDelete = append(toDelete, id)
 		}
 	}
 
-	return deletedCount, nil
+	if len(toDelete) == 0 {
+		return 0, nil
+	}
+	if err := s.db.DeleteEmbeddingBatch(collection, toDelete); err != nil {
+		return 0, fmt.Errorf("批量删除向量失败: %w", err)
+	}
+	return len(toDelete), nil
 }
 
 // matchesFilter 判断 metadata 是否满足全部过滤条件（key=value 精确匹配）

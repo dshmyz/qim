@@ -56,6 +56,18 @@ func NewAIService(cfg *AIConfig) *AIService {
 	return svc
 }
 
+// ProviderNames 返回当前运行时池中可用的供应商名（小写），供路由保存校验对齐运行时。
+// 池内容 = 已启用 DB 供应商（DB 有则替换），DB 为空时回退 config.yaml 供应商（兜底）。
+func (s *AIService) ProviderNames() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	names := make([]string, 0, len(s.pool))
+	for name := range s.pool {
+		names = append(names, name)
+	}
+	return names
+}
+
 func (s *AIService) SetToolRegistry(toolRegistry *ToolRegistry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

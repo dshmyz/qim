@@ -137,6 +137,15 @@ func (s *AIRouterService) SaveRouter(aiService *ai.AIService, rc *ai.RouterConfi
 		}
 	}
 
+	// 运行时池子也纳入校验：DB 无已启用供应商时，AIService 回退 config.yaml 供应商
+	// 作为兜底（见 ReloadProvidersFromDB），这些 provider 运行时可用却不在 DB 登记表里，
+	// 不并入会导致纯 config.yaml 部署下默认路由（如 openai）保存被误拒。
+	if aiService != nil {
+		for _, name := range aiService.ProviderNames() {
+			providerSet[name] = true
+		}
+	}
+
 	for taskType, route := range rc.Routes {
 		if route.Provider == "" {
 			continue

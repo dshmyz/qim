@@ -388,7 +388,7 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-.preview-pane :deep(.markdown-renderer) {
+.preview-pane :deep(.markdown-content) {
   width: 100%;
 }
 </style>

@@ -110,7 +110,7 @@ const aiTriggerKeywords = computed(() => {
   const kw = props.conversation?.ai_config?.ai_trigger_keywords ?? ''
   return kw ? kw.split(',').filter(Boolean) : []
 })
-const aiLearnEnabled = computed(() => props.conversation?.ai_config?.ai_learn_enabled ?? false)
+const aiLearnEnabled = computed(() => props.conversation?.ai_config?.ai_learn_enabled ?? true)
 const approvalStatus = computed(() => props.conversation?.approval_status ?? 'approved')
 const rejectReason = computed(() => props.conversation?.reject_reason ?? '')
 const contextMessages = computed(() => props.conversation?.context_messages ?? 10)

@@ -2,7 +2,10 @@
   <div class="providers-page">
     <el-tabs v-model="activeTab" class="config-tabs">
       <!-- AI 供应商 -->
-      <el-tab-pane label="AI 供应商" name="providers">
+      <el-tab-pane name="providers">
+        <template #label>
+          <span class="tab-label"><el-icon><Cpu /></el-icon>AI 供应商</span>
+        </template>
         <el-card shadow="never">
           <!-- 工具栏 -->
           <div class="toolbar">
@@ -53,12 +56,18 @@
       </el-tab-pane>
 
       <!-- 模型路由 -->
-      <el-tab-pane label="模型路由" name="router">
+      <el-tab-pane name="router">
+        <template #label>
+          <span class="tab-label"><el-icon><Share /></el-icon>模型路由</span>
+        </template>
         <Router />
       </el-tab-pane>
 
       <!-- 外部 MCP -->
-      <el-tab-pane label="外部 MCP" name="mcp">
+      <el-tab-pane name="mcp">
+        <template #label>
+          <span class="tab-label"><el-icon><Connection /></el-icon>外部 MCP</span>
+        </template>
         <ExternalMCPConfig />
       </el-tab-pane>
     </el-tabs>
@@ -67,7 +76,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Plus, Refresh } from '@element-plus/icons-vue'
+import { Plus, Refresh, Cpu, Share, Connection } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAIStore } from '@/stores/ai'
 import type { AIProvider } from '@/types/ai'
@@ -169,10 +178,41 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  padding-left: 24px;
 }
 
 .config-tabs {
-  --el-tabs-header-margin-bottom: var(--space-5);
+  --el-tabs-header-margin-bottom: 0;
+}
+
+.config-tabs :deep(.el-tabs__header) {
+  margin: 0;
+  background: var(--el-bg-color, #fff);
+  border-radius: 8px 8px 0 0;
+  padding: 0 4px 0 24px;
+}
+
+.config-tabs :deep(.el-tabs__nav-wrap::after) {
+  height: 1px;
+  background: var(--el-border-color-lighter, #e4e7ed);
+}
+
+.config-tabs :deep(.el-tabs__item) {
+  font-size: 14px;
+  font-weight: 500;
+  height: 48px;
+  line-height: 48px;
+  padding: 0 20px;
+}
+
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-label .el-icon {
+  font-size: 15px;
 }
 
 .toolbar {

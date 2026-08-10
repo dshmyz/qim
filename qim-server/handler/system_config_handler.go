@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/di"
@@ -131,16 +132,20 @@ func UpdateSystemConfig(c *gin.Context) {
 		return
 	}
 
-	// 外部 MCP 连接配置变更时，在配置落库后触发网关热同步（必须先于落库结束再同步，
-	// 否则网关会读到旧配置）：让新增/修改/删除的连接立即生效而不必重启服务。
-	//
-	// 已知代价（刻意取舍）：ReSyncExternalMCP() 同步执行网络 IO（每连接 connect+ListTools，
-	// 各带 15s 超时，慢连接 × 启用连接数叠加），本配置保存请求会被阻塞直到同步结束。
-	// mcp_gateway.Sync 刻意不持锁跑网络，价值在于不阻塞 ListExternalToolNames 等热路径读取者；
-	// 配置保存是低频管理操作且有 15s/连接兜底，故接受此同步阻塞而非异步化。若未来连接数
-	// 增多或期望更快的保存反馈，可改为后台异步 Sync。
+	// 外部 MCP 连接配置变更时，在配置落库后触发网关热同步：让新增/修改/删除的连接
+	// 立即生效而不必重启服务。异步执行——Sync 每连接 connect+ListTools 各带 15s 超时，
+	// 慢连接 × 启用连接数叠加会阻塞请求，与前端 15s axios 超时撞车导致保存报错。
+	// 配置已先落库，热同步延后到后台不影响正确性；Sync 自带串行锁，此处再 recover
+	// 兜底 panic，可安全脱离请求生命周期运行。
 	if _, touched := req["external_mcp"]; touched {
-		ReSyncExternalMCP()
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[SystemConfig] ReSyncExternalMCP panic: %v", r)
+				}
+			}()
+			ReSyncExternalMCP()
+		}()
 	}
 
 	// 动态重新加载速率限制配置

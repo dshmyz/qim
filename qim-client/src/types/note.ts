@@ -7,6 +7,7 @@ export interface Note {
   style: string
   tags: string[]
   summary: string
+  ai_accessible?: boolean
   created_at: string
   updated_at: string
 }

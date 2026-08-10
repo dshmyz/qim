@@ -189,6 +189,7 @@ onMounted(handleLoad)
   justify-content: space-between;
   align-items: flex-start;
   padding-bottom: var(--space-5);
+  padding-left: 24px;
   flex-wrap: wrap;
   gap: var(--space-4);
 }

@@ -13,6 +13,14 @@
         <button class="tb-btn labeled delete" @click="$emit('delete')" title="删除">
           <i class="fas fa-trash"></i><span>删除</span>
         </button>
+        <button
+          :class="['tb-btn', 'labeled', 'ai-access', { hidden: !aiAccessible }]"
+          @click="$emit('update:ai-accessible', !aiAccessible)"
+          :title="aiAccessible ? '分身可以读取这篇笔记，点击改为不可读' : '分身读不到这篇笔记，点击改为可读'"
+        >
+          <i :class="aiAccessible ? 'fas fa-eye' : 'fas fa-eye-slash'"></i>
+          <span>{{ aiAccessible ? '分身可见' : '分身不可见' }}</span>
+        </button>
       </div>
       <div class="toolbar-divider"></div>
       <div class="toolbar-section">
@@ -125,6 +133,7 @@ const props = defineProps<{
   saveStatus?: AutoSaveStatus
   analyzing?: boolean
   fullscreen?: boolean
+  aiAccessible?: boolean
 }>()
 
 defineEmits<{
@@ -138,6 +147,7 @@ defineEmits<{
   share: []
   delete: []
   'toggle-fullscreen': []
+  'update:ai-accessible': [value: boolean]
 }>()
 
 const saveStatusLabel = computed(() => {
@@ -289,6 +299,26 @@ const saveStatusTitle = computed(() => {
 }
 
 .tb-btn.delete:hover:not(:disabled) span {
+  color: white;
+}
+
+.tb-btn.ai-access {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+  opacity: 0.9;
+}
+
+.tb-btn.ai-access:not(.hidden) {
+  background: rgba(51, 133, 255, 0.06);
+}
+
+.tb-btn.ai-access:hover:not(:disabled) {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.tb-btn.ai-access:hover:not(:disabled) span {
   color: white;
 }
 </style>

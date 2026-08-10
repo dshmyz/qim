@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/ledongthuc/pdf"
@@ -37,7 +38,8 @@ type DocumentParser struct {
 	// anydoc 可选的 anydoc CLI 增强后端（nil 表示未初始化，Parse 时惰性创建）。
 	// anydoc 补上老格式（.doc/.xls/.ppt/.rtf/.odt/.ods/.odp/.epub）与更好提取的
 	// PDF，且不需要 LibreOffice。二进制缺失/调用失败时回退到下方原生解析器。
-	anydoc anydocBackend
+	anydoc   anydocBackend
+	anydocMu sync.Mutex // 保护 anydoc 的惰性初始化与 SetAnydoc 注入，防并发 Parse 数据竞争
 }
 
 // NewDocumentParser 创建文档解析器实例
@@ -47,12 +49,17 @@ func NewDocumentParser() *DocumentParser {
 
 // SetAnydoc 注入 anydoc 增强后端（供测试注入假实现/关闭）。传 nil 关闭。
 func (p *DocumentParser) SetAnydoc(c anydocBackend) {
+	p.anydocMu.Lock()
+	defer p.anydocMu.Unlock()
 	p.anydoc = c
 }
 
 // anydocConverter 惰性获取 anydoc 后端：未设置时按 PATH/env 探测一次。
 // 返回非 nil 的不可用实例（Available()==false），调用方自然回退原生解析。
+// 加锁防并发 Parse 下的 p.anydoc 读写竞争（DocumentParser 为 DI 单例，多 goroutine 共用）。
 func (p *DocumentParser) anydocConverter() anydocBackend {
+	p.anydocMu.Lock()
+	defer p.anydocMu.Unlock()
 	if p.anydoc == nil {
 		p.anydoc = NewAnydocConverter()
 	}

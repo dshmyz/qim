@@ -14,7 +14,6 @@ type EinoChatModel struct {
 	aiService *ai.AIService
 	taskType  ai.TaskType
 	userID    uint
-	overrides []ai.Override
 	useTools  bool
 }
 

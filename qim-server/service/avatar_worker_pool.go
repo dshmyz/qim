@@ -68,6 +68,11 @@ func NewAvatarWorkerPool(workers int, globalRPM int, service *AvatarService) *Av
 	return pool
 }
 
+// Close 关闭分身回复编排引擎，回收 worker goroutine。供服务优雅退出时调用。
+func (p *AvatarWorkerPool) Close() {
+	p.orch.Close()
+}
+
 // Submit 提交分身任务。队列满时不再立即丢弃，而是阻塞等待最多 2 秒；
 // 仍失败则记 Warn 并通过 WS 通知分身主人“回复被跳过”，避免静默丢失。
 // 并发治理（限并发/限流）由内部 ReplyOrchestrator 承担，processing 闭包携带完整任务。

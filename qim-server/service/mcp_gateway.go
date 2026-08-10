@@ -43,6 +43,10 @@ type MCPClientGateway struct {
 	configSvc *SystemConfigService
 	registry  *ai.ToolRegistry
 	mu        sync.RWMutex // 保护 registered / connClients / sessions 的并发读写
+	// syncMu 串行化整次 Sync：re-sync 含「摘除旧工具 -> 网络重连 -> 重新注册」多步，
+	// 并发 Sync 会互相踩 registry。热同步改为异步后并发概率上升，故显式串行；
+	// mu 仍只保护共享 map，工具 Execute 不持 syncMu 故不被同步阻塞。
+	syncMu sync.Mutex
 	// registered 记录本次 Sync 已注册的外部工具名，用于 re-sync 去重/覆盖
 	registered map[string]bool
 	// connClients 按连接名缓存 mcp client（供工具 Execute 复用同一 HTTP 连接池）
@@ -109,6 +113,11 @@ func (g *MCPClientGateway) loadConns() []MCPConnConfig {
 // 可安全重复调用：每次先摘除上一轮注册的外部工具（应对连接被删除/禁用/改名），
 // 再按当前配置重新注册，因此运行时可经 ReSyncExternalMCP() 热刷新。
 func (g *MCPClientGateway) Sync() {
+	// 串行化整次同步：re-sync 多步操作（摘除旧工具 -> 网络重连 -> 重新注册），
+	// 并发 Sync 会互相踩 registry。syncMu 覆盖全程，mu 仍只保护共享 map。
+	g.syncMu.Lock()
+	defer g.syncMu.Unlock()
+
 	// 持写锁：摘除上一轮注册的外部工具，保证幂等。
 	g.mu.Lock()
 	for name := range g.registered {

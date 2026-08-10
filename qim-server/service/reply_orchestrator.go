@@ -62,6 +62,8 @@ type ReplyOrchestrator struct {
 	convLocks   sync.Map      // key -> *keyedLock：按 key 串行
 	serialize   bool
 	submitCount atomic.Int64 // 提交计数，用于触发定期 idle key 清理
+	mu          sync.RWMutex // 保护 queue 关闭状态：Submit 持读锁发送，Close 持写锁关闭
+	closed      bool         // 队列是否已关闭（受 mu 保护）
 }
 
 // NewReplyOrchestrator 创建并发编排引擎，启动 workers 个消费协程。
@@ -95,6 +97,13 @@ func (o *ReplyOrchestrator) Submit(key uint, handle func()) error {
 	}
 	timer := time.NewTimer(2 * time.Second)
 	defer timer.Stop()
+	// 持读锁发送：与 Close 的写锁互斥，避免向已关闭 channel 发送触发 panic。
+	// Close 已关闭队列时返回错误而非 panic--关闭后调用方不应再提交，此处容错兜底。
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	if o.closed {
+		return fmt.Errorf("编排引擎已关闭，提交被拒")
+	}
 	select {
 	case o.queue <- orchJob{key: key, handle: handle}:
 		return nil
@@ -177,8 +186,17 @@ func (o *ReplyOrchestrator) cleanupIdleKeys() {
 	})
 }
 
-// Close 关闭编排引擎，释放 worker goroutine。关闭后 Submit 将 panic（向已关闭 channel 发送），
-// 调用方应确保 Close 后不再 Submit。通常在服务关闭时调用。
+// Close 关闭编排引擎：关闭任务队列使 worker goroutine 经 for-range 自然排空退出，
+// 并拒绝后续 Submit。幂等，可重复调用。通常在服务关闭、HTTP 已停止接收新请求后调用。
+//
+// 本引擎不持有定时器/独立 goroutine 之外的资源（idle 清理搭载 Submit 触发，无后台定时器），
+// 故无需释放定时器；进程退出也会回收 worker，Close 的意义是优雅停止、拒绝新提交。
 func (o *ReplyOrchestrator) Close() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed {
+		return
+	}
+	o.closed = true
 	close(o.queue)
 }

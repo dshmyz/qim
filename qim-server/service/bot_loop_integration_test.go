@@ -59,7 +59,7 @@ func TestBotLoop_InboundReplyForwardedToWebhook(t *testing.T) {
 	msgSvc := NewMessageService(db, nil, nil)
 
 	// 触发 inbound 转发
-	msgSvc.handleBotMessage(human.ID, conv.ID, "我看下日志")
+	msgSvc.handleBotMessage(human.ID, conv.ID, "text", "我看下日志")
 
 	select {
 	case r := <-got:
@@ -111,7 +111,7 @@ func TestBotLoop_InternalAiModeDoesNotForward(t *testing.T) {
 	db.Create(&model.Message{ConversationID: conv.ID, SenderID: human.ID, Type: "text", Content: "hi", Origin: "user"})
 
 	msgSvc := NewMessageService(db, nil, nil) // aiService=nil，internal_ai 分支会走"AI 服务未配置"兜底但不转发
-	msgSvc.handleBotMessage(human.ID, conv.ID, "hi")
+	msgSvc.handleBotMessage(human.ID, conv.ID, "text", "hi")
 
 	select {
 	case <-called:
