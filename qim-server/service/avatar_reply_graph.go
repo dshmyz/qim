@@ -452,12 +452,11 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	}
 
 	// 范围外静默（硬门控）：ReplyOutOfScope=false 时，分身只应回复「与自身知识/上下文相关」的消息。
-	// 有笔记/群知识/记忆命中 → 属于范围内，正常回复；无任何上下文命中 → 属于范围外，直接静默。
+	// 有笔记/群知识命中 → 属于范围内，正常回复；无任何知识命中 → 属于范围外，直接静默。
+	// 分身记忆（memoryCtx）不参与范围内判定——记忆是"之前学到的背景"，不是"当前问题的知识命中"。
+	// 若记忆也参与，用户问任何无关问题，只要 Recall 出历史记忆就会回复，违背"范围外不回复"的字面语义。
 	// 任务不参与范围内判定（任务只是附加注入的知识，不应让"有任务就什么都回"旁路门控）。
-	// 改为硬静默：范围外不再用 LLM 二次判断（原 needReplyForOutOfScope 会因 LLM 觉得
-	// 「消息有针对性」而放行闲聊/问候，导致用户以为「知识之外不回复」没生效）。
-	// 语义对齐字面预期——无知识命中即不回，杜绝范围外乱回。
-	hasKnowledge := noteCtx != "" || groupKnowledge != "" || memoryCtx != ""
+	hasKnowledge := noteCtx != "" || groupKnowledge != ""
 	if !input.ReplyStrategy.ReplyOutOfScope && !hasKnowledge {
 		input.SkipReply = true
 	}
