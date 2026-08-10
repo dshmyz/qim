@@ -42,11 +42,14 @@ func SplitMarkdownByHeading(text string) []Chunk {
 	return chunks
 }
 
-// SplitBySize 按最大字符数切分文本
+// SplitBySize 按最大字符数切分文本，相邻块间保留 overlap 字符的上下文重叠，
+// 避免完整句子被切断后两边都丢失完整语义。
 func SplitBySize(text string, maxSize int) []string {
 	if len(text) <= maxSize {
 		return []string{text}
 	}
+
+	const overlap = 150
 
 	paragraphs := strings.Split(text, "\n\n")
 	var chunks []string
@@ -55,7 +58,15 @@ func SplitBySize(text string, maxSize int) []string {
 	for _, p := range paragraphs {
 		if len(current)+len(p) > maxSize && current != "" {
 			chunks = append(chunks, current)
-			current = p
+			// 取前一块尾部 overlap 字符作为下一块的上下文开头
+			tail := current
+			if len(tail) > overlap {
+				tail = tail[len(tail)-overlap:]
+				if idx := strings.LastIndexAny(tail, "。！？\n"); idx > 0 {
+					tail = tail[idx+1:]
+				}
+			}
+			current = tail + "\n\n" + p
 		} else {
 			if current != "" {
 				current += "\n\n"

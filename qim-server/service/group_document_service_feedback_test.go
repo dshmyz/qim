@@ -62,7 +62,7 @@ func TestProcessDocument_GracedbNil_MarksFailedInsteadOfStuckPending(t *testing.
 // ===== 展示评分优化测试 =====
 
 // TestHybridDisplayScores_FTSOnly_RankBased
-// 仅 FTS 命中时，分数应按 FTS 排名递减，不再一律 0.5。
+// FTS 无 BM25 分时（Score=0），按排名递减，不再一律 0.5。
 func TestHybridDisplayScores_FTSOnly_RankBased(t *testing.T) {
 	fts := []types.ScoredEmbedding{
 		{Embedding: types.Embedding{ID: "a"}},
@@ -74,6 +74,23 @@ func TestHybridDisplayScores_FTSOnly_RankBased(t *testing.T) {
 	assert.Greater(t, scored[0].Score, scored[2].Score, "FTS 排名靠前应得分更高")
 	assert.GreaterOrEqual(t, scored[0].Score, float32(0.7), "第1名应≥0.7")
 	assert.LessOrEqual(t, scored[2].Score, float32(0.6), "末名应≤0.6")
+}
+
+// TestHybridDisplayScores_FTSOnly_BM25Normalized
+// FTS 有 BM25 分时，展示分应按 BM25 归一化（0.5~0.8），不依赖排名。
+func TestHybridDisplayScores_FTSOnly_BM25Normalized(t *testing.T) {
+	fts := []types.ScoredEmbedding{
+		{Embedding: types.Embedding{ID: "a"}, Score: 10.0}, // BM25 高分
+		{Embedding: types.Embedding{ID: "b"}, Score: 5.0},  // BM25 中分
+		{Embedding: types.Embedding{ID: "c"}, Score: 1.0},  // BM25 低分
+	}
+	scored := hybridDisplayScores(fts, nil, fts)
+	require.Len(t, scored, 3)
+	// 归一化: 0.5 + 0.3 * (score / maxScore)
+	// a: 0.5 + 0.3 * 10/10 = 0.8, b: 0.5 + 0.3 * 5/10 = 0.65, c: 0.5 + 0.3 * 1/10 = 0.53
+	assert.InDelta(t, 0.80, scored[0].Score, 0.01, "BM25 最高分应归一化到 ~0.8")
+	assert.InDelta(t, 0.65, scored[1].Score, 0.01, "BM25 中等分应归一化到 ~0.65")
+	assert.InDelta(t, 0.53, scored[2].Score, 0.01, "BM25 低分应归一化到 ~0.53")
 }
 
 // TestHybridDisplayScores_DualPathBoost

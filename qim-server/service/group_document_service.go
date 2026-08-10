@@ -992,10 +992,10 @@ func mergeRRF(semantic, fts []types.ScoredEmbedding, topK int) []types.ScoredEmb
 // hybridDisplayScores 把 RRF 融合后的展示分数还原为对用户有意义的 0-1 值：
 //   - 语义+词法双路命中：余弦分 + 0.08 加成（上限 1.0），双路确认 = 更高置信度
 //   - 仅语义命中：保持原始余弦相似度
-//   - 仅词法命中：按 FTS 排名递减（第1名 ~0.8 → 末名 ~0.5），不再一律 0.5
+//   - 仅词法命中：用归一化 BM25 分（0.5~0.8），无 BM25 分时回退到排名估算
 //
 // RRF 分数尺度极小（~0.016）不适合直接展示，故还原为余弦语义；FTS 独占命中
-// 无余弦分可用，按排名给出有区分度的展示分而非扁平的 0.5。
+// 优先使用 gracedb 返回的 BM25 原始分归一化，比纯排名估算更精确。
 func hybridDisplayScores(scored, semantic, fts []types.ScoredEmbedding) []types.ScoredEmbedding {
 	semScore := make(map[string]float32, len(semantic))
 	for _, se := range semantic {
@@ -1004,6 +1004,19 @@ func hybridDisplayScores(scored, semantic, fts []types.ScoredEmbedding) []types.
 			id = se.DocID
 		}
 		semScore[id] = se.Score
+	}
+	// FTS 分数映射（BM25 原始分）+ 最大值（用于归一化到 0.5~0.8）
+	ftsScoreMap := make(map[string]float32, len(fts))
+	var maxFTS float32
+	for _, se := range fts {
+		id := se.ID
+		if id == "" {
+			id = se.DocID
+		}
+		ftsScoreMap[id] = se.Score
+		if se.Score > maxFTS {
+			maxFTS = se.Score
+		}
 	}
 	ftsRank := make(map[string]int, len(fts))
 	for i, se := range fts {
@@ -1022,7 +1035,8 @@ func hybridDisplayScores(scored, semantic, fts []types.ScoredEmbedding) []types.
 			id = se.DocID
 		}
 		semVal, inSem := semScore[id]
-		rank, inFTS := ftsRank[id]
+		_, inFTS := ftsScoreMap[id]
+		rank := ftsRank[id]
 
 		switch {
 		case inSem && inFTS:
@@ -1034,9 +1048,13 @@ func hybridDisplayScores(scored, semantic, fts []types.ScoredEmbedding) []types.
 		case inSem:
 			// 仅语义：保持原始余弦分
 			se.Score = semVal
-		case inFTS && ftsTotal > 0:
-			// 仅词法：按 FTS 排名递减，第1名 0.8 → 末名 0.5
-			se.Score = 0.8 - 0.3*float32(rank)/float32(ftsTotal)
+		case inFTS:
+			// 仅词法：优先用归一化 BM25 分，回退到排名估算
+			if maxFTS > 0 {
+				se.Score = 0.5 + 0.3*ftsScoreMap[id]/maxFTS
+			} else {
+				se.Score = 0.8 - 0.3*float32(rank)/float32(ftsTotal)
+			}
 			if se.Score < 0.5 {
 				se.Score = 0.5
 			}
