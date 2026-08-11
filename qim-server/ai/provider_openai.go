@@ -326,6 +326,11 @@ func (p *OpenAIProvider) Embedding(text string) ([]float32, error) {
 	return response.Data[0].Embedding, nil
 }
 
+// SupportsEmbedding 报告该 provider 是否支持 embedding API。
+func (p *OpenAIProvider) SupportsEmbedding() bool {
+	return true
+}
+
 func (p *OpenAIProvider) ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error) {
 	if !p.IsConfigured() {
 		return nil, fmt.Errorf("OpenAI API key is not configured")

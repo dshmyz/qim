@@ -209,3 +209,8 @@ func (p *AlibabaProvider) Embedding(text string) ([]float32, error) {
 
 	return response.Data[0].Embedding, nil
 }
+
+// SupportsEmbedding 报告该 provider 是否支持 embedding API。
+func (p *AlibabaProvider) SupportsEmbedding() bool {
+	return true
+}

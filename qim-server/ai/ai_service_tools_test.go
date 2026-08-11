@@ -30,6 +30,8 @@ func (p *fallbackProvider) ChatStreamWithContext(context.Context, []Message, fun
 	return nil
 }
 func (p *fallbackProvider) Embedding(string) ([]float32, error) { return nil, nil }
+
+func (p *fallbackProvider) SupportsEmbedding() bool { return true }
 func (p *fallbackProvider) ChatWithTools([]Message, []ToolDef) (*ChatResponse, error) {
 	return nil, fmt.Errorf("native tools unavailable")
 }

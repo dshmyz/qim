@@ -103,6 +103,11 @@ func (p *AnthropicProvider) Embedding(text string) ([]float32, error) {
 	return nil, fmt.Errorf("Anthropic provider does not support Embedding API")
 }
 
+// SupportsEmbedding 报告该 provider 是否支持 embedding API。
+func (p *AnthropicProvider) SupportsEmbedding() bool {
+	return false
+}
+
 // ChatWithTools 带 function calling 的聊天
 func (p *AnthropicProvider) ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error) {
 	if !p.IsConfigured() {

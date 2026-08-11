@@ -30,6 +30,10 @@ type Provider interface {
 	// Embedding 将文本转换为向量
 	Embedding(text string) ([]float32, error)
 
+	// SupportsEmbedding 报告该 provider 是否支持 embedding API。
+	// 用于 router 在选 embedding 路由时跳过不支持的 provider（如 Anthropic）。
+	SupportsEmbedding() bool
+
 	// ChatWithTools 带 function calling 的聊天
 	ChatWithTools(messages []Message, tools []ToolDef) (*ChatResponse, error)
 
@@ -74,6 +78,14 @@ func (bp *BaseProvider) ChatStreamWithContext(ctx context.Context, messages []Me
 // 不覆盖即自动降级，功能不回归。
 func (bp *BaseProvider) ChatStreamWithTools(ctx context.Context, messages []Message, tools []ToolDef, onChunk func(chunk StreamChunk) error) error {
 	return ErrStreamingToolsNotSupported
+}
+
+// ExecuteWithRetry 执行 HTTP 请求并自动重试
+
+// SupportsEmbedding 默认返回 true（大多数 provider 支持 embedding）。
+// 不支持 embedding 的 provider（如 Anthropic）应覆盖此方法返回 false。
+func (bp *BaseProvider) SupportsEmbedding() bool {
+	return true
 }
 
 // ExecuteWithRetry 执行 HTTP 请求并自动重试

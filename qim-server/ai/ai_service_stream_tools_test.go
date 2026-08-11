@@ -24,6 +24,8 @@ func (p *streamMockProvider) ChatStreamWithContext(context.Context, []Message, f
 	return nil
 }
 func (p *streamMockProvider) Embedding(string) ([]float32, error) { return nil, nil }
+
+func (p *streamMockProvider) SupportsEmbedding() bool { return true }
 func (p *streamMockProvider) ChatWithTools([]Message, []ToolDef) (*ChatResponse, error) {
 	return nil, nil
 }

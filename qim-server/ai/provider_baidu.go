@@ -255,3 +255,8 @@ func (p *BaiduProvider) Embedding(text string) ([]float32, error) {
 
 	return nil, fmt.Errorf("invalid Baidu embedding response")
 }
+
+// SupportsEmbedding 报告该 provider 是否支持 embedding API。
+func (p *BaiduProvider) SupportsEmbedding() bool {
+	return true
+}

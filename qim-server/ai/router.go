@@ -61,6 +61,12 @@ func (r *ModelRouter) SelectProvider(
 			lastErr = fmt.Errorf("provider %s not configured", name)
 			continue
 		}
+		// embedding 任务：跳过不支持 embedding 的 provider（如 Anthropic），
+		// 避免选中后 Embedding() 返回错误导致语义搜索整体失败。
+		if taskType == TaskTypeEmbedding && !provider.SupportsEmbedding() {
+			lastErr = fmt.Errorf("provider %s does not support embedding", name)
+			continue
+		}
 		return provider, route.Model, nil
 	}
 
@@ -75,6 +81,10 @@ func (r *ModelRouter) SelectProvider(
 	sort.Strings(names)
 	for _, name := range names {
 		if provider := pool[name]; provider.IsConfigured() {
+			// embedding 任务：跳过不支持 embedding 的 provider
+			if taskType == TaskTypeEmbedding && !provider.SupportsEmbedding() {
+				continue
+			}
 			return provider, route.Model, nil
 		}
 	}
