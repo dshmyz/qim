@@ -17,6 +17,7 @@ type MemoryReflection struct {
 	Themes     []string `json:"themes"`
 	Entities   []string `json:"entities"`
 	Importance float64  `json:"importance"` // 1-5 档位（与 RememberVerdict 一致）
+	Type       string   `json:"type"`       // fact/preference/event：记忆分类标签
 }
 
 // reflectConsolidated 执行记忆反射闭环：
@@ -79,11 +80,12 @@ func reflectStructure(aiService *ai.AIService, message string, memories []string
 func reflectionExtractPrompt(message string, memories []string, knowledge []string, context []string) string {
 	var b strings.Builder
 	b.WriteString("请把以下对话信息折叠合并成一条结构化记忆，提取关键实体与主题。\n")
-	b.WriteString("仅返回 JSON，形如 {\"summary\":\"...\",\"facts\":[\"...\"],\"themes\":[\"...\"],\"entities\":[\"...\"]}\n")
+	b.WriteString("仅返回 JSON，形如 {\"summary\":\"...\",\"facts\":[\"...\"],\"themes\":[\"...\"],\"entities\":[\"...\"],\"type\":\"fact\"}\n")
 	b.WriteString("- summary: 一段通顺的中文总结，合并重复信息\n")
 	b.WriteString("- facts: 明确的事实要点列表\n")
 	b.WriteString("- themes: 2-5 个主题词（如“项目、偏好、约定”）\n")
 	b.WriteString("- entities: 关键实体/人名/项目名（如“团队A、张三”）\n")
+	b.WriteString("- type: 记忆类型。fact=客观事实（日期/数字/决定），preference=偏好/习惯/喜好，event=事件/约定/会议\n")
 	if len(context) > 0 {
 		b.WriteString("\n对话上下文（最近几条消息，帮助理解语境）：\n")
 		for i, c := range context {

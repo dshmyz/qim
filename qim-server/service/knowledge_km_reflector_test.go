@@ -35,7 +35,7 @@ func TestReflectConsolidated_MergesMemory(t *testing.T) {
 }
 
 func TestParseReflectionJSON(t *testing.T) {
-	s := `{"summary":"关于项目进度的总结","facts":["A","B"],"themes":["工作"]}`
+	s := `{"summary":"关于项目进度的总结","facts":["A","B"],"themes":["工作"],"type":"fact"}`
 	ref, ok := parseReflectionJSON(s)
 	if !ok {
 		t.Fatal("应能解析合法 JSON")
@@ -45,6 +45,9 @@ func TestParseReflectionJSON(t *testing.T) {
 	}
 	if len(ref.Facts) != 2 || len(ref.Themes) != 1 {
 		t.Errorf("facts/themes 解析错误: %+v", ref)
+	}
+	if ref.Type != "fact" {
+		t.Errorf("type 解析错误: %q, 期望 fact", ref.Type)
 	}
 }
 
