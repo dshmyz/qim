@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/dshmyz/gracedb/pkg/gracedb"
@@ -156,4 +158,116 @@ func TestFakeVec_Deterministic(t *testing.T) {
 	if !diff {
 		t.Error("不同文本向量应不同")
 	}
+}
+
+// TestSaveConsolidated_ConflictUpdatesOldNotAppends 验证语义冲突检测：
+// 新记忆与最相似旧记忆（score≥0.7）冲突时，更新旧记忆内容（保留 memoryID），
+// 而非新增一条矛盾记忆。直接调用 saveConsolidatedMemory，不依赖整条 LLM 反射。
+func TestSaveConsolidated_ConflictUpdatesOldNotAppends(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+
+	svc := &AvatarMemoryService{db: db, aiService: nil}
+	// 注入假冲突判定：恒返回冲突
+	svc.SetConflictCheck(func(_, _ string) (bool, error) { return true, nil })
+
+	// 预置旧记忆
+	oldID := "memory_9_1"
+	if _, err := db.SaveMemory(types.MemorySaveRequest{
+		MemoryID: oldID, UserID: "9", Scope: "user", Namespace: "avatar",
+		Content: "项目使用 MySQL 作为数据库", Importance: 0.8,
+	}); err != nil {
+		t.Fatalf("预置旧记忆失败: %v", err)
+	}
+
+	// 预测记忆：新的结论（改用 PostgreSQL）
+	ref := MemoryReflection{Summary: "项目改用 PostgreSQL 作为数据库", Importance: 4}
+	// 模拟 Recall 命中最相似旧记忆（高 score 触发冲突检测）
+	memories := []SearchResult{
+		{Content: "项目使用 MySQL 作为数据库", Score: 0.85, DocID: oldID},
+	}
+
+	ok, err := svc.saveConsolidatedMemory(9, 1, "avatar", ref, memories)
+	if err != nil {
+		t.Fatalf("saveConsolidatedMemory 失败: %v", err)
+	}
+	if !ok {
+		t.Fatal("冲突应返回 ok=true（更新了旧记忆）")
+	}
+
+	// 断言：旧记忆被更新为新 Summary（而非新增），该用户 avatar 只有 1 条
+	if count := countMemories(db, "9", "avatar"); count != 1 {
+		t.Fatalf("冲突应更新而非新增，期望 1 条，got %d", count)
+	}
+	rec, err := loadMemoryRecord(db, "9", "avatar", oldID)
+	if err != nil {
+		t.Fatalf("读取更新后的旧记忆失败: %v", err)
+	}
+	if !strings.Contains(rec.Content, "PostgreSQL") {
+		t.Fatalf("旧记忆内容应更新为含 PostgreSQL 的新结论，got %q", rec.Content)
+	}
+}
+
+// TestSaveConsolidated_NoConflictAppends 验证不冲突（或 score<0.7）时照常新增一条。
+func TestSaveConsolidated_NoConflictAppends(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+
+	svc := &AvatarMemoryService{db: db, aiService: nil}
+	svc.SetConflictCheck(func(_, _ string) (bool, error) { return false, nil })
+
+	if _, err := db.SaveMemory(types.MemorySaveRequest{
+		MemoryID: "memory_8_1", UserID: "8", Scope: "user", Namespace: "avatar",
+		Content: "项目使用 MySQL 作为数据库", Importance: 0.8,
+	}); err != nil {
+		t.Fatalf("预置旧记忆失败: %v", err)
+	}
+
+	ref := MemoryReflection{Summary: "项目改用 PostgreSQL 作为数据库", Importance: 4}
+	// 高相似但判定不冲突 → 仍新增
+	memories := []SearchResult{
+		{Content: "项目使用 MySQL 作为数据库", Score: 0.85, DocID: "memory_8_1"},
+	}
+
+	ok, err := svc.saveConsolidatedMemory(8, 1, "avatar", ref, memories)
+	if err != nil || !ok {
+		t.Fatalf("saveConsolidatedMemory 应成功, ok=%v err=%v", ok, err)
+	}
+
+	if count := countMemories(db, "8", "avatar"); count != 2 {
+		t.Fatalf("不冲突应新增，期望 2 条，got %d", count)
+	}
+}
+
+// loadMemoryRecord 按 ID 从指定 namespace 读回一条记忆（供冲突更新断言）。
+func loadMemoryRecord(db *gracedb.DB, userID, ns, memoryID string) (*types.MemoryRecord, error) {
+	resp, err := db.SearchMemory(types.MemorySearchRequest{
+		UserID: userID, Scope: "user", Namespace: ns, TopK: 100,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, hit := range resp.Results {
+		if hit.Memory.ID == memoryID {
+			return &hit.Memory, nil
+		}
+	}
+	return nil, fmt.Errorf("memory %s not found", memoryID)
+}
+
+// countMemories 统计某用户某 namespace 下的记忆条数。
+func countMemories(db *gracedb.DB, userID, ns string) int {
+	resp, err := db.SearchMemory(types.MemorySearchRequest{
+		UserID: userID, Scope: "user", Namespace: ns, TopK: 1000,
+	})
+	if err != nil {
+		return 0
+	}
+	return len(resp.Results)
 }

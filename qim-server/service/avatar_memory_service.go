@@ -15,6 +15,9 @@ import (
 type AvatarMemoryService struct {
 	db        *gracedb.DB
 	aiService *ai.AIService
+	// conflictCheck 判断新旧两条记忆是否"同一主题但结论矛盾"：矛盾则更新旧的
+	// （保留 memoryID），否则新增。nil 时用 LLM 默认实现。可注入以便测试不真调 LLM。
+	conflictCheck func(newMemo, oldMemo string) (bool, error)
 }
 
 func NewAvatarMemoryService(vectorSvc *VectorService, aiService *ai.AIService) *AvatarMemoryService {
@@ -22,6 +25,19 @@ func NewAvatarMemoryService(vectorSvc *VectorService, aiService *ai.AIService) *
 		db:        vectorSvc.GetDB(),
 		aiService: aiService,
 	}
+}
+
+// SetConflictCheck 注入语义冲突判定器（默认 LLM 实现，测试可用假判定）。
+func (s *AvatarMemoryService) SetConflictCheck(f func(newMemo, oldMemo string) (bool, error)) {
+	s.conflictCheck = f
+}
+
+// memoryConflicts LLM 判定新旧记忆是否冲突；判定器未注入时用默认 LLM 实现。
+func (s *AvatarMemoryService) memoryConflicts(newMemo, oldMemo string) (bool, error) {
+	if s.conflictCheck != nil {
+		return s.conflictCheck(newMemo, oldMemo)
+	}
+	return checkMemoryConflictWithAI(s.aiService, newMemo, oldMemo)
 }
 
 func (s *AvatarMemoryService) Remember(userID uint, conversationID uint, content string, importance float64) error {
@@ -81,16 +97,45 @@ func (s *AvatarMemoryService) ConsolidateMessage(userID, conversationID uint, co
 		return false, nil
 	}
 
+	return s.saveConsolidatedMemory(userID, conversationID, "avatar", ref, memories)
+}
+
+// saveConsolidatedMemory 落库反射记忆：与最相似旧记忆（score≥0.7）语义冲突时
+// 更新旧记忆内容（保留 memoryID），否则新增一条。返回是否真的落库。
+// 提取为独立方法便于测试（不依赖整条 LLM 反射流程）。
+func (s *AvatarMemoryService) saveConsolidatedMemory(userID, conversationID uint, namespace string, ref MemoryReflection, memories []SearchResult) (bool, error) {
+	uid := fmt.Sprintf("%d", userID)
+	cid := fmt.Sprintf("%d", conversationID)
+
+	// 语义冲突检测：新记忆与最相似的旧记忆冲突时，更新旧的而非新增。
+	if len(memories) > 0 && memories[0].Score >= 0.7 {
+		conflict, cerr := s.memoryConflicts(ref.Summary, memories[0].Content)
+		if cerr == nil && conflict {
+			content := ref.Summary
+			_, uerr := s.db.UpdateMemory(types.MemoryUpdateRequest{
+				MemoryID: memories[0].DocID,
+				Content:  &content,
+				Importance: func() *float64 { v := importance01(ref.Importance); return &v }(),
+			})
+			if uerr != nil {
+				return false, uerr
+			}
+			logger.WithModule("AvatarMemory").Info("记忆冲突，更新旧记忆",
+				"userID", userID, "memoryID", memories[0].DocID, "new", ref.Summary)
+			return true, nil
+		}
+	}
+
 	memoryID := fmt.Sprintf("memory_%d_%d", userID, time.Now().UnixMilli())
-	_, err = s.db.SaveMemory(types.MemorySaveRequest{
+	_, err := s.db.SaveMemory(types.MemorySaveRequest{
 		MemoryID:  memoryID,
-		UserID:    fmt.Sprintf("%d", userID),
+		UserID:    uid,
 		Content:   ref.Summary,
 		Scope:     "user",
-		Namespace: "avatar",
+		Namespace: namespace,
 		Importance: importance01(ref.Importance),
 		Metadata: map[string]interface{}{
-			"conversation_id":          fmt.Sprintf("%d", conversationID),
+			"conversation_id":          cid,
 			"remembered_at":            fmt.Sprintf("%d", time.Now().Unix()),
 			"importance":               fmt.Sprintf("%.1f", ref.Importance),
 			"knowledge_memory_summary": "true", // 标记为反射摘要记忆

@@ -24,6 +24,9 @@ var ErrMemoryNotFound = errors.New("memory not found")
 type GroupMemoryService struct {
 	db        *gracedb.DB
 	aiService *ai.AIService
+	// conflictCheck 判断新旧两条群记忆是否"同一主题但结论矛盾"：矛盾则更新旧的，
+	// 否则新增。nil 时用 LLM 默认实现。可注入以便测试不真调 LLM。
+	conflictCheck func(newMemo, oldMemo string) (bool, error)
 }
 
 func NewGroupMemoryService(vectorSvc *VectorService, aiService *ai.AIService) *GroupMemoryService {
@@ -31,6 +34,19 @@ func NewGroupMemoryService(vectorSvc *VectorService, aiService *ai.AIService) *G
 		return &GroupMemoryService{db: nil, aiService: aiService}
 	}
 	return &GroupMemoryService{db: vectorSvc.GetDB(), aiService: aiService}
+}
+
+// SetConflictCheck 注入语义冲突判定器（默认 LLM 实现，测试可用假判定）。
+func (s *GroupMemoryService) SetConflictCheck(f func(newMemo, oldMemo string) (bool, error)) {
+	s.conflictCheck = f
+}
+
+// memoryConflicts LLM 判定新旧记忆是否冲突；判定器未注入时用默认 LLM 实现。
+func (s *GroupMemoryService) memoryConflicts(newMemo, oldMemo string) (bool, error) {
+	if s.conflictCheck != nil {
+		return s.conflictCheck(newMemo, oldMemo)
+	}
+	return checkMemoryConflictWithAI(s.aiService, newMemo, oldMemo)
 }
 
 const groupMemoryNamespace = "group_assistant"
@@ -94,8 +110,35 @@ func (s *GroupMemoryService) ConsolidateGroupMessage(groupID, conversationID uin
 		return false, nil
 	}
 
+	return s.saveConsolidatedGroupMemory(groupID, conversationID, ref, memories)
+}
+
+// saveConsolidatedGroupMemory 落库群记忆：与最相似旧记忆（score≥0.7）语义冲突时
+// 更新旧记忆内容（保留 memoryID），否则新增一条。返回是否真的落库。
+// 提取为独立方法便于测试。
+func (s *GroupMemoryService) saveConsolidatedGroupMemory(groupID, conversationID uint, ref MemoryReflection, memories []SearchResult) (bool, error) {
+	// 语义冲突检测：新记忆与最相似的旧记忆冲突时更新旧的，避免"用MySQL→改用
+	// PostgreSQL"这类矛盾群记忆并存、群助手后续混淆。
+	if len(memories) > 0 && memories[0].Score >= 0.7 {
+		conflict, cerr := s.memoryConflicts(ref.Summary, memories[0].Content)
+		if cerr == nil && conflict {
+			content := ref.Summary
+			_, uerr := s.db.UpdateMemory(types.MemoryUpdateRequest{
+				MemoryID: memories[0].DocID,
+				Content:  &content,
+				Importance: func() *float64 { v := importance01(ref.Importance); return &v }(),
+			})
+			if uerr != nil {
+				return false, uerr
+			}
+			logger.WithModule("GroupMemoryService").Info("群记忆冲突，更新旧记忆",
+				"groupID", groupID, "memoryID", memories[0].DocID, "new", ref.Summary)
+			return true, nil
+		}
+	}
+
 	memoryID := fmt.Sprintf("groupmem_%d_%d", groupID, time.Now().UnixMilli())
-	_, err = s.db.SaveMemory(types.MemorySaveRequest{
+	_, err := s.db.SaveMemory(types.MemorySaveRequest{
 		MemoryID:  memoryID,
 		UserID:    fmt.Sprintf("%d", groupID),
 		Content:   ref.Summary,

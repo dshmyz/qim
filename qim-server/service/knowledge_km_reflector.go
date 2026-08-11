@@ -196,3 +196,40 @@ func parseReflectionJSON(s string) (MemoryReflection, bool) {
 	raw.Summary = strings.TrimSpace(raw.Summary)
 	return raw, raw.Summary != ""
 }
+
+// memoryConflictPrompt 构造"两条记忆是否冲突"的二分类提示。
+// 判定标准：是否讨论同一主题/实体，但结论或事实相互矛盾。
+// 仅对高相似度（score≥0.7）的旧记忆调用，避免对不相关记忆浪费 LLM 调用。
+func memoryConflictPrompt(newMemo, oldMemo string) string {
+	var b strings.Builder
+	b.WriteString("判断下面两条记忆是否描述同一件事，但结论或事实相互矛盾。\n")
+	b.WriteString("仅返回 JSON，形如 {\"conflict\": true}。conflict=true 表示矛盾（应更新旧记录），false 表示不矛盾。\n")
+	b.WriteString("注意：仅仅是措辞不同但结论一致的不算冲突；结论相反（如'用MySQL'vs'改用PostgreSQL'）才算冲突。\n\n")
+	b.WriteString("新记忆：\n" + newMemo + "\n\n")
+	b.WriteString("旧记忆：\n" + oldMemo + "\n")
+	return b.String()
+}
+
+// checkMemoryConflictWithAI 用 LLM 判断两条记忆是否语义冲突。
+// aiService 为 nil 时返回 false（不冲突），避免降级路径误更新。
+func checkMemoryConflictWithAI(aiService *ai.AIService, newMemo, oldMemo string) (bool, error) {
+	if aiService == nil {
+		return false, nil
+	}
+	aiMessages := []ai.Message{{Role: "user", Content: memoryConflictPrompt(newMemo, oldMemo)}}
+	out, err := aiService.GetCompletion(ai.TaskTypeAnalysis, aiMessages)
+	if err != nil {
+		return false, err
+	}
+	var raw struct {
+		Conflict bool `json:"conflict"`
+	}
+	block := reflectionJSONRe.FindString(out)
+	if block == "" {
+		return false, nil
+	}
+	if err := json.Unmarshal([]byte(block), &raw); err != nil {
+		return false, nil
+	}
+	return raw.Conflict, nil
+}
