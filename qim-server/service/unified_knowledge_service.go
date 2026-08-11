@@ -11,7 +11,7 @@ type UnifiedKnowledgeService struct {
 	groupDocSvc     *GroupDocumentService
 	legacyFallback  *LegacyKnowledgeFallback
 	vectorEnabled   bool
-	scoreThreshold  float64 // 知识来源分数门槛（0-1），低于此分数不注入 prompt 也不展示在徽章
+	thresholdSvc    *AiThresholdService // 阈值读取服务（nil 时用默认值）
 }
 
 type LegacyKnowledgeFallback struct {
@@ -67,15 +67,12 @@ func memoryResultsToSources(results []SearchResult) []KnowledgeSource {
 	return out
 }
 
-func NewUnifiedKnowledgeService(groupDocSvc *GroupDocumentService, fallback *LegacyKnowledgeFallback, scoreThreshold float64) *UnifiedKnowledgeService {
-	if scoreThreshold <= 0 {
-		scoreThreshold = 0.6 // 默认值
-	}
+func NewUnifiedKnowledgeService(groupDocSvc *GroupDocumentService, fallback *LegacyKnowledgeFallback, thresholdSvc *AiThresholdService) *UnifiedKnowledgeService {
 	return &UnifiedKnowledgeService{
 		groupDocSvc:    groupDocSvc,
 		legacyFallback: fallback,
 		vectorEnabled:  true,
-		scoreThreshold: scoreThreshold,
+		thresholdSvc:   thresholdSvc,
 	}
 }
 
@@ -140,7 +137,11 @@ func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID 
 	idx := 0
 	for _, snip := range snippets {
 		// 分数门槛：低于阈值的召回结果视为不相关，不注入 prompt 也不展示在徽章
-		if snip.Score < s.scoreThreshold {
+		threshold := 0.6
+		if s.thresholdSvc != nil {
+			threshold = s.thresholdSvc.GetFloat("ai.knowledge_score_threshold", 0.6)
+		}
+		if snip.Score < threshold {
 			continue
 		}
 		title := snip.Title

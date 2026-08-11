@@ -19,7 +19,7 @@ func TestBuildContextWithSources_SingleRetrieval(t *testing.T) {
 				{Title: "", Score: 0.8, Content: "无标题正文"},
 			}
 		},
-	}, 0.6)
+	}, nil)
 
 	ctx, sources := svc.BuildContextWithSources("问题", 1, 3)
 	assert.Contains(t, ctx, "Q3 规划", "上下文串应包含命中标题")
@@ -41,7 +41,7 @@ func TestBuildContextWithSources_SingleRetrieval(t *testing.T) {
 func TestBuildContextWithSources_EmptyWhenNoHit(t *testing.T) {
 	svc := NewUnifiedKnowledgeService(nil, &LegacyKnowledgeFallback{
 		SearchFunc: func(_ string, _ uint, _ int) []KnowledgeSnippet { return nil },
-	}, 0.6)
+	}, nil)
 	ctx, sources := svc.BuildContextWithSources("问题", 1, 3)
 	assert.Empty(t, ctx)
 	assert.Nil(t, sources)
@@ -70,7 +70,7 @@ func TestBuildContextWithSources_DedupSameDocChunks(t *testing.T) {
 				{Title: "设计规范", Score: 0.80, Content: "规范内容"},
 			}
 		},
-	}, 0.6)
+	}, nil)
 
 	ctx, sources := svc.BuildContextWithSources("问题", 1, 3)
 
@@ -123,7 +123,7 @@ func TestBuildContextWithSources_ScoreThreshold(t *testing.T) {
 				{Title: "极低分文档", Score: 0.3, Content: "极低分内容", DocID: "doc_3"}, // 低于门槛
 			}
 		},
-	}, 0.6)
+	}, nil)
 
 	ctx, sources := svc.BuildContextWithSources("问题", 1, 5)
 

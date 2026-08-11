@@ -83,7 +83,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				return nil
 			},
 		}
-		uk = service.NewUnifiedKnowledgeService(groupDocSvc, fallback, cfg.Knowledge.ScoreThreshold)
+		uk = service.NewUnifiedKnowledgeService(groupDocSvc, fallback, di.GlobalContainer.AiThresholdService)
 	}
 
 	handler.InitSmartReplyEngine(aiSvc)
@@ -666,6 +666,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				// 系统配置
 				adminRoutes.GET("/system/config", handler.GetSystemConfig)
 				adminRoutes.PUT("/system/config", handler.UpdateSystemConfig)
+
+				// AI 阈值配置
+				adminRoutes.GET("/ai/thresholds", handler.GetAIThresholds)
+				adminRoutes.GET("/ai/thresholds/schema", handler.GetAIThresholdSchema)
+				adminRoutes.PUT("/ai/thresholds", handler.UpdateAIThresholds)
 
 				// 操作日志
 				adminRoutes.GET("/logs/operation", handler.GetOperationLogs)

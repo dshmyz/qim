@@ -38,6 +38,25 @@ type KnowledgeConfig struct {
 	ScoreThreshold float64 `yaml:"score_threshold"`
 }
 
+// AiThresholdConfig AI 阈值配置项定义：key、默认值、取值范围说明。
+type AiThresholdConfig struct {
+	Key         string
+	Default     float64
+	Min         float64
+	Max         float64
+	Label       string // 前端展示用的中文标签
+	Description string // 前端展示用的说明
+}
+
+// Thresholds 所有 AI 阈值的定义列表，供前端渲染表单和后端校验。
+var Thresholds = []AiThresholdConfig{
+	{Key: "ai.knowledge_score_threshold", Default: 0.6, Min: 0, Max: 1, Label: "知识来源分数门槛", Description: "低于此分数的检索结果不注入 prompt 也不展示在知识来源徽章（0-1）"},
+	{Key: "ai.memory_recall_threshold", Default: 0.5, Min: 0, Max: 1, Label: "记忆召回门槛", Description: "分身记忆 Recall 分数门槛，低于此分数时视为知识范围外静默（0-1）"},
+	{Key: "ai.conflict_detection_threshold", Default: 0.7, Min: 0, Max: 1, Label: "冲突检测门槛", Description: "新旧记忆分数达到此值时才触发语义冲突检测（0-1）"},
+	{Key: "ai.context_history_limit", Default: 20, Min: 5, Max: 100, Label: "上下文历史条数", Description: "注入到 AI prompt 的最近对话消息条数上限"},
+	{Key: "ai.recent_ai_messages_limit", Default: 5, Min: 1, Max: 20, Label: "近期 AI 回复条数", Description: "上下文中保留的近期 AI 回复消息条数上限（防自我复制）"},
+}
+
 // StaticConfig 静态资源路径配置，避免在 routes.go 中硬编码工作目录相对路径
 type StaticConfig struct {
 	UploadsDir  string `yaml:"uploads_dir"`  // 上传文件根目录，默认 "uploads"

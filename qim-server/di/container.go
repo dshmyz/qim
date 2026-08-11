@@ -46,6 +46,7 @@ type Container struct {
 	BlacklistService     *service.BlacklistService
 	OperationLogService  *service.OperationLogService
 	SystemConfigService  *service.SystemConfigService
+	AiThresholdService  *service.AiThresholdService
 	ShortLinkService     *service.ShortLinkService
 	ChannelService       *service.ChannelService
 	RenderRuleService    *service.RenderRuleService
@@ -172,6 +173,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	blacklistService := service.NewBlacklistService(db)
 	operationLogService := service.NewOperationLogService(db)
 	systemConfigService := service.NewSystemConfigService(db)
+	aiThresholdService := service.NewAiThresholdService(db)
 	shortLinkService := service.NewShortLinkService(db)
 	channelService := service.NewChannelService(db)
 	renderRuleService := service.NewRenderRuleService(db)
@@ -257,6 +259,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		BlacklistService:     blacklistService,
 		OperationLogService:  operationLogService,
 		SystemConfigService:  systemConfigService,
+		AiThresholdService:  aiThresholdService,
 		ShortLinkService:     shortLinkService,
 		ChannelService:       channelService,
 		RenderRuleService:    renderRuleService,
