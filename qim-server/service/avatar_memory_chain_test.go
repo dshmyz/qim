@@ -427,3 +427,71 @@ func TestBuildNoteGraph_CrossUserIsolation(t *testing.T) {
 		}
 	}
 }
+
+// TestVectorizeNote_PersistsEntitiesInMetadata
+// 笔记入库时提取实体写入 metadata（aiService 非 nil 时）。
+// aiService 为 nil 时实体提取降级跳过，不保存数据也不崩溃。
+func TestVectorizeNote_PersistsEntitiesInMetadata(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+	vecSvc := &VectorService{db: db}
+	noteSvc := &NoteVectorService{vectorSvc: vecSvc, aiService: nil}
+
+	// aiService=nil → 跳过 embedding 和实体提取，不崩溃
+	if err := noteSvc.VectorizeNote(1, 10, "项目计划", "张三负责项目X的后端开发"); err != nil {
+		t.Fatalf("VectorizeNote 应不崩溃: %v", err)
+	}
+
+	// 无数据保存（embedding 被跳过），GetByCollection 应返回空
+	fetched, _ := vecSvc.GetByCollection(context.Background(), "user_notes_1", 10)
+	if len(fetched) != 0 {
+		t.Fatalf("aiService=nil 时不应保存数据，got %d 条", len(fetched))
+	}
+}
+
+// TestBuildNoteGraph_FromMetadata_NoLLMCall
+// BuildNoteGraph 从 metadata 读实体（不再调 LLM），验证零 LLM 调用。
+func TestBuildNoteGraph_FromMetadata_NoLLMCall(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+	vecSvc := &VectorService{db: db}
+	noteSvc := &NoteVectorService{vectorSvc: vecSvc, aiService: nil}
+
+	// 模拟预提取实体已写入 metadata（手动种数据）
+	_ = vecSvc.AddVector(context.Background(), "user_notes_1", "note_10_chunk_0",
+		fakeVec("项目截止日期是3月15日"),
+		"项目截止日期是3月15日",
+		map[string]string{"note_id": "10", "title": "项目计划", "entities": "张三,项目X"})
+	_ = vecSvc.AddVector(context.Background(), "user_notes_1", "note_11_chunk_0",
+		fakeVec("张三负责后端"),
+		"张三负责后端",
+		map[string]string{"note_id": "11", "title": "任务分配", "entities": "张三"})
+
+	graph, err := noteSvc.BuildNoteGraph(1, 50)
+	if err != nil {
+		t.Fatalf("BuildNoteGraph 失败: %v", err)
+	}
+	// 应有2个note节点 + entity节点 + 边
+	noteCount, entityCount := 0, 0
+	for _, n := range graph.Nodes {
+		switch n.Type {
+		case "note": noteCount++
+		case "entity": entityCount++
+		}
+	}
+	if noteCount != 2 {
+		t.Fatalf("应有2个note节点，got %d", noteCount)
+	}
+	if entityCount < 1 {
+		t.Fatalf("应有至少1个entity节点，got %d", entityCount)
+	}
+	if len(graph.Edges) < 1 {
+		t.Fatalf("应有至少1条边，got %d", len(graph.Edges))
+	}
+}

@@ -38,12 +38,25 @@ func (s *NoteVectorService) VectorizeNote(userID, noteID uint, title, content st
 		chunks = []Chunk{{Content: content, Title: title}}
 	}
 
+	// 预提取实体：从完整内容提取一次，写入每个 chunk 的 metadata。
+	// 这样 BuildNoteGraph 从 metadata 读实体，零 LLM 调用。
+	entities := ""
+	if len(content) >= 10 {
+		ents := extractNoteEntities(s.aiService, content)
+		if len(ents) > 0 {
+			entities = strings.Join(ents, ",")
+		}
+	}
+
 	for i, chunk := range chunks {
 		if len(chunk.Content) < 10 {
 			continue // 跳过太短的片段
 		}
 
-		// 生成向量
+		// 生成向量（aiService 为 nil 时跳过，仅供测试用）
+		if s.aiService == nil {
+			continue
+		}
 		embedding, err := s.aiService.Embed(chunk.Content)
 		if err != nil {
 			logger.WithModule("NoteVectorService").Error("笔记向量化失败", "noteID", noteID, "chunk", i, "error", err)
@@ -57,6 +70,7 @@ func (s *NoteVectorService) VectorizeNote(userID, noteID uint, title, content st
 			"chunk_id": fmt.Sprintf("%d", i),
 			"title":    title,
 			"type":     "note",
+			"entities": entities, // 预提取实体，供图谱直接使用
 		}
 
 		if err := s.vectorSvc.AddVector(ctx, collectionName, docID, embedding, chunk.Content, metadata); err != nil {
@@ -169,9 +183,10 @@ func (s *NoteVectorService) BuildNoteGraph(userID uint, maxNodes int) (*MemoryGr
 	}
 	// 按 note_id 分组（一篇笔记可能有多个 chunk）
 	type noteGroup struct {
-		noteID string
-		title  string
-		chunks []string
+		noteID   string
+		title    string
+		chunks   []string
+		entities string // 逗号分隔的实体列表（从 metadata 预提取）
 	}
 	groupMap := make(map[string]*noteGroup)
 	for _, r := range results {
@@ -193,6 +208,20 @@ func (s *NoteVectorService) BuildNoteGraph(userID uint, maxNodes int) (*MemoryGr
 				chunks: []string{r.Content},
 			}
 		}
+		// 合并跨 chunk 的实体（预提取方案：实体已存入 metadata["entities"]）
+		if ents := r.Metadata["entities"]; ents != "" && groupMap[noteID] != nil {
+			existing := groupMap[noteID].entities
+			for _, e := range strings.Split(ents, ",") {
+				e = strings.TrimSpace(e)
+				if e != "" && !strings.Contains(","+existing+",", ","+e+",") {
+					if existing != "" {
+						existing += ","
+					}
+					existing += e
+				}
+			}
+			groupMap[noteID].entities = existing
+		}
 	}
 	type noteItem struct {
 		noteID string
@@ -201,12 +230,26 @@ func (s *NoteVectorService) BuildNoteGraph(userID uint, maxNodes int) (*MemoryGr
 	}
 	var notes []noteItem
 	for _, g := range groupMap {
-		joined := strings.Join(g.chunks, "\n")
-		if len(joined) > 2000 {
-			joined = joined[:2000]
+		// 实体优先从 metadata 读（预提取），无 metadata 时降级到 LLM 提取
+		ents := g.entities
+		if ents == "" {
+			joined := strings.Join(g.chunks, "\n")
+			if len(joined) > 2000 {
+				joined = joined[:2000]
+			}
+			llmEnts := extractNoteEntities(s.aiService, joined)
+			for _, e := range llmEnts {
+				if ents != "" {
+					ents += ","
+				}
+				ents += e
+			}
 		}
-		ents := extractNoteEntities(s.aiService, joined)
-		notes = append(notes, noteItem{noteID: g.noteID, title: g.title, entities: ents})
+		var entList []string
+		if ents != "" {
+			entList = strings.Split(ents, ",")
+		}
+		notes = append(notes, noteItem{noteID: g.noteID, title: g.title, entities: entList})
 	}
 	if len(notes) > maxNodes {
 		notes = notes[:maxNodes]
