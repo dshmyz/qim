@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1160,8 +1159,6 @@ func (h *AvatarHandler) GetAvatarKnowledgeGraph(c *gin.Context) {
 		maxNodes = 50
 	}
 
-	ctx := context.Background()
-
 	// 记忆来源：实体/主题共现图谱
 	if source == "memory" {
 		memorySvc := di.GlobalContainer.AvatarMemoryService
@@ -1184,36 +1181,27 @@ func (h *AvatarHandler) GetAvatarKnowledgeGraph(c *gin.Context) {
 		return
 	}
 
-	// 笔记来源：片段簇
-	vectorSvc := di.GlobalContainer.VectorService
-	if vectorSvc == nil {
-		response.Success(c, gin.H{"nodes": []interface{}{}, "edges": []interface{}{}, "total_nodes": 0, "total_edges": 0})
-		return
-	}
-	collection := fmt.Sprintf("user_notes_%d", uid)
-	results, err := vectorSvc.GetByCollection(ctx, collection, maxNodes)
-	if err != nil {
-		response.InternalServerError(c, "获取笔记图谱失败")
-		return
-	}
-	nodes := make([]map[string]interface{}, 0, len(results))
-	for i, r := range results {
-		nodes = append(nodes, map[string]interface{}{
-			"id":    fmt.Sprintf("node_%d", i),
-			"label": r.DocID,
-			"type":  "note",
-			"data": map[string]interface{}{
-				"content":  r.Content,
-				"metadata": r.Metadata,
-			},
+	// 笔记来源：实体共现拓扑（懒加载 LLM 实体提取，每用户独立子图）
+	if source == "note" {
+		noteSvc := di.GlobalContainer.NoteVectorService
+		if noteSvc == nil {
+			response.Success(c, gin.H{"nodes": []interface{}{}, "edges": []interface{}{}, "memories": []interface{}{}, "total_nodes": 0, "total_edges": 0})
+			return
+		}
+		graph, err := noteSvc.BuildNoteGraph(uid, maxNodes)
+		if err != nil {
+			response.InternalServerError(c, "构建笔记图谱失败")
+			return
+		}
+		response.Success(c, gin.H{
+			"nodes":        graph.Nodes,
+			"edges":        graph.Edges,
+			"memories":     graph.Memories,
+			"total_nodes":  len(graph.Nodes),
+			"total_edges":  len(graph.Edges),
 		})
+		return
 	}
-	response.Success(c, gin.H{
-		"nodes":       nodes,
-		"edges":       []interface{}{},
-		"total_nodes": len(nodes),
-		"total_edges": 0,
-	})
 }
 
 func (h *AvatarHandler) CheckTrigger(c *gin.Context) {

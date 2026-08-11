@@ -215,7 +215,7 @@ function onNodeClick(node: EGNode) {
   const hit = node as unknown as GraphNode
   selectedNode.value = hit
   activeMemoryIdx.value = 0
-  if (source.value === 'memory' && relatedMemoriesRaw.value.length) {
+  if (relatedMemoriesRaw.value.length) {
     const name = String(hit.label ?? '')
     relatedMemories.value = relatedMemoriesRaw.value
       .filter(m => m.terms && m.terms.includes(name))
