@@ -33,9 +33,7 @@ func (c OpenAIConfig) ToProviderConfig() ProviderConfig {
 		APIKey:  c.APIKey,
 		Model:   c.Model,
 		BaseURL: c.BaseURL,
-		ExtraParams: map[string]interface{}{
-			"embedding_model": c.EmbeddingModel,
-		},
+		ExtraParams: map[string]interface{}{},
 	}
 }
 

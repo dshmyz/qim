@@ -32,6 +32,7 @@ func (embedFakeProvider) ChatStreamWithContext(ctx context.Context, messages []a
 func (embedFakeProvider) Embedding(text string) ([]float32, error) {
 	return fakeVec(text), nil
 }
+func (embedFakeProvider) SupportsEmbedding() bool { return true }
 func (embedFakeProvider) ChatWithTools(messages []ai.Message, tools []ai.ToolDef) (*ai.ChatResponse, error) {
 	return nil, nil
 }

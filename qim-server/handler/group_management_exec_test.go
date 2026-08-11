@@ -33,6 +33,7 @@ func (m *mockToolProvider) ChatStreamWithContext(ctx context.Context, messages [
 	return nil
 }
 func (m *mockToolProvider) Embedding(text string) ([]float32, error) { return nil, nil }
+func (m *mockToolProvider) SupportsEmbedding() bool { return true }
 func (m *mockToolProvider) ChatWithTools(messages []ai.Message, tools []ai.ToolDef) (*ai.ChatResponse, error) {
 	m.calls++
 	if m.calls == 1 {

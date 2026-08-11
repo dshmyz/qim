@@ -888,9 +888,14 @@ func (s *AIService) IsConfigured() bool {
 }
 
 func (s *AIService) Embed(text string) ([]float32, error) {
-	provider, _, err := s.selectProvider(TaskTypeEmbedding)
+	provider, modelName, err := s.selectProvider(TaskTypeEmbedding)
 	if err != nil {
 		return nil, err
+	}
+	// 用 router 返回的 embedding 模型（embedding 路由单独指定），
+	// 与 chat/vision 等任务一致，统一从 router 读模型，不再依赖 provider 内部 embedding_model。
+	if modelName != "" {
+		return provider.WithModel(modelName).Embedding(text)
 	}
 	return provider.Embedding(text)
 }

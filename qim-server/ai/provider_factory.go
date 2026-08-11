@@ -27,9 +27,6 @@ func (f *ProviderFactory) createOpenAIProvider(cfg *AIConfig) Provider {
 		"max_tokens":  cfg.MaxTokens,
 		"temperature": cfg.Temperature,
 	}
-	if cfg.OpenAI.EmbeddingModel != "" {
-		extraParams["embedding_model"] = cfg.OpenAI.EmbeddingModel
-	}
 	return NewOpenAIProvider(ProviderConfig{
 		APIKey:  cfg.OpenAI.APIKey,
 		Model:   cfg.OpenAI.Model,

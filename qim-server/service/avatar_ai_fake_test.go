@@ -27,6 +27,7 @@ func (f *fakeAvatarProvider) ChatStreamWithContext(ctx context.Context, messages
 func (f *fakeAvatarProvider) Embedding(text string) ([]float32, error) {
 	return nil, nil
 }
+func (f *fakeAvatarProvider) SupportsEmbedding() bool { return true }
 func (f *fakeAvatarProvider) ChatWithTools(messages []ai.Message, tools []ai.ToolDef) (*ai.ChatResponse, error) {
 	return &ai.ChatResponse{Content: f.reply}, nil
 }

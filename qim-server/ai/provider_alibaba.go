@@ -168,13 +168,7 @@ func (p *AlibabaProvider) Embedding(text string) ([]float32, error) {
 		Model string          `json:"model"`
 	}
 
-	// 使用 embedding 专用模型（如果配置了的话），否则使用当前模型
 	embeddingModel := p.config.Model
-	if p.config.ExtraParams["embedding_model"] != nil {
-		if m, ok := p.config.ExtraParams["embedding_model"].(string); ok && m != "" {
-			embeddingModel = m
-		}
-	}
 
 	reqBody := embeddingRequest{
 		Model: embeddingModel,

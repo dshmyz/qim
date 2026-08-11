@@ -198,13 +198,8 @@ func (p *BaiduProvider) Embedding(text string) ([]float32, error) {
 		return nil, fmt.Errorf("failed to get Baidu access token: %w", err)
 	}
 
-	// 使用 embedding 专用模型（如果配置了的话），否则使用当前模型
+	// embedding 模型统一由 router 经 WithModel 设置到 p.config.Model
 	embeddingModel := p.config.Model
-	if p.config.ExtraParams["embedding_model"] != nil {
-		if m, ok := p.config.ExtraParams["embedding_model"].(string); ok && m != "" {
-			embeddingModel = m
-		}
-	}
 
 	reqBody := map[string]interface{}{
 		"input": []string{text},
