@@ -84,6 +84,7 @@ func (h *AvatarHandler) RegisterRoutes(router *gin.RouterGroup) {
 		avatar.GET("/memories", h.GetMemories)
 		avatar.GET("/knowledge-graph", h.GetAvatarKnowledgeGraph)
 		avatar.DELETE("/memory/:id", h.DeleteMemory)
+		avatar.PUT("/memory/:id", h.UpdateMemory)
 
 		avatar.POST("/learn-persona", checkAIEnabledForAvatar(), h.TriggerLearnPersona)
 		avatar.PUT("/sessions/:convId", checkAIEnabledForAvatar(), h.UpdateSession)
@@ -1046,6 +1047,34 @@ func (h *AvatarHandler) DeleteMemory(c *gin.Context) {
 	}
 
 	response.SuccessWithMessage(c, "记忆已删除", nil)
+}
+
+// UpdateMemory 纠正一条分身记忆：替换指定记忆的内容（带归属校验）。
+// 用户发现记忆记错了（如日期、结论）时，可直接纠正而非删除重来。
+func (h *AvatarHandler) UpdateMemory(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	memoryID := c.Param("id")
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "内容不能为空")
+		return
+	}
+	memorySvc := di.GlobalContainer.AvatarMemoryService
+	if memorySvc == nil {
+		response.NotFound(c, "记忆不存在")
+		return
+	}
+	if err := memorySvc.UpdateMemory(userID.(uint), memoryID, req.Content); err != nil {
+		if errors.Is(err, service.ErrMemoryNotFound) {
+			response.NotFound(c, "记忆不存在")
+			return
+		}
+		response.InternalServerError(c, "纠正记忆失败")
+		return
+	}
+	response.SuccessWithMessage(c, "记忆已纠正", nil)
 }
 
 func (h *AvatarHandler) SearchMemories(c *gin.Context) {

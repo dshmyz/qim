@@ -431,6 +431,36 @@ func (s *AvatarMemoryService) DeleteMemory(userID uint, memoryDocID string) erro
 	return s.db.DeleteMemory(memoryDocID)
 }
 
+// UpdateMemory 纠正一条记忆：把 memoryID 指向的记忆内容替换为 newContent。
+// 先校验该记忆确属当前用户（防越权纠正），再做深度更新（内容 + 向量 + 更新向量 embedding，
+// 使纠正后能正确召回）。返回 ErrMemoryNotFound 表示记录不存在或不属于该用户。
+func (s *AvatarMemoryService) UpdateMemory(userID uint, memoryDocID, newContent string) error {
+	if s.db == nil {
+		return nil
+	}
+	memories, err := s.GetUserMemories(userID, 10000)
+	if err != nil {
+		return err
+	}
+	owned := false
+	for _, m := range memories {
+		if m.DocID == memoryDocID {
+			owned = true
+			break
+		}
+	}
+	if !owned {
+		return ErrMemoryNotFound
+	}
+	content := newContent
+	var uerr error
+	_, uerr = s.db.UpdateMemory(types.MemoryUpdateRequest{
+		MemoryID: memoryDocID,
+		Content:  &content,
+	})
+	return uerr
+}
+
 type MemoryRecord struct {
 	DocID    string            `json:"doc_id"`
 	Content  string            `json:"content"`

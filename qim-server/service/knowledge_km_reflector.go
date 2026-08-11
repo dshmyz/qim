@@ -81,7 +81,7 @@ func reflectionExtractPrompt(message string, memories []string, knowledge []stri
 	var b strings.Builder
 	b.WriteString("请把以下对话信息折叠合并成一条结构化记忆，提取关键实体与主题。\n")
 	b.WriteString("仅返回 JSON，形如 {\"summary\":\"...\",\"facts\":[\"...\"],\"themes\":[\"...\"],\"entities\":[\"...\"],\"type\":\"fact\"}\n")
-	b.WriteString("- summary: 一段通顺的中文总结，合并重复信息\n")
+	b.WriteString("- summary: 一段通顺的中文总结，合并重复信息。除结论外，尽量保留“为什么/背景/动机”，让后续回忆时能答出缘由而不仅是事实\n")
 	b.WriteString("- facts: 明确的事实要点列表\n")
 	b.WriteString("- themes: 2-5 个主题词（如“项目、偏好、约定”）\n")
 	b.WriteString("- entities: 关键实体/人名/项目名（如“团队A、张三”）\n")

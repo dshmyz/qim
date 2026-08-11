@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -270,4 +271,63 @@ func countMemories(db *gracedb.DB, userID, ns string) int {
 		return 0
 	}
 	return len(resp.Results)
+}
+
+// TestAvatarMemory_UpdateMemory_CorrectsContent 验证显式纠正接口：
+// 用户纠正记忆内容后，recall 能读到纠正后的新内容（向量也随之更新）。
+func TestAvatarMemory_UpdateMemory_CorrectsContent(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+	svc := &AvatarMemoryService{db: db, aiService: nil}
+
+	// 预置一条记忆
+	memID := "memory_c1"
+	if _, err := db.SaveMemory(types.MemorySaveRequest{
+		MemoryID: memID, UserID: "7", Scope: "user", Namespace: "avatar",
+		Content: "项目截止日期是3月15日", Importance: 0.8,
+	}); err != nil {
+		t.Fatalf("预置记忆失败: %v", err)
+	}
+
+	// 纠正为新的截止日期
+	if err := svc.UpdateMemory(7, memID, "项目截止日期已改为3月20日"); err != nil {
+		t.Fatalf("UpdateMemory 失败: %v", err)
+	}
+
+	// 读回：内容已更新
+	rec, err := loadMemoryRecord(db, "7", "avatar", memID)
+	if err != nil {
+		t.Fatalf("读取纠正后的记忆失败: %v", err)
+	}
+	if !strings.Contains(rec.Content, "3月20日") {
+		t.Fatalf("记忆内容应更新为纠正后的 3月20日，got %q", rec.Content)
+	}
+}
+
+// TestAvatarMemory_UpdateMemory_CrossUserDenied 验证 IDOR 防护：
+// 其他用户不能纠正不属于自己的记忆。
+func TestAvatarMemory_UpdateMemory_CrossUserDenied(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+	svc := &AvatarMemoryService{db: db, aiService: nil}
+
+	memID := "memory_c2"
+	if _, err := db.SaveMemory(types.MemorySaveRequest{
+		MemoryID: memID, UserID: "7", Scope: "user", Namespace: "avatar",
+		Content: "用户7的记忆", Importance: 0.5,
+	}); err != nil {
+		t.Fatalf("预置记忆失败: %v", err)
+	}
+
+	// 用户 8 尝试纠正用户 7 的记忆 → 应拒绝
+	err = svc.UpdateMemory(8, memID, "篡改内容")
+	if !errors.Is(err, ErrMemoryNotFound) {
+		t.Fatalf("跨用户纠正应返回 ErrMemoryNotFound，got %v", err)
+	}
 }

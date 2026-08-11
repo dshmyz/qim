@@ -25,7 +25,15 @@
         class="memory-item"
       >
         <div class="memory-content">
-          <p>{{ memory.content }}</p>
+          <template v-if="editingId === memory.doc_id">
+            <textarea
+              v-model="editingContent"
+              class="memory-edit-input"
+              rows="3"
+              @keydown.enter.exact.prevent="saveEdit(memory)"
+            ></textarea>
+          </template>
+          <p v-else>{{ memory.content }}</p>
         </div>
         <div class="memory-meta">
           <span v-if="memory.metadata?.importance" class="memory-importance" :title="'重要度 ' + Math.round(Number(memory.metadata.importance)) + '/5'">
@@ -34,6 +42,22 @@
           <span class="memory-time">{{ formatTime(memory.metadata?.remembered_at) }}</span>
           <button class="forget-btn" @click="handleForgetMemory(memory)" title="删除记忆">
             <i class="fas fa-trash"></i>
+          </button>
+          <button
+            v-if="editingId === memory.doc_id"
+            class="action-btn save-btn"
+            @click="saveEdit(memory)"
+            title="保存纠正"
+          >
+            保存
+          </button>
+          <button
+            v-else
+            class="action-btn edit-btn"
+            @click="startEdit(memory)"
+            title="纠正记忆"
+          >
+            <i class="fas fa-pen"></i>
           </button>
         </div>
       </div>
@@ -160,6 +184,43 @@ function formatTime(timestamp?: string): string {
   return date.toLocaleString('zh-CN')
 }
 
+// ===== 纠正记忆 =====
+const editingId = ref<string | null>(null)
+const editingContent = ref('')
+
+function startEdit(memory: MemoryRecord) {
+  editingId.value = memory.doc_id
+  editingContent.value = memory.content
+}
+
+async function saveEdit(memory: MemoryRecord) {
+  const content = editingContent.value.trim()
+  if (!content) {
+    window.$QMessage?.warning('内容不能为空')
+    return
+  }
+  if (content === memory.content) {
+    editingId.value = null
+    return
+  }
+  try {
+    const data = await request<{ code: number }>(`/api/v1/avatar/memory/${memory.doc_id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content })
+    })
+    if (data && data.code === 0) {
+      memory.content = content
+      editingId.value = null
+      window.$QMessage?.success('记忆已纠正')
+    } else {
+      window.$QMessage?.error(data?.code ? '纠正失败' : '纠正失败')
+    }
+  } catch (e) {
+    console.error('纠正记忆失败', e)
+    window.$QMessage?.error('纠正记忆失败')
+  }
+}
+
 onMounted(() => {
   loadMemories()
 })
@@ -283,6 +344,50 @@ onMounted(() => {
 .forget-btn:hover {
   color: #ef4444;
   background: rgba(239, 68, 68, 0.1);
+}
+
+.memory-edit-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.memory-edit-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.edit-btn:hover {
+  color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.save-btn {
+  color: #16a34a;
+  border: 1px solid #16a34a;
+  padding: 2px 10px;
+}
+
+.save-btn:hover {
+  background: #16a34a;
+  color: white;
 }
 
 .empty-state {
