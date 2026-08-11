@@ -83,7 +83,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				return nil
 			},
 		}
-		uk = service.NewUnifiedKnowledgeService(groupDocSvc, fallback)
+		uk = service.NewUnifiedKnowledgeService(groupDocSvc, fallback, cfg.Knowledge.ScoreThreshold)
 	}
 
 	handler.InitSmartReplyEngine(aiSvc)

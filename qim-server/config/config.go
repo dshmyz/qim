@@ -28,6 +28,14 @@ type Config struct {
 	DataInit DataInitConfig
 	Node     NodeConfig
 	Static   StaticConfig
+	Knowledge KnowledgeConfig
+}
+
+// KnowledgeConfig 知识检索配置
+type KnowledgeConfig struct {
+	// ScoreThreshold 知识来源分数门槛（0-1），低于此分数的召回结果不注入 prompt 也不展示在徽章。
+	// 默认 0.6；可经 config.yaml 的 knowledge.score_threshold 覆盖。
+	ScoreThreshold float64 `yaml:"score_threshold"`
 }
 
 // StaticConfig 静态资源路径配置，避免在 routes.go 中硬编码工作目录相对路径
@@ -154,6 +162,7 @@ type yamlConfig struct {
 	DataInit DataInitConfig `yaml:"data_init"`
 	Node     NodeConfig     `yaml:"node"`
 	Static   StaticConfig   `yaml:"static"`
+	Knowledge KnowledgeConfig `yaml:"knowledge"`
 }
 
 func Load() *Config {
@@ -348,6 +357,7 @@ func Load() *Config {
 		DataInit: cfg.DataInit,
 		Node:     cfg.Node,
 		Static:   cfg.Static,
+		Knowledge: cfg.Knowledge,
 	}
 }
 
@@ -459,6 +469,9 @@ func getDefaultConfig() yamlConfig {
 		Static: StaticConfig{
 			UploadsDir:  "uploads",
 			MiniAppsDir: "static/miniapps",
+		},
+		Knowledge: KnowledgeConfig{
+			ScoreThreshold: 0.6,
 		},
 	}
 }

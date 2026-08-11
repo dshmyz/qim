@@ -8,9 +8,10 @@ import (
 )
 
 type UnifiedKnowledgeService struct {
-	groupDocSvc    *GroupDocumentService
-	legacyFallback *LegacyKnowledgeFallback
-	vectorEnabled  bool
+	groupDocSvc     *GroupDocumentService
+	legacyFallback  *LegacyKnowledgeFallback
+	vectorEnabled   bool
+	scoreThreshold  float64 // 知识来源分数门槛（0-1），低于此分数不注入 prompt 也不展示在徽章
 }
 
 type LegacyKnowledgeFallback struct {
@@ -66,11 +67,15 @@ func memoryResultsToSources(results []SearchResult) []KnowledgeSource {
 	return out
 }
 
-func NewUnifiedKnowledgeService(groupDocSvc *GroupDocumentService, fallback *LegacyKnowledgeFallback) *UnifiedKnowledgeService {
+func NewUnifiedKnowledgeService(groupDocSvc *GroupDocumentService, fallback *LegacyKnowledgeFallback, scoreThreshold float64) *UnifiedKnowledgeService {
+	if scoreThreshold <= 0 {
+		scoreThreshold = 0.6 // 默认值
+	}
 	return &UnifiedKnowledgeService{
 		groupDocSvc:    groupDocSvc,
 		legacyFallback: fallback,
 		vectorEnabled:  true,
+		scoreThreshold: scoreThreshold,
 	}
 }
 
@@ -134,8 +139,8 @@ func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID 
 	seen := make(map[string]bool, len(snippets))
 	idx := 0
 	for _, snip := range snippets {
-		// 分数门槛：低于 0.6 的召回结果视为不相关，不注入 prompt 也不展示在徽章
-		if snip.Score < 0.6 {
+		// 分数门槛：低于阈值的召回结果视为不相关，不注入 prompt 也不展示在徽章
+		if snip.Score < s.scoreThreshold {
 			continue
 		}
 		title := snip.Title
