@@ -22,15 +22,17 @@ type KnowledgeSnippet struct {
 	Content  string
 	Score    float64
 	Source   string
+	DocID    string            // 文档/记忆ID，供知识来源点击跳转
 	Metadata map[string]string
 }
 
 // KnowledgeSource 群助手回复命中的知识来源最小结构，随回复消息下发
-// 供前端渲染「知识来源」折叠标签。只暴露标题/分数/来源类型，不回传正文。
+// 供前端渲染「知识来源」折叠标签。只暴露标题/分数/来源类型/文档ID，不回传正文。
 type KnowledgeSource struct {
 	Title  string  `json:"title"`
 	Score  float64 `json:"score"`
 	Source string  `json:"source,omitempty"` // "knowledge" | "notes" | "memory"
+	ID     string  `json:"id,omitempty"`     // 文档/记忆ID，供前端点击跳转
 }
 
 // memoryResultsToSources 把群记忆 Recall 结果转为 KnowledgeSource，
@@ -45,7 +47,7 @@ func memoryResultsToSources(results []SearchResult) []KnowledgeSource {
 		if title == "" {
 			title = "未命名"
 		}
-		out = append(out, KnowledgeSource{Title: title, Score: r.Score, Source: "memory"})
+		out = append(out, KnowledgeSource{Title: title, Score: r.Score, Source: "memory", ID: r.DocID})
 	}
 	return out
 }
@@ -69,6 +71,7 @@ func (s *UnifiedKnowledgeService) Search(query string, groupID uint, limit int) 
 					Content:  r.Snippet,
 					Score:    r.Score,
 					Source:   "auto",
+					DocID:    r.KnowledgeID,
 					Metadata: r.Metadata,
 				})
 			}
@@ -117,6 +120,10 @@ func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID 
 	seen := make(map[string]bool, len(snippets))
 	idx := 0
 	for _, snip := range snippets {
+		// 分数门槛：低于 0.5 的召回结果视为不相关，不注入 prompt 也不展示在徽章
+		if snip.Score < 0.5 {
+			continue
+		}
 		title := snip.Title
 		if title == "" {
 			title = "未命名"
@@ -128,7 +135,10 @@ func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID 
 		idx++
 		sourceTag := fmt.Sprintf("（语义检索，相关度: %.1f%%）", snip.Score*100)
 		parts = append(parts, fmt.Sprintf("[%d] %s %s\n%s", idx, snip.Title, sourceTag, snip.Content))
-		sources = append(sources, KnowledgeSource{Title: title, Score: snip.Score, Source: "knowledge"})
+		sources = append(sources, KnowledgeSource{
+			Title: title, Score: snip.Score, Source: "knowledge",
+			ID: snip.DocID, // 文档ID供前端点击跳转
+		})
 	}
 
 	return strings.Join(parts, "\n\n"), sources

@@ -15,7 +15,7 @@ func TestBuildContextWithSources_SingleRetrieval(t *testing.T) {
 	svc := NewUnifiedKnowledgeService(nil, &LegacyKnowledgeFallback{
 		SearchFunc: func(_ string, _ uint, _ int) []KnowledgeSnippet {
 			return []KnowledgeSnippet{
-				{Title: "Q3 规划", Score: 0.92, Content: "敏感正文"},
+				{Title: "Q3 规划", Score: 0.92, Content: "敏感正文", DocID: "doc_123"},
 				{Title: "", Score: 0.8, Content: "无标题正文"},
 			}
 		},
@@ -28,11 +28,12 @@ func TestBuildContextWithSources_SingleRetrieval(t *testing.T) {
 	assert.Equal(t, "Q3 规划", sources[0].Title)
 	assert.Equal(t, 0.92, sources[0].Score)
 	assert.Equal(t, "knowledge", sources[0].Source, "知识库命中应标记 source=knowledge")
+	assert.Equal(t, "doc_123", sources[0].ID, "应填充文档ID供前端点击跳转")
 	assert.Equal(t, "未命名", sources[1].Title, "空标题回退为「未命名」")
-	// 只暴露最小结构，不携带正文：序列化后仅含 title/score/source 三个键
+	// 只暴露最小结构，不携带正文：序列化后含 title/score/source/id
 	raw, err := json.Marshal(sources[0])
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"title":"Q3 规划","score":0.92,"source":"knowledge"}`, string(raw))
+	assert.JSONEq(t, `{"title":"Q3 规划","score":0.92,"source":"knowledge","id":"doc_123"}`, string(raw))
 }
 
 // TestBuildContextWithSources_EmptyWhenNoHit
@@ -107,4 +108,31 @@ func TestMemoryResultsToSources(t *testing.T) {
 func TestMemoryResultsToSources_Empty(t *testing.T) {
 	sources := memoryResultsToSources(nil)
 	assert.Empty(t, sources)
+}
+
+// TestBuildContextWithSources_ScoreThreshold
+// 低分召回结果（score < 0.5）不应注入 prompt 也不应出现在知识来源徽章，
+// 避免不相关的内容污染上下文。
+func TestBuildContextWithSources_ScoreThreshold(t *testing.T) {
+	svc := NewUnifiedKnowledgeService(nil, &LegacyKnowledgeFallback{
+		SearchFunc: func(_ string, _ uint, _ int) []KnowledgeSnippet {
+			return []KnowledgeSnippet{
+				{Title: "相关文档", Score: 0.85, Content: "高分内容", DocID: "doc_1"},
+				{Title: "边缘文档", Score: 0.45, Content: "低分内容", DocID: "doc_2"}, // 低于门槛
+				{Title: "极低分文档", Score: 0.2, Content: "极低分内容", DocID: "doc_3"}, // 低于门槛
+			}
+		},
+	})
+
+	ctx, sources := svc.BuildContextWithSources("问题", 1, 5)
+
+	// 只有高分结果通过门槛
+	require.Len(t, sources, 1)
+	assert.Equal(t, "相关文档", sources[0].Title)
+	assert.Equal(t, "doc_1", sources[0].ID)
+
+	// 上下文串也只包含高分内容
+	assert.Contains(t, ctx, "高分内容")
+	assert.NotContains(t, ctx, "低分内容")
+	assert.NotContains(t, ctx, "极低分内容")
 }

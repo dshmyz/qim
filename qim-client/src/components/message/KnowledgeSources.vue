@@ -9,7 +9,12 @@
     <ul>
       <li v-for="(src, i) in sources" :key="i">
         <span v-if="src.source" class="source-tag">{{ sourceLabel(src.source) }}</span>
-        <span class="title" :title="src.title">{{ src.title || '未命名' }}</span>
+        <span
+          class="title"
+          :class="{ clickable: src.id }"
+          :title="src.id ? `点击查看详情（${src.source || '未知来源'}）` : src.title"
+          @click="src.id && showSourceDetail(src)"
+        >{{ src.title || '未命名' }}</span>
         <span class="score">{{ formatScore(src.score) }}</span>
       </li>
     </ul>
@@ -33,6 +38,12 @@ const formatScore = (score: number) => {
 const sourceLabel = (source: string) => {
   const labels: Record<string, string> = { knowledge: '知识库', notes: '笔记', memory: '群记忆' }
   return labels[source] || source
+}
+
+// 点击知识来源：显示来源详情（类型+ID）
+const showSourceDetail = (src: KnowledgeSource) => {
+  const label = sourceLabel(src.source || '未知')
+  window.$QMessage?.info?.(`${label} · ID: ${src.id}`)
 }
 </script>
 
@@ -100,6 +111,16 @@ const sourceLabel = (source: string) => {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #333;
+}
+.knowledge-sources .title.clickable {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: #ccc;
+  text-underline-offset: 2px;
+}
+.knowledge-sources .title.clickable:hover {
+  color: #4f7cff;
+  text-decoration-color: #4f7cff;
 }
 .knowledge-sources .score {
   flex-shrink: 0;

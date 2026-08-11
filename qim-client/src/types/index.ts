@@ -105,6 +105,7 @@ export interface KnowledgeSource {
   title: string
   score: number
   source?: 'knowledge' | 'notes' | 'memory'
+  id?: string
 }
 
 // AvatarSource 分身回复命中的知识来源，用于在气泡下展示「依据」

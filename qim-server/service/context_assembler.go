@@ -115,7 +115,7 @@ func (a *ContextAssembler) assembleNotes(ctx context.Context, query string, src 
 		}
 		parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", title, r.Content))
 		hitLogs = append(hitLogs, fmt.Sprintf("docID=%s title=%s score=%.4f", r.DocID, title, r.Score))
-		bundle.KnowledgeSources = append(bundle.KnowledgeSources, KnowledgeSource{Title: title, Score: r.Score, Source: "notes"})
+		bundle.KnowledgeSources = append(bundle.KnowledgeSources, KnowledgeSource{Title: title, Score: r.Score, Source: "notes", ID: r.DocID})
 	}
 	logger.WithModule("ContextAssembler").Info("命中笔记",
 		"userID", src.Key, "hits", len(results), "notes", strings.Join(hitLogs, " | "))
