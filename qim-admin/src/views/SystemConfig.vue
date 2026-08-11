@@ -244,6 +244,10 @@
         <el-tab-pane label="消息提醒 Webhook" name="webhook">
           <MessageRemindWebhookConfig />
         </el-tab-pane>
+
+        <el-tab-pane label="AI 阈值" name="ai-threshold">
+          <AIThresholdConfig />
+        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
@@ -256,6 +260,7 @@ import { ElMessage } from 'element-plus'
 import type { SystemConfig } from '@/types'
 import { getSystemConfig, updateSystemConfig } from '@/api/systemConfig'
 import MessageRemindWebhookConfig from './components/MessageRemindWebhookConfig.vue'
+import AIThresholdConfig from './components/AIThresholdConfig.vue'
 
 const loading = ref(false)
 const submitting = ref(false)
