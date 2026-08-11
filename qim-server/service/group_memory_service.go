@@ -297,6 +297,36 @@ func (s *GroupMemoryService) DeleteMemory(groupID uint, memoryDocID string) erro
 	return s.db.DeleteMemory(memoryDocID)
 }
 
+// UpdateMemory 纠正一条群记忆：替换指定记忆的内容（带跨群归属校验）。
+// 群助手记错了群约定/决定时，用户可直接纠正而非删除重来。
+// 返回 ErrMemoryNotFound 表示记录不存在或不属于该群。
+func (s *GroupMemoryService) UpdateMemory(groupID uint, memoryDocID, newContent string) error {
+	if s.db == nil {
+		return nil
+	}
+	memories, err := s.GetGroupMemories(groupID, 10000)
+	if err != nil {
+		return err
+	}
+	owned := false
+	for _, m := range memories {
+		if m.DocID == memoryDocID {
+			owned = true
+			break
+		}
+	}
+	if !owned {
+		return ErrMemoryNotFound
+	}
+	content := newContent
+	var uerr error
+	_, uerr = s.db.UpdateMemory(types.MemoryUpdateRequest{
+		MemoryID: memoryDocID,
+		Content:  &content,
+	})
+	return uerr
+}
+
 // ForgetAll 清空本群全部群记忆（列出后逐条删除）。
 func (s *GroupMemoryService) ForgetAll(groupID uint) (int, error) {
 	memories, err := s.GetGroupMemories(groupID, 10000)

@@ -99,6 +99,41 @@ func DeleteGroupMemory(c *gin.Context) {
 	response.SuccessWithMessage(c, "已删除", nil)
 }
 
+// UpdateGroupMemory 纠正一条群记忆（带归属校验）。群助手记错群约定时，
+// 用户可直接纠正而非删除重来。
+func UpdateGroupMemory(c *gin.Context) {
+	memorySvc := di.GlobalContainer.GroupMemoryService
+	if memorySvc == nil {
+		response.BadRequest(c, "群记忆服务未启用")
+		return
+	}
+	group, ok := resolveGroupForMemory(c)
+	if !ok {
+		return
+	}
+	memoryID := c.Param("memory_id")
+	if memoryID == "" {
+		response.BadRequest(c, "缺少记忆ID")
+		return
+	}
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "内容不能为空")
+		return
+	}
+	if err := memorySvc.UpdateMemory(group.ID, memoryID, req.Content); err != nil {
+		if errors.Is(err, service.ErrMemoryNotFound) {
+			response.NotFound(c, "记忆不存在")
+			return
+		}
+		response.InternalServerError(c, "纠正群记忆失败")
+		return
+	}
+	response.SuccessWithMessage(c, "已纠正", nil)
+}
+
 // ClearGroupMemories 清空本群全部群记忆。
 func ClearGroupMemories(c *gin.Context) {
 	memorySvc := di.GlobalContainer.GroupMemoryService

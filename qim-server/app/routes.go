@@ -471,6 +471,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// 群助手群级记忆管理
 			authed.GET("/groups/:id/group-memories", handler.GetGroupMemories)
 			authed.DELETE("/groups/:id/group-memories/:memory_id", handler.DeleteGroupMemory)
+			authed.PUT("/groups/:id/group-memories/:memory_id", handler.UpdateGroupMemory)
 			authed.DELETE("/groups/:id/group-memories", handler.ClearGroupMemories)
 			authed.POST("/groups/:id/group-memories/search", handler.SearchGroupMemories)
 			// 群知识库管理（带处理状态）

@@ -68,12 +68,34 @@
         </div>
         <div v-else class="memory-list">
           <div v-for="m in memories" :key="m.doc_id" class="memory-item">
-            <div class="memory-content">{{ m.content }}</div>
+            <div class="memory-content">
+              <template v-if="editingGroupId === m.doc_id">
+                <textarea
+                  v-model="editingGroupContent"
+                  class="memory-edit-input"
+                  rows="3"
+                  @keydown.enter.exact.prevent="saveGroupEdit(m)"
+                ></textarea>
+              </template>
+              <span v-else>{{ m.content }}</span>
+            </div>
             <div class="memory-meta">
               <span v-if="m.metadata?.importance" class="memory-importance" :title="'重要度 ' + Math.round(Number(m.metadata.importance)) + '/5'">
                 {{ '★'.repeat(Math.round(Number(m.metadata.importance))) }}{{ '☆'.repeat(5 - Math.round(Number(m.metadata.importance))) }}
               </span>
               <span v-if="m.metadata?.remembered_at" class="memory-time">{{ formatMemoryTime(m.metadata.remembered_at) }}</span>
+              <button
+                v-if="editingGroupId === m.doc_id"
+                class="btn-link save-btn"
+                @click="saveGroupEdit(m)"
+              >保存
+              </button>
+              <button
+                v-else
+                class="btn-link"
+                @click="startGroupEdit(m)"
+              >纠正
+              </button>
               <button class="btn-link" @click="deleteMemory(m.doc_id)">删除</button>
             </div>
           </div>
@@ -383,6 +405,43 @@ async function deleteMemory(docId: string) {
   }
 }
 
+// ===== 纠正群记忆 =====
+const editingGroupId = ref<string | null>(null)
+const editingGroupContent = ref('')
+
+function startGroupEdit(m: GroupMemory) {
+  editingGroupId.value = m.doc_id
+  editingGroupContent.value = m.content
+}
+
+async function saveGroupEdit(m: GroupMemory) {
+  const content = editingGroupContent.value.trim()
+  if (!content) {
+    window.$QMessage?.warning('内容不能为空')
+    return
+  }
+  if (content === m.content) {
+    editingGroupId.value = null
+    return
+  }
+  try {
+    const res = await request(`/api/v1/groups/${props.groupId}/group-memories/${m.doc_id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content })
+    })
+    if (res.code === 0) {
+      m.content = content
+      editingGroupId.value = null
+      window.$QMessage?.success('群记忆已纠正')
+    } else {
+      window.$QMessage?.error('纠正失败')
+    }
+  } catch (e) {
+    console.error('纠正群记忆失败', e)
+    window.$QMessage?.error('纠正群记忆失败')
+  }
+}
+
 async function clearMemories() {
   if (!confirm('确定清空本群全部群记忆？此操作不可恢复。')) return
   try {
@@ -465,6 +524,9 @@ onUnmounted(() => {
 .memory-item { padding: 12px; border: 1px solid var(--border-color, #eee); border-radius: 8px; background: var(--card-bg, #fafafa); }
 .memory-content { font-size: 14px; line-height: 1.6; color: var(--text-color, #333); white-space: pre-wrap; word-break: break-word; }
 .memory-meta { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 12px; color: var(--text-secondary, #999); }
+.memory-edit-input { width: 100%; padding: 8px; border: 1px solid var(--border-color, #ddd); border-radius: 6px; background: var(--bg-color, #fff); color: var(--text-color, #333); font-size: 14px; font-family: inherit; line-height: 1.5; resize: vertical; }
+.memory-edit-input:focus { outline: none; border-color: var(--primary-color, #4f7cff); }
+.save-btn { color: #16a34a; }
 .memory-importance { color: #f5a623; letter-spacing: 1px; font-size: 11px; }
 .btn-link { background: none; border: none; color: #e5484d; cursor: pointer; font-size: 12px; padding: 0; }
 .btn-link:hover { text-decoration: underline; }

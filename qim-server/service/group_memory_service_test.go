@@ -1,8 +1,12 @@
 package service
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
+	"github.com/dshmyz/gracedb/pkg/gracedb"
+	"github.com/dshmyz/gracedb/pkg/types"
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/stretchr/testify/assert"
 )
@@ -57,4 +61,42 @@ func TestNewGroupMemoryService_NilVectorSvc(t *testing.T) {
 	s := NewGroupMemoryService(nil, new(ai.AIService))
 	assert.NotNil(t, s)
 	assert.Nil(t, s.db, "vectorSvc=nil 时 db 应为 nil（no-op 模式）")
+}
+
+// TestGroupMemory_UpdateMemory_CorrectsAndCrossGroupDenied 验证群记忆显式纠正接口：
+// 本群可纠正记忆内容；其他群不能纠正（防跨群越权）。
+func TestGroupMemory_UpdateMemory_CorrectsAndCrossGroupDenied(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+	svc := &GroupMemoryService{db: db, aiService: nil}
+
+	// group9 存一条记忆（群记忆 namespace 是 group_assistant，UserID 是 groupID）
+	memID := "groupmem_9_1"
+	if _, err := db.SaveMemory(types.MemorySaveRequest{
+		MemoryID: memID, UserID: "9", Scope: "user", Namespace: groupMemoryNamespace,
+		Content: "项目截止日期是3月15日", Importance: 0.8,
+	}); err != nil {
+		t.Fatalf("预置群记忆失败: %v", err)
+	}
+
+	// 本群 group9 纠正成功
+	if err := svc.UpdateMemory(9, memID, "项目截止日期已改为3月20日"); err != nil {
+		t.Fatalf("本群 UpdateMemory 应成功: %v", err)
+	}
+	rec, err := loadMemoryRecord(db, "9", groupMemoryNamespace, memID)
+	if err != nil {
+		t.Fatalf("读取纠正后的群记忆失败: %v", err)
+	}
+	if !strings.Contains(rec.Content, "3月20日") {
+		t.Fatalf("群记忆内容应更新为 3月20日，got %q", rec.Content)
+	}
+
+	// 其他群 group8 尝试纠正 group9 的记忆 → 拒绝
+	err = svc.UpdateMemory(8, memID, "跨群篡改")
+	if !errors.Is(err, ErrMemoryNotFound) {
+		t.Fatalf("跨群纠正应返回 ErrMemoryNotFound，got %v", err)
+	}
 }
