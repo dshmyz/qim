@@ -102,6 +102,10 @@ func TestRememberTaskPrompt_IncludesContext(t *testing.T) {
 	if !strings.Contains(p, "好的，那就3月15日吧") {
 		t.Error("提示应包含当前消息")
 	}
+	// P0-1: 纯分类提示不应含"主题与要点"，避免干扰 evaluateRemember 的 JSON 输出格式
+	if strings.Contains(p, "主题与要点") {
+		t.Error("纯分类提示不应要求'给出主题与要点'，提取职责在 reflectionExtractPrompt")
+	}
 
 	// 无上下文时向后兼容
 	pNoCtx := rememberTaskPrompt("测试消息", nil, nil, nil)

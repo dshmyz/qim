@@ -1141,6 +1141,14 @@ func (e *SmartReplyEngine) maybeRememberSenderMessage(senderID uint, conversatio
 		if len(existing) > 0 && existing[0].Score > 0.85 {
 			return // 已有高度相似记忆，跳过
 		}
+		// 分数门槛：低于 0.6 的召回结果视为噪音，不传给 Consolidate 避免误记
+		filtered := existing[:0]
+		for _, r := range existing {
+			if r.Score >= 0.6 {
+				filtered = append(filtered, r)
+			}
+		}
+		existing = filtered
 		// 对话上下文：取最近 5 条消息，帮助 LLM 理解"这句话在讨论什么"
 		ctx := fetchRecentMessages(db, conversationID, content, 5)
 		// 记忆反射闭环：传入预取记忆，内部不再重复 Recall
@@ -1168,6 +1176,14 @@ func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationI
 		if len(existing) > 0 && existing[0].Score > 0.85 {
 			return // 已有高度相似记忆，跳过
 		}
+		// 分数门槛：低于 0.6 的召回结果视为噪音，不传给 Consolidate 避免误记
+		filtered := existing[:0]
+		for _, r := range existing {
+			if r.Score >= 0.6 {
+				filtered = append(filtered, r)
+			}
+		}
+		existing = filtered
 		db := database.GetDB()
 		// 对话上下文：取最近 5 条消息
 		ctx := fetchRecentMessages(db, conversationID, content, 5)

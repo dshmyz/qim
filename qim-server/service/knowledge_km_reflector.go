@@ -115,12 +115,12 @@ func reflectionExtractPrompt(message string, memories []string, knowledge []stri
 	return b.String()
 }
 
-// rememberTaskPrompt 构造反射用的 LLM 提示：让模型识别主题/事实并把相关记忆折叠。
-// 说明：evaluateRemember 关注"是否值得记 + 重要度"，这里补充上下文让判定更准（合并去重）。
+// rememberTaskPrompt 构造纯分类提示：让 LLM 判断"是否值得记 + 重要度"。
+// 不负责提取主题/事实（那是 reflectionExtractPrompt 的职责），只做二分类+档位。
 // context 为最近几条对话消息（可选），帮助 LLM 理解"这句话在讨论什么"再判断是否值得记。
 func rememberTaskPrompt(message string, memories []string, knowledge []string, context []string) string {
 	var b strings.Builder
-	b.WriteString("判断以下对话内容是否包含值得记忆的长期信息，并给出主题与要点。\n")
+	b.WriteString("判断以下对话内容是否包含值得记忆的长期信息。\n")
 	if len(context) > 0 {
 		b.WriteString("\n对话上下文（最近几条消息，帮助理解当前消息的语境）：\n")
 		for i, c := range context {
