@@ -43,9 +43,23 @@ func memoryResultsToSources(results []SearchResult) []KnowledgeSource {
 	}
 	out := make([]KnowledgeSource, 0, len(results))
 	for _, r := range results {
+		// 分数门槛：低于 0.6 的记忆召回结果视为噪音，不展示在知识来源徽章
+		if r.Score < 0.6 {
+			continue
+		}
 		title := r.Metadata["title"]
 		if title == "" {
-			title = "未命名"
+			// 群记忆没有 title 字段，用 content 前 20 个字符作为展示标题
+			if r.Content != "" {
+				runes := []rune(r.Content)
+				if len(runes) > 20 {
+					title = string(runes[:20]) + "..."
+				} else {
+					title = r.Content
+				}
+			} else {
+				title = "未命名"
+			}
 		}
 		out = append(out, KnowledgeSource{Title: title, Score: r.Score, Source: "memory", ID: r.DocID})
 	}
@@ -120,8 +134,8 @@ func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID 
 	seen := make(map[string]bool, len(snippets))
 	idx := 0
 	for _, snip := range snippets {
-		// 分数门槛：低于 0.5 的召回结果视为不相关，不注入 prompt 也不展示在徽章
-		if snip.Score < 0.5 {
+		// 分数门槛：低于 0.6 的召回结果视为不相关，不注入 prompt 也不展示在徽章
+		if snip.Score < 0.6 {
 			continue
 		}
 		title := snip.Title

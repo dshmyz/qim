@@ -92,15 +92,16 @@ func TestBuildContextWithSources_DedupSameDocChunks(t *testing.T) {
 func TestMemoryResultsToSources(t *testing.T) {
 	results := []SearchResult{
 		{Content: "项目截止日期 3 月 15 日", Score: 0.87, DocID: "mem_1", Metadata: map[string]string{"title": "项目排期"}},
-		{Content: "张三负责后端", Score: 0.65, DocID: "mem_2"},
+		{Content: "张三负责后端开发工作", Score: 0.75, DocID: "mem_2"},
 	}
 	sources := memoryResultsToSources(results)
 	require.Len(t, sources, 2)
-	assert.Equal(t, "项目排期", sources[0].Title)
-	assert.Equal(t, 0.87, sources[0].Score)
+	assert.Equal(t, "项目排期", sources[0].Title, "有 title 时用 title")
 	assert.Equal(t, "memory", sources[0].Source)
-	assert.Equal(t, "未命名", sources[1].Title, "无 title 时回退为未命名")
+	assert.Equal(t, "mem_1", sources[0].ID)
+	assert.Equal(t, "张三负责后端开发工作", sources[1].Title, "无 title 时用 content 作为标题")
 	assert.Equal(t, "memory", sources[1].Source)
+	assert.Equal(t, "mem_2", sources[1].ID)
 }
 
 // TestMemoryResultsToSources_Empty
@@ -118,8 +119,8 @@ func TestBuildContextWithSources_ScoreThreshold(t *testing.T) {
 		SearchFunc: func(_ string, _ uint, _ int) []KnowledgeSnippet {
 			return []KnowledgeSnippet{
 				{Title: "相关文档", Score: 0.85, Content: "高分内容", DocID: "doc_1"},
-				{Title: "边缘文档", Score: 0.45, Content: "低分内容", DocID: "doc_2"}, // 低于门槛
-				{Title: "极低分文档", Score: 0.2, Content: "极低分内容", DocID: "doc_3"}, // 低于门槛
+				{Title: "边缘文档", Score: 0.55, Content: "低分内容", DocID: "doc_2"}, // 低于门槛
+				{Title: "极低分文档", Score: 0.3, Content: "极低分内容", DocID: "doc_3"}, // 低于门槛
 			}
 		},
 	})
