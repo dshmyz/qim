@@ -785,6 +785,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				admin.GET("/webhook-deliveries/:id", handler.AdminGetWebhookDelivery)
 				admin.POST("/webhook-deliveries/:id/redeliver", handler.AdminRedeliverWebhook)
 
+				// 外部 MCP 工具预览（管理后台勾选用）
+				admin.POST("/external-mcp/tools", handler.PreviewMCPTools)
+
 				// 监控相关 API
 				monitorHandler := handler.NewMonitorHandler()
 				alertHandler := handler.NewAlertHandler(GetDB())

@@ -13,6 +13,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
 
@@ -112,6 +113,10 @@ type SmartReplyContext struct {
 	MemberNames string       // 群成员名单（逗号分隔）
 	GroupStats  string       // 群统计信息
 
+	// SkipKnowledge 外部工具路径跳过知识库/记忆检索：工具结果更准确，
+	// 注入无关知识会干扰模型注意力且产生误导性的「知识来源」徽章。
+	SkipKnowledge bool
+
 	// HasTools 本次回复携带了可调用的工具（内置群管理工具或外部 MCP 工具）。
 	// 由带工具路径在准备历史消息前置位，供 buildSystemPrompt 注入「能力边界」：
 	// 有工具时声明可调用工具如实执行；无工具时要求模型诚实说明能力边界、不编造结果。
@@ -139,6 +144,8 @@ type SmartReplyGraph struct {
 	userSvc          *UserService
 	quotedFile       QuotedDocumentReader
 	mcpGateway       *MCPClientGateway
+	// thresholdSvc 阈值读取服务；nil 时知识来源门槛用默认 0.6（向后兼容）。
+	thresholdSvc *AiThresholdService
 }
 
 func NewSmartReplyGraph(
@@ -177,6 +184,37 @@ func (g *SmartReplyGraph) SetQuotedFileReader(reader QuotedDocumentReader) {
 // 追加进可用工具集，供 ReAct 循环调用；未注入（nil）或未开启则行为不变。
 func (g *SmartReplyGraph) SetMCPGateway(gateway *MCPClientGateway) {
 	g.mcpGateway = gateway
+}
+
+// MCPToolDescriptions 返回外部 MCP 工具的描述映射（name → description），
+// 供 NewToolCallFeedback 在工具调用时直接用作显示标签。无 MCP 网关或无工具时返回 nil。
+func (g *SmartReplyGraph) MCPToolDescriptions() map[string]string {
+	if g.mcpGateway == nil {
+		return nil
+	}
+	return g.mcpGateway.ToolDescriptions()
+}
+
+// MCPToolTitles 返回外部 MCP 工具的标题映射（name → title），
+// 标题优先于描述用于 UI 展示。无 MCP 网关或无工具时返回 nil。
+func (g *SmartReplyGraph) MCPToolTitles() map[string]string {
+	if g.mcpGateway == nil {
+		return nil
+	}
+	return g.mcpGateway.ToolTitles()
+}
+
+// SetThresholdService 注入阈值读取服务；nil 时知识来源门槛用默认 0.6。
+func (g *SmartReplyGraph) SetThresholdService(t *AiThresholdService) {
+	g.thresholdSvc = t
+}
+
+// knowledgeScoreThreshold 返回知识来源分数门槛：未注入阈值服务时回退默认 0.6。
+func (g *SmartReplyGraph) knowledgeScoreThreshold() float64 {
+	if g.thresholdSvc != nil {
+		return g.thresholdSvc.GetFloat("ai.knowledge_score_threshold", 0.6)
+	}
+	return 0.6
 }
 
 // groupAssistantAllowedTools 计算群 @AI 实际可用的工具白名单：内置群管理工具
@@ -236,6 +274,9 @@ func (g *SmartReplyGraph) buildReplyGraph() error {
 }
 
 func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyContext) (*schema.StreamReader[*schema.Message], error) {
+	logger.WithModule("SmartReplyGraph").Debug("ExecuteStream 入口",
+		"userID", input.UserID, "convID", input.ConversationID,
+		"isAIMention", input.IsAIMention, "quotedMsgID", input.QuotedMessageID)
 	if err := g.prepareInput(input); err != nil {
 		return nil, err
 	}
@@ -249,7 +290,8 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 		if g.aiService.HasVisionRoute() {
 			taskType = ai.TaskTypeVision
 		} else {
-			log.Printf("[SmartReplyGraph] 未配置视觉路由，引用图片降级为普通对话")
+			logger.WithModule("SmartReplyGraph").Info("引用图片降级：未配置视觉路由",
+				"userID", input.UserID, "convID", input.ConversationID)
 			input.Quoted = &QuotedContext{
 				Kind: QuotedFailed,
 				Name: input.Quoted.Name,
@@ -432,31 +474,44 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 	}
 
 	knowledgeCtx := ""
-	if g.unifiedKnowledge != nil && input.Group != nil {
-		query := input.Message
-		if query == "" && input.Group.Name != "" {
-			query = input.Group.Name
-		}
-		// 一次检索同时产出上下文串与命中的知识来源（标题/相关度）；无命中时两者皆空。
-		knowledgeCtx, input.KnowledgeSources = g.unifiedKnowledge.BuildContextWithSources(query, input.Group.ID, 3)
-	} else if g.legacyKnowledge != nil {
-		knowledgeCtx = g.legacyKnowledge.BuildKnowledgeContext(input.Message)
-	}
-	input.KnowledgeCtx = knowledgeCtx
-
 	memoryCtx := ""
-	if g.groupMemorySvc != nil && input.Group != nil {
-		memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, input.Message, 2)
-		if err == nil && len(memoryResults) > 0 {
-			var parts []string
-			for _, r := range memoryResults {
-				parts = append(parts, r.Content)
-			}
-			memoryCtx = "💡 群聊记忆：\n" + strings.Join(parts, "\n")
-			// 群记忆分数透出到「知识来源」徽章，供用户看到 AI 为什么记住了这条
-			input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults)...)
+	// 跳过知识/记忆检索的场景：
+	// 1. SkipKnowledge=true：外部/内置工具路径，工具结果更准确，注入无关知识会干扰模型注意力
+	//    且产生误导性的「知识来源」徽章。
+	// 2. 引用图片做视觉分析：纯多模态任务不需要知识上下文。
+	skipKnowledge := input.SkipKnowledge
+	if !skipKnowledge && input.IsAIMention && input.QuotedMessageID != nil {
+		var quotedType string
+		if err := g.db.Model(&model.Message{}).Where("id = ?", *input.QuotedMessageID).Select("type").Scan(&quotedType).Error; err == nil && quotedType == "image" {
+			skipKnowledge = true
 		}
 	}
+	if !skipKnowledge {
+		if g.unifiedKnowledge != nil && input.Group != nil {
+			query := input.Message
+			if query == "" && input.Group.Name != "" {
+				query = input.Group.Name
+			}
+			// 一次检索同时产出上下文串与命中的知识来源（标题/相关度）；无命中时两者皆空。
+			knowledgeCtx, input.KnowledgeSources = g.unifiedKnowledge.BuildContextWithSources(query, input.Group.ID, 3)
+		} else if g.legacyKnowledge != nil {
+			knowledgeCtx = g.legacyKnowledge.BuildKnowledgeContext(input.Message)
+		}
+
+		if g.groupMemorySvc != nil && input.Group != nil {
+			memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, input.Message, 2)
+			if err == nil && len(memoryResults) > 0 {
+				var parts []string
+				for _, r := range memoryResults {
+					parts = append(parts, r.Content)
+				}
+				memoryCtx = "💡 群聊记忆：\n" + strings.Join(parts, "\n")
+				// 群记忆分数透出到「知识来源」徽章，供用户看到 AI 为什么记住了这条
+				input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults, g.knowledgeScoreThreshold())...)
+			}
+		}
+	} // end !skipKnowledge
+	input.KnowledgeCtx = knowledgeCtx
 	input.MemoryCtx = memoryCtx
 
 	// 被引用对象：@AI 消息引用了消息时，若被引用的是文件/图片消息则尝试读取其内容注入上下文。
@@ -498,6 +553,8 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 				if fileID == 0 {
 					warn(QuotedFailed, quotedName, fmt.Sprintf("📷 你引用了一条图片消息「%s」，但其内容缺少可解析的图片信息，无法读取。请如实说明你看不到该图片，可请对方重新发送。", quotedName))
 				} else if name, dataURL, derr := g.quotedFile.ImageURLForContext(fileID); derr == nil && dataURL != "" {
+					logger.WithModule("SmartReplyGraph").Info("引用图片读取成功",
+						"fileID", fileID, "name", name, "dataURLLen", len(dataURL))
 					warn(QuotedImage, name, fmt.Sprintf("📷 你引用了一张图片「%s」，请识别其内容并结合用户的问题回答。", name))
 					input.Quoted.ImageURL = dataURL
 				} else if errors.Is(derr, ErrQuotedImageTooLarge) {
@@ -862,6 +919,9 @@ func (g *SmartReplyGraph) createPrepareNode() *compose.Lambda {
 
 func (g *SmartReplyGraph) createKnowledgeNode() *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *SmartReplyContext) (*SmartReplyContext, error) {
+		if input.SkipKnowledge {
+			return input, nil
+		}
 		content := ""
 
 		if g.unifiedKnowledge != nil && input.Group != nil {
@@ -883,7 +943,9 @@ func (g *SmartReplyGraph) createKnowledgeNode() *compose.Lambda {
 
 func (g *SmartReplyGraph) createMemoryNode() *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *SmartReplyContext) (*SmartReplyContext, error) {
-		input.MemoryCtx = g.recallGroupMemory(input)
+		if !input.SkipKnowledge {
+			input.MemoryCtx = g.recallGroupMemory(input)
+		}
 		return input, nil
 	})
 }
@@ -903,7 +965,7 @@ func (g *SmartReplyGraph) recallGroupMemory(input *SmartReplyContext) string {
 		parts = append(parts, r.Content)
 	}
 	// 群记忆分数透出到「知识来源」徽章
-	input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults)...)
+	input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults, g.knowledgeScoreThreshold())...)
 	return "💡 群聊记忆：\n" + strings.Join(parts, "\n")
 }
 

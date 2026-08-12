@@ -480,7 +480,7 @@ const createConversation = async () => {
   border-radius: 8px;
   font-size: 14px;
   box-sizing: border-box;
-  background-color: var(--secondary-color, #f9fafb);
+  background-color: var(--card-bg, #fff);
   color: var(--text-color, #1f2937);
 }
 
@@ -488,7 +488,6 @@ const createConversation = async () => {
   outline: none;
   border-color: var(--primary-color, #3b82f6);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  background-color: var(--card-bg, white);
 }
 
 .profile-input::placeholder {
@@ -521,7 +520,7 @@ const createConversation = async () => {
   border-radius: 6px;
   font-size: 14px;
   box-sizing: border-box;
-  background-color: var(--input-color, #f9fafb);
+  background-color: var(--card-bg, #fff);
   color: var(--text-color, #1f2937);
 }
 
@@ -529,7 +528,6 @@ const createConversation = async () => {
   outline: none;
   border-color: var(--primary-color, #3b82f6);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  background-color: var(--card-bg, white);
 }
 
 .clear-search-btn {
@@ -569,12 +567,10 @@ const createConversation = async () => {
   justify-content: center;
   cursor: pointer;
   overflow: hidden;
-  background-color: var(--secondary-color, #f9fafb);
 }
 
 .avatar-preview:hover {
   border-color: var(--primary-color, #3b82f6);
-  background-color: var(--primary-light, #f0f7ff);
 }
 
 .avatar-preview img {
@@ -608,7 +604,6 @@ const createConversation = async () => {
   /* border: 1px solid var(--border-color, #d1d5db); */
   border-radius: 8px;
   padding: 6px;
-  background-color: var(--secondary-color, #f9fafb);
 }
 
 .member-selector:hover {

@@ -130,10 +130,11 @@ func (f *ProviderFactory) createGenericOpenAIProvider(name string, cfg ProviderC
 		extraParams["temperature"] = 0.7
 	}
 	return NewOpenAIProvider(ProviderConfig{
-		APIKey:  cfg.APIKey,
-		Model:   cfg.Model,
-		BaseURL: cfg.BaseURL,
-		ExtraParams: extraParams,
+		APIKey:          cfg.APIKey,
+		Model:           cfg.Model,
+		BaseURL:         cfg.BaseURL,
+		EmbeddingBaseURL: cfg.EmbeddingBaseURL,
+		ExtraParams:     extraParams,
 	})
 }
 

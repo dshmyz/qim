@@ -223,6 +223,10 @@ export function useUI() {
 
   const showActionMenu = (event: MouseEvent) => {
     event.stopPropagation()
+    if (activeMenu.value === 'action') {
+      closeMenu()
+      return
+    }
     const pos = computeMenuPosition(event.clientX, event.clientY, 180, 180)
     openMenu('action', pos.x, pos.y)
   }
@@ -285,6 +289,10 @@ export function useUI() {
   // 显示设置菜单
   const showSettingsMenu = (event: MouseEvent) => {
     event.stopPropagation()
+    if (activeMenu.value === 'settings') {
+      closeMenu()
+      return
+    }
     const settingsButton = event.currentTarget as HTMLElement
     if (settingsButton) {
       const rect = settingsButton.getBoundingClientRect()
@@ -305,6 +313,10 @@ export function useUI() {
   // 显示主题菜单
   const showThemeMenu = (event: MouseEvent) => {
     event.stopPropagation()
+    if (activeMenu.value === 'theme') {
+      closeMenu()
+      return
+    }
     const themeButton = event.currentTarget as HTMLElement
     if (themeButton) {
       const rect = themeButton.getBoundingClientRect()

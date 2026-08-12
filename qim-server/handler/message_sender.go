@@ -352,6 +352,7 @@ func (s *WebSocketMessageSender) SendToolCallEvent(conversationID uint, msgID ui
 		"message_id":      msgID,
 		"conversation_id": conversationID,
 		"id":              record.ID,
+		"tool_name":       record.ToolName,
 		"tool_label":      record.ToolLabel,
 		"args":            record.Args,
 		"status":          record.Status,

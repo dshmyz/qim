@@ -1,6 +1,6 @@
 // src/types/bot.ts
 
-import type { KnowledgeSource } from './index'
+import type { AISource } from './index'
 
 export interface Bot {
   id: number
@@ -61,7 +61,7 @@ export interface BotMessage {
   timestamp: Date
   isStreaming?: boolean
   // Bot 回复命中笔记时的知识来源（标题/分数）
-  knowledge_sources?: KnowledgeSource[]
+  knowledge_sources?: AISource[]
 }
 
 export interface BotConversation {

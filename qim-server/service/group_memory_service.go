@@ -27,6 +27,8 @@ type GroupMemoryService struct {
 	// conflictCheck 判断新旧两条群记忆是否"同一主题但结论矛盾"：矛盾则更新旧的，
 	// 否则新增。nil 时用 LLM 默认实现。可注入以便测试不真调 LLM。
 	conflictCheck func(newMemo, oldMemo string) (bool, error)
+	// thresholdSvc 阈值读取服务；nil 时用默认 0.7（向后兼容）。
+	thresholdSvc *AiThresholdService
 }
 
 func NewGroupMemoryService(vectorSvc *VectorService, aiService *ai.AIService) *GroupMemoryService {
@@ -39,6 +41,19 @@ func NewGroupMemoryService(vectorSvc *VectorService, aiService *ai.AIService) *G
 // SetConflictCheck 注入语义冲突判定器（默认 LLM 实现，测试可用假判定）。
 func (s *GroupMemoryService) SetConflictCheck(f func(newMemo, oldMemo string) (bool, error)) {
 	s.conflictCheck = f
+}
+
+// SetThresholdService 注入阈值读取服务；nil 时冲突检测用默认 0.7。
+func (s *GroupMemoryService) SetThresholdService(t *AiThresholdService) {
+	s.thresholdSvc = t
+}
+
+// conflictThreshold 返回冲突检测分数门槛：未注入阈值服务时回退默认 0.7。
+func (s *GroupMemoryService) conflictThreshold() float64 {
+	if s.thresholdSvc != nil {
+		return s.thresholdSvc.GetFloat("ai.conflict_detection_threshold", 0.7)
+	}
+	return 0.7
 }
 
 // memoryConflicts LLM 判定新旧记忆是否冲突；判定器未注入时用默认 LLM 实现。
@@ -119,7 +134,7 @@ func (s *GroupMemoryService) ConsolidateGroupMessage(groupID, conversationID uin
 func (s *GroupMemoryService) saveConsolidatedGroupMemory(groupID, conversationID uint, ref MemoryReflection, memories []SearchResult) (bool, error) {
 	// 语义冲突检测：新记忆与最相似的旧记忆冲突时更新旧的，避免"用MySQL→改用
 	// PostgreSQL"这类矛盾群记忆并存、群助手后续混淆。
-	if len(memories) > 0 && memories[0].Score >= 0.7 {
+	if len(memories) > 0 && memories[0].Score >= s.conflictThreshold() {
 		conflict, cerr := s.memoryConflicts(ref.Summary, memories[0].Content)
 		if cerr == nil && conflict {
 			content := ref.Summary

@@ -8,10 +8,10 @@ import (
 )
 
 type UnifiedKnowledgeService struct {
-	groupDocSvc     *GroupDocumentService
-	legacyFallback  *LegacyKnowledgeFallback
-	vectorEnabled   bool
-	thresholdSvc    *AiThresholdService // 阈值读取服务（nil 时用默认值）
+	groupDocSvc    *GroupDocumentService
+	legacyFallback *LegacyKnowledgeFallback
+	vectorEnabled  bool
+	thresholdSvc   *AiThresholdService // 阈值读取服务（nil 时用默认值）
 }
 
 type LegacyKnowledgeFallback struct {
@@ -23,29 +23,30 @@ type KnowledgeSnippet struct {
 	Content  string
 	Score    float64
 	Source   string
-	DocID    string            // 文档/记忆ID，供知识来源点击跳转
+	DocID    string // 文档/记忆ID，供知识来源点击跳转
 	Metadata map[string]string
 }
 
 // KnowledgeSource 群助手回复命中的知识来源最小结构，随回复消息下发
 // 供前端渲染「知识来源」折叠标签。只暴露标题/分数/来源类型/文档ID，不回传正文。
 type KnowledgeSource struct {
-	Title  string  `json:"title"`
-	Score  float64 `json:"score"`
-	Source string  `json:"source,omitempty"` // "knowledge" | "notes" | "memory"
-	ID     string  `json:"id,omitempty"`     // 文档/记忆ID，供前端点击跳转
+	Title   string  `json:"title"`
+	Score   float64 `json:"score"`
+	Source  string  `json:"source,omitempty"`  // "knowledge" | "notes" | "memory"
+	ID      string  `json:"id,omitempty"`      // 文档/记忆ID，供前端点击跳转
+	Snippet string  `json:"snippet,omitempty"` // 命中正文摘要，分身「依据」tooltip 用；群助手/Bot 不回传保持缺省
 }
 
 // memoryResultsToSources 把群记忆 Recall 结果转为 KnowledgeSource，
 // 保留原始分数并标记 source=memory，供前端「知识来源」徽章区分展示。
-func memoryResultsToSources(results []SearchResult) []KnowledgeSource {
+// threshold 为分数门槛：低于该分的召回结果视为噪音，不展示。
+func memoryResultsToSources(results []SearchResult, threshold float64) []KnowledgeSource {
 	if len(results) == 0 {
 		return nil
 	}
 	out := make([]KnowledgeSource, 0, len(results))
 	for _, r := range results {
-		// 分数门槛：低于 0.6 的记忆召回结果视为噪音，不展示在知识来源徽章
-		if r.Score < 0.6 {
+		if r.Score < threshold {
 			continue
 		}
 		title := r.Metadata["title"]

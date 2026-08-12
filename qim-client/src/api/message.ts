@@ -30,8 +30,8 @@ export interface Message {
 export interface MessageListParams {
   page?: number
   page_size?: number
-  before?: number
-  after?: number
+  before_id?: number
+  after_id?: number
 }
 
 export interface MessageListResponse {

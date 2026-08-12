@@ -178,7 +178,7 @@ const handleClick = (event: MouseEvent) => {
   background: var(--sidebar-bg);
   color: var(--text-color);
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;
 }
@@ -187,14 +187,10 @@ const handleClick = (event: MouseEvent) => {
   color: var(--color-primary-600, #2563eb);
   font-weight: 600;
   cursor: default;
-  padding: 1px 4px;
-  border-radius: 4px;
-  /* background: rgba(59, 130, 246, 0.16); */
 }
 
 :deep(.at-mention-chip--all) {
-  color: var(--color-warning-600, #d97706);
-  background: rgba(245, 158, 11, 0.18);
+  color: var(--color-primary-600, #2563eb);
 }
 
 :deep(.message-link) {

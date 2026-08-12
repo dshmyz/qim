@@ -602,6 +602,7 @@ func (c *Client) handleAuth(data interface{}) {
 	}
 
 	c.userID = claims.UserID
+	c.username = claims.Username
 	c.authed = true
 	// 认证成功后恢复为正常的 60s 读超时（未认证阶段用的是 10s 认证超时窗口）
 	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))

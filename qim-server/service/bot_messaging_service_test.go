@@ -12,7 +12,10 @@ import (
 
 func setupBotMessagingTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	// 用临时文件数据库代替内存库，避免 SQLite 内存库 + goroutine 并发竞态
+	// （内存库每连接隔离，GORM 连接池给 goroutine 分配不同连接时看不到表）。
+	dbPath := t.TempDir() + "/test.db"
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}

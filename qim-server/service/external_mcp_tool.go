@@ -18,6 +18,19 @@ import (
 // 前缀可避免冲突、且能从名字追溯来源连接。MVP 阶段群 AI 白名单据此按前缀放行。
 const externalToolPrefix = "mcp_"
 
+// ExternalMCPSendMeta 批量构造 ExternalMCPTool 所需的元数据，
+// 收敛参数避免逐字段传递导致签名膨胀。
+type ExternalMCPSendMeta struct {
+	ConnName    string
+	ToolName    string
+	Title       string // 人类可读显示名（来自 Tool.Title 或 Annotations.Title）
+	Description string // LLM 用途描述（来自 Tool.Description）
+	Schema      map[string]interface{}
+	ReadOnly    bool // Annotations.ReadOnlyHint：只读工具不修改环境
+	Destructive bool // Annotations.DestructiveHint：破坏性写操作标记
+	Session     *mcp.ClientSession
+}
+
 // ExternalMCPTool 把外部 MCP Server 暴露的一个工具适配成进程内 ai.Tool，
 // 使群 @AI 的 ReAct 循环能像内置工具一样选择并调用它。
 //
@@ -31,25 +44,37 @@ type ExternalMCPTool struct {
 	connName string
 	// toolName 外部 MCP 工具原始名
 	toolName string
+	// title 人类可读的显示名（来自 MCP Tool.Title 或 Annotations.Title），用于 UI 展示
+	title string
 	// schema 外部工具的参数 JSON Schema（ai.Tool.Parameters 的 Map 形态）
 	schema map[string]interface{}
+	// description 远程 MCP Server 提供的工具描述，供 LLM 理解工具用途
+	description string
+	// readOnly 工具是否只读（来自 MCP Annotations.ReadOnlyHint），true = 不修改环境
+	readOnly bool
+	// destructive 工具是否有破坏性写操作（来自 MCP Annotations.DestructiveHint）
+	destructive bool
 	// session 指向外部 MCP Server 的已连接客户端会话；nil 表示当前不可用（降级态）
 	session *mcp.ClientSession
-	// callTimeout 单次远程调用超时，防外部 server 挂起拖住回复
+	// callTimeout 单次远程调用超时，防外部 server 拖住回复
 	callTimeout time.Duration
 }
 
-// NewExternalMCPTool 构造外部工具适配器。toolName 来自远程 tools/list 的 name，
-// schema 来自远程工具定义的 inputSchema（已转成 map）。
-func NewExternalMCPTool(connName, toolName string, schema map[string]interface{}, session *mcp.ClientSession) *ExternalMCPTool {
+// NewExternalMCPTool 从 ExternalMCPSendMeta 构造外部工具适配器。
+func NewExternalMCPTool(meta ExternalMCPSendMeta) *ExternalMCPTool {
+	schema := meta.Schema
 	if schema == nil {
 		schema = map[string]interface{}{"type": "object"}
 	}
 	return &ExternalMCPTool{
-		connName:    connName,
-		toolName:    toolName,
+		connName:    meta.ConnName,
+		toolName:    meta.ToolName,
+		title:       meta.Title,
 		schema:      schema,
-		session:     session,
+		description: meta.Description,
+		readOnly:    meta.ReadOnly,
+		destructive: meta.Destructive,
+		session:     meta.Session,
 		callTimeout: 30 * time.Second,
 	}
 }
@@ -73,12 +98,34 @@ func sanitizeName(s string) string {
 	return b.String()
 }
 
+// Title 返回工具的人类可读显示名。优先级：Title > Name。
+func (t *ExternalMCPTool) Title() string {
+	if t.title != "" {
+		return t.title
+	}
+	return t.toolName
+}
+
+// Description 返回工具的 LLM 用途描述。优先级：远程 Description > 模板兜底。
 func (t *ExternalMCPTool) Description() string {
+	if t.description != "" {
+		return t.description
+	}
 	return fmt.Sprintf("调用外部 MCP 服务「%s」提供的工具 %s。", t.connName, t.toolName)
 }
 
 func (t *ExternalMCPTool) Parameters() map[string]interface{} {
 	return t.schema
+}
+
+// ReadOnly 返回工具是否只读（Annotations.ReadOnlyHint）。
+func (t *ExternalMCPTool) ReadOnly() bool {
+	return t.readOnly
+}
+
+// Destructive 返回工具是否有破坏性写操作（Annotations.DestructiveHint）。
+func (t *ExternalMCPTool) Destructive() bool {
+	return t.destructive
 }
 
 // Execute 把参数代理到远程 MCP Server 的 CallTool。
@@ -106,16 +153,16 @@ func (t *ExternalMCPTool) Execute(params map[string]interface{}, ctx *ai.CallerC
 	}
 
 	if res.IsError {
-		return nil, fmt.Errorf("外部 MCP 工具 %s 返回错误", t.toolName)
+		// 透传远程错误文本，让 LLM 理解具体失败原因而非仅看到泛化错误
+		errText := extractTexts(res.Content)
+		if errText != "" {
+			return nil, fmt.Errorf("外部 MCP 工具 %s(%s) 返回错误: %s", t.toolName, t.connName, errText)
+		}
+		return nil, fmt.Errorf("外部 MCP 工具 %s(%s) 返回错误", t.toolName, t.connName)
 	}
 
-	texts := make([]string, 0, len(res.Content))
-	for _, c := range res.Content {
-		if tc, ok := c.(*mcp.TextContent); ok && tc.Text != "" {
-			texts = append(texts, tc.Text)
-		}
-	}
-	if len(texts) == 0 {
+	texts := extractTexts(res.Content)
+	if texts == "" {
 		// 非文本内容（如图片/结构化）：退化返回有用提示而非丢弃
 		if res.StructuredContent != nil {
 			if b, err := json.Marshal(res.StructuredContent); err == nil {
@@ -124,5 +171,16 @@ func (t *ExternalMCPTool) Execute(params map[string]interface{}, ctx *ai.CallerC
 		}
 		return "", nil
 	}
-	return strings.Join(texts, "\n"), nil
+	return texts, nil
+}
+
+// extractTexts 从 MCP CallToolResult 的 Content 中提取所有文本内容。
+func extractTexts(content []mcp.Content) string {
+	texts := make([]string, 0, len(content))
+	for _, c := range content {
+		if tc, ok := c.(*mcp.TextContent); ok && tc.Text != "" {
+			texts = append(texts, tc.Text)
+		}
+	}
+	return strings.Join(texts, "\n")
 }

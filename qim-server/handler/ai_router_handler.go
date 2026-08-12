@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"log"
+	"strings"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
@@ -39,16 +40,44 @@ func GetAIRouter(c *gin.Context) {
 	}
 
 	candidates := make([]gin.H, 0, len(providers))
+	seen := make(map[string]bool, len(providers))
 	for _, p := range providers {
 		if !p.Enabled {
 			continue
 		}
+		seen[strings.ToLower(p.Name)] = true
 		candidates = append(candidates, gin.H{
 			"id":     p.ID,
 			"name":   p.Name,
 			"type":   p.APIType,
 			"models": p.Models,
 		})
+	}
+
+	// 补充 config.yaml 兜底 provider：运行时可用（已在 pool 中）却未在后台 DB 登记的
+	// provider 也应作为下拉候选，否则后台看不到、选不了 runtime 实际在用的 provider。
+	// 这与 SaveRouter 校验（通过 aiService.ProviderNames() 承认 config.yaml provider 合法）
+	// 的语义对齐。DB 已登记的 provider（按小写 name）优先，config.yaml 同名的跳过。
+	if svc := di.GlobalContainer.AIService; svc != nil {
+		if cfg := svc.GetConfig(); cfg != nil {
+			for name, pc := range cfg.AllProviders() {
+				key := strings.ToLower(name)
+				if seen[key] || !pc.IsSet() {
+					continue
+				}
+				seen[key] = true
+				models := []string{}
+				if pc.Model != "" {
+					models = append(models, pc.Model)
+				}
+				candidates = append(candidates, gin.H{
+					"id":     0,
+					"name":   name,
+					"type":   name,
+					"models": models,
+				})
+			}
+		}
 	}
 
 	dbOverride, _ := routerSvc().HasDBRouter()

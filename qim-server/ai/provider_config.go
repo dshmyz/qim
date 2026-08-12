@@ -14,6 +14,11 @@ type ProviderConfig struct {
 	// BaseURL API 基础 URL
 	BaseURL string
 
+	// EmbeddingBaseURL embedding 接口的基础 URL（与 BaseURL 不同时显式配置）。
+	// 火山引擎等平台的 embedding 路径与 chat 不同（/api/v3/embeddings vs /api/plan/v3/chat/completions）。
+	// 空值时回退到 BaseURL。
+	EmbeddingBaseURL string
+
 	// ExtraParams 额外的配置参数
 	ExtraParams map[string]interface{}
 }
@@ -30,10 +35,11 @@ func (c *ProviderConfig) IsDualKeySet() bool {
 
 func (c OpenAIConfig) ToProviderConfig() ProviderConfig {
 	return ProviderConfig{
-		APIKey:  c.APIKey,
-		Model:   c.Model,
-		BaseURL: c.BaseURL,
-		ExtraParams: map[string]interface{}{},
+		APIKey:          c.APIKey,
+		Model:           c.Model,
+		BaseURL:         c.BaseURL,
+		EmbeddingBaseURL: c.EmbeddingBaseURL,
+		ExtraParams:     map[string]interface{}{},
 	}
 }
 

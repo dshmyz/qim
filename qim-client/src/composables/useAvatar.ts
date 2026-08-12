@@ -205,6 +205,24 @@ export function useAvatar() {
     }
   }
 
+  async function resumeSession(convId: string | number) {
+    loading.value = true
+    error.value = ''
+    try {
+      const session = mapSessionFields(await avatarAPI.resumeSession(Number(convId)))
+      const idx = sessions.value.findIndex(s => s.conversationId === Number(convId))
+      if (idx >= 0) {
+        sessions.value[idx] = session
+      }
+      return session
+    } catch (e: any) {
+      error.value = e.message || '恢复分身失败'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   function getSession(convId: string | number): AvatarSession | undefined {
     return sessions.value.find(s => s.conversationId === Number(convId))
   }
@@ -269,6 +287,7 @@ export function useAvatar() {
     toggleSession,
     clearSessions,
     takeoverSession,
+    resumeSession,
     getSession,
     isAvatarActive,
     applyForApproval,

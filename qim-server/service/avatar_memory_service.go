@@ -18,6 +18,8 @@ type AvatarMemoryService struct {
 	// conflictCheck 判断新旧两条记忆是否"同一主题但结论矛盾"：矛盾则更新旧的
 	// （保留 memoryID），否则新增。nil 时用 LLM 默认实现。可注入以便测试不真调 LLM。
 	conflictCheck func(newMemo, oldMemo string) (bool, error)
+	// thresholdSvc 阈值读取服务；nil 时用默认 0.7（向后兼容）。
+	thresholdSvc *AiThresholdService
 }
 
 func NewAvatarMemoryService(vectorSvc *VectorService, aiService *ai.AIService) *AvatarMemoryService {
@@ -30,6 +32,19 @@ func NewAvatarMemoryService(vectorSvc *VectorService, aiService *ai.AIService) *
 // SetConflictCheck 注入语义冲突判定器（默认 LLM 实现，测试可用假判定）。
 func (s *AvatarMemoryService) SetConflictCheck(f func(newMemo, oldMemo string) (bool, error)) {
 	s.conflictCheck = f
+}
+
+// SetThresholdService 注入阈值读取服务；nil 时冲突检测用默认 0.7。
+func (s *AvatarMemoryService) SetThresholdService(t *AiThresholdService) {
+	s.thresholdSvc = t
+}
+
+// conflictThreshold 返回冲突检测分数门槛：未注入阈值服务时回退默认 0.7。
+func (s *AvatarMemoryService) conflictThreshold() float64 {
+	if s.thresholdSvc != nil {
+		return s.thresholdSvc.GetFloat("ai.conflict_detection_threshold", 0.7)
+	}
+	return 0.7
 }
 
 // memoryConflicts LLM 判定新旧记忆是否冲突；判定器未注入时用默认 LLM 实现。
@@ -108,7 +123,7 @@ func (s *AvatarMemoryService) saveConsolidatedMemory(userID, conversationID uint
 	cid := fmt.Sprintf("%d", conversationID)
 
 	// 语义冲突检测：新记忆与最相似的旧记忆冲突时，更新旧的而非新增。
-	if len(memories) > 0 && memories[0].Score >= 0.7 {
+	if len(memories) > 0 && memories[0].Score >= s.conflictThreshold() {
 		conflict, cerr := s.memoryConflicts(ref.Summary, memories[0].Content)
 		if cerr == nil && conflict {
 			content := ref.Summary
@@ -298,10 +313,11 @@ type MemoryGraph struct {
 }
 
 type MemoryGraphNode struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Type  string `json:"type"` // entity | theme
-	Count int    `json:"count"`
+	ID    string            `json:"id"`
+	Name  string            `json:"name"`
+	Type  string            `json:"type"` // entity | theme | note
+	Count int               `json:"count"`
+	Data  map[string]string `json:"data,omitempty"`
 }
 
 type MemoryGraphEdge struct {

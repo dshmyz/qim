@@ -8,17 +8,18 @@
         <option value="always">始终回复</option>
         <option value="off">关闭 AI 回复</option>
       </select>
+      <span class="setting-hint">{{ replyModeHint }}</span>
     </div>
 
     <div class="setting-item">
       <label class="toggle-label">
-        <span>@ 后回复方式</span>
+        <span>回复时 @ 提问者</span>
         <label class="switch">
           <input type="checkbox" :checked="modelValue.aiMentionReplyMode === 'mention'" @change="update('aiMentionReplyMode', ($event.target as HTMLInputElement).checked ? 'mention' : 'direct')" />
           <span class="slider round"></span>
         </label>
       </label>
-      <span class="setting-hint">{{ modelValue.aiMentionReplyMode === 'mention' ? '@提问者后回复' : '直接回复' }}</span>
+      <span class="setting-hint">{{ modelValue.aiMentionReplyMode === 'mention' ? '开启：AI 回复时会先 @ 提问者，如「@小明 建议你……」' : '关闭：AI 直接回复内容，不 @ 任何人' }}</span>
     </div>
 
     <div class="setting-item">
@@ -30,7 +31,7 @@
         <option :value="10">10 分钟</option>
         <option :value="15">15 分钟</option>
       </select>
-      <span class="setting-hint">同一话题在此间隔内只回复一次</span>
+      <span class="setting-hint">同一话题在此间隔内 AI 只回复一次，避免频繁刷屏</span>
     </div>
 
     <div class="setting-item">
@@ -50,13 +51,13 @@
           </span>
         </div>
       </div>
-      <span class="setting-hint">设置后仅当消息包含关键词时 AI 才触发（留空则不限）</span>
+      <span class="setting-hint">设置后仅当消息包含关键词时 AI 才触发回复，留空则不限制</span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { GroupAISettings } from '../../../types/ai'
 
 interface Props { modelValue: GroupAISettings }
@@ -69,6 +70,16 @@ const keywordInput = ref('')
 function update<K extends keyof GroupAISettings>(key: K, value: GroupAISettings[K]) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
 }
+
+const replyModeHint = computed(() => {
+  const map: Record<string, string> = {
+    mention_only: '只有被 @ 时才回复，适合需要精确触发的场景',
+    smart: 'AI 自行判断是否需要回复，适合活跃的讨论群',
+    always: '每条消息都会回复，适合客服或问答场景',
+    off: '关闭 AI 自动回复，仅保留手动触发能力'
+  }
+  return map[props.modelValue.aiReplyMode] || ''
+})
 
 function addKeyword() {
   const kw = keywordInput.value.trim()
@@ -87,12 +98,14 @@ function removeKeyword(index: number) {
 
 <style scoped>
 .ai-trigger-settings { padding: 16px; }
-.setting-item { margin-bottom: 16px; }
-.setting-item label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
+.setting-item { margin-bottom: 20px; }
+.setting-item:last-child { margin-bottom: 0; }
+.setting-item label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; color: var(--text-color); }
 .toggle-label { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
-.setting-hint { display: block; margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
-.form-select, .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; }
-.form-select:focus, .form-input:focus { outline: none; border-color: var(--primary-color); }
+.setting-hint { display: block; margin-top: 6px; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.form-select, .form-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s; }
+.form-select:focus, .form-input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1); }
+.form-input::placeholder { color: var(--text-secondary); opacity: 0.6; }
 .switch { position: relative; display: inline-block; width: 50px; height: 24px; min-width: 50px; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: 0.4s; border-radius: 24px; }

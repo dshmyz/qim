@@ -7,7 +7,7 @@
         title="通话"
         @click="$emit('start-voice-call')"
       />
-      <button class="call-dropdown-trigger" @click="toggleCallMenu($event)" title="更多通话选项">
+      <button class="call-dropdown-trigger" data-menu-trigger @click="toggleCallMenu($event)" title="更多通话选项">
         <i class="fas fa-caret-down"></i>
       </button>
       <UniversalContextMenu menuId="call" :items="callMenuItems" />
@@ -57,7 +57,7 @@
       >
         {{ screenshotButtonTitle }}
       </div>
-      <button class="screenshot-dropdown-trigger" @click="toggleScreenshotMenu($event)" title="更多截图选项">
+      <button class="screenshot-dropdown-trigger" data-menu-trigger @click="toggleScreenshotMenu($event)" title="更多截图选项">
         <i class="fas fa-caret-down"></i>
       </button>
       <UniversalContextMenu menuId="screenshot" :items="screenshotMenuItems" />

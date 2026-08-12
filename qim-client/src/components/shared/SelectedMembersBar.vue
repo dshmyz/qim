@@ -34,7 +34,7 @@ defineEmits<{
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px 2px 4px;
+  padding: 3px 8px 3px 6px;
   background: var(--hover-color, rgba(99, 102, 241, 0.08));
   border-radius: 14px;
   font-size: 12px;
@@ -49,9 +49,10 @@ defineEmits<{
 .chip-remove {
   cursor: pointer;
   color: var(--text-secondary, #999);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1;
-  padding: 0 2px;
+  padding: 0 3px;
+  transition: color 0.15s;
 }
 .chip-remove:hover {
   color: var(--text-color, #333);

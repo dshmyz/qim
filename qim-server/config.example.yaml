@@ -4,6 +4,7 @@
 # - JWT_SECRET: JWT密钥（与下方 jwt.secret 等价，环境变量优先），建议设置为随机字符串
 # - QIM_ADMIN_USERNAME: 管理员用户名（默认: admin）
 # - QIM_ADMIN_PASSWORD: 管理员密码（默认: admin123）
+# - LOG_DIR / LOG_LEVEL: 日志目录与级别（优先于下方 log 配置）
 #
 # 注意：首次启动时会自动创建管理员账户，建议在生产环境中修改默认密码
 
@@ -12,12 +13,10 @@ server:
   port: "8080"
   mode: "release"  # debug / release / test
 
-# 数据初始化策略
-# 控制启动时哪些数据需要初始化，不同环境可有不同的策略
+# 数据初始化策略（不同环境可有不同策略）
 data_init:
   preset_data: true       # 预置数据（系统用户、管理员、内置应用、文件上传配置）
   bot_templates: true     # Bot 模板（系统助手、AI助手）
-  demo_mini_apps: false   # 演示小程序（计算器、记事本等）
   test_data: false        # 测试数据（测试用户、部门、会话、频道等）
   seed_force: false       # 是否强制重新初始化（演示环境可设为 true）
 
@@ -43,19 +42,19 @@ database:
 log:
   dir: "./logs"
   level: "info"        # debug / info / warn / error
-  max_size_mb: 100     # 单文件最大体积（MB），达到后轮转；<=0 用 lumberjack 默认 100
-  max_backups: 0       # 保留的旧文件份数；0 表示保留全部（但受 max_age_days 限制）
-  max_age_days: 0      # 旧文件最大保留天数；0 表示不按天数清理
-  compress: false      # 是否压缩归档的旧文件（gzip）
+  # 以下为轮转策略默认值（不填则自动使用下述值，无需显式配置）：
+  # max_size_mb: 100
+  # max_backups: 14
+  # max_age_days: 30
+  # compress: true
 
 # 多节点配置
 cluster:
-  enabled: false        # 是否启用多节点通信
-  # 其他节点的地址列表
+  enabled: false
   nodes: []
   # - "http://node1:8080"
   # - "http://node2:8080"
-  scheme: "http"        # 节点间通信协议：http 或 https，默认 http
+  scheme: "http"
 
 # 节点间认证：NodeAuthMiddleware 使用该密钥校验节点间内部接口请求（Header: Node-Secret）
 # 注意：node.secret 仅从配置文件读取，不支持环境变量覆盖。
@@ -64,91 +63,50 @@ node:
 
 # 文件存储配置
 storage:
-  # 存储类型: local 或 s3
-  type: "local"
-  # 本地存储配置
+  type: "local"   # local 或 s3
   local:
     path: "./uploads"
-  # S3存储配置
-  s3:
-    endpoint: "s3.amazonaws.com"
-    access_key: "your-access-key"
-    secret_key: "your-secret-key"
-    bucket: "qim"
-    region: "us-east-1"
-    use_ssl: true
+  # S3 存储配置（storage.type: "s3" 时生效）：
+  # s3:
+  #   endpoint: "s3.amazonaws.com"
+  #   access_key: "your-access-key"
+  #   secret_key: "your-secret-key"
+  #   bucket: "qim"
+  #   region: "us-east-1"
+  #   use_ssl: true
 
 # AI 配置
 ai:
-  # 路由配置 - 为不同任务指定不同的模型
+  # 路由配置：管理后台可在线修改，此处仅填初始值
+  # 完整任务类型：chat / intent_recognition / analysis / embedding / tool_calling / search / digest / vision
   router:
     default_task: "chat"
     routes:
       chat:
         provider: "openai"
         model: "gpt-3.5-turbo"
-      intent_recognition:
-        provider: "openai"
-        model: "gpt-3.5-turbo"
-      analysis:
-        provider: "openai"
-        model: "gpt-3.5-turbo"
       embedding:
         provider: "openai"
         model: "text-embedding-ada-002"
-      tool_calling:
-        provider: "openai"
-        model: "gpt-3.5-turbo"
-      search:
-        provider: "openai"
-        model: "gpt-3.5-turbo"
-      digest:
-        provider: "openai"
-        model: "gpt-3.5-turbo"
-  
+
   # 通用配置
   max_tokens: 1000
   temperature: 0.7
-  
-  # OpenAI 配置
+
+  # Provider 配置：未配置 api_key 的 provider 不会初始化，管理后台可添加更多 provider
   openai:
     api_key: "your-openai-api-key"
     model: "gpt-3.5-turbo"
     base_url: "https://api.openai.com/v1"
     embedding_model: "text-embedding-ada-002"
-  
-  # 百度文心一言配置
-  baidu:
-    api_key: ""
-    secret_key: ""
-    model: "ERNIE-Bot-4.0"
-    base_url: "https://aip.baidubce.com"
-  
-  # 阿里通义千问配置
-  alibaba:
-    api_key: ""
-    api_secret: ""
-    model: "qwen-plus"
-    base_url: "https://dashscope.aliyuncs.com/api/v1"
-  
-  # 腾讯混元大模型配置
-  tencent:
-    secret_id: ""
-    secret_key: ""
-    model: "hunyuan-pro"
-    base_url: "https://hunyuan.tencentcloudapi.com"
-  
-  # 字节跳动豆包配置
-  bytedance:
-    api_key: ""
-    model: "doubao-pro-1.0"
-    base_url: "https://ark.cn-beijing.volces.com/api/v3"
-  
-  # Anthropic/Claude 配置
+
   anthropic:
-    api_key: "your-anthropic-api-key"
-    model: "claude-3-sonnet-20240229"
-    base_url: "https://api.anthropic.com"
+    api_key: ""
+    model: "claude-sonnet-4-20250514"
+    base_url: "https://api.anthropic.com/v1"
+
+  # 其他 provider 未列出的字段均为空，可通过管理后台启用：
+  # baidu / alibaba / tencent / bytedance / deepseek
 
 # CORS 配置
 cors:
@@ -156,7 +114,7 @@ cors:
     - "http://localhost:5173"
     - "http://localhost:3000"
 
-# WebSocket 配置：与 CORS 类似，控制 WS 握手时允许的来源（routes.go 中 ws.SetAllowedOrigins）
+# WebSocket 配置：与 CORS 类似，控制 WS 握手时允许的来源
 ws:
   allowed_origins:
     - "http://localhost:5173"
@@ -166,9 +124,7 @@ ws:
 vector:
   path: "./vector.db"
 
-# 静态资源路径配置（routes.go 中 /uploads /miniapps 路由使用）
-# 未配置时使用默认值：uploads_dir=uploads, miniapps_dir=static/miniapps
-# 也可用环境变量覆盖：QIM_STATIC_UPLOADS_DIR / QIM_STATIC_MINIAPPS_DIR
+# 静态资源路径配置（未配置时使用默认值，也可用环境变量覆盖）
 static:
   uploads_dir: "uploads"
   miniapps_dir: "static/miniapps"

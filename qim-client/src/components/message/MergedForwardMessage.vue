@@ -10,13 +10,23 @@
         </button>
       </div>
       <div class="merged-forward-list">
-        <div v-for="message in payload.messages.slice(0, 3)" :key="message.id" class="merged-forward-item">
+        <div v-for="message in visibleMessages" :key="message.id" class="merged-forward-item">
           <strong>{{ message.senderName }}</strong>
           <span class="merged-forward-preview">
             <span>{{ getMessagePreview(message).label }}</span>
           </span>
         </div>
-        <span v-if="payload.messages.length > 3" class="merged-forward-more">还有 {{ payload.messages.length - 3 }} 条消息</span>
+        <button
+          v-if="payload.messages.length > 3 && !isAllExpanded"
+          class="merged-forward-expand"
+          type="button"
+          @click="isAllExpanded = true"
+        >
+          展开全部（{{ payload.messages.length }} 条）
+        </button>
+        <span v-if="isAllExpanded && payload.messages.length > 20" class="merged-forward-more">
+          仅展示前 20 条预览，点击查看完整聊天记录
+        </span>
       </div>
       <MergedForwardRecordDialog
         :payload="payload"
@@ -47,7 +57,13 @@ const emit = defineEmits<{
 }>()
 
 const isRecordVisible = ref(false)
+const isAllExpanded = ref(false)
 const payload = computed(() => parseMergedForwardPayload(props.content))
+const visibleMessages = computed(() => {
+  if (!payload.value) return []
+  if (isAllExpanded.value) return payload.value.messages.slice(0, 20)
+  return payload.value.messages.slice(0, 3)
+})
 
 </script>
 
@@ -128,6 +144,29 @@ const payload = computed(() => parseMergedForwardPayload(props.content))
 .merged-forward-more {
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.merged-forward-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: var(--primary-color);
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.16s ease;
+}
+
+.merged-forward-expand:hover {
+  background: color-mix(in srgb, var(--primary-color), transparent 90%);
+}
+
+.merged-forward-expand:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 @media (max-width: 640px) {

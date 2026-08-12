@@ -119,7 +119,7 @@
           <SelectedMembersBar :members="localSelectedMembers" @remove="removeSelected" />
           <!-- 组织树按部门选人（搜索时本地过滤树，保留部门上下文） -->
           <div class="members-list org-tree-list">
-            <OrgTreePicker :org-structure="orgStructure" :search-query="localSearchQuery" :selected-members="localSelectedMembers" @update:selected-members="localSelectedMembers = $event" />
+            <OrgTreePicker :org-structure="orgStructure" :search-query="localSearchQuery" :selected-members="localSelectedMembers" :existing-member-ids="existingMemberIds" @update:selected-members="localSelectedMembers = $event" />
           </div>
         </div>
       </div>
@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 import OrgTreePicker from '../shared/OrgTreePicker.vue'
 import SelectedMembersBar from '../shared/SelectedMembersBar.vue'
@@ -241,6 +241,10 @@ interface Props {
 
 const props = defineProps<Props>()
 
+const existingMemberIds = computed(() => {
+  return (props.selectedGroup?.members ?? []).map(m => m.id)
+})
+
 const emit = defineEmits<{
   'closeGroupMembers': []
   'closeGroupInfo': []
@@ -275,24 +279,26 @@ const removeSelected = (member: Employee) => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  backdrop-filter: blur(2px);
 }
 
 .add-members-content {
   background: var(--modal-bg, #fff);
-  border-radius: 12px;
+  border-radius: 14px;
   width: 500px;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .add-members-header {
-  padding: 20px;
+  padding: 18px 22px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -300,35 +306,48 @@ const removeSelected = (member: Employee) => {
 
 .add-members-header h3 {
   margin: 0;
-  font-size: 18px;
-  color: var(--text-color, #333);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color, #1a1a1a);
+  letter-spacing: -0.01em;
 }
 
 .close-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: 18px;
   cursor: pointer;
   color: var(--text-secondary, #999);
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.close-btn:hover {
+  background: var(--hover-color, #f5f5f5);
+  color: var(--text-color, #333);
 }
 
 .add-members-body {
-  padding: 20px;
+  padding: 14px 22px 18px;
   overflow-y: auto;
   flex: 1;
 }
 
 .group-info {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 0;
+  margin-bottom: 16px;
 }
 
 .group-avatar img {
-  width: 48px;
-  height: 48px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
 }
 
@@ -338,42 +357,56 @@ const removeSelected = (member: Employee) => {
 
 .group-name {
   font-weight: 500;
-  color: var(--text-color, #333);
+  font-size: 14px;
+  color: var(--text-color, #1a1a1a);
 }
 
 .group-members-count {
   font-size: 12px;
   color: var(--text-secondary, #999);
+  margin-top: 2px;
 }
 
 .search-section {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .search-input {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 4px;
+  padding: 8px 12px 8px 34px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--modal-bg, #fff) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 10px center;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #409eff);
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1);
+  background-color: var(--modal-bg, #fff);
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-color, #1a1a1a);
 }
 
 .selected-count {
   font-size: 12px;
+  font-weight: 400;
   color: var(--text-secondary, #999);
 }
 
 .members-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
 .member-item {
@@ -405,7 +438,7 @@ const removeSelected = (member: Employee) => {
 
 .member-name {
   font-size: 14px;
-  color: var(--text-color, #333);
+  color: var(--text-color, #1a1a1a);
 }
 
 .member-position {
@@ -431,44 +464,76 @@ const removeSelected = (member: Employee) => {
   color: var(--text-secondary, #999);
 }
 
+/* ── 编辑群名称 ── */
 .group-name-edit-section {
-  margin-top: 16px;
+  margin-top: 4px;
 }
 
 .group-name-input {
   width: 100%;
-  padding: 12px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
   font-size: 14px;
+  color: var(--text-color, #1a1a1a);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.group-name-input::placeholder {
+  color: var(--text-secondary, #bbb);
+}
+
+.group-name-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #409eff);
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1);
 }
 
 .group-name-tip {
   font-size: 12px;
   color: var(--text-secondary, #999);
-  margin-top: 8px;
+  margin: 8px 0 0;
+  line-height: 1.5;
 }
 
+/* ── 编辑群公告 ── */
 .announcement-edit-section {
-  margin-top: 16px;
+  margin-top: 4px;
 }
 
 .announcement-textarea {
   width: 100%;
-  padding: 12px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
   resize: vertical;
   font-family: inherit;
   font-size: 14px;
+  color: var(--text-color, #1a1a1a);
+  line-height: 1.6;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.announcement-textarea::placeholder {
+  color: var(--text-secondary, #bbb);
+}
+
+.announcement-textarea:focus {
+  outline: none;
+  border-color: var(--primary-color, #409eff);
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1);
 }
 
 .announcement-tip {
   font-size: 12px;
   color: var(--text-secondary, #999);
-  margin-top: 8px;
+  margin: 8px 0 0;
+  line-height: 1.5;
 }
 
+/* ── 群资料详情 ── */
 .group-details-section {
   display: flex;
   flex-direction: column;
@@ -488,23 +553,27 @@ const removeSelected = (member: Employee) => {
 }
 
 .detail-value {
-  color: var(--text-color, #333);
+  color: var(--text-color, #1a1a1a);
   font-size: 14px;
 }
 
+/* ── 底部按钮 ── */
 .add-members-footer {
-  padding: 16px 20px;
+  padding: 14px 22px;
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
 }
 
 .cancel-btn,
 .confirm-btn {
-  padding: 8px 24px;
+  padding: 8px 22px;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 0.15s;
 }
 
 .cancel-btn {
@@ -512,9 +581,17 @@ const removeSelected = (member: Employee) => {
   color: var(--text-color, #333);
 }
 
+.cancel-btn:hover {
+  background: var(--border-color, #e8e8e8);
+}
+
 .confirm-btn {
   background: var(--primary-color, #409eff);
   color: white;
+}
+
+.confirm-btn:hover {
+  opacity: 0.9;
 }
 
 .confirm-btn:disabled {

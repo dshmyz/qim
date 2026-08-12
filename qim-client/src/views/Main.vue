@@ -24,9 +24,14 @@
     <!-- 分享弹窗 -->
     <ShareModal
       :visible="showShareModal"
-      :shareType="shareType"
+      :share="{ type: shareType, data: shareData }"
       :users="shareUsers"
       :groups="shareGroups"
+      :departments="shareDepartments"
+      :shareLoading="shareLoading"
+      :sending="sending"
+      :sendingProgress="sendingProgress"
+      :conversations="conversations"
       @close="closeShareModal"
       @confirm="handleShareConfirm"
     />
@@ -723,7 +728,7 @@ import FeedbackModal from '../components/modals/FeedbackModal.vue'
 const SettingsPanel = defineAsyncComponent(() => import('../components/settings/SettingsPanel.vue'))
 import ContentSkeleton from '../components/skeleton/ContentSkeleton.vue'
 import { useServerUrl } from '../composables/useServerUrl'
-import { generateAvatar, getAvatarUrl, isAbsoluteUrl } from '../utils/avatar'
+import { generateAvatar, isAbsoluteUrl } from '../utils/avatar'
 import { resolveNotificationNav } from '../utils/notificationNavigation'
 import { request, getToken } from '../composables/useRequest'
 import { useChannelStore } from '../stores/channel'
@@ -758,6 +763,7 @@ import { useUserProfile } from '../composables/useUserProfile'
 import { useStreamMessage } from '../composables/useStreamMessage'
 import { useAppLogic } from '../composables/useAppLogic'
 import { decodeToPlainText, parseContent } from '../utils/mentions'
+import { stripMarkdown } from '../utils/messageDisplay'
 import { sameConversationId } from '../utils/conversationId'
 import { getPrivateChatUserId, isPrivateChatSearchResult } from '../utils/privateChatTarget'
 import {
@@ -1405,7 +1411,7 @@ const handleNewNotification = (notification: any) => {
   // 新通知触发闪烁+桌面通知（受勿扰模式控制）
   triggerAttention(
     notification.title || '新通知',
-    decodeToPlainText(notification.content || '您有一条新通知')
+    stripMarkdown(notification.content || '您有一条新通知')
   )
 
   if (notificationCenterRef.value) {
@@ -1630,18 +1636,6 @@ const reconcileStreamingMessages = async (convId: string) => {
 
 // WebSocket连接
 
-const DEFAULT_NOTIFICATION_ICON = '/app-logo.png'
-
-const getNotificationIcon = (avatar?: string | null, name = 'user') => {
-  if (!avatar?.trim()) return DEFAULT_NOTIFICATION_ICON
-
-  const icon = getAvatarUrl(avatar, name, serverUrl.value)
-  if (!icon || icon.startsWith('data:') || icon.startsWith('blob:')) {
-    return DEFAULT_NOTIFICATION_ICON
-  }
-  return icon
-}
-
 const isInDndTimeRange = (start: string, end: string, now = new Date()) => {
   const toMinutes = (time: string) => {
     const [hours, minutes] = time.split(':').map(Number)
@@ -1686,8 +1680,9 @@ const isGlobalDndEnabled = (senderName?: string) => {
 const triggerAttention = (title: string, body: string, options?: {
   skipDnd?: boolean
   icon?: string
+  payload?: any
 }) => {
-  const { skipDnd = false, icon = DEFAULT_NOTIFICATION_ICON } = options || {}
+  const { skipDnd = false, payload } = options || {}
 
   // 勿扰模式检查（强提醒跳过）
   if (!skipDnd && isGlobalDndEnabled()) return
@@ -1697,17 +1692,9 @@ const triggerAttention = (title: string, body: string, options?: {
     window.electron.tray.flash()
   }
 
-  // 桌面通知（受用户设置开关控制）
-  if (messageSettings.value.desktopNotificationsEnabled && 'Notification' in window) {
-    if (Notification.permission === 'granted') {
-      new Notification(title, { body, icon })
-    } else if (Notification.permission !== 'denied') {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          new Notification(title, { body, icon })
-        }
-      })
-    }
+  // 桌面通知：Electron 下走主进程 IPC（带 app 图标+点击跳转），非 Electron 回退 Web Notification
+  if (messageSettings.value.desktopNotificationsEnabled) {
+    showReminder(title, body, payload)
   }
 }
 
@@ -1746,8 +1733,7 @@ const handleCallNotification = (type: string, data: any) => {
 
   // 来电/屏幕共享是强提醒，跳过勿扰模式
   triggerAttention(title, body, {
-    skipDnd: true,
-    icon: getNotificationIcon(fromUserAvatar, fromUserName)
+    skipDnd: true
   })
 }
 
@@ -1948,6 +1934,7 @@ const handleToolCall = (data: any) => {
   const VALID_STATUSES = ['running', 'ok', 'error', ''] as const
   const record: ToolCallRecord = {
     id: data.id ? String(data.id) : undefined,
+    tool_name: data.tool_name ? String(data.tool_name) : undefined,
     tool_label: String(data.tool_label),
     args: data.args && typeof data.args === 'object' ? data.args : undefined,
     status: data.status && (VALID_STATUSES as readonly string[]).includes(data.status) ? data.status : undefined,
@@ -1990,7 +1977,7 @@ const handleNotification = (data: any) => {
   })
 
   // 通知触发闪烁+桌面通知（受勿扰模式控制）
-  triggerAttention('新通知', decodeToPlainText(data.content || data.title || ''))
+  triggerAttention('新通知', stripMarkdown(data.content || data.title || ''))
 
   if (notificationCenterRef.value) {
     const mapped = mapNotification(data)
@@ -2135,7 +2122,7 @@ const formatNotificationContent = (message: any): string => {
     }
   }
   
-  return decodeToPlainText(message.content || '无内容')
+  return stripMarkdown(message.content || '无内容')
 }
 
 // 处理新消息
@@ -2181,21 +2168,16 @@ const handleNewMessage = async (msg: any) => {
       const notificationBody = messageSettings.value.notificationPreview === 'simple'
         ? '新消息'
         : formatNotificationContent(newMessage)
-      if (Notification.permission === 'granted') {
-        new Notification('新消息', {
-          body: notificationBody,
-          icon: getNotificationIcon(newMessage.sender.avatar, newMessage.sender.name || 'user')
-        })
-      } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-            new Notification('新消息', {
-              body: notificationBody,
-              icon: getNotificationIcon(newMessage.sender.avatar, newMessage.sender.name || 'user')
-            })
-          }
-        })
+      // payload 携带会话信息，点击通知可跳转到对应消息
+      const payload = {
+        type: 'message',
+        actionPayload: {
+          conversationId: newMessage.conversationId,
+          messageId: newMessage.id,
+          conversationType: newMessage.conversationType
+        }
       }
+      showReminder('新消息', notificationBody, payload)
     }
   }
   
@@ -3274,7 +3256,7 @@ const shareLogic = useShareLogic(
   conversations, currentConversationId,
   loadConversations, handleSwitchConversation, closeShareModal
 )
-const { loadShareUsersAndGroups, handleShareConfirm, buildFileContent } = shareLogic
+const { loadShareUsersAndGroups, handleShareConfirm, buildFileContent, shareLoading, shareDepartments, sending, sendingProgress, invalidateShareCache } = shareLogic
 
 const userProfileActions = useUserProfile(currentUser, closeUserProfile)
 const { triggerAvatarInput, handleAvatarChange, saveUserProfile } = userProfileActions
@@ -3612,7 +3594,10 @@ const handleConfirmLogout = async () => {
       'Content-Type': 'application/json'
     }
   }).catch(() => {})
-  
+
+  // 清除分享缓存，避免下一用户看到旧数据
+  invalidateShareCache()
+
   // 跳转到登录页（gotoLogin 内部会清理 localStorage 并跳转到 /）
   gotoLogin()
 }

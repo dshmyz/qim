@@ -12,12 +12,13 @@
         <span class="dept-count">{{ deptSelectedCount(node.dept!) }}/{{ deptEmployeeCount(node.dept!) }}</span>
       </div>
       <!-- 员工节点 -->
-      <div v-else class="node emp-node" :style="{ paddingLeft: node.level * 18 + 8 + 'px' }" @click="toggleEmployee(node.employee!)">
+      <div v-else class="node emp-node" :class="{ 'is-existing': isExistingMember(node.id) }" :style="{ paddingLeft: node.level * 18 + 8 + 'px' }" @click="!isExistingMember(node.id) && toggleEmployee(node.employee!)">
         <span class="toggle-placeholder"></span>
-        <input type="checkbox" :checked="isSelected(node.id)" @click.stop @change="toggleEmployee(node.employee!)" />
+        <input type="checkbox" :checked="isSelected(node.id)" :disabled="isExistingMember(node.id)" @click.stop @change="toggleEmployee(node.employee!)" />
         <Avatar :src="node.avatar" :name="node.name" :alt="node.name" size="sm" />
         <span class="emp-name">{{ node.name }}</span>
-        <span class="emp-position">{{ node.position || '' }}</span>
+        <span v-if="isExistingMember(node.id)" class="emp-existing-tag">已在群</span>
+        <span v-else class="emp-position">{{ node.position || '' }}</span>
       </div>
     </template>
   </div>
@@ -52,7 +53,13 @@ const props = defineProps<{
   orgStructure: Department[]
   selectedMembers: PickableEmployee[]
   searchQuery?: string
+  existingMemberIds?: (string | number)[]
 }>()
+
+const existingIdSet = computed(() => new Set(props.existingMemberIds?.map(String) ?? []))
+function isExistingMember(id: string) {
+  return existingIdSet.value.has(id)
+}
 
 const emit = defineEmits<{
   'update:selectedMembers': [members: PickableEmployee[]]
@@ -157,7 +164,7 @@ function toggleExpand(id: string) {
 const selectedIds = computed(() => new Set(props.selectedMembers.map(m => String(m.id))))
 
 function isSelected(id: string) {
-  return selectedIds.value.has(id)
+  return selectedIds.value.has(id) || isExistingMember(id)
 }
 
 // 递归收集部门子树所有员工
@@ -172,17 +179,17 @@ function collectDeptEmployees(dept: Department): PickableEmployee[] {
 }
 
 function deptEmployeeCount(dept: Department): number {
-  return collectDeptEmployees(dept).length
+  return collectDeptEmployees(dept).filter(e => !isExistingMember(String(e.id))).length
 }
 function deptSelectedCount(dept: Department): number {
-  return collectDeptEmployees(dept).filter(e => selectedIds.value.has(String(e.id))).length
+  return collectDeptEmployees(dept).filter(e => !isExistingMember(String(e.id)) && selectedIds.value.has(String(e.id))).length
 }
 function isDeptAllSelected(dept: Department): boolean {
-  const emps = collectDeptEmployees(dept)
+  const emps = collectDeptEmployees(dept).filter(e => !isExistingMember(String(e.id)))
   return emps.length > 0 && emps.every(e => selectedIds.value.has(String(e.id)))
 }
 function isDeptIndeterminate(dept: Department): boolean {
-  const emps = collectDeptEmployees(dept)
+  const emps = collectDeptEmployees(dept).filter(e => !isExistingMember(String(e.id)))
   const cnt = emps.filter(e => selectedIds.value.has(String(e.id))).length
   return cnt > 0 && cnt < emps.length
 }
@@ -201,6 +208,7 @@ function emitList(list: PickableEmployee[]) {
 }
 
 function toggleEmployee(emp: PickableEmployee) {
+  if (isExistingMember(String(emp.id))) return
   const list = [...props.selectedMembers]
   const idx = list.findIndex(e => String(e.id) === String(emp.id))
   if (idx >= 0) list.splice(idx, 1)
@@ -209,7 +217,7 @@ function toggleEmployee(emp: PickableEmployee) {
 }
 
 function toggleDept(dept: Department) {
-  const deptEmps = collectDeptEmployees(dept)
+  const deptEmps = collectDeptEmployees(dept).filter(e => !isExistingMember(String(e.id)))
   const deptEmpIds = new Set(deptEmps.map(e => String(e.id)))
   const list = [...props.selectedMembers]
   if (isDeptAllSelected(dept)) {
@@ -229,9 +237,10 @@ function toggleDept(dept: Department) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 7px 10px;
   cursor: pointer;
   transition: background 0.15s;
+  border-radius: 4px;
 }
 .node:hover {
   background: var(--hover-color, rgba(0, 0, 0, 0.04));
@@ -240,14 +249,15 @@ function toggleDept(dept: Department) {
   font-weight: 500;
 }
 .toggle {
-  width: 12px;
-  font-size: 11px;
+  width: 14px;
+  font-size: 10px;
   color: var(--text-secondary, #999);
   cursor: pointer;
   flex-shrink: 0;
+  text-align: center;
 }
 .toggle-placeholder {
-  width: 12px;
+  width: 14px;
   flex-shrink: 0;
 }
 .dept-name {
@@ -262,20 +272,43 @@ function toggleDept(dept: Department) {
   font-size: 11px;
   color: var(--text-secondary, #999);
   flex-shrink: 0;
+  background: var(--hover-color, rgba(0,0,0,0.04));
+  padding: 1px 6px;
+  border-radius: 8px;
 }
 .emp-name {
   font-size: 13px;
   color: var(--text-color, #333);
   min-width: 50px;
-  max-width: 100px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
 }
 .emp-position {
   font-size: 11px;
   color: var(--text-secondary, #999);
   flex-shrink: 0;
+}
+.emp-existing-tag {
+  font-size: 11px;
+  color: var(--color-success-600, #52c41a);
+  flex-shrink: 0;
+}
+.emp-node.is-existing {
+  opacity: 0.55;
+  cursor: default;
+}
+.emp-node.is-existing input[type="checkbox"] {
+  cursor: not-allowed;
+}
+input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: var(--primary-color, #409eff);
 }
 .empty {
   text-align: center;

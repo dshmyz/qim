@@ -56,6 +56,56 @@
             <el-switch v-model="conn.enabled" active-text="开启" inactive-text="关闭" />
           </el-form-item>
         </div>
+
+        <!-- 工具发现区域 -->
+        <div class="tool-discovery">
+          <div class="tool-discovery-header">
+            <el-button
+              size="small"
+              :loading="conn._loadingTools"
+              :disabled="!conn.url"
+              @click="discoverTools(index)"
+            >
+              发现工具
+            </el-button>
+            <span v-if="conn._tools && conn._tools.length > 0" class="tool-count">
+              共 {{ conn._tools.length }} 个工具
+              <span v-if="conn.allowed_tools && conn.allowed_tools.length > 0">
+                ，已选 {{ conn.allowed_tools.length }} 个
+              </span>
+              <span class="desc" style="margin-left: 4px">
+                （不勾选 = 全部开放）
+              </span>
+            </span>
+          </div>
+
+          <div v-if="conn._toolsError" class="tool-error">
+            <el-text type="danger" size="small">{{ conn._toolsError }}</el-text>
+          </div>
+
+          <div v-if="conn._tools && conn._tools.length > 0" class="tool-list">
+            <el-checkbox
+              v-model="conn._allChecked"
+              :indeterminate="conn._indeterminate"
+              @change="(val: boolean) => toggleAllTools(index, val)"
+              class="tool-checkbox-all"
+            >
+              全选 / 全不选
+            </el-checkbox>
+            <el-divider style="margin: 8px 0" />
+            <el-checkbox-group
+              :model-value="conn.allowed_tools || []"
+              @change="(val: string[]) => updateAllowedTools(index, val)"
+            >
+              <div v-for="tool in conn._tools" :key="tool.name" class="tool-item">
+                <el-checkbox :label="tool.name">
+                  <span class="tool-name">{{ tool.name }}</span>
+                  <span class="tool-desc">{{ tool.description }}</span>
+                </el-checkbox>
+              </div>
+            </el-checkbox-group>
+          </div>
+        </div>
       </div>
 
       <el-form-item>
@@ -72,9 +122,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getSystemConfig, updateSystemConfig } from '@/api/systemConfig'
+import { request } from '@/utils/request'
+
+interface MCPTool {
+  name: string
+  description: string
+}
 
 interface MCPConn {
   name: string
@@ -82,6 +138,12 @@ interface MCPConn {
   url: string
   token: string
   enabled: boolean
+  allowed_tools: string[]
+  _loadingTools?: boolean
+  _tools?: MCPTool[]
+  _toolsError?: string
+  _allChecked?: boolean
+  _indeterminate?: boolean
 }
 
 const loading = ref(false)
@@ -98,12 +160,18 @@ const loadConfig = async () => {
     const rawConns = raw.external_mcp
     if (rawConns) {
       const parsed: MCPConn[] = typeof rawConns === 'string' ? JSON.parse(rawConns) : rawConns
-      conns.value = Array.isArray(parsed) ? parsed : []
+      conns.value = Array.isArray(parsed) ? parsed.map(c => ({
+        ...c,
+        allowed_tools: c.allowed_tools || [],
+        _tools: undefined,
+        _toolsError: undefined,
+        _allChecked: false,
+        _indeterminate: false,
+      })) : []
     } else {
       conns.value = []
     }
   } catch (e) {
-    // 配置未初始化或其他错误，使用默认空列表
     conns.value = []
   } finally {
     loading.value = false
@@ -116,7 +184,12 @@ const addConn = () => {
     transport: 'streamable-http',
     url: '',
     token: '',
-    enabled: true
+    enabled: true,
+    allowed_tools: [],
+    _tools: undefined,
+    _toolsError: undefined,
+    _allChecked: false,
+    _indeterminate: false,
   })
 }
 
@@ -124,23 +197,88 @@ const removeConn = (index: number) => {
   conns.value.splice(index, 1)
 }
 
+const discoverTools = async (index: number) => {
+  const conn = conns.value[index]
+  if (!conn.url) {
+    ElMessage.warning('请先填写端点 URL')
+    return
+  }
+  conn._loadingTools = true
+  conn._toolsError = undefined
+  try {
+    const res = await request.post('/api/v1/admin/external-mcp/tools', {
+      name: conn.name,
+      transport: conn.transport,
+      url: conn.url,
+      token: conn.token,
+    })
+    const tools: MCPTool[] = res.data?.data || []
+    conn._tools = tools
+    // 自动全选（首次发现时默认全部开放）
+    if (!conn.allowed_tools || conn.allowed_tools.length === 0) {
+      conn.allowed_tools = tools.map(t => t.name)
+    }
+    updateCheckState(index)
+    if (tools.length === 0) {
+      conn._toolsError = '该 MCP Server 未提供任何工具'
+    }
+  } catch (e: any) {
+    conn._tools = []
+    conn._toolsError = e?.response?.data?.message || e?.message || '连接失败'
+  } finally {
+    conn._loadingTools = false
+  }
+}
+
+const toggleAllTools = (index: number, checked: boolean) => {
+  const conn = conns.value[index]
+  if (checked) {
+    conn.allowed_tools = (conn._tools || []).map(t => t.name)
+  } else {
+    conn.allowed_tools = []
+  }
+  updateCheckState(index)
+}
+
+const updateAllowedTools = (index: number, val: string[]) => {
+  const conn = conns.value[index]
+  conn.allowed_tools = val
+  updateCheckState(index)
+}
+
+const updateCheckState = (index: number) => {
+  const conn = conns.value[index]
+  const total = conn._tools?.length || 0
+  const selected = conn.allowed_tools?.length || 0
+  conn._allChecked = total > 0 && selected === total
+  conn._indeterminate = selected > 0 && selected < total
+}
+
 const handleSave = async () => {
-  // 验证只检查启用的连接（禁用连接保存时会被过滤剔除，无需校验）
   if (conns.value.filter(c => c.enabled).some(c => !c.name.trim() || !c.url.trim())) {
     ElMessage.warning('每条启用中的连接都需要填写名称与端点 URL')
     return
   }
   submitting.value = true
   try {
-    // 名称/token 去首尾空白后持久化；关闭的连接整体剔除（对应工具将从注册表摘除并热同步）
     const cleaned = conns.value
-      .map(c => ({
-        name: c.name.trim(),
-        transport: c.transport,
-        url: c.url.trim(),
-        token: c.token.trim(),
-        enabled: Boolean(c.enabled)
-      }))
+      .map(c => {
+        const conn: any = {
+          name: c.name.trim(),
+          transport: c.transport,
+          url: c.url.trim(),
+          token: c.token.trim(),
+          enabled: Boolean(c.enabled),
+        }
+        // 只保存非空的 allowed_tools（空 = 全部开放）
+        if (c.allowed_tools && c.allowed_tools.length > 0 && c._tools) {
+          // 若已选数 = 总数，不保存 allowed_tools（等同全部开放）
+          if (c.allowed_tools.length < c._tools.length) {
+            conn.allowed_tools = c.allowed_tools
+          }
+        }
+        return conn
+      })
       .filter(c => c.enabled)
     await updateSystemConfig({
       'external_mcp': JSON.stringify(cleaned),
@@ -194,5 +332,54 @@ onMounted(loadConfig)
 .desc {
   color: var(--color-text-muted, #909399);
   font-size: 12px;
+}
+
+.tool-discovery {
+  padding: 8px 0 12px;
+  border-top: 1px dashed var(--color-border-light, #ebeef5);
+  margin-top: 8px;
+}
+
+.tool-discovery-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tool-count {
+  font-size: 12px;
+  color: var(--color-text-muted, #909399);
+}
+
+.tool-error {
+  margin-top: 8px;
+}
+
+.tool-list {
+  margin-top: 8px;
+}
+
+.tool-checkbox-all {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tool-item {
+  padding: 4px 0;
+  display: flex;
+  align-items: flex-start;
+}
+
+.tool-name {
+  font-family: monospace;
+  font-size: 13px;
+  margin-right: 8px;
+  color: var(--color-primary, #409eff);
+}
+
+.tool-desc {
+  font-size: 12px;
+  color: var(--color-text-muted, #909399);
+  line-height: 1.4;
 }
 </style>

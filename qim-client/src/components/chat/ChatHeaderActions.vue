@@ -8,11 +8,12 @@
       <span v-if="isGroupOrDiscussion" class="header-icon" title="邀请成员" @click.stop="handleInviteMembers">
         <i class="fas fa-user-plus"></i>
       </span>
-      <span 
-        v-if="isGroupOrDiscussion || (systemConfigStore.enableAI && showAvatarToggle)" 
-        class="header-icon" 
-        title="更多选项" 
-        @click.stop="handleToggleHeaderMenu" 
+      <span
+        v-if="isGroupOrDiscussion || (systemConfigStore.enableAI && showAvatarToggle)"
+        class="header-icon"
+        title="更多选项"
+        data-menu-trigger
+        @click.stop="handleToggleHeaderMenu"
         ref="moreButtonRef"
       >
         <i class="fas fa-ellipsis-v"></i>
@@ -21,23 +22,36 @@
 
     <!-- 头部下拉菜单 -->
     <UniversalContextMenu menuId="header" :items="headerMenuItems">
+      <!-- 自动提取待办（仅群主/管理员可见，放在普通菜单项区域） -->
+      <div v-if="isGroupOrDiscussion && isAdminOrOwner" class="avatar-toggle-menu-item" data-tip="AI 从群聊消息中自动识别待办事项并创建任务" @mouseenter="positionTooltip" @mouseleave="positionTooltip($event, true)">
+        <div class="avatar-toggle-header">
+          <span class="ucm-icon"><i class="fas fa-list-check" style="color: #8b5cf6"></i></span>
+          <span class="avatar-toggle-title">自动提取待办</span>
+          <Switch
+            :model-value="aiExtractTodos ?? false"
+            :size="'small'"
+            @change="(value) => handleToggleExtractTodos(value)"
+          />
+        </div>
+      </div>
       <!-- AI 分身开关（自定义内容） -->
-      <div v-if="systemConfigStore.enableAI && showAvatarToggle" class="ucm-divider"></div>
-      <div v-if="systemConfigStore.enableAI && showAvatarToggle" class="avatar-toggle-menu-item">
+      <div v-if="systemConfigStore.enableAI && isGroupOrDiscussion && showAvatarToggle" class="ucm-divider"></div>
+      <div v-if="systemConfigStore.enableAI && showAvatarToggle" class="avatar-toggle-menu-item" :data-tip="avatarApprovalStatus === 'approved' ? (isGroupOrDiscussion ? '被 @ 时替你回复，AI 代替你回复消息' : '代替你回复消息，AI 代替你回复消息') : ''" @mouseenter="positionTooltip" @mouseleave="positionTooltip($event, true)">
         <div class="avatar-toggle-header">
           <span class="ucm-icon"><i class="fas fa-user-circle" style="color: #3b82f6"></i></span>
           <span class="avatar-toggle-title">AI 分身</span>
           <Switch
-            :model-value="avatarEnabled ?? false"
+            :model-value="avatarEnabledRaw ?? false"
             :size="'small'"
             :disabled="avatarApprovalStatus !== 'approved'"
             @change="(value) => handleToggleAvatar(value)"
           />
         </div>
-        <div class="avatar-toggle-hint">
-          <template v-if="avatarApprovalStatus === 'pending'"><i class="fas fa-hourglass-half"></i> 审批中</template>
-          <template v-else-if="avatarApprovalStatus === 'rejected'"><i class="fas fa-circle-xmark"></i> 审批未通过</template>
-          <template v-else><i class="fas fa-robot"></i>{{ isGroupOrDiscussion ? '被 @ 时替你回复' : '代替你回复消息' }}</template>
+        <div v-if="avatarApprovalStatus === 'pending'" class="avatar-toggle-hint">
+          <i class="fas fa-hourglass-half"></i> 审批中
+        </div>
+        <div v-else-if="avatarApprovalStatus === 'rejected'" class="avatar-toggle-hint">
+          <i class="fas fa-circle-xmark"></i> 审批未通过
         </div>
       </div>
       <div
@@ -48,12 +62,6 @@
         <span class="ucm-icon"><i class="fas fa-pause-circle" style="color: #FF9800"></i></span>
         <span class="ucm-item-label">手动接管分身</span>
       </div>
-      <div
-        v-if="systemConfigStore.enableAI && showAvatarToggle && avatarApprovalStatus === 'approved' && avatarEnabled"
-        class="avatar-takeover-hint"
-      >
-        <i class="fas fa-clock"></i> 暂停一段时间由你亲自回复，到期自动恢复
-      </div>
     </UniversalContextMenu>
 
     <!-- 确认对话框 -->
@@ -61,7 +69,8 @@
       :visible="localShowConfirmDialog"
       :title="localConfirmDialogTitle"
       :message="localConfirmDialogMessage"
-      confirm-text="确定"
+      :danger="localConfirmDialogDanger"
+      confirm-text="确定解散"
       cancel-text="取消"
       @update:visible="handleConfirmDialogVisibleChange"
       @confirm="executeConfirmCallback"
@@ -146,7 +155,9 @@ interface Props {
   aiTriggerKeywords?: string[]
   aiLearnEnabled?: boolean
   avatarEnabled?: boolean
+  avatarEnabledRaw?: boolean
   avatarApprovalStatus?: string
+  aiExtractTodos?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -171,6 +182,7 @@ const emit = defineEmits<{
   'open-group-files': []
   'update-avatar-enabled': [enabled: boolean]
   'update-avatar-takeover': []
+  'update-extract-todos': [enabled: boolean]
   'update-ai-settings': [settings: {
     aiEnabled: boolean;
     aiAssistantName: string;
@@ -202,6 +214,7 @@ const { request } = useRequest()
 const localShowConfirmDialog = ref(false)
 const localConfirmDialogTitle = ref('确认操作')
 const localConfirmDialogMessage = ref('')
+const localConfirmDialogDanger = ref(false)
 const localConfirmDialogCallback = ref<(() => void) | null>(null)
 
 // AI 设置状态
@@ -241,6 +254,8 @@ const currentUserRole = computed((): string => {
   return (member?.role as string) || 'member'
 })
 
+const isAdminOrOwner = computed(() => currentUserRole.value === 'owner' || currentUserRole.value === 'admin')
+
 // 是否显示分身开关（私聊、群聊均显示）。
 // 判断顺序：私聊且对方为 bot/系统助手时也不显示（与机器人一致，分身开关对其无意义）。
 const showAvatarToggle = computed(() => {
@@ -252,6 +267,24 @@ const showAvatarToggle = computed(() => {
 // 处理分身开关切换
 function handleToggleAvatar(enabled: boolean) {
   emit('update-avatar-enabled', enabled)
+}
+
+// 处理自动提取待办开关
+function handleToggleExtractTodos(enabled: boolean) {
+  emit('update-extract-todos', enabled)
+}
+
+// CSS tooltip 定位：用 position:fixed 逃出菜单 overflow 裁剪
+function positionTooltip(e: MouseEvent, clear = false) {
+  const el = e.currentTarget as HTMLElement
+  if (clear) {
+    el.style.removeProperty('--tip-top')
+    el.style.removeProperty('--tip-right')
+    return
+  }
+  const rect = el.getBoundingClientRect()
+  el.style.setProperty('--tip-top', `${rect.top - 8}px`)
+  el.style.setProperty('--tip-right', `${window.innerWidth - rect.right}px`)
 }
 
 // 手动接管分身：由 ChatWindow 落地 takeoverSession（与分身开关同一事件上传路径）
@@ -334,20 +367,23 @@ function handleConfirmDeleteGroup() {
     '确定要解散此群聊吗？解散后所有消息和成员数据将被删除。',
     () => {
       emit('delete-group')
-    }
+    },
+    true
   )
 }
 
 // 本地确认对话框方法
-function openLocalConfirmDialog(title: string, message: string, callback: () => void) {
+function openLocalConfirmDialog(title: string, message: string, callback: () => void, danger = false) {
   localConfirmDialogTitle.value = title
   localConfirmDialogMessage.value = message
+  localConfirmDialogDanger.value = danger
   localConfirmDialogCallback.value = callback
   localShowConfirmDialog.value = true
 }
 
 function closeLocalConfirmDialog() {
   localShowConfirmDialog.value = false
+  localConfirmDialogDanger.value = false
   localConfirmDialogCallback.value = null
 }
 
@@ -472,6 +508,30 @@ function handleUpdateAISettings(settings: any) {
 .avatar-toggle-menu-item {
   padding: 8px 10px;
   border-radius: 6px;
+  position: relative;
+}
+
+.avatar-toggle-menu-item[data-tip]::after {
+  content: attr(data-tip);
+  position: fixed;
+  top: var(--tip-top, 0);
+  right: var(--tip-right, 20px);
+  transform: translateY(-100%);
+  background: #1a1a1a;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 99999;
+}
+
+.avatar-toggle-menu-item[data-tip]:hover::after {
+  opacity: 1;
 }
 
 .avatar-toggle-header {
@@ -497,7 +557,6 @@ function handleUpdateAISettings(settings: any) {
   opacity: 0.75;
 }
 
-/* 状态图标/占位宽度与菜单项图标列一致，保证带/不带图标时文字同列对齐 */
 .avatar-toggle-hint i {
   width: 18px;
   flex-shrink: 0;
@@ -524,24 +583,6 @@ function handleUpdateAISettings(settings: any) {
 .avatar-takeover-menu-item .ucm-item-label {
   flex: 1;
   color: var(--text-primary);
-}
-
-.avatar-takeover-hint {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 2px 0 2px;
-  padding: 0 10px 8px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  opacity: 0.75;
-}
-
-.avatar-takeover-hint i {
-  width: 18px;
-  flex-shrink: 0;
-  text-align: center;
-  font-size: 11px;
 }
 
 /* 下拉动画 */

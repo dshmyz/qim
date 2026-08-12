@@ -126,6 +126,18 @@ export const avatarAPI = {
     return response!.data
   },
 
+  async resumeSession(convId: number): Promise<AvatarSession> {
+    const response = await request<{ code: number; data: AvatarSession }>(
+      `/api/v1/avatar/sessions/${convId}/resume`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'Content-Type': 'application/json' }
+      }
+    )
+    return response!.data
+  },
+
   async previewReply(message: string): Promise<string> {
     const response = await request<{ code: number; data: { reply: string } }>(
       '/api/v1/avatar/preview',

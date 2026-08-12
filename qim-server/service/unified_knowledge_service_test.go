@@ -94,7 +94,7 @@ func TestMemoryResultsToSources(t *testing.T) {
 		{Content: "项目截止日期 3 月 15 日", Score: 0.87, DocID: "mem_1", Metadata: map[string]string{"title": "项目排期"}},
 		{Content: "张三负责后端开发工作", Score: 0.75, DocID: "mem_2"},
 	}
-	sources := memoryResultsToSources(results)
+	sources := memoryResultsToSources(results, 0.6)
 	require.Len(t, sources, 2)
 	assert.Equal(t, "项目排期", sources[0].Title, "有 title 时用 title")
 	assert.Equal(t, "memory", sources[0].Source)
@@ -107,7 +107,7 @@ func TestMemoryResultsToSources(t *testing.T) {
 // TestMemoryResultsToSources_Empty
 // 空记忆结果应返回空切片（非 nil），前端据此不渲染额外条目。
 func TestMemoryResultsToSources_Empty(t *testing.T) {
-	sources := memoryResultsToSources(nil)
+	sources := memoryResultsToSources(nil, 0.6)
 	assert.Empty(t, sources)
 }
 

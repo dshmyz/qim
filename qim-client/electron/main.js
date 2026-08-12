@@ -2,8 +2,9 @@
 
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session, shell, Notification, clipboard } from 'electron'
 import path from 'path'
-import { fileURLToPath } from 'url'
 import fs from 'fs'
+import os from 'os'
+import { fileURLToPath } from 'url'
 import { createRequire } from 'node:module'
 import { createUpdateService } from './auto-update.js'
 import { registerSecurePasswordIpc } from './secure-password.js'
@@ -864,18 +865,35 @@ function registerIPC() {
   // 主进程通知：渲染进程通过 IPC 触发。用打包内 app 图标的绝对路径，
   // Linux libnotify 能稳定渲染（Web Notification 的 data URL/相对路径 icon 在 Linux 下不工作）。
   // payload（可选）携带深链目标；桌面通知被点击时回传渲染进程做页面跳转。
+  // Linux 下图标必须是磁盘上的真实路径（ASAR 内的路径 libnotify 读不到），拷到临时目录。
+  let cachedNotifIconPath = ''
+  const getNotifIconPath = () => {
+    if (cachedNotifIconPath && fs.existsSync(cachedNotifIconPath)) return cachedNotifIconPath
+    const src = path.join(app.getAppPath(), 'electron/icons/icon_512x512.png')
+    if (!fs.existsSync(src)) return ''
+    try {
+      const tmpDir = path.join(os.tmpdir(), 'qim-notif-icon')
+      fs.mkdirSync(tmpDir, { recursive: true })
+      const dest = path.join(tmpDir, 'icon_512x512.png')
+      fs.copyFileSync(src, dest)
+      cachedNotifIconPath = dest
+      return dest
+    } catch { return '' }
+  }
+
   ipcMain.handle('notification:show', (_e, { title, body, payload }) => {
     try {
-      const iconPath = path.join(app.getAppPath(), 'electron/icons/icon_512x512.png')
-      const icon = nativeImage.createFromPath(iconPath)
+      const iconPath = getNotifIconPath()
+      const icon = iconPath ? nativeImage.createFromPath(iconPath) : undefined
       const n = new Notification({ title: title || 'QIM', body: body || '', icon, silent: false })
       n.on('click', () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.show()
           mainWindow.focus()
-          if (payload) {
-            mainWindow.webContents.send('notification-click', payload)
-          }
+        }
+        // 即使窗口隐藏/最小化也要把 payload 发出去，让渲染进程处理跳转
+        if (mainWindow && !mainWindow.isDestroyed() && payload) {
+          mainWindow.webContents.send('notification-click', payload)
         }
       })
       n.show()

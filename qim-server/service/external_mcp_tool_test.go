@@ -63,17 +63,23 @@ func TestExternalMCPTool_ExecuteProxiesRemoteCall(t *testing.T) {
 	ts := startTestMCPServer(t)
 	session := connectTestSession(t, ts.URL)
 
-	tool := NewExternalMCPTool("demo", "calculator", map[string]interface{}{
-		"type": "object",
-		"properties": map[string]interface{}{
-			"expr": map[string]interface{}{"type": "string"},
+	tool := NewExternalMCPTool(ExternalMCPSendMeta{
+		ConnName:    "demo",
+		ToolName:    "calculator",
+		Schema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"expr": map[string]interface{}{"type": "string"},
+			},
+			"required": []interface{}{"expr"},
 		},
-		"required": []interface{}{"expr"},
-	}, session)
+		Description: "A simple calculator tool",
+		Session:     session,
+	})
 
 	// 命名空间：mcp_<conn>_<tool>
 	assert.Equal(t, "mcp_demo_calculator", tool.Name())
-	assert.Contains(t, tool.Description(), "demo")
+	assert.Equal(t, "A simple calculator tool", tool.Description())
 
 	got, err := tool.Execute(map[string]interface{}{"expr": "4*6"}, &ai.CallerContext{})
 	require.NoError(t, err)
@@ -83,10 +89,32 @@ func TestExternalMCPTool_ExecuteProxiesRemoteCall(t *testing.T) {
 // TestExternalMCPTool_ExecuteNoSession 验证未连接（降级态）时不 panic、直接报错，
 // 供 ReAct 把工具错误回喂 LLM 而非中断主路径。
 func TestExternalMCPTool_ExecuteNoSession(t *testing.T) {
-	tool := NewExternalMCPTool("demo", "calculator", nil, nil)
+	tool := NewExternalMCPTool(ExternalMCPSendMeta{ConnName: "demo", ToolName: "calculator"})
 	assert.Equal(t, "mcp_demo_calculator", tool.Name())
 
 	_, err := tool.Execute(map[string]interface{}{"expr": "1+1"}, &ai.CallerContext{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "不可用")
+}
+
+// TestExternalMCPTool_TitleAndAnnotations 验证 Title / ReadOnly / Destructive 字段透传。
+func TestExternalMCPTool_TitleAndAnnotations(t *testing.T) {
+	tool := NewExternalMCPTool(ExternalMCPSendMeta{
+		ConnName:    "demo",
+		ToolName:    "create_rule",
+		Title:       "创建规则",
+		Description: "创建一条阻断规则",
+		ReadOnly:    false,
+		Destructive: true,
+	})
+	assert.Equal(t, "创建规则", tool.Title())
+	assert.Equal(t, "创建一条阻断规则", tool.Description())
+	assert.False(t, tool.ReadOnly())
+	assert.True(t, tool.Destructive())
+
+	// Title 为空时 fallback 到 toolName
+	tool2 := NewExternalMCPTool(ExternalMCPSendMeta{ConnName: "demo", ToolName: "list_rules"})
+	assert.Equal(t, "list_rules", tool2.Title())
+	// Description 为空时 fallback 到模板
+	assert.Contains(t, tool2.Description(), "demo")
 }

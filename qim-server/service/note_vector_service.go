@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
@@ -12,8 +13,9 @@ import (
 
 // NoteVectorService 笔记向量化和检索服务
 type NoteVectorService struct {
-	vectorSvc *VectorService
-	aiService *ai.AIService
+	vectorSvc  *VectorService
+	aiService  *ai.AIService
+	entityCache sync.Map // key: "userID:noteID" → value: string (逗号分隔实体)
 }
 
 // NewNoteVectorService 创建笔记向量服务实例
@@ -29,8 +31,9 @@ func (s *NoteVectorService) VectorizeNote(userID, noteID uint, title, content st
 	ctx := context.Background()
 	collectionName := fmt.Sprintf("user_notes_%d", userID)
 
-	// 先删除旧向量
+	// 先删除旧向量（同时清缓存）
 	s.deleteNoteVectors(ctx, collectionName, noteID)
+	s.entityCache.Delete(fmt.Sprintf("%d:%d", userID, noteID))
 
 	// 按标题切片
 	chunks := SplitMarkdownByHeading(content)
@@ -60,6 +63,10 @@ func (s *NoteVectorService) VectorizeNote(userID, noteID uint, title, content st
 		embedding, err := s.aiService.Embed(chunk.Content)
 		if err != nil {
 			logger.WithModule("NoteVectorService").Error("笔记向量化失败", "noteID", noteID, "chunk", i, "error", err)
+			continue
+		}
+		if len(embedding) == 0 {
+			logger.WithModule("NoteVectorService").Warn("Embed 返回空向量", "noteID", noteID, "chunk", i)
 			continue
 		}
 
@@ -110,6 +117,7 @@ func (s *NoteVectorService) SearchNotes(userID uint, query string, topK int) ([]
 
 // DeleteNoteVectors 删除指定笔记的所有向量
 func (s *NoteVectorService) DeleteNoteVectors(userID, noteID uint) error {
+	s.entityCache.Delete(fmt.Sprintf("%d:%d", userID, noteID))
 	ctx := context.Background()
 	collectionName := fmt.Sprintf("user_notes_%d", userID)
 	return s.deleteNoteVectors(ctx, collectionName, noteID)
@@ -173,12 +181,18 @@ func extractNoteEntities(aiService *ai.AIService, content string) []string {
 // 实体提取用 LLM，每次查看现算（图谱页切换不频繁，可接受）。
 func (s *NoteVectorService) BuildNoteGraph(userID uint, maxNodes int) (*MemoryGraph, error) {
 	if s.vectorSvc == nil {
+		logger.WithModule("NoteGraph").Warn("vectorSvc 为空，跳过图谱构建")
 		return &MemoryGraph{}, nil
 	}
 	ctx := context.Background()
 	collection := fmt.Sprintf("user_notes_%d", userID)
 	results, err := s.vectorSvc.GetByCollection(ctx, collection, maxNodes*10)
-	if err != nil || len(results) == 0 {
+	if err != nil {
+		logger.WithModule("NoteGraph").Warn("GetByCollection 失败", "collection", collection, "error", err)
+		return &MemoryGraph{}, nil
+	}
+	if len(results) == 0 {
+		logger.WithModule("NoteGraph").Info("笔记向量为空", "collection", collection)
 		return &MemoryGraph{}, nil
 	}
 	// 按 note_id 分组（一篇笔记可能有多个 chunk）
@@ -228,26 +242,61 @@ func (s *NoteVectorService) BuildNoteGraph(userID uint, maxNodes int) (*MemoryGr
 		title  string
 		entities []string
 	}
+	// 并发提取实体：无预提取 metadata 的笔记需要调 LLM。
+	// 先查进程内缓存（同一笔记首次提取后缓存，后续秒读），缓存未命中才调 LLM。
+	type llmJob struct {
+		noteID string
+		chunks []string
+	}
+	var llmJobs []llmJob
+	for _, g := range groupMap {
+		if g.entities == "" && len(g.chunks) > 0 {
+			// 先查缓存
+			cacheKey := fmt.Sprintf("%d:%s", userID, g.noteID)
+			if cached, ok := s.entityCache.Load(cacheKey); ok {
+				g.entities = cached.(string)
+				continue
+			}
+			llmJobs = append(llmJobs, llmJob{noteID: g.noteID, chunks: g.chunks})
+		}
+	}
+	if len(llmJobs) > 0 && s.aiService != nil {
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, 5) // 最多 5 路并发，防打爆 AI 服务
+		for _, job := range llmJobs {
+			wg.Add(1)
+			go func(j llmJob) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				joined := strings.Join(j.chunks, "\n")
+				if len(joined) > 2000 {
+					joined = joined[:2000]
+				}
+				entStrs := extractNoteEntities(s.aiService, joined)
+				if len(entStrs) == 0 {
+					return
+				}
+				entStr := strings.Join(entStrs, ",")
+				// 写入 groupMap + 缓存
+				cacheKey := fmt.Sprintf("%d:%s", userID, j.noteID)
+				s.entityCache.Store(cacheKey, entStr)
+				mu.Lock()
+				if g, ok := groupMap[j.noteID]; ok {
+					g.entities = entStr
+				}
+				mu.Unlock()
+			}(job)
+		}
+		wg.Wait()
+	}
+	// 读取实体（预提取 + LLM 提取合并后）
 	var notes []noteItem
 	for _, g := range groupMap {
-		// 实体优先从 metadata 读（预提取），无 metadata 时降级到 LLM 提取
-		ents := g.entities
-		if ents == "" {
-			joined := strings.Join(g.chunks, "\n")
-			if len(joined) > 2000 {
-				joined = joined[:2000]
-			}
-			llmEnts := extractNoteEntities(s.aiService, joined)
-			for _, e := range llmEnts {
-				if ents != "" {
-					ents += ","
-				}
-				ents += e
-			}
-		}
 		var entList []string
-		if ents != "" {
-			entList = strings.Split(ents, ",")
+		if g.entities != "" {
+			entList = strings.Split(g.entities, ",")
 		}
 		notes = append(notes, noteItem{noteID: g.noteID, title: g.title, entities: entList})
 	}
@@ -260,12 +309,12 @@ func (s *NoteVectorService) BuildNoteGraph(userID uint, maxNodes int) (*MemoryGr
 		Memories: []MemoryGraphMemory{},
 	}
 	nodeIdx := make(map[string]int)
-	addNode := func(id, label, typ string) {
+	addNode := func(id, label, typ string, data map[string]string) {
 		if _, ok := nodeIdx[id]; ok {
 			graph.Nodes[nodeIdx[id]].Count++
 		} else {
 			nodeIdx[id] = len(graph.Nodes)
-			graph.Nodes = append(graph.Nodes, MemoryGraphNode{ID: id, Name: label, Type: typ, Count: 1})
+			graph.Nodes = append(graph.Nodes, MemoryGraphNode{ID: id, Name: label, Type: typ, Count: 1, Data: data})
 		}
 	}
 	edgeKey := func(a, b string) string {
@@ -277,13 +326,31 @@ func (s *NoteVectorService) BuildNoteGraph(userID uint, maxNodes int) (*MemoryGr
 	edgeW := make(map[string]int)
 	for _, n := range notes {
 		noteID := fmt.Sprintf("note:%s:%s", fmt.Sprintf("u%d", userID), n.noteID)
-		addNode(noteID, n.title, "note")
+		addNode(noteID, n.title, "note", map[string]string{"content": n.title})
 		graph.Memories = append(graph.Memories, MemoryGraphMemory{ID: noteID, Content: n.title, Terms: n.entities})
 		for _, e := range n.entities {
 			eID := fmt.Sprintf("entity:%s:%s", fmt.Sprintf("u%d", userID), e)
-			addNode(eID, e, "entity")
+			addNode(eID, e, "entity", nil)
 			addEdgeKey := edgeKey(noteID, eID)
 			edgeW[addEdgeKey]++
+		}
+	}
+	// 实体共现边：同一笔记内多个实体两两配对 co_occurs，与群聊图谱对齐，
+	// 使不同笔记共享同一实体时能交叉连线形成网状拓扑（而非孤立星团）。
+	entByNote := make(map[string][]string) // noteID → entity names
+	for _, n := range notes {
+		if len(n.entities) >= 2 {
+			entByNote[n.noteID] = n.entities
+		}
+	}
+	for _, ents := range entByNote {
+		for i := 0; i < len(ents); i++ {
+			for j := i + 1; j < len(ents); j++ {
+				aID := fmt.Sprintf("entity:%s:%s", fmt.Sprintf("u%d", userID), ents[i])
+				bID := fmt.Sprintf("entity:%s:%s", fmt.Sprintf("u%d", userID), ents[j])
+				ek := edgeKey(aID, bID)
+				edgeW[ek]++
+			}
 		}
 	}
 	for k, w := range edgeW {

@@ -90,6 +90,8 @@ func (s *MessageService) Close() {
 // 队列就绪即异步执行（与原 SafeGo 直发语义一致），worker 内按会话串行，
 // 保证同会话回复不乱序、不重复；入队超时降级为直接执行，避免消息完全丢失。
 func (s *MessageService) submitBotReply(senderID, convID uint, msgType, content string) {
+	logger.WithModule("handleBotMessage").Debug("bot 回复提交异步队列",
+		"senderID", senderID, "convID", convID, "msgType", msgType)
 	handle := func() { s.handleBotMessage(senderID, convID, msgType, content) }
 	if s.botReplyWorker != nil {
 		if err := s.botReplyWorker.Submit(convID, handle); err == nil {
@@ -325,11 +327,14 @@ func (s *MessageService) MentionUserIDsForAI(convID uint, content string) []uint
 // 内部 AI bot（assistant/system）暂不接群聊，保持既有单聊行为不变。
 func (s *MessageService) HandleGroupBotMention(convID, senderID uint, mentionedUserIDs []uint, content string) {
 	if len(mentionedUserIDs) == 0 {
+		logger.WithModule("handleBotMessage").Debug("群消息未 @ 到任何用户，跳过")
 		return
 	}
 	var convType string
 	if err := s.db.Model(&model.Conversation{}).Where("id = ?", convID).Select("type").
 		First(&convType).Error; err != nil || convType != "group" {
+		logger.WithModule("handleBotMessage").Debug("非群会话或不存在的会话，跳过",
+			"convID", convID, "convType", convType, "err", err)
 		return // 仅群会话
 	}
 
@@ -340,24 +345,37 @@ func (s *MessageService) HandleGroupBotMention(convID, senderID uint, mentionedU
 		Joins("JOIN bot_conversations bc ON bc.bot_id = bots.id AND bc.conversation_id = ?", convID).
 		Where("bots.virtual_user_id IN ?", mentionedUserIDs).
 		Find(&bots).Error; err != nil {
-		logger.WithModule("HandleGroupBotMention").Error("查询群内被 @ 的 bot 失败", "convID", convID, "error", err)
+		logger.WithModule("handleBotMessage").Error("查询群内被 @ 的 bot 失败", "convID", convID, "error", err)
+		return
+	}
+	if len(bots) == 0 {
+		logger.WithModule("handleBotMessage").Debug("被 @ 的用户里没有外部 webhook bot",
+			"convID", convID, "mentionedUserIDs", mentionedUserIDs)
 		return
 	}
 	for _, bot := range bots {
 		if bot.VirtualUserID == nil || !bot.IsActive {
+			logger.WithModule("handleBotMessage").Debug("bot 缺少虚拟用户或未激活，跳过",
+				"botID", bot.ID, "virtualUserID", bot.VirtualUserID, "isActive", bot.IsActive)
 			continue
 		}
 		cfg := ParseBotConfig(bot.Config)
 		if !cfg.IsExternalWebhook() {
+			logger.WithModule("handleBotMessage").Debug("bot 非 external_webhook 模式，跳过",
+				"botID", bot.ID, "config", bot.Config)
 			continue // 仅外部 webhook agent
 		}
 		if cfg.WebhookURL == "" {
 			// pull 模式外部 bot：无回调地址，不投递也不会自动回复。
 			// 向群内回一条系统提示，避免成员 @ 后无反应却不知何故（可感知）。
 			// 仅在被 @ 该 bot 时触发，天然克制；系统消息不经 SendMessage，不会递归再触发 OnMessageSent。
+			logger.WithModule("handleBotMessage").Info("bot 为 pull 模式（webhook_url 空），发系统提示",
+				"botID", bot.ID)
 			s.notifyPullModeBot(convID, senderID, bot.Name)
 			continue
 		}
+		logger.WithModule("handleBotMessage").Debug("命中 external webhook bot，准备转发",
+			"botID", bot.ID, "convID", convID, "webhookURL", cfg.WebhookURL)
 		groupContext := s.buildGroupBotContext(convID, content)
 		s.forwardBotMessageToWebhook(bot, cfg.WebhookURL, cfg.WebhookSecret, senderID, convID, content, groupContext)
 	}
@@ -475,15 +493,21 @@ func (s *MessageService) notifyPullModeBot(convID, senderID uint, botName string
 }
 
 func (s *MessageService) handleBotMessage(userID, convID uint, msgType, content string) {
+	logger.WithModule("handleBotMessage").Debug("bot 回复开始处理",
+		"userID", userID, "convID", convID, "msgType", msgType, "contentLen", len(content))
 	db := s.db
 
 	var botConv model.BotConversation
 	if err := db.Where("conversation_id = ?", convID).First(&botConv).Error; err != nil {
+		logger.WithModule("handleBotMessage").Debug("未找到 bot_conversations 记录，跳过",
+			"convID", convID, "userID", userID)
 		return
 	}
 
 	var bot model.Bot
 	if err := db.First(&bot, botConv.BotID).Error; err != nil {
+		logger.WithModule("handleBotMessage").Debug("bot 记录不存在或已删除，跳过",
+			"botID", botConv.BotID, "convID", convID)
 		return
 	}
 
@@ -496,9 +520,14 @@ func (s *MessageService) handleBotMessage(userID, convID uint, msgType, content 
 	// 外部 agent 模式：转发用户消息到 webhook，不再走内部 AI
 	// 单聊（1:1 bot 会话）不注入群上下文——本函数仅群聊 @ 场景需要群记忆/知识。
 	if cfg := ParseBotConfig(bot.Config); cfg.IsExternalWebhook() {
+		logger.WithModule("handleBotMessage").Debug("命中 external_webhook，准备转发",
+			"botID", bot.ID, "convID", convID, "webhookURL", cfg.WebhookURL)
 		s.forwardBotMessageToWebhook(bot, cfg.WebhookURL, cfg.WebhookSecret, userID, convID, content, "")
 		return
 	}
+
+	logger.WithModule("handleBotMessage").Debug("非 external_webhook，走内部 AI",
+		"botID", bot.ID, "config", bot.Config)
 
 	// 消息类型分流：文本走流式+工具，文件/图片走解析+注入，其他类型跳过
 	switch msgType {
@@ -853,7 +882,7 @@ func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot mode
 
 	// 工具调用进度回调：start 推 running 卡片，end 推终态 + 收集记录供 Extra 持久化
 	var toolCalls []ToolCallRecord
-	feedback := NewToolCallFeedback(s.streamingSender, convID, getMsg, &toolCalls)
+	feedback := NewToolCallFeedback(s.streamingSender, convID, getMsg, &toolCalls, nil, nil)
 
 	// 隐私关键：callerCtx 用 talker(userID)，工具按 talker scope 检索任务/知识，不读创建者私有数据
 	callerCtx := &ai.CallerContext{UserID: userID}
@@ -1766,7 +1795,14 @@ func (s *MessageService) SearchMessagesByFullText(userID uint, keyword string, c
 // HTTP 响应、WS 广播、历史拉取三路共用。
 // mentionUserIDs 为已展开（含 @all 展开）的被提及用户 ID 列表。
 // is_at_mention 不在此处计算——per-recipient，由调用方按当前用户算。
-func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs []uint) map[string]interface{} {
+// broadcastFromWS 标记该响应用于 WS 广播：此时无 per-user 上下文，
+// is_read 固定 false（新消息一定是未读），避免全局 msg.IsRead 导致
+// A 已读后 B 收到的广播也显示已读。
+func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs []uint, broadcastFromWS ...bool) map[string]interface{} {
+	isRead := msg.IsRead
+	if len(broadcastFromWS) > 0 && broadcastFromWS[0] {
+		isRead = false
+	}
 	if mentionUserIDs == nil {
 		mentionUserIDs = []uint{}
 	}
@@ -1781,7 +1817,7 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 		"content":           msg.Content,
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
-		"is_read":           msg.IsRead,
+		"is_read":           isRead,
 		"is_avatar_reply":   isAvatarReply,
 		"is_ai_message":     isAIMessage,
 		"origin":            msg.Origin,
@@ -1828,7 +1864,7 @@ func (s *MessageService) broadcastMessage(msg *model.Message, mentionUserIDs []u
 	if s.hub == nil {
 		return
 	}
-	payload := s.buildMessageResponse(*msg, mentionUserIDs)
+	payload := s.buildMessageResponse(*msg, mentionUserIDs, true)
 	wsMsg := ws.WSMessage{Type: "new_message", Data: payload}
 	jsonMsg, _ := json.Marshal(wsMsg)
 	s.hub.SendToConversation(msg.ConversationID, senderID, jsonMsg)

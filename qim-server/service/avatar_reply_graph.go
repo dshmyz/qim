@@ -18,13 +18,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// AvatarSource 分身回复命中的知识来源，随 WS 下发供前端展示「依据」。
+// AvatarReplyContext 分身回复图上下文。命中的知识来源统一用 KnowledgeSource 结构
+// （与群助手/Bot 的「知识来源」同构），随 WS 下发前端展示「依据」。
 // 仅记录实际参与注入的笔记/群知识/记忆，任务仅作附加注入不打标记。
-type AvatarSource struct {
-	Type    string `json:"type"` // "note" | "group" | "memory"
-	Title   string `json:"title,omitempty"`
-	Snippet string `json:"snippet,omitempty"`
-}
 
 type AvatarReplyContext struct {
 	Message        string
@@ -39,8 +35,8 @@ type AvatarReplyContext struct {
 	MemoryContext  string
 	TaskContext    string
 	History        string
-	// Sources 本条回复命中的知识来源（笔记/群知识/记忆标题与摘要），供下发展示依据
-	Sources []AvatarSource
+	// Sources 本条回复命中的知识来源（笔记/群知识/记忆标题、分数与摘要），供下发展示依据
+	Sources []KnowledgeSource
 	// SkipReply 命中"知识范围外且配置为不回复"时置位，Execute 据此跳过 LLM 调用
 	SkipReply bool
 	// CustomProvider 非 nil 表示分身配置了「使用自定义模型」（!UseSystemConfig && ModelConfigID）。
@@ -59,6 +55,8 @@ type AvatarReplyGraph struct {
 	noteSvc     *NoteVectorService
 	memorySvc   *AvatarMemoryService
 	groupDocSvc *GroupDocumentService
+	// thresholdSvc 阈值读取服务；nil 时记忆召回门槛用默认 0.5（向后兼容）。
+	thresholdSvc *AiThresholdService
 }
 
 func NewAvatarReplyGraph(
@@ -75,6 +73,19 @@ func NewAvatarReplyGraph(
 		memorySvc:   memorySvc,
 		groupDocSvc: groupDocSvc,
 	}
+}
+
+// SetThresholdService 注入阈值读取服务；nil 时记忆召回门槛用默认 0.5。
+func (g *AvatarReplyGraph) SetThresholdService(t *AiThresholdService) {
+	g.thresholdSvc = t
+}
+
+// memoryRecallThreshold 返回记忆召回相关度门槛：未注入阈值服务时回退默认 0.5。
+func (g *AvatarReplyGraph) memoryRecallThreshold() float64 {
+	if g.thresholdSvc != nil {
+		return g.thresholdSvc.GetFloat("ai.memory_recall_threshold", 0.5)
+	}
+	return 0.5
 }
 
 func (g *AvatarReplyGraph) BuildGraph() error {
@@ -197,11 +208,11 @@ func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversatio
 
 // ExecuteWithSources 与 Execute 等价，额外返回本条回复命中的知识来源（供下发展示「依据」）。
 // 若命中"不回复"策略（SkipReply）或生成失败，sources 可能为空。
-func (g *AvatarReplyGraph) ExecuteWithSources(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (string, []AvatarSource, error) {
+func (g *AvatarReplyGraph) ExecuteWithSources(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (string, []KnowledgeSource, error) {
 	return g.executeWithSources(ctx, userID, conversationID, message, preloaded)
 }
 
-func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (string, []AvatarSource, error) {
+func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (string, []KnowledgeSource, error) {
 	if g.runnable == nil {
 		return "", nil, fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
 	}
@@ -361,7 +372,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 			var parts []string
 			for _, r := range noteResults {
 				parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", r.Metadata["title"], r.Content))
-				input.Sources = append(input.Sources, AvatarSource{Type: "note", Title: r.Metadata["title"], Snippet: r.Content})
+				input.Sources = append(input.Sources, KnowledgeSource{Source: "notes", Title: r.Metadata["title"], Score: r.Score, ID: r.DocID, Snippet: r.Content})
 			}
 			noteCtx = "【相关笔记知识】\n" + strings.Join(parts, "\n\n")
 		}
@@ -380,7 +391,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 					var parts []string
 					for _, r := range results {
 						parts = append(parts, fmt.Sprintf("[群知识库: %s]\n%s", r.Metadata["title"], r.Content))
-						input.Sources = append(input.Sources, AvatarSource{Type: "group", Title: r.Metadata["title"], Snippet: r.Content})
+						input.Sources = append(input.Sources, KnowledgeSource{Source: "knowledge", Title: r.Metadata["title"], Score: r.Score, ID: r.DocID, Snippet: r.Content})
 					}
 					groupKnowledge = "【群知识库】\n" + strings.Join(parts, "\n\n")
 
@@ -404,7 +415,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 			var parts []string
 			for _, r := range memoryResults {
 				parts = append(parts, r.Content)
-				input.Sources = append(input.Sources, AvatarSource{Type: "memory", Snippet: r.Content})
+				input.Sources = append(input.Sources, KnowledgeSource{Source: "memory", Score: r.Score, ID: r.DocID, Snippet: r.Content})
 				if r.Score > bestMemoryScore {
 					bestMemoryScore = r.Score
 				}
@@ -460,7 +471,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	// 记忆参与判定但需过相关度阈值（≥0.5）：低分噪音记忆不算"知识命中"，避免无关问题
 	// 因 Recall 出历史记忆而误回复；高分记忆（用户确实问过相关内容）则正常放行。
 	// 任务不参与范围内判定（任务只是附加注入的知识，不应让"有任务就什么都回"旁路门控）。
-	memoryHit := memoryCtx != "" && bestMemoryScore >= 0.5
+	memoryHit := memoryCtx != "" && bestMemoryScore >= g.memoryRecallThreshold()
 	hasKnowledge := noteCtx != "" || groupKnowledge != "" || memoryHit
 	if !input.ReplyStrategy.ReplyOutOfScope && !hasKnowledge {
 		input.SkipReply = true
@@ -479,10 +490,10 @@ func (g *AvatarReplyGraph) resolveCustomProvider(userID, configID uint) *customP
 
 // buildCustomProviderExtraParams 构建分身自选模型的 ExtraParams。
 // 仅透传有效值：
-// - max_tokens>0 才传（0 对部分 provider 会被拒绝或解释为无限制，且 max_tokens=0 无确定性语义）
-// - temperature 一律透传，包括 0：AIConfig.Temperature 在 DB 层默认 0.7，读到的 0 必然是用户
-//   显式设置的确定性输出（"未设置"会落为 0.7，绝不会是 0），若跳过则用户想要的 temp=0 被
-//   provider 默认 0.7 静默覆盖
+//   - max_tokens>0 才传（0 对部分 provider 会被拒绝或解释为无限制，且 max_tokens=0 无确定性语义）
+//   - temperature 一律透传，包括 0：AIConfig.Temperature 在 DB 层默认 0.7，读到的 0 必然是用户
+//     显式设置的确定性输出（"未设置"会落为 0.7，绝不会是 0），若跳过则用户想要的 temp=0 被
+//     provider 默认 0.7 静默覆盖
 func buildCustomProviderExtraParams(maxTokens int, temperature float64) map[string]interface{} {
 	params := map[string]interface{}{}
 	if maxTokens > 0 {

@@ -88,6 +88,7 @@ func (h *AvatarHandler) RegisterRoutes(router *gin.RouterGroup) {
 		avatar.POST("/learn-persona", checkAIEnabledForAvatar(), h.TriggerLearnPersona)
 		avatar.PUT("/sessions/:convId", checkAIEnabledForAvatar(), h.UpdateSession)
 		avatar.POST("/sessions/:convId/takeover", checkAIEnabledForAvatar(), h.TakeoverSession)
+		avatar.POST("/sessions/:convId/resume", checkAIEnabledForAvatar(), h.ResumeSession)
 		avatar.POST("/preview", checkAIEnabledForAvatar(), h.PreviewReply)
 		avatar.POST("/apply", checkAIEnabledForAvatar(), h.ApplyForApproval)
 		avatar.POST("/cancel-apply", h.CancelApplication)
@@ -708,6 +709,33 @@ func (h *AvatarHandler) TakeoverSession(c *gin.Context) {
 
 	if err := h.db.Save(&session).Error; err != nil {
 		response.InternalServerError(c, "接管失败")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": session})
+}
+
+// ResumeSession 恢复分身：清空 takeover_until，分身立即恢复自动回复
+func (h *AvatarHandler) ResumeSession(c *gin.Context) {
+	userIDAny, _ := c.Get("user_id")
+	userID := userIDAny.(uint)
+	convIdStr := c.Param("convId")
+
+	convId, err := strconv.ParseUint(convIdStr, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "会话ID格式错误")
+		return
+	}
+
+	var session model.AvatarSession
+	if err := h.db.Where("user_id = ? AND conversation_id = ?", userID, convId).First(&session).Error; err != nil {
+		response.NotFound(c, "会话分身记录不存在")
+		return
+	}
+
+	session.TakeoverUntil = nil
+	if err := h.db.Save(&session).Error; err != nil {
+		response.InternalServerError(c, "恢复分身失败")
 		return
 	}
 

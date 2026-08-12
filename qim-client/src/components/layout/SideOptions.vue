@@ -43,10 +43,10 @@
     </div>
     <div class="option-spacer"></div>
     <div class="bottom-options">
-      <div class="option-item" @click="$emit('showThemeMenu', $event)" title="皮肤">
+      <div class="option-item" data-menu-trigger @click="$emit('showThemeMenu', $event)" title="皮肤">
         <span class="option-icon"><i class="fas fa-palette"></i></span>
       </div>
-      <div class="option-item settings-option" @click="$emit('showSettingsMenu', $event)" title="设置">
+      <div class="option-item settings-option" data-menu-trigger @click="$emit('showSettingsMenu', $event)" title="设置">
         <span class="option-icon"><i class="fas fa-cog"></i></span>
       </div>
     </div>

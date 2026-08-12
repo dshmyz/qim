@@ -363,6 +363,11 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 	workMsgs := make([]Message, len(messages))
 	copy(workMsgs, messages)
 
+	// 熔断器：跟踪每个工具的连续失败次数，超过阈值时跳过执行。
+	// 目的：防止同一工具反复失败产生大量错误上下文，导致模型输出崩溃（如重复 "Go Go Go..."）。
+	const toolFailureThreshold = 2 // 同一工具连续失败 N 次后熔断
+	toolFailures := make(map[string]int)
+
 	callProvider := func(msgs []Message) (*ChatResponse, error) {
 		if modelName != "" {
 			return provider.WithModel(modelName).ChatWithTools(msgs, toolDefs)
@@ -417,6 +422,19 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 				})
 				continue
 			}
+			// 熔断检查：同一工具连续失败超过阈值时跳过，避免反复执行失败工具污染上下文
+			if toolFailures[tc.Name] >= toolFailureThreshold {
+				aiLog.Warn("react tool circuit breaker tripped", "name", tc.Name, "failures", toolFailures[tc.Name])
+				circuitMsg := fmt.Sprintf(`{"error":"工具 %s 暂时不可用，请直接用通用知识回答用户问题"}`, tc.Name)
+				workMsgs = append(workMsgs, Message{
+					Role:       "tool",
+					Content:    circuitMsg,
+					ToolCallID: tc.ID,
+				})
+				// 递增失败计数器，避免重复触发熔断器浪费 LLM 调用
+				toolFailures[tc.Name]++
+				continue
+			}
 			if onStep != nil {
 				onStep(step, callID, "start", tc.Name, tc.Arguments, nil, nil)
 			}
@@ -425,7 +443,8 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 				onStep(step, callID, "end", tc.Name, tc.Arguments, result, execErr)
 			}
 			if execErr != nil {
-				aiLog.Warn("react tool execution failed", "name", tc.Name, "error", execErr)
+				toolFailures[tc.Name]++
+				aiLog.Warn("react tool execution failed", "name", tc.Name, "error", execErr, "failures", toolFailures[tc.Name])
 				// 将错误作为 tool 结果返回给 LLM，让它决定如何处理（而非直接中断）
 				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				workMsgs = append(workMsgs, Message{
@@ -435,6 +454,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 				})
 				continue
 			}
+			toolFailures[tc.Name] = 0 // 成功则重置计数
 			resultJSON, _ := json.Marshal(result)
 			workMsgs = append(workMsgs, Message{
 				Role:       "tool",
@@ -456,9 +476,9 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 // toolCallAccumulator 流式回合内按 Index 累积的一条 tool call（跨 chunk 拼接原始
 // arguments JSON 字符串）。回合终了把拼接好的 arguments 整体 unmarshal 成 map。
 type toolCallAccumulator struct {
-	ID       string
-	Name     string
-	ArgStr   strings.Builder
+	ID     string
+	Name   string
+	ArgStr strings.Builder
 }
 
 // GetCompletionWithToolsStreamMultiStep 真·流式 ReAct：与 GetCompletionWithToolsMultiStep
@@ -510,6 +530,10 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 
 	workMsgs := make([]Message, len(messages))
 	copy(workMsgs, messages)
+
+	// 熔断器：跟踪每个工具的连续失败次数，超过阈值时跳过执行。
+	const toolFailureThreshold = 2
+	toolFailures := make(map[string]int)
 
 	// callProviderStream 执行本轮流式调用，onChunk 侧实时累积内容与工具增量。
 	callProviderStream := func(msgs []Message, onChunk func(chunk StreamChunk) error) error {
@@ -607,6 +631,15 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 				workMsgs = append(workMsgs, Message{Role: "tool", Content: string(errJSON), ToolCallID: tc.ID})
 				continue
 			}
+			// 熔断检查：同一工具连续失败超过阈值时跳过
+			if toolFailures[tc.Name] >= toolFailureThreshold {
+				aiLog.Warn("react(stream) tool circuit breaker tripped", "name", tc.Name, "failures", toolFailures[tc.Name])
+				circuitMsg := fmt.Sprintf(`{"error":"工具 %s 暂时不可用，请直接用通用知识回答用户问题"}`, tc.Name)
+				workMsgs = append(workMsgs, Message{Role: "tool", Content: circuitMsg, ToolCallID: tc.ID})
+				// 递增失败计数器，避免重复触发熔断器浪费 LLM 调用
+				toolFailures[tc.Name]++
+				continue
+			}
 			if onStep != nil {
 				onStep(step, tc.ID, "start", tc.Name, tc.Arguments, nil, nil)
 			}
@@ -615,11 +648,13 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 				onStep(step, tc.ID, "end", tc.Name, tc.Arguments, result, execErr)
 			}
 			if execErr != nil {
-				aiLog.Warn("react(stream) tool execution failed", "name", tc.Name, "error", execErr)
+				toolFailures[tc.Name]++
+				aiLog.Warn("react(stream) tool execution failed", "name", tc.Name, "error", execErr, "failures", toolFailures[tc.Name])
 				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				workMsgs = append(workMsgs, Message{Role: "tool", Content: string(errJSON), ToolCallID: tc.ID})
 				continue
 			}
+			toolFailures[tc.Name] = 0
 			resultJSON, _ := json.Marshal(result)
 			workMsgs = append(workMsgs, Message{Role: "tool", Content: string(resultJSON), ToolCallID: tc.ID})
 		}
@@ -890,8 +925,10 @@ func (s *AIService) IsConfigured() bool {
 func (s *AIService) Embed(text string) ([]float32, error) {
 	provider, modelName, err := s.selectProvider(TaskTypeEmbedding)
 	if err != nil {
+		aiLog.Error("embedding selectProvider 失败", "error", err)
 		return nil, err
 	}
+	aiLog.Info("embedding 路由选择", "provider", provider.Name(), "model", modelName)
 	// 用 router 返回的 embedding 模型（embedding 路由单独指定），
 	// 与 chat/vision 等任务一致，统一从 router 读模型，不再依赖 provider 内部 embedding_model。
 	if modelName != "" {

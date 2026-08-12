@@ -25,7 +25,7 @@
         placeholder="输入自定义提示词，将覆盖预设人设。留空则使用预设人设。"
         rows="5"
       ></textarea>
-      <span class="setting-hint">自定义提示词优先级高于预设人设</span>
+      <span class="setting-hint">自定义提示词优先级高于预设人设，可描述 AI 的角色、语气和行为规范</span>
     </div>
 
     <div class="setting-row">
@@ -37,6 +37,7 @@
           <option value="en">English</option>
           <option value="ja">日本語</option>
         </select>
+        <span class="setting-hint">自动模式下 AI 会用与提问相同的语言回复</span>
       </div>
 
       <div class="setting-item">
@@ -47,6 +48,7 @@
           <option value="very_long">较长（6-10句）</option>
           <option value="long">详细（不限）</option>
         </select>
+        <span class="setting-hint">控制 AI 回复的大致篇幅</span>
       </div>
     </div>
   </div>
@@ -76,21 +78,23 @@ const personas = [
 
 <style scoped>
 .ai-persona-settings { padding: 16px; }
-.setting-section { margin-bottom: 20px; }
-.section-label { display: block; margin-bottom: 10px; font-size: 14px; font-weight: 500; }
+.setting-section { margin-bottom: 24px; }
+.setting-section:last-child { margin-bottom: 0; }
+.section-label { display: block; margin-bottom: 10px; font-size: 14px; font-weight: 500; color: var(--text-color); }
 .persona-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .persona-card { padding: 14px; border: 2px solid var(--border-color); border-radius: 10px; cursor: pointer; text-align: center; transition: all 0.2s; }
 .persona-card:hover { border-color: var(--primary-color); }
 .persona-card.active { border-color: var(--primary-color); background: var(--primary-color-alpha, rgba(99, 102, 241, 0.1)); }
 .persona-icon { font-size: 24px; margin-bottom: 8px; color: var(--text-secondary); }
 .persona-card.active .persona-icon { color: var(--primary-color); }
-.persona-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-.persona-desc { font-size: 12px; color: var(--text-secondary); }
-.form-textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 14px; resize: vertical; box-sizing: border-box; font-family: inherit; }
-.form-textarea:focus { outline: none; border-color: var(--primary-color); }
-.setting-hint { display: block; margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
+.persona-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text-color); }
+.persona-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+.form-textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-color); color: var(--text-color); font-size: 14px; resize: vertical; box-sizing: border-box; font-family: inherit; line-height: 1.6; transition: border-color 0.2s, box-shadow 0.2s; }
+.form-textarea:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1); }
+.form-textarea::placeholder { color: var(--text-secondary); opacity: 0.6; }
+.setting-hint { display: block; margin-top: 6px; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
 .setting-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.setting-item label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
-.form-select { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; }
-.form-select:focus { outline: none; border-color: var(--primary-color); }
+.setting-item label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; color: var(--text-color); }
+.form-select { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s; }
+.form-select:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1); }
 </style>

@@ -118,7 +118,7 @@ defineExpose({})
           <i class="fas fa-bell"></i>
           <span v-if="unreadNotificationCount > 0" class="notification-badge">{{ unreadNotificationCount > 99 ? '99+' : unreadNotificationCount }}</span>
         </button>
-        <button class="icon-btn" @click="$emit('showActionMenu', $event)">
+        <button class="icon-btn" data-menu-trigger @click="$emit('showActionMenu', $event)">
           <i class="fas fa-plus"></i>
         </button>
       </div>

@@ -34,21 +34,21 @@
           <EChartsGraph
             :nodes="graphNodes"
             :edges="graphEdges"
-            :type-colors="typeColors"
+            :type-colors="activeTypeColors"
             :show-legend="source === 'memory'"
-            :size-by-count="true"
+            :size-by-count="source === 'memory'"
             @node-click="onNodeClick"
             @blank-click="clearDetail"
           />
         </div>
       </div>
 
-      <!-- 选中节点详情卡片（固定右侧，取代随鼠标浮动的 tooltip 更清晰） -->
+      <!-- 选中节点详情卡片（固定右侧，与群聊图谱一致用 slide 过渡） -->
       <transition name="slide">
         <div v-if="selectedNode" class="node-detail">
           <div class="node-detail-head">
             <span class="node-detail-title">{{ selectedNode.label }}</span>
-            <span class="node-detail-type badge" :class="selectedNode.type">{{ typeLabel(selectedNode.type) }}</span>
+            <span class="node-detail-type badge" :class="[selectedNode.type, source]">{{ typeLabel(selectedNode.type) }}</span>
             <button class="node-detail-close" @click="clearDetail"><i class="fas fa-times"></i></button>
           </div>
           <div class="node-detail-meta" v-if="selectedNode.count">
@@ -129,12 +129,21 @@ const stats = ref({ totalNodes: 0, totalEdges: 0 })
 // 交给我们统一的知识图谱渲染组件 EChartsGraph 的归一化数据（节点/边）
 const graphNodes = ref<EGNode[]>([])
 const graphEdges = ref<EGEdge[]>([])
-// 分身记忆来源：实体橙 / 主题紫；笔记来源：青色片段簇（由 EChartsGraph 默认配色兜底）
-const typeColors: Record<string, [string, string]> = {
-  entity: ['#ffd08a', '#f97316'], // 橙 · 实体
-  theme: ['#c4b5fd', '#8b5cf6'],  // 紫 · 主题
-  note: ['#5eead4', '#14b8a6'],   // 青 · 笔记片段
+
+// 记忆来源：实体橙 / 主题紫（带图例，节点按 count 缩放）
+const memoryTypeColors: Record<string, [string, string]> = {
+  entity: ['#ffd08a', '#f97316'],
+  theme:  ['#c4b5fd', '#8b5cf6'],
 }
+// 笔记来源：笔记片段青 / 实体绿（与群聊图谱 AIGraph 配色一致）
+const noteTypeColors: Record<string, [string, string]> = {
+  note:     ['#5eead4', '#14b8a6'],
+  entity:   ['#86efac', '#16a34a'],
+}
+
+const activeTypeColors = computed(() =>
+  source.value === 'memory' ? memoryTypeColors : noteTypeColors
+)
 
 const emptyText = computed(() =>
   source.value === 'memory'
@@ -176,8 +185,6 @@ async function loadGraph() {
     loading.value = false
   }
   if (graph.nodes && graph.nodes.length) {
-    // 归一化后交给统一渲染组件；EChartsGraph 在 totalNodes>0 时才被模板渲染。
-    // normalizeGraph 已保证 label 为非空字符串，可直接兼容 EChartsGraph 契约。
     graphNodes.value = graph.nodes as unknown as EGNode[]
     graphEdges.value = graph.edges || []
   } else {
@@ -208,9 +215,6 @@ function normalizeGraph(raw: GraphData): GraphData {
   }
 }
 
-// --- 渲染已交给共享的 EChartsGraph 组件；这里只处理数据归一化与点击详情回查 ---
-
-// EChartsGraph 冒泡出来的节点点击：选中该节点并回查关联记忆 / 预览内容。
 function onNodeClick(node: EGNode) {
   const hit = node as unknown as GraphNode
   selectedNode.value = hit
@@ -231,6 +235,10 @@ function clearDetail() {
 }
 
 function typeLabel(type: string): string {
+  if (source.value === 'note') {
+    if (type === 'knowledge') return '知识'
+    if (type === 'entity') return '实体'
+  }
   if (type === 'entity') return '实体'
   if (type === 'theme') return '主题'
   if (type === 'note') return '笔记片段'
@@ -250,9 +258,9 @@ onMounted(loadGraph)
 .btn { padding: 4px 12px; font-size: 13px; background: var(--card-bg, #f5f5f5); color: var(--text-color, #333); border: 1px solid var(--border-color, #ddd); border-radius: 6px; cursor: pointer; }
 .btn:hover { background: var(--primary-color-alpha, rgba(99, 102, 241, 0.08)); }
 
-.graph-body { display: flex; min-height: 420px; }
-.graph-stage { flex: 1; min-width: 0; position: relative; height: 460px; }
-.graph-canvas { height: 100%; min-height: 460px; position: relative; }
+.graph-body { display: flex; align-items: stretch; }
+.graph-stage { flex: 1; min-width: 0; }
+.graph-canvas { height: 420px; min-height: 420px; position: relative; }
 .graph-canvas :deep(canvas) { display: block; }
 
 .graph-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 320px; color: var(--text-secondary, #999); text-align: center; padding: 24px; }
@@ -262,16 +270,22 @@ onMounted(loadGraph)
 .loading-spinner { width: 32px; height: 32px; border: 3px solid #eee; border-top: 3px solid var(--primary-color); border-radius: 50%; animation: graphspin 0.8s linear infinite; }
 @keyframes graphspin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-/* 右侧详情卡片 */
-.node-detail { width: 240px; flex-shrink: 0; border-left: 1px solid var(--border-color, #eee); background: var(--card-bg, #fff); display: flex; flex-direction: column; max-height: 460px; }
+/* 右侧详情卡片（与群聊图谱一致：slide 过渡 + z-index 抬高防遮挡） */
+.node-detail { position: relative; z-index: 20; width: 240px; flex-shrink: 0; border-left: 1px solid var(--border-color, #eee); background: var(--card-bg, #fff); display: flex; flex-direction: column; max-height: 420px; }
 .node-detail-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border-color, #f0f0f0); }
 .node-detail-title { font-size: 14px; font-weight: 600; color: var(--text-color, #333); flex: 1; word-break: break-all; }
 .node-detail-close { border: none; background: transparent; color: var(--text-secondary, #999); cursor: pointer; padding: 2px 4px; font-size: 12px; }
 .node-detail-close:hover { color: var(--text-color, #333); }
-.badge { font-size: 11px; padding: 1px 8px; border-radius: 999px; color: #fff; }
-.badge.entity { background: #f97316; }
-.badge.theme { background: #8b5cf6; }
-.badge.note { background: #14b8a6; }
+.badge { font-size: 11px; padding: 1px 8px; border-radius: 10px; }
+/* 记忆模式 badge：实心色底（保持原有风格） */
+.badge.entity.memory { background: #f97316; color: #fff; }
+.badge.theme.memory  { background: #8b5cf6; color: #fff; }
+.badge.note.memory   { background: #14b8a6; color: #fff; }
+/* 笔记模式 badge：半透明底色（与群聊图谱 AIGraph 一致） */
+.badge.knowledge    { background: rgba(20, 184, 166, 0.12); color: #0d9488; }
+.badge.entity.note  { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+/* 通用兜底：非 memory 模式下 entity 走半透明风格 */
+.badge.entity       { background: rgba(22, 163, 74, 0.12); color: #15803d; }
 .node-detail-meta { font-size: 11px; color: var(--text-secondary, #999); padding: 8px 14px 0; }
 .node-detail-body { flex: 1; overflow-y: auto; padding: 10px 14px 14px; }
 .mem-list { display: flex; flex-direction: column; gap: 6px; }
@@ -282,6 +296,6 @@ onMounted(loadGraph)
 .note-content { font-size: 12px; line-height: 1.6; color: var(--text-color, #333); word-break: break-all; }
 .dim { color: var(--text-secondary, #999); font-size: 12px; }
 
-.slide-enter-active, .slide-leave-active { transition: all 0.18s ease; }
-.slide-enter-from, .slide-leave-to { opacity: 0; transform: translateX(8px); }
+.slide-enter-active, .slide-leave-active { transition: max-width 0.18s ease, opacity 0.18s ease; }
+.slide-enter-from, .slide-leave-to { max-width: 0; opacity: 0; }
 </style>

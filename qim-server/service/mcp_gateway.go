@@ -26,11 +26,12 @@ const externalMCPGroupEnabledKey = "external_mcp:group_enabled"
 
 // MCPConnConfig 一条外部 MCP Server 连接的配置。
 type MCPConnConfig struct {
-	Name      string `json:"name"`
-	Transport string `json:"transport"` // "streamable-http"（MVP 支持）| "stdio"
-	URL       string `json:"url"`       // streamable-http 时的端点
-	Token     string `json:"token"`     // 可选，Authorization: Bearer
-	Enabled   bool   `json:"enabled"`
+	Name         string   `json:"name"`
+	Transport    string   `json:"transport"` // "streamable-http"（MVP 支持）| "stdio"
+	URL          string   `json:"url"`       // streamable-http 时的端点
+	Token        string   `json:"token"`     // 可选，Authorization: Bearer
+	Enabled      bool     `json:"enabled"`
+	AllowedTools []string `json:"allowed_tools"` // 空 = 全部开放；非空 = 仅注册列表内的工具
 }
 
 // MCPClientGateway 是 QIM 进程内的 MCP Client 网关：读取后台配置，惰性连接
@@ -49,6 +50,12 @@ type MCPClientGateway struct {
 	syncMu sync.Mutex
 	// registered 记录本次 Sync 已注册的外部工具名，用于 re-sync 去重/覆盖
 	registered map[string]bool
+	// toolDescriptions 外部 MCP 工具的描述（由远程 tools/list 提供），
+	// 供 FriendlyToolLabel 在无内置映射时直接显示工具原始描述。
+	toolDescriptions map[string]string
+	// toolTitles 外部 MCP 工具的人类可读标题（由远程 Tool.Title 或 Annotations.Title 提供），
+	// 优先于 Name 用于 UI 展示。
+	toolTitles map[string]string
 	// connClients 按连接名缓存 mcp client（供工具 Execute 复用同一 HTTP 连接池）
 	connClients map[string]*mcp.Client
 	// sessions 按连接名追踪活跃 session，re-sync 时关闭旧 session 防泄漏
@@ -61,11 +68,13 @@ func NewMCPClientGateway(configSvc *SystemConfigService, registry *ai.ToolRegist
 		registry = ai.NewToolRegistry(nil)
 	}
 	return &MCPClientGateway{
-		configSvc:   configSvc,
-		registry:    registry,
-		registered:  make(map[string]bool),
-		connClients: make(map[string]*mcp.Client),
-		sessions:    make(map[string]*mcp.ClientSession),
+		configSvc:        configSvc,
+		registry:         registry,
+		registered:       make(map[string]bool),
+		toolDescriptions: make(map[string]string),
+		toolTitles:       make(map[string]string),
+		connClients:      make(map[string]*mcp.Client),
+		sessions:         make(map[string]*mcp.ClientSession),
 	}
 }
 
@@ -84,6 +93,38 @@ func (g *MCPClientGateway) ListExternalToolNames() []string {
 		names = append(names, n)
 	}
 	return names
+}
+
+// ToolDescription 返回指定外部 MCP 工具的描述（由远程 tools/list 提供）。
+// 无描述时返回空串，调用方应 fallback 到 FriendlyToolLabel 等默认标签。
+func (g *MCPClientGateway) ToolDescription(toolName string) string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.toolDescriptions[toolName]
+}
+
+// ToolDescriptions 返回所有已注册外部 MCP 工具的描述快照（name → description）。
+// 供 NewToolCallFeedback 在工具调用时直接查找，避免逐次加锁。
+func (g *MCPClientGateway) ToolDescriptions() map[string]string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	snapshot := make(map[string]string, len(g.toolDescriptions))
+	for k, v := range g.toolDescriptions {
+		snapshot[k] = v
+	}
+	return snapshot
+}
+
+// ToolTitles 返回所有已注册外部 MCP 工具的标题快照（name → title）。
+// 标题优先于描述用于 UI 展示，供 NewToolCallFeedback 使用。
+func (g *MCPClientGateway) ToolTitles() map[string]string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	snapshot := make(map[string]string, len(g.toolTitles))
+	for k, v := range g.toolTitles {
+		snapshot[k] = v
+	}
+	return snapshot
 }
 
 // GroupEnabled 报告是否已开启「外部 MCP 工具供群 @AI 使用」。
@@ -172,12 +213,51 @@ func (g *MCPClientGateway) syncConn(conn *MCPConnConfig) {
 	// 持写锁：注册工具到 registry 和 registered，并记录 session
 	g.mu.Lock()
 	g.sessions[conn.Name] = session
+	allowedSet := make(map[string]bool, len(conn.AllowedTools))
+	for _, name := range conn.AllowedTools {
+		allowedSet[name] = true
+	}
+	filtered := len(allowedSet) > 0
 	for _, tool := range result.Tools {
+		// 过滤：配置了 allowed_tools 时只注册名单内的工具
+		if filtered && !allowedSet[tool.Name] {
+			logger.WithModule("MCPClientGateway").Info("跳过未开放的外部 MCP 工具",
+				"conn", conn.Name, "tool", tool.Name)
+			continue
+		}
 		schema := schemaToMap(tool.InputSchema)
-		extTool := NewExternalMCPTool(conn.Name, tool.Name, schema, session)
+		// 解析 Annotations：标题优先级 Title > Annotations.Title
+		title := tool.Title
+		if title == "" && tool.Annotations != nil {
+			title = tool.Annotations.Title
+		}
+		var readOnly, destructive bool
+		if tool.Annotations != nil {
+			readOnly = tool.Annotations.ReadOnlyHint
+			if tool.Annotations.DestructiveHint != nil {
+				destructive = *tool.Annotations.DestructiveHint
+			}
+		}
+		extTool := NewExternalMCPTool(ExternalMCPSendMeta{
+			ConnName:    conn.Name,
+			ToolName:    tool.Name,
+			Title:       title,
+			Description: tool.Description,
+			Schema:      schema,
+			ReadOnly:    readOnly,
+			Destructive: destructive,
+			Session:     session,
+		})
 		name := extTool.Name()
 		g.registry.RegisterTool(extTool)
 		g.registered[name] = true
+		// 存储远程描述和标题，供 FriendlyToolLabel 显示
+		if tool.Description != "" {
+			g.toolDescriptions[name] = tool.Description
+		}
+		if title != "" {
+			g.toolTitles[name] = title
+		}
 		logger.WithModule("MCPClientGateway").Info("注册外部 MCP 工具",
 			"conn", conn.Name, "tool", tool.Name, "localName", name)
 	}
@@ -198,7 +278,7 @@ func (g *MCPClientGateway) connect(ctx context.Context, conn *MCPConnConfig) (*m
 		}
 		streaming := &mcp.StreamableClientTransport{Endpoint: conn.URL}
 		if conn.Token != "" {
-			streaming.HTTPClient = tokenAuthHTTPClient(conn.Token)
+			streaming.HTTPClient = TokenAuthHTTPClient(conn.Token)
 		}
 		transport = streaming
 	case "stdio":
@@ -224,11 +304,11 @@ func (g *MCPClientGateway) connect(ctx context.Context, conn *MCPConnConfig) (*m
 	return session, nil
 }
 
-// tokenAuthHTTPClient 返回一个在每次出站请求上注入
+// TokenAuthHTTPClient 返回一个在每次出站请求上注入
 // Authorization: Bearer <token> 的 http.Client。用于为需要鉴权的
 // 外部 MCP Server 附加凭据（streamable-http 传输）。
 // 复用默认传输以保证既有连接池/超时行为；仅在 token 非空时构造。
-func tokenAuthHTTPClient(token string) *http.Client {
+func TokenAuthHTTPClient(token string) *http.Client {
 	return &http.Client{
 		Transport: &authorizationTransport{
 			token: token,

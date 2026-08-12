@@ -19,10 +19,11 @@ import (
 // 工具调用基建，而无需 import handler（避免循环依赖）。handler 包通过 type 别名
 // `type ToolCallRecord = service.ToolCallRecord` 保持零改动引用同一类型。
 type ToolCallRecord struct {
-	ID        string                 `json:"id,omitempty"`
-	ToolLabel string                 `json:"tool_label"`
-	Args      map[string]interface{} `json:"args,omitempty"`
-	Status    string                 `json:"status,omitempty"` // "running" | "ok" | "error"
+	ID       string                 `json:"id,omitempty"`
+	ToolName string                 `json:"tool_name,omitempty"` // 原始工具名（如 mcp_server_search），供前端 fallback 展示
+	ToolLabel string                `json:"tool_label"`
+	Args     map[string]interface{} `json:"args,omitempty"`
+	Status   string                 `json:"status,omitempty"` // "running" | "ok" | "error"
 }
 
 // StreamingAISender 抽象 handler 层的流式 AI 消息发送 + 工具调用事件推送能力，
@@ -46,10 +47,13 @@ type StreamingAISender interface {
 // 行渲染成「进行中」动画态，回应工具执行那几秒的过程反馈；phase="end" 推终态事件（ok/error）
 // 并把终态记录收进 toolCalls 供结束时写 Extra 持久化。同一工具调用的 start/end 共享
 // toolCallID（即 ai_service 传入的 tc.ID），前端据此按 ID 把进行态更新为终态而非重复追加。
-func NewToolCallFeedback(sender StreamingAISender, conversationID uint, getMsg func() *model.Message, toolCalls *[]ToolCallRecord) ai.ReActStepCallback {
+//
+// toolTitles / toolDescriptions 为外部 MCP 工具的标题和描述映射（name → value），
+// 由 MCPClientGateway 在注册时收集。标题优先于描述，描述优先于内置关键词映射。
+func NewToolCallFeedback(sender StreamingAISender, conversationID uint, getMsg func() *model.Message, toolCalls *[]ToolCallRecord, toolTitles, toolDescriptions map[string]string) ai.ReActStepCallback {
 	return func(_ int, toolCallID, phase, tool string, args map[string]interface{}, result interface{}, execErr error) {
 		if phase == "start" {
-			rec := ToolCallRecord{ID: toolCallID, ToolLabel: FriendlyToolLabel(tool), Args: args, Status: "running"}
+			rec := ToolCallRecord{ID: toolCallID, ToolName: tool, ToolLabel: resolveToolLabel(tool, toolTitles, toolDescriptions), Args: args, Status: "running"}
 			if msg := getMsg(); msg != nil {
 				sender.SendToolCallEvent(conversationID, msg.ID, rec)
 			}
@@ -60,7 +64,7 @@ func NewToolCallFeedback(sender StreamingAISender, conversationID uint, getMsg f
 		if execErr != nil || result == nil {
 			status = "error"
 		}
-		rec := ToolCallRecord{ID: toolCallID, ToolLabel: FriendlyToolLabel(tool), Args: args, Status: status}
+		rec := ToolCallRecord{ID: toolCallID, ToolName: tool, ToolLabel: resolveToolLabel(tool, toolTitles, toolDescriptions), Args: args, Status: status}
 		*toolCalls = append(*toolCalls, rec)
 		if msg := getMsg(); msg != nil {
 			sender.SendToolCallEvent(conversationID, msg.ID, rec)
@@ -68,9 +72,27 @@ func NewToolCallFeedback(sender StreamingAISender, conversationID uint, getMsg f
 	}
 }
 
+// resolveToolLabel 解析工具调用的显示标签。优先级：MCP Title > MCP Description > 内置关键词映射。
+func resolveToolLabel(tool string, toolTitles, toolDescriptions map[string]string) string {
+	// 标题最优先（来自 MCP Tool.Title 或 Annotations.Title）
+	if toolTitles != nil {
+		if title, ok := toolTitles[tool]; ok && title != "" {
+			return title
+		}
+	}
+	// 描述次优先（来自 MCP Tool.Description）
+	if toolDescriptions != nil {
+		if desc, ok := toolDescriptions[tool]; ok && desc != "" {
+			return desc
+		}
+	}
+	return FriendlyToolLabel(tool)
+}
+
 // FriendlyToolLabel 把内部工具名映射为面向用户的中文动作名词（表意的工具名，不带
 // 进行时态）。内置群管理工具（group_management/user_management/...）与外部 mcp_*
-// 工具都走这里；未命中的退化为通用「外部服务」。
+// 工具都走这里；mcp_* 工具始终提取可读名（如「查询 Stock price」「Fmt」），
+// 不再退化为无意义的「外部服务」。
 //
 // 调用总是发生在工具执行结束后（feedback 闭包在工具返回后才触发），因此标签用
 // 动作名词而非「正在…」进行时；完成/失败由 status + 前端状态徽标体现，避免结束后
@@ -113,8 +135,75 @@ func FriendlyToolLabel(tool string) string {
 	case strings.Contains(tool, "pdf"), strings.Contains(tool, "doc"):
 		return "处理文档"
 	default:
-		return "外部服务"
+		// 外部 MCP 工具名格式为 mcp_<conn>_<tool>，始终提取 <tool> 部分作为可读标签，
+		// 不再退化为无意义的「外部服务」。这样即使工具名不匹配任何已知关键词，用户也能
+		// 看到工具原名（如 fmt、get_info），而非千篇一律的「外部服务」。
+		if strings.HasPrefix(tool, "mcp_") {
+			trimmed := tool[len("mcp_"):]
+			if idx := strings.Index(trimmed, "_"); idx >= 0 {
+				name := trimmed[idx+1:]
+				if name != "" {
+					return friendlyExternalToolName(name)
+				}
+				// tool 部分为空（如 mcp_conn_），用连接名做标签
+				conn := trimmed[:idx]
+				if conn != "" {
+					return "外部工具（" + formatToolSuffix(conn) + "）"
+				}
+			}
+		}
+		return "外部工具"
 	}
+}
+
+// friendlyExternalToolName 将外部 MCP 工具的 snake_case 名称转为人类可读标签。
+// 常见动作动词翻译为中文，其余保留原名格式化显示。
+// 例如 get_stock_price → "查询股价"，send_email → "发送邮件"，my_custom_func → "My custom func"。
+func friendlyExternalToolName(name string) string {
+	// 常见动作前缀 → 中文标签映射（按最长前缀匹配）
+	prefixMap := []struct{ prefix, label string }{
+		{"get_", "查询"},
+		{"fetch_", "获取"},
+		{"search_", "搜索"},
+		{"lookup_", "查询"},
+		{"find_", "查找"},
+		{"create_", "创建"},
+		{"send_", "发送"},
+		{"delete_", "删除"},
+		{"update_", "更新"},
+		{"list_", "列举"},
+		{"query_", "查询"},
+		{"calculate_", "计算"},
+		{"generate_", "生成"},
+		{"download_", "下载"},
+		{"upload_", "上传"},
+	}
+
+	for _, m := range prefixMap {
+		if strings.HasPrefix(name, m.prefix) {
+			suffix := name[len(m.prefix):]
+			return m.label + " " + formatToolSuffix(suffix)
+		}
+	}
+
+	// 无匹配前缀时，把 snake_case 转成可读格式（首字母大写）
+	return formatToolSuffix(name)
+}
+
+// formatToolSuffix 把 snake_case / kebab-case 后缀转为 Title Case 可读文本。
+// 例如 stock_price → "Stock price"，fmt-get → "Fmt get"，data → "Data"。
+func formatToolSuffix(s string) string {
+	if s == "" {
+		return "外部工具"
+	}
+	// 替换下划线和连字符为空格，首字母大写
+	s = strings.ReplaceAll(s, "_", " ")
+	s = strings.ReplaceAll(s, "-", " ")
+	s = strings.TrimSpace(s)
+	if len(s) > 0 {
+		s = strings.ToUpper(s[:1]) + s[1:]
+	}
+	return s
 }
 
 // PersistAIMessageExtra 把工具调用记录 + 命中的知识来源合并持久化到消息 Extra（JSON），

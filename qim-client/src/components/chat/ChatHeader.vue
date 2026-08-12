@@ -46,7 +46,9 @@
       :ai-trigger-keywords="aiTriggerKeywords"
       :ai-learn-enabled="aiLearnEnabled"
       :avatar-enabled="avatarEnabled"
+      :avatar-enabled-raw="avatarEnabledRaw"
       :avatar-approval-status="avatarApprovalStatus"
+      :ai-extract-todos="aiExtractTodos"
       @invite-members="emit('invite-members')"
       @delete-group="emit('delete-group')"
       @switch-conversation="(id: string) => emit('switch-conversation', id)"
@@ -58,6 +60,7 @@
       @update-ai-settings="(settings) => emit('update-ai-settings', settings)"
       @update-avatar-enabled="(value) => emit('update-avatar-enabled', value)"
       @update-avatar-takeover="() => emit('update-avatar-takeover')"
+      @update-extract-todos="(value) => emit('update-extract-todos', value)"
       @open-group-files="emit('open-group-files')"
     />
   </div>
@@ -76,6 +79,7 @@ interface Props {
   currentUser: any
   serverUrl: string
   avatarEnabled?: boolean
+  avatarEnabledRaw?: boolean
   avatarApprovalStatus?: string
 }
 
@@ -91,6 +95,7 @@ interface Emits {
   (e: 'update-ai-settings', settings: { aiEnabled: boolean; aiAssistantName: string; aiReplyMode: string; aiPersonality: string; aiCustomPrompt: string; aiLanguage: string; aiMaxLength: string; aiMentionReplyMode: string; aiAntiSpamInterval: number; aiTriggerKeywords: string[]; aiLearnEnabled: boolean }): void
   (e: 'update-avatar-enabled', value: boolean): void
   (e: 'update-avatar-takeover'): void
+  (e: 'update-extract-todos', enabled: boolean): void
   (e: 'open-group-files'): void
 }
 
@@ -111,6 +116,7 @@ const aiTriggerKeywords = computed(() => {
   return kw ? kw.split(',').filter(Boolean) : []
 })
 const aiLearnEnabled = computed(() => props.conversation?.ai_config?.ai_learn_enabled ?? true)
+const aiExtractTodos = computed(() => props.conversation?.ai_config?.ai_extract_todos ?? false)
 const approvalStatus = computed(() => props.conversation?.approval_status ?? 'approved')
 const rejectReason = computed(() => props.conversation?.reject_reason ?? '')
 const contextMessages = computed(() => props.conversation?.context_messages ?? 10)

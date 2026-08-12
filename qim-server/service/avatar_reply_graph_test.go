@@ -273,3 +273,17 @@ func TestBuildCustomProviderExtraParams(t *testing.T) {
 	assert.False(t, hasMax, "max_tokens=0 不应透传")
 	assert.Equal(t, 0.5, p["temperature"])
 }
+
+// TestAvatarReplyGraph_MemoryRecallThreshold
+// 分身记忆召回相关度门槛默认 0.5；注入阈值服务后经 GetFloat 读取（nil DB 回退默认值 0.5）。
+func TestAvatarReplyGraph_MemoryRecallThreshold(t *testing.T) {
+	g := &AvatarReplyGraph{}
+	if got := g.memoryRecallThreshold(); got != 0.5 {
+		t.Errorf("默认记忆召回门槛应为 0.5，got %v", got)
+	}
+
+	g.SetThresholdService(NewAiThresholdService(nil))
+	if got := g.memoryRecallThreshold(); got != 0.5 {
+		t.Errorf("注入阈值服务后应读回默认 0.5，got %v", got)
+	}
+}

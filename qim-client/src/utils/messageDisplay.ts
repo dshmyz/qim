@@ -81,7 +81,7 @@ const fileNameFromContent = (content: string): string => {
 const getFileName = (data: MessagePayload | null, input: MessageDisplayInput): string =>
   getString(data, 'name') || getString(data, 'fileName') || input.file_name || input.fileName || fileNameFromContent(input.content || '')
 
-const stripMarkdown = (content: string): string =>
+export const stripMarkdown = (content: string): string =>
   // 先解析 @mention token，避免保留 @{mention:3|...} 原始文本
   decodeToPlainText(content)
     .replace(/```(?:\w+)?\n?([\s\S]*?)```/g, '$1')

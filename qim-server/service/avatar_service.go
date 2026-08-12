@@ -19,11 +19,18 @@ type AvatarService struct {
 	db            *gorm.DB
 	aiService     *ai.AIService
 	workerPool    *AvatarWorkerPool
-	noteVectorSvc *NoteVectorService    // 笔记向量检索（RAG）
-	memorySvc     *AvatarMemoryService  // 长期记忆
-	groupDocSvc   *GroupDocumentService // 群文档知识检索
+	noteVectorSvc *NoteVectorService               // 笔记向量检索（RAG）
+	memorySvc     *AvatarMemoryService             // 长期记忆
+	groupDocSvc   *GroupDocumentService            // 群文档知识检索
 	replyGraph    atomic.Pointer[AvatarReplyGraph] // Eino Graph 编排，原子读写避免重建与调用竞争
+	thresholdSvc  *AiThresholdService              // AI 阈值（记忆召回门槛等），nil 时 graph 用默认值
 	wsNotify      func(userID uint, eventType string, data map[string]interface{})
+}
+
+// SetThresholdService 注入 AI 阈值服务并重建 graph（阈值在记忆召回门槛处生效）。
+func (s *AvatarService) SetThresholdService(t *AiThresholdService) {
+	s.thresholdSvc = t
+	s.rebuildReplyGraph("SetThresholdService")
 }
 
 // SetWebSocketNotify 设置 WebSocket 通知回调
@@ -75,6 +82,7 @@ func (s *AvatarService) SetAIService(aiService *ai.AIService) {
 
 func (s *AvatarService) rebuildReplyGraph(source string) {
 	graph := NewAvatarReplyGraph(s.aiService, s.db, s.noteVectorSvc, s.memorySvc, s.groupDocSvc)
+	graph.SetThresholdService(s.thresholdSvc)
 	if err := graph.BuildGraph(); err != nil {
 		logger.WithModule("AvatarService").Error("BuildGraph 失败", "source", source, "error", err)
 		return
@@ -205,7 +213,7 @@ func (s *AvatarService) GenerateReply(userID uint, conversationID uint, triggerM
 
 // GenerateReplyWithSources 与 GenerateReply 等价，额外返回本条回复命中的知识来源
 // （笔记/群知识/记忆标题与摘要），供 worker 随 WS 下发供前端展示「依据」。
-func (s *AvatarService) GenerateReplyWithSources(userID uint, conversationID uint, triggerMessage string, config *model.AvatarConfig) (string, []AvatarSource, error) {
+func (s *AvatarService) GenerateReplyWithSources(userID uint, conversationID uint, triggerMessage string, config *model.AvatarConfig) (string, []KnowledgeSource, error) {
 	graph := s.replyGraph.Load()
 	if graph == nil {
 		return "", nil, fmt.Errorf("回复 Graph 未初始化")

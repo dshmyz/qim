@@ -89,6 +89,9 @@ const handleClick = (item: ContextMenuItem) => {
 
 const close = (e: MouseEvent) => {
   if (menuRef.value && !menuRef.value.contains(e.target as Node)) {
+    // 触发按钮自己管理 toggle 逻辑，跳过 document 监听器的关闭，避免
+    // capturing 阶段先清空 activeMenu 导致按钮 handler 误判为"关闭"后重新打开
+    if ((e.target as HTMLElement)?.closest?.('[data-menu-trigger]')) return
     if (props.menuId) {
       // 只在自己还是活跃菜单时关闭，避免旧菜单关掉新菜单
       if (activeMenu.value === props.menuId) closeMenu()

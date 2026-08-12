@@ -114,6 +114,10 @@ func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 		di.GlobalContainer.UserService,
 	)
 
+	// 注入 AI 阈值服务：群 @AI 的知识来源分数门槛从 system_configs 读取，
+	// 后台修改即生效；容器中未初始化（nil）时 graph 内部回退默认 0.6。
+	e.smartReplyGraph.SetThresholdService(di.GlobalContainer.AiThresholdService)
+
 	// 注入被引用文件正文读取器，使 @AI 引用文件消息时可把文件内容喂给 AI（nil 时安全降级）。
 	if gds := di.GlobalContainer.GroupDocumentService; gds != nil {
 		e.smartReplyGraph.SetQuotedFileReader(gds)
@@ -561,6 +565,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	// 管理操作指令（踢人/加人/禁言等）走带工具路径：注入 AI 群管理工具，
 	// LLM 返回 tool call 时真实执行。仅系统管理员发起的指令会被工具执行。
 	if intent, derr := e.intentDetector.Detect(question, userID, conversationID); derr == nil && ShouldUseToolsForMention(intent) {
+		input.SkipKnowledge = true
 		e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID, "带",
 			func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback) (string, error) {
 				return e.smartReplyGraph.ExecuteWithTools(c, i, service.ToolsetBuiltin, fb)
@@ -575,6 +580,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	// LLM 可在自然语言下自主调用外部工具，挂起期间向用户发"正在调用…"过程反馈。
 	// 关闭时（默认）保持下面原有纯流式路径，零行为变化。
 	if e.smartReplyGraph.HasExternalTools() {
+		input.SkipKnowledge = true
 		e.handleAIMentionWithExternalTools(ctx, input, conversationID, assistantName, userID)
 		return
 	}
@@ -699,7 +705,7 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 	// 收集本次 ReAct 用到的工具调用：start/end 阶段实时推 ai_tool_call 事件供前端
 	// 渲染工具卡片（进行态→终态按 ID 对齐），终态记录写入消息 Extra 持久化。
 	var toolCalls []ToolCallRecord
-	feedback := newToolCallFeedback(e.messageSender, conversationID, getMsg, &toolCalls)
+	feedback := newToolCallFeedback(e.messageSender, conversationID, getMsg, &toolCalls, e.smartReplyGraph.MCPToolTitles(), e.smartReplyGraph.MCPToolDescriptions())
 
 	// 先尝试真·流式路径：execStream 内 final 答案逐 token 经 onChunk → sendChunk 送出，
 	// 工具事件经 feedback 实时推卡片。streamed=true 表示已走流式逐 token。
@@ -832,8 +838,8 @@ func (e *SmartReplyEngine) buildMentionPrefix(conversationID, userID uint) strin
 // newToolCallFeedback 构造群 @AI 带工具回复的 ReAct 进度回调（内置工具与外部工具路径共用）。
 // 逻辑已下沉到 service.NewToolCallFeedback（与专属机器人回复路径共用，避免重复），
 // 此处仅做类型适配：*WebSocketMessageSender 满足 service.StreamingAISender 接口。
-func newToolCallFeedback(sender *WebSocketMessageSender, conversationID uint, getMsg func() *model.Message, toolCalls *[]ToolCallRecord) ai.ReActStepCallback {
-	return service.NewToolCallFeedback(sender, conversationID, getMsg, toolCalls)
+func newToolCallFeedback(sender *WebSocketMessageSender, conversationID uint, getMsg func() *model.Message, toolCalls *[]ToolCallRecord, toolTitles, toolDescriptions map[string]string) ai.ReActStepCallback {
+	return service.NewToolCallFeedback(sender, conversationID, getMsg, toolCalls, toolTitles, toolDescriptions)
 }
 
 // friendlyToolLabel 把内部工具名映射为面向用户的中文动作名词。逻辑已下沉到

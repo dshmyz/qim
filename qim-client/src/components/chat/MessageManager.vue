@@ -95,7 +95,7 @@
             :key="message.id"
             class="message-manager-item"
             :class="{ 'is-recalled': message.isRecalled }"
-            @dblclick="handleMessageClick(message)"
+            @click="handleMessageClick(message)"
           >
             <div class="message-manager-item-header">
               <span class="message-sender">{{ message.sender?.name || '未知用户' }}</span>

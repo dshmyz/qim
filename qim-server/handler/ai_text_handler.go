@@ -240,19 +240,11 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 		return
 	}
 
-	// 检查是否有可用的视觉模型
-	visionProviders := []string{"openai", "anthropic"}
-	config := h.aiService.GetConfig()
-	var visionModelName string
-	for _, name := range visionProviders {
-		providerCfg, ok := config.AllProviders()[name]
-		if ok && providerCfg.Model != "" {
-			visionModelName = fmt.Sprintf("%s (%s)", providerCfg.Model, name)
-			break
-		}
-	}
-	if visionModelName == "" {
-		response.BadRequest(c, "图片翻译需要配置支持视觉的 AI 模型（如 OpenAI GPT-4、Anthropic Claude），当前未配置可用模型")
+	// 视觉任务走「视觉理解」路由（TaskTypeVision）。未显式配置独立视觉路由时
+	// 会回退到 defaultTask（通常是纯文本 chat 模型），把图片 base64 发给它必然 400，
+	// 因此这里要求必须显式配置视觉路由，否则诚实提示而不是硬塞给不支持的模型。
+	if !h.aiService.HasVisionRoute() {
+		response.BadRequest(c, "图片翻译需要配置「视觉理解」任务路由（管理后台 → AI 模型配置 → 模型路由），当前未配置可用的视觉模型")
 		return
 	}
 
@@ -274,25 +266,9 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 		{Role: "user", Content: "请识别这张图片中的文字并翻译成" + langName, ImageURL: dataURL},
 	}
 
-	// 使用已找到的视觉模型
-	var override *ai.Override
-	for _, name := range visionProviders {
-		providerCfg, ok := config.AllProviders()[name]
-		if ok && providerCfg.Model != "" {
-			override = &ai.Override{
-				TaskType: ai.TaskTypeVision,
-				Provider: name,
-				Model:    providerCfg.Model,
-			}
-			break
-		}
-	}
-	if override == nil {
-		response.InternalServerError(c, "图片翻译失败：无可用视觉模型")
-		return
-	}
-
-	result, err := h.aiService.GetCompletion(ai.TaskTypeVision, messages_input, *override)
+	// 通过路由选择视觉 Provider / 模型（与群聊引用图片等视觉路径一致），
+	// 不传 Override，由 ModelRouter 按「视觉理解」路由解析即可。
+	result, err := h.aiService.GetCompletion(ai.TaskTypeVision, messages_input)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片翻译失败: " + err.Error()})
 		return

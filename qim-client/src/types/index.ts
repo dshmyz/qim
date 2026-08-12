@@ -81,9 +81,9 @@ export interface Message {
   // 分身回复的免责声明展示样式（badge/footer/both），来自 owner 的 ReplyStrategy.disclaimerStyle
   disclaimer_style?: string
   // Bot 回复命中创建者笔记时的知识来源（标题/分数），用于折叠「知识来源」标签
-  knowledge_sources?: KnowledgeSource[]
+  knowledge_sources?: AISource[]
   // 分身回复命中的知识来源（笔记/群知识/记忆），随 WS 实时下发，用于展示「依据」
-  sources?: AvatarSource[]
+  sources?: AISource[]
   // 消息附加信息（JSON 字符串），撤回时保存原始内容用于重新编辑
   extra?: string
   // 外部工具调用记录：前端据此在气泡下方渲染独立工具调用卡片（不拼进正文）。
@@ -95,25 +95,30 @@ export interface Message {
 // id 为同一工具调用的稳定标识（start/end 一致），前端据此把进行态记录更新为终态而非重复追加。
 export interface ToolCallRecord {
   id?: string
+  tool_name?: string   // 原始工具名（如 mcp_server_search），供 fallback 展示
   tool_label: string
   args?: Record<string, unknown>
   status?: 'running' | 'ok' | 'error' | ''
 }
 
-// KnowledgeSource 群助手/Bot 回复命中知识来源的最小展示结构
-export interface KnowledgeSource {
+// AISource 统一 AI 回复命中的知识来源展示结构。
+// 群助手/Bot（knowledge_sources）与分身（sources）共用同一结构：
+// 新下发走 source 枚举（knowledge/notes/memory）+ score/id；分身额外带 snippet（正文 tooltip）。
+// type 字段仅为兼容未统一前分身消息的旧 shape（type/title/snippet），新数据走 source。
+export interface AISource {
   title: string
-  score: number
+  score?: number
   source?: 'knowledge' | 'notes' | 'memory'
   id?: string
+  snippet?: string
+  /** 兼容分身旧 shape；新分身/群助手数据走 source */
+  type?: 'note' | 'group' | 'memory'
 }
 
-// AvatarSource 分身回复命中的知识来源，用于在气泡下展示「依据」
-export interface AvatarSource {
-  type: 'note' | 'group' | 'memory'
-  title?: string
-  snippet?: string
-}
+// 兼容别名：旧代码引用 KnowledgeSource / AvatarSource 处仍可编译，均指向统一结构。
+// 新代码一律使用 AISource。
+export type KnowledgeSource = AISource
+export type AvatarSource = AISource
 
 export interface Conversation {
   id: string

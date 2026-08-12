@@ -366,7 +366,23 @@ func TestBuildMessageResponse_PopulatesKnowledgeSourcesFromExtra(t *testing.T) {
 func TestBuildMessageResponse_PopulatesAvatarSourcesFromExtra(t *testing.T) {
 	msgSvc := NewMessageService(nil, nil, nil)
 
-	t.Run("Extra 包含 sources", func(t *testing.T) {
+	t.Run("Extra 包含新结构 sources（KnowledgeSource 形状）", func(t *testing.T) {
+		msg := model.Message{
+			Extra: `{"sources":[{"source":"notes","title":"会议纪要","score":0.9,"id":"doc-1","snippet":"..."}]}`,
+		}
+		resp := msgSvc.buildMessageResponse(msg, nil)
+		srcs, ok := resp["sources"].([]interface{})
+		assert.True(t, ok)
+		require.Len(t, srcs, 1)
+		first := srcs[0].(map[string]interface{})
+		assert.Equal(t, "notes", first["source"])
+		assert.Equal(t, "会议纪要", first["title"])
+		assert.Equal(t, 0.9, first["score"])
+	})
+
+	t.Run("Extra 兼容旧 shape（type 字段）透出", func(t *testing.T) {
+		// 分身来源结构统一前后，Extra 中旧消息仍可能存 {type,title,snippet} 形状；
+		// buildMessageResponse 仅透出原始 JSON，两种形状都应原样透出。
 		msg := model.Message{
 			Extra: `{"sources":[{"type":"note","title":"会议纪要","snippet":"..."}]}`,
 		}

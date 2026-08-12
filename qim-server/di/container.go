@@ -174,6 +174,10 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	operationLogService := service.NewOperationLogService(db)
 	systemConfigService := service.NewSystemConfigService(db)
 	aiThresholdService := service.NewAiThresholdService(db)
+	// AI 阈值配置化：分身记忆召回门槛、冲突检测门槛从 system_configs 读取。
+	// 此处在 avatarService 创建后注入，确保无论 RAG 是否启用阈值都生效
+	// （后续 SetRAGServices 重建 graph 时阈值仍保留）。
+	avatarService.SetThresholdService(aiThresholdService)
 	shortLinkService := service.NewShortLinkService(db)
 	channelService := service.NewChannelService(db)
 	renderRuleService := service.NewRenderRuleService(db)
@@ -212,6 +216,10 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		noteVectorSvc = service.NewNoteVectorService(vectorSvc, aiService)
 		avatarMemorySvc = service.NewAvatarMemoryService(vectorSvc, aiService)
 		groupMemorySvc = service.NewGroupMemoryService(vectorSvc, aiService)
+		// AI 阈值统一配置化：冲突检测（分身/群记忆）、知识来源门槛等阈值从
+		// system_configs 读取，后台修改即生效；未注入时服务内部回退默认值。
+		avatarMemorySvc.SetThresholdService(aiThresholdService)
+		groupMemorySvc.SetThresholdService(aiThresholdService)
 	}
 
 	// 注入向量服务到相关服务

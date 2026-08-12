@@ -1,6 +1,6 @@
 <template>
   <!-- 外部 AI 工具调用追踪：独立卡片，与 markdown 正文视觉分层（参考 capability-console
-       的工具卡片 + 现有 KnowledgeSources 折叠标签 idiom）。放在 AI 气泡下方，
+       的工具卡片 + 现有 AISources 折叠标签 idiom）。放在 AI 气泡下方，
        实时由 ai_tool_call WS 事件累积，回放从消息 Extra 解析。 -->
   <details v-if="calls && calls.length > 0" ref="box" class="tool-call-trace">
     <summary @click.prevent="toggle">
@@ -12,7 +12,7 @@
     <ul>
       <li v-for="(call, i) in calls" :key="i" class="trace-row" :class="{ error: call.status === 'error' }">
         <span class="trace-icon" aria-hidden="true">🔧</span>
-        <span class="trace-label" :title="call.tool_label">{{ call.tool_label }}</span>
+        <span class="trace-label" :title="displayLabel(call)">{{ displayLabel(call) }}</span>
         <span v-if="call.status === 'running'" class="trace-status running" title="进行中"><span class="spin"></span>进行中</span>
         <span v-if="call.status === 'ok'" class="trace-status ok" title="已完成">✓</span>
         <span v-if="call.status === 'error'" class="trace-status error">失败</span>
@@ -58,10 +58,33 @@ function toggle() {
   setOpen(!Boolean(box.value?.open))
 }
 
+// 泛化标签：tool_label 为这些值时，用 tool_name 做 fallback 显示
+const GENERIC_LABELS = new Set(['外部服务', '外部工具'])
+
+// 显示标签：优先 tool_label（人类可读中文），泛化时 fallback 到 tool_name（原始工具名）
+function displayLabel(call: ToolCallRecord): string {
+  const label = call.tool_label?.trim()
+  if (label && !GENERIC_LABELS.has(label)) return label
+  // fallback：从 tool_name 提取 mcp_<conn>_<tool> 的 <tool> 部分
+  const name = call.tool_name?.trim()
+  if (name) {
+    if (name.startsWith('mcp_')) {
+      const rest = name.slice(4)
+      const idx = rest.indexOf('_')
+      if (idx >= 0) {
+        const toolPart = rest.slice(idx + 1)
+        if (toolPart) return toolPart.replace(/_/g, ' ').replace(/-/g, ' ')
+      }
+    }
+    return name.replace(/_/g, ' ').replace(/-/g, ' ')
+  }
+  return label || '工具调用'
+}
+
 // 输入参数摘要：取前若干个 key=value 拼成一行，过长省略（title 全量）。
 function formatArgs(args?: Record<string, unknown>): string {
   if (!args) return ''
-  const entries = Object.entries(args)
+  const entries = Object.entries(args).filter(([, v]) => v != null && v !== '')
   if (entries.length === 0) return ''
   const parts = entries
     .slice(0, 3)

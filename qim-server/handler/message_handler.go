@@ -337,9 +337,32 @@ func resolveAIName(msg model.Message) string {
 	return "AI助手"
 }
 
+// buildUserReadReceiptSet 批量查询当前用户对指定消息的已读回执，
+// 返回 set[messageID]bool。用于让 buildMessageResponse 返回 per-user 的 is_read。
+func buildUserReadReceiptSet(msgs []model.Message, userID uint) map[uint]bool {
+	if len(msgs) == 0 {
+		return nil
+	}
+	ids := make([]uint, len(msgs))
+	for i, m := range msgs {
+		ids[i] = m.ID
+	}
+	var receiptMsgIDs []uint
+	database.GetDB().Model(&model.MessageReadReceipt{}).
+		Where("user_id = ? AND message_id IN ?", userID, ids).
+		Pluck("message_id", &receiptMsgIDs)
+	set := make(map[uint]bool, len(receiptMsgIDs))
+	for _, id := range receiptMsgIDs {
+		set[id] = true
+	}
+	return set
+}
+
 // buildMessageResponse 构建单条消息的 HTTP 响应（历史拉取、发送响应共用）。
 // allMemberIDs 用于 @all 展开；currentUserID 用于计算 is_at_mention。
-func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []uint) gin.H {
+// userReadSet 非 nil 时，is_read 取决于当前用户是否在该集合中（per-user 已读状态）；
+// 为 nil 时退化为全局 messages.is_read（发送响应等场景）。
+func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []uint, userReadSet map[uint]bool) gin.H {
 	mentions := mention.Parse(msg.Content)
 	mentionUserIDs := mention.ExtractUserIDs(mentions, allMemberIDs, msg.SenderID)
 	isAtMention := msg.SenderID != currentUserID && containsUint(mentionUserIDs, currentUserID)
@@ -359,7 +382,8 @@ func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []
 		"content":           msg.Content,
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
-		"is_read":           msg.IsRead,
+		// userReadSet 非 nil → per-user 已读；nil → 全局 is_read（发送响应场景）
+		"is_read":           userReadSet != nil && userReadSet[msg.ID],
 		"is_avatar_reply":   msg.Origin == "avatar",
 		"is_ai_message":     msg.Origin == "assistant" || msg.Origin == "avatar" || msg.Sender.Type == "bot" || msg.Sender.Type == "system",
 		// 流式消息标记：type=streaming 即进行中。客户端据此显示 typing 动画；
@@ -528,8 +552,10 @@ func GetMessages(c *gin.Context) {
 	// 附 card_action_id 到 card 消息响应。CardActionRecord 是幂等表（message_id+user_id 唯一），权威。
 	// 之前客户端仅靠 localStorage，换设备/清缓存后卡片视觉重置可点击（后端幂等保底不重复触发，但视觉不一致）。
 	cardActionMap := buildCardActionMap(result.Messages, uid)
+	// 批量查当前用户对本页消息的已读回执，让 is_read 反映 per-user 状态
+	userReadSet := buildUserReadReceiptSet(result.Messages, uid)
 	for _, msg := range result.Messages {
-		resp := buildMessageResponse(msg, uid, allMemberIDs)
+		resp := buildMessageResponse(msg, uid, allMemberIDs, userReadSet)
 		if msg.Type == "card" {
 			if actionID, ok := cardActionMap[msg.ID]; ok {
 				resp["card_action_id"] = actionID
@@ -613,8 +639,16 @@ func GetMessagesByFilter(c *gin.Context) {
 		return
 	}
 
+	// 与 GetMessages 对齐：返回 per-user is_read 而非全局字段
+	allMemberIDs := getAllMemberIDs(uint(convIDUint))
+	userReadSet := buildUserReadReceiptSet(result.Messages, uid)
+	var responseMessages []gin.H
+	for _, msg := range result.Messages {
+		responseMessages = append(responseMessages, buildMessageResponse(msg, uid, allMemberIDs, userReadSet))
+	}
+
 	response.Success(c, gin.H{
-		"messages": result.Messages,
+		"messages": responseMessages,
 		"total":    result.Total,
 	})
 }
@@ -674,7 +708,7 @@ func SendMessage(c *gin.Context) {
 	}
 
 	allMemberIDs := getAllMemberIDs(uint(convIDUint))
-	responseData := buildMessageResponse(*msg, uid, allMemberIDs)
+	responseData := buildMessageResponse(*msg, uid, allMemberIDs, nil)
 
 	response.Success(c, responseData)
 }
@@ -1424,9 +1458,22 @@ func SearchMessages(c *gin.Context) {
 		return
 	}
 
+	// 搜索结果可能跨会话，按会话分组获取成员列表 + 统一查已读回执
+	convMemberMap := make(map[uint][]uint)
+	for _, m := range messages {
+		if _, ok := convMemberMap[m.ConversationID]; !ok {
+			convMemberMap[m.ConversationID] = getAllMemberIDs(m.ConversationID)
+		}
+	}
+	userReadSet := buildUserReadReceiptSet(messages, uid)
+	var responseMessages []gin.H
+	for _, msg := range messages {
+		responseMessages = append(responseMessages, buildMessageResponse(msg, uid, convMemberMap[msg.ConversationID], userReadSet))
+	}
+
 	response.Success(c, gin.H{
-		"list":  messages,
-		"total": len(messages),
+		"list":  responseMessages,
+		"total": len(responseMessages),
 		"page":  page,
 	})
 }

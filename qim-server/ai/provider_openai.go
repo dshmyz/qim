@@ -286,6 +286,14 @@ func (p *OpenAIProvider) Embedding(text string) ([]float32, error) {
 
 	embeddingModel := p.config.Model
 
+	// embedding base URL：火山引擎等平台的 embedding 接口路径与 chat 不同
+	// （如 /api/v3/embeddings vs /api/plan/v3/chat/completions），通过配置显式指定。
+	embeddingBaseURL := p.config.BaseURL
+	if p.config.EmbeddingBaseURL != "" {
+		embeddingBaseURL = p.config.EmbeddingBaseURL
+	}
+	aiLog.Info("embedding 请求", "model", embeddingModel, "url", embeddingBaseURL+"/embeddings")
+
 	reqBody := embeddingRequest{
 		Model: embeddingModel,
 		Input: text,
@@ -294,7 +302,7 @@ func (p *OpenAIProvider) Embedding(text string) ([]float32, error) {
 	resp, err := p.ExecuteWithRetry(func() (*http.Request, error) {
 		req, _, err := CreateJSONRequest(
 			"POST",
-			p.config.BaseURL+"/embeddings",
+			embeddingBaseURL+"/embeddings",
 			p.config.APIKey,
 			reqBody,
 			nil,

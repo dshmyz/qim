@@ -31,7 +31,7 @@ type AvatarTask struct {
 type avatarSendMeta struct {
 	avatarCfgName   string
 	disclaimerStyle string
-	sources         []AvatarSource
+	sources         []KnowledgeSource
 }
 
 // AvatarWorkerPool 分身工作池
@@ -252,15 +252,15 @@ func (p *AvatarWorkerPool) sendReply(task AvatarTask, convID uint, reply string,
 
 // compactSources 压缩待下发的来源：截断即时聊天无需的冗长 snippet，避免 WS 载荷膨胀；
 // 无来源时返回 nil，保持旧响应兼容（前端不渲染「依据」）。
-func (p *AvatarWorkerPool) compactSources(sources []AvatarSource) []AvatarSource {
+func (p *AvatarWorkerPool) compactSources(sources []KnowledgeSource) []KnowledgeSource {
 	if len(sources) == 0 {
 		return nil
 	}
-	out := make([]AvatarSource, 0, len(sources))
+	out := make([]KnowledgeSource, 0, len(sources))
 	seen := map[string]struct{}{}
 	for _, s := range sources {
 		// 去重（同一来源可能被多条命中），并截断 snippet
-		key := s.Type + "|" + s.Title
+		key := s.Source + "|" + s.Title
 		if _, dup := seen[key]; dup {
 			continue
 		}

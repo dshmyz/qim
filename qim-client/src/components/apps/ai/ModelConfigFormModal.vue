@@ -9,7 +9,7 @@
         <label>提供商</label>
         <select v-model="form.provider" @change="onProviderChange">
           <option v-for="p in providers" :key="p.id" :value="p.id">
-            <i :class="p.icon"></i> {{ p.name }}
+            {{ p.name }}
           </option>
         </select>
       </div>

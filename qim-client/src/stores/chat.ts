@@ -104,6 +104,32 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.set(conversationId, [...newMessages, ...existing])
   }
 
+  // 合并消息到现有列表（去重，按时间排序）
+  function mergeMessages(conversationId: string, newMessages: Message[]) {
+    const existing = messages.value.get(conversationId) || []
+    const messageMap = new Map<string, Message>()
+
+    // 先加入现有消息
+    for (const msg of existing) {
+      messageMap.set(String(msg.id), msg)
+    }
+
+    // 合并新消息（去重）
+    for (const msg of newMessages) {
+      const msgId = String(msg.id)
+      if (!messageMap.has(msgId)) {
+        messageMap.set(msgId, msg)
+      }
+    }
+
+    // 按时间戳排序（从旧到新）
+    const merged = Array.from(messageMap.values()).sort((a, b) => {
+      return (a.timestamp || 0) - (b.timestamp || 0)
+    })
+
+    messages.value.set(conversationId, merged)
+  }
+
   function updateMessage(conversationId: string, messageId: string, updates: Partial<Message>) {
     const msgs = messages.value.get(conversationId) || []
     const index = msgs.findIndex(m => m.id === messageId)
@@ -401,6 +427,7 @@ export const useChatStore = defineStore('chat', () => {
     setMessages,
     appendMessage,
     prependMessages,
+    mergeMessages,
     updateMessage,
     setConversations,
     mergeConversations,

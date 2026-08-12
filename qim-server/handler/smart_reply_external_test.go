@@ -49,7 +49,7 @@ func TestFriendlyToolLabel(t *testing.T) {
 		{tool: "translate", want: "翻译"},
 		{tool: "gen_image", want: "生成图片"},
 		{tool: "parse_pdf", want: "处理文档"},
-		{tool: "mcp_unknown_service", want: "外部服务"},
+		{tool: "mcp_unknown_service", want: "Service"},
 	}
 	for _, c := range cases {
 		assert.Equal(t, c.want, friendlyToolLabel(c.tool), "tool=%s", c.tool)

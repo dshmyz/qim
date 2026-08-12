@@ -146,9 +146,10 @@ type AIConfig struct {
 }
 
 type OpenAIConfig struct {
-	APIKey  string `yaml:"api_key"`
-	Model   string `yaml:"model"`
-	BaseURL string `yaml:"base_url"`
+	APIKey          string `yaml:"api_key"`
+	Model           string `yaml:"model"`
+	BaseURL         string `yaml:"base_url"`
+	EmbeddingBaseURL string `yaml:"embedding_base_url"`
 }
 
 type BaiduConfig struct {

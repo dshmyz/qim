@@ -135,6 +135,10 @@ func GetConversations(c *gin.Context) {
 		pageSize = 100
 	}
 	offset := (page - 1) * pageSize
+
+	// 按类型过滤（可选）：single / group / bot / discussion
+	typeFilter := c.Query("type")
+
 	cursorValue := c.Query("cursor")
 	var cursor conversationCursor
 	var cursorActivity time.Time
@@ -173,6 +177,10 @@ func GetConversations(c *gin.Context) {
 		WHERE cm.user_id = ? AND COALESCE(cs.is_hidden, false) = false
 	`
 	args := []interface{}{uid, uid}
+	if typeFilter != "" {
+		query += ` AND c.type = ?`
+		args = append(args, typeFilter)
+	}
 	if cursorValue != "" {
 		query += `
 			AND (
@@ -200,10 +208,16 @@ func GetConversations(c *gin.Context) {
 	countQuery := `
 		SELECT COUNT(*)
 		FROM conversation_members cm
+		LEFT JOIN conversations c ON c.id = cm.conversation_id
 		LEFT JOIN conversation_sessions cs ON cs.conversation_id = cm.conversation_id AND cs.user_id = ?
 		WHERE cm.user_id = ? AND COALESCE(cs.is_hidden, false) = false
 	`
-	db.Raw(countQuery, uid, uid).Scan(&total)
+	countArgs := []interface{}{uid, uid}
+	if typeFilter != "" {
+		countQuery += ` AND c.type = ?`
+		countArgs = append(countArgs, typeFilter)
+	}
+	db.Raw(countQuery, countArgs...).Scan(&total)
 
 	if len(convMembersWithMeta) == 0 {
 		response.Success(c, gin.H{
