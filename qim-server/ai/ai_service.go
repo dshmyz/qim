@@ -219,14 +219,15 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 
 	tools := toolRegistry.ListTools()
 	// allowed 非空时只注入白名单内的工具（群聊助手过滤掉运维工具）
+	// 白名单 key 统一小写，匹配时 ToLower，兼容 LLM 改写大小写
 	allowedSet := make(map[string]bool, len(allowed))
 	for _, a := range allowed {
-		allowedSet[a] = true
+		allowedSet[strings.ToLower(a)] = true
 	}
 	toolDefs := make([]ToolDef, 0, len(tools))
 	for _, tool := range tools {
 		name := tool["name"].(string)
-		if len(allowedSet) > 0 && !allowedSet[name] {
+		if len(allowedSet) > 0 && !allowedSet[strings.ToLower(name)] {
 			continue
 		}
 		desc := tool["description"].(string)
@@ -267,7 +268,7 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 	})
 
 	for _, tc := range resp.ToolCalls {
-		if len(allowedSet) > 0 && !allowedSet[tc.Name] {
+		if len(allowedSet) > 0 && !allowedSet[strings.ToLower(tc.Name)] {
 			return "", fmt.Errorf("tool %s is not allowed", tc.Name)
 		}
 		aiLog.Info("executing tool", "name", tc.Name, "args", tc.Arguments)
@@ -342,12 +343,12 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 	tools := toolRegistry.ListTools()
 	allowedSet := make(map[string]bool, len(allowed))
 	for _, a := range allowed {
-		allowedSet[a] = true
+		allowedSet[strings.ToLower(a)] = true
 	}
 	toolDefs := make([]ToolDef, 0, len(tools))
 	for _, tool := range tools {
 		name := tool["name"].(string)
-		if len(allowedSet) > 0 && !allowedSet[name] {
+		if len(allowedSet) > 0 && !allowedSet[strings.ToLower(name)] {
 			continue
 		}
 		desc := tool["description"].(string)
@@ -408,7 +409,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 			if callID == "" {
 				callID = fmt.Sprintf("step%d_%d", step, i)
 			}
-			if len(allowedSet) > 0 && !allowedSet[tc.Name] {
+			if len(allowedSet) > 0 && !allowedSet[strings.ToLower(tc.Name)] {
 				execErr := fmt.Errorf("tool %s is not allowed", tc.Name)
 				if onStep != nil {
 					onStep(step, callID, "end", tc.Name, tc.Arguments, nil, execErr)
@@ -511,12 +512,12 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 	tools := toolRegistry.ListTools()
 	allowedSet := make(map[string]bool, len(allowed))
 	for _, a := range allowed {
-		allowedSet[a] = true
+		allowedSet[strings.ToLower(a)] = true
 	}
 	toolDefs := make([]ToolDef, 0, len(tools))
 	for _, tool := range tools {
 		name := tool["name"].(string)
-		if len(allowedSet) > 0 && !allowedSet[name] {
+		if len(allowedSet) > 0 && !allowedSet[strings.ToLower(name)] {
 			continue
 		}
 		desc := tool["description"].(string)
@@ -621,7 +622,7 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 		})
 
 		for _, tc := range toolCalls {
-			if len(allowedSet) > 0 && !allowedSet[tc.Name] {
+			if len(allowedSet) > 0 && !allowedSet[strings.ToLower(tc.Name)] {
 				execErr := fmt.Errorf("tool %s is not allowed", tc.Name)
 				if onStep != nil {
 					onStep(step, tc.ID, "end", tc.Name, tc.Arguments, nil, execErr)
@@ -677,12 +678,12 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, m
 	tools := toolRegistry.ListTools()
 	allowedSet := make(map[string]bool, len(allowed))
 	for _, a := range allowed {
-		allowedSet[a] = true
+		allowedSet[strings.ToLower(a)] = true
 	}
 	filteredTools := make([]map[string]interface{}, 0, len(tools))
 	for _, tool := range tools {
 		name := tool["name"].(string)
-		if len(allowedSet) > 0 && !allowedSet[name] {
+		if len(allowedSet) > 0 && !allowedSet[strings.ToLower(name)] {
 			continue
 		}
 		filteredTools = append(filteredTools, tool)
