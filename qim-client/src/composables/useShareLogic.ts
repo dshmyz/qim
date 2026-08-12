@@ -116,8 +116,8 @@ export function useShareLogic(
         const users: any[] = []
         const flattenUsers = (depts: any[]) => {
           depts.forEach(d => {
-            d.employees.forEach((emp: any) => users.push(emp))
-            if (d.subDepartments.length > 0) flattenUsers(d.subDepartments)
+            (d.employees || []).forEach((emp: any) => users.push(emp))
+            if (d.subDepartments?.length > 0) flattenUsers(d.subDepartments)
           })
         }
         flattenUsers(departments)

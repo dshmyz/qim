@@ -174,6 +174,7 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	operationLogService := service.NewOperationLogService(db)
 	systemConfigService := service.NewSystemConfigService(db)
 	aiThresholdService := service.NewAiThresholdService(db)
+	aiThresholdService.SeedFromYAML() // 兼容老版本 config.yaml knowledge.score_threshold
 	// AI 阈值配置化：分身记忆召回门槛、冲突检测门槛从 system_configs 读取。
 	// 此处在 avatarService 创建后注入，确保无论 RAG 是否启用阈值都生效
 	// （后续 SetRAGServices 重建 graph 时阈值仍保留）。

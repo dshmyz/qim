@@ -36,14 +36,15 @@ export function useMainMessageLoading(
     try {
       const { request } = await import('./useRequest')
 
-      // 首次加载（切换会话）时先标记已读再加载消息，确保 per-user is_read 已落库；
+      // 首次加载（切换会话）时并行标记已读和加载消息，不阻塞 UI；
       // 加载更多时不重复调用，避免多余网络请求。
       if (reset) {
-        await markMessagesAsRead(conversationId)
         const conversationIndex = conversations.value.findIndex(c => c.id === conversationId)
         if (conversationIndex !== -1) {
           conversations.value[conversationIndex].unread_count = 0
         }
+        // fire-and-forget：不阻塞消息加载
+        markMessagesAsRead(conversationId)
       }
 
       const response = await request(`/api/v1/conversations/${conversationId}/messages?page=${messagePage.value}&page_size=${messagePageSize.value}`)

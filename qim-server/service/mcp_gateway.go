@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -213,6 +214,18 @@ func (g *MCPClientGateway) syncConn(conn *MCPConnConfig) {
 	// 持写锁：注册工具到 registry 和 registered，并记录 session
 	g.mu.Lock()
 	g.sessions[conn.Name] = session
+
+	// 清除该连接的旧工具元数据（防止 re-sync 后已移除工具的描述/标题残留）
+	connPrefix := "mcp_" + sanitizeName(conn.Name) + "_"
+	for name := range g.registered {
+		if strings.HasPrefix(name, connPrefix) {
+			delete(g.toolDescriptions, name)
+			delete(g.toolTitles, name)
+			g.registry.RemoveTool(name)
+			delete(g.registered, name)
+		}
+	}
+
 	allowedSet := make(map[string]bool, len(conn.AllowedTools))
 	for _, name := range conn.AllowedTools {
 		allowedSet[name] = true

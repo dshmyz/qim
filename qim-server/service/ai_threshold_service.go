@@ -2,12 +2,14 @@ package service
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/config"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 )
 
@@ -27,6 +29,57 @@ func NewAiThresholdService(db *gorm.DB) *AiThresholdService {
 		cache:    make(map[string]float64),
 		cacheTTL: 5 * time.Minute,
 	}
+}
+
+// SeedFromYAML 读取 config.yaml 中已废弃的 knowledge.score_threshold 字段，
+// 若 DB 中尚无 ai.knowledge_score_threshold 记录则自动迁移（兼容老版本升级）。
+// 已在 DB 中有记录时不做任何写入（DB 优先）。
+func (s *AiThresholdService) SeedFromYAML() {
+	if s.db == nil {
+		return
+	}
+
+	// 检查 DB 是否已有记录
+	var count int64
+	s.db.Model(&model.SystemConfig{}).Where("config_key = ?", "ai.knowledge_score_threshold").Count(&count)
+	if count > 0 {
+		return // DB 已有值，不覆盖
+	}
+
+	// 读取 config.yaml 的原始 YAML，查找已废弃的 knowledge.score_threshold
+	data, err := os.ReadFile("config.yaml")
+	if err != nil {
+		return // 文件不存在或不可读，跳过
+	}
+	var raw map[string]interface{}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return
+	}
+	knowledge, ok := raw["knowledge"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	val, ok := knowledge["score_threshold"].(float64)
+	if !ok {
+		return
+	}
+
+	// 写入 DB
+	cfg := model.SystemConfig{
+		ConfigKey: "ai.knowledge_score_threshold",
+		Value:     fmt.Sprintf("%g", val),
+		Type:      "number",
+		Desc:      "从 config.yaml knowledge.score_threshold 自动迁移",
+	}
+	if err := s.db.Create(&cfg).Error; err != nil {
+		logger.WithModule("AiThreshold").Warn("迁移 knowledge.score_threshold 失败", "error", err)
+		return
+	}
+	s.mu.Lock()
+	s.cache["ai.knowledge_score_threshold"] = val
+	s.cacheExpiry = time.Now().Add(s.cacheTTL)
+	s.mu.Unlock()
+	logger.WithModule("AiThreshold").Info("已从 config.yaml 迁移 knowledge.score_threshold", "value", val)
 }
 
 // GetFloat 读取指定阈值：先查缓存，缓存未命中则查 DB，DB 无记录返回默认值。

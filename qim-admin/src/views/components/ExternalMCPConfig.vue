@@ -125,7 +125,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getSystemConfig, updateSystemConfig } from '@/api/systemConfig'
-import { request } from '@/utils/request'
+import request from '@/utils/request'
 
 interface MCPTool {
   name: string

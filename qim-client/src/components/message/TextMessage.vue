@@ -190,7 +190,10 @@ const handleClick = (event: MouseEvent) => {
 }
 
 :deep(.at-mention-chip--all) {
-  color: var(--color-primary-600, #2563eb);
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.18);
+  padding: 1px 4px;
+  border-radius: 4px;
 }
 
 :deep(.message-link) {

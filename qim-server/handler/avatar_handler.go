@@ -490,8 +490,16 @@ func (h *AvatarHandler) DeleteConfig(c *gin.Context) {
 
 // TriggerLearnPersona 触发人设学习
 func (h *AvatarHandler) TriggerLearnPersona(c *gin.Context) {
-	userIDAny, _ := c.Get("user_id")
-	userID := userIDAny.(uint)
+	userIDAny, exists := c.Get("user_id")
+	if !exists {
+		response.Unauthorized(c, "未认证")
+		return
+	}
+	userID, ok := userIDAny.(uint)
+	if !ok {
+		response.BadRequest(c, "用户ID类型错误")
+		return
+	}
 
 	var config model.AvatarConfig
 	if err := h.db.Where("user_id = ?", userID).First(&config).Error; err != nil {

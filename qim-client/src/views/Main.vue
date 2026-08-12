@@ -728,7 +728,7 @@ import FeedbackModal from '../components/modals/FeedbackModal.vue'
 const SettingsPanel = defineAsyncComponent(() => import('../components/settings/SettingsPanel.vue'))
 import ContentSkeleton from '../components/skeleton/ContentSkeleton.vue'
 import { useServerUrl } from '../composables/useServerUrl'
-import { generateAvatar, isAbsoluteUrl } from '../utils/avatar'
+import { generateAvatar, isAbsoluteUrl, getAvatarUrl } from '../utils/avatar'
 import { resolveNotificationNav } from '../utils/notificationNavigation'
 import { request, getToken } from '../composables/useRequest'
 import { useChannelStore } from '../stores/channel'
@@ -2177,7 +2177,7 @@ const handleNewMessage = async (msg: any) => {
           conversationType: newMessage.conversationType
         }
       }
-      showReminder('新消息', notificationBody, payload)
+      showReminder('新消息', notificationBody, payload, getAvatarUrl(newMessage.sender?.avatar, senderName, serverUrl.value))
     }
   }
   

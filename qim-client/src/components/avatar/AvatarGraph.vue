@@ -242,6 +242,7 @@ function typeLabel(type: string): string {
   if (type === 'entity') return '实体'
   if (type === 'theme') return '主题'
   if (type === 'note') return '笔记片段'
+  if (type === 'knowledge') return '知识'
   return type
 }
 

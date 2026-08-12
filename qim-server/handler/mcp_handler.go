@@ -3,6 +3,8 @@ package handler
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/pkg/response"
@@ -33,6 +35,10 @@ func PreviewMCPTools(c *gin.Context) {
 	}
 	if req.URL == "" {
 		response.BadRequest(c, "端点 URL 不能为空")
+		return
+	}
+	if err := validateExternalURL(req.URL); err != nil {
+		response.BadRequest(c, err.Error())
 		return
 	}
 
@@ -89,4 +95,41 @@ func buildPreviewTransport(req *previewMCPToolsReq) (mcp.Transport, error) {
 	default:
 		return nil, fmt.Errorf("不支持的传输方式: %s", transport)
 	}
+}
+
+// validateExternalURL 校验 URL 仅允许 http/https 且禁止访问内网地址（SSRF 防护）。
+func validateExternalURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("URL 格式错误: %v", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("仅支持 http/https 协议，不支持 %s", u.Scheme)
+	}
+
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("URL 缺少主机名")
+	}
+
+	// 禁止 localhost 和常见本地地址
+	localhostNames := map[string]bool{
+		"localhost": true,
+		"127.0.0.1": true,
+		"::1":       true,
+		"0.0.0.0":   true,
+	}
+	if localhostNames[host] {
+		return fmt.Errorf("不允许访问本机地址")
+	}
+
+	// 解析 IP，禁止私有/链路本地/环回地址
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("不允许访问内网/私有地址")
+		}
+	}
+
+	return nil
 }

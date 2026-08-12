@@ -131,3 +131,37 @@ func TestApplyOwnMessagePause(t *testing.T) {
 		assert.Equal(t, int64(0), count)
 	})
 }
+
+// TestTriggerLearnPersona_MissingUserID 验证 user_id 不在 context 时返回 401 而非 panic。
+func TestTriggerLearnPersona_MissingUserID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.AvatarConfig{}, &model.AvatarLearnTask{}))
+	h := &AvatarHandler{db: db}
+
+	// 不设置 user_id → 以前会 panic，现在应返回 401
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/avatar/learn-persona", nil)
+
+	assert.NotPanics(t, func() { h.TriggerLearnPersona(c) })
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestTriggerLearnPersona_BadUserIDType 验证 user_id 类型非 uint 时返回 400 而非 panic。
+func TestTriggerLearnPersona_BadUserIDType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.AvatarConfig{}, &model.AvatarLearnTask{}))
+	h := &AvatarHandler{db: db}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/avatar/learn-persona", nil)
+	c.Set("user_id", "not-a-uint") // 字符串而非 uint
+
+	assert.NotPanics(t, func() { h.TriggerLearnPersona(c) })
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
