@@ -247,11 +247,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 .merged-forward-record-item {
   display: grid;
   gap: 4px;
-  padding: 10px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.merged-forward-record-item:hover {
+  background: var(--hover-color, rgba(0, 0, 0, 0.03));
+}
+
+.merged-forward-record-item + .merged-forward-record-item {
+  margin-top: 2px;
 }
 
 .merged-forward-record-item strong {
   font-size: 13px;
+  color: var(--primary-color, #1890ff);
 }
 
 .merged-forward-record-content {

@@ -1,32 +1,65 @@
 <template>
-  <div class="message-bubble share-message" :class="{ self: isSelf }">
-    <div class="attachment-card" @click="toggleContent">
-      <div class="attachment-card__icon share-attachment-icon" :class="shareData?.type">
-        <i v-if="shareData?.type === 'file'" class="fas fa-file"></i>
-        <i v-else-if="shareData?.type === 'note'" class="fas fa-file-alt"></i>
-        <i v-else-if="shareData?.type === 'sticky'" class="fas fa-sticky-note"></i>
-        <i v-else class="fas fa-share-alt"></i>
-      </div>
-      <div class="attachment-card__content">
-        <div class="attachment-card__title">{{ shareData?.name || content }}</div>
-        <div class="attachment-card__meta">{{ getShareTypeText(shareData?.type) }} · 点击查看</div>
-      </div>
-      <button class="share-action-btn attachment-card__action" @click.stop="toggleContent" :title="isExpanded ? '收起' : '查看'">
-        <i :class="isExpanded ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
-      </button>
-    </div>
+  <AttachmentCard
+    class="share-message"
+    :class="{ 'share-message--expanded': isExpanded && (shareType === 'note' || shareType === 'sticky') }"
+    :is-self="isSelf"
+    @click="toggleContent"
+  >
+      <i
+        class="share-icon"
+        :class="shareIconClass"
+        :style="{ background: shareIconBg }"
+      />
+      <template #content>
+        <div class="share-title">{{ shareData?.name || content }}</div>
+        <div class="share-bottom">
+          <div class="share-meta">
+            <span class="share-type-label">{{ typeLabel }}</span>
+            <span v-if="typeLabel && sizeText"> · </span>
+            <span v-if="sizeText">{{ sizeText }}</span>
+          </div>
+          <div class="share-actions">
+            <button v-if="shareType === 'note' || shareType === 'sticky'" class="attachment-card__btn" @click.stop="showPreview = true" title="预览">
+              <i class="fas fa-expand"></i>
+            </button>
+            <button class="attachment-card__btn" @click.stop="toggleContent" :title="isExpanded ? '收起' : '查看'">
+              <i :class="isExpanded ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
+            </button>
+          </div>
+        </div>
+      </template>
+      <template v-if="isExpanded && (shareType === 'note' || shareType === 'sticky')" #below>
+        <div class="share-expanded-content" @click="handleLinkClick">
+          <div v-if="shareType === 'note'" class="note-content" v-html="sanitizeMarkdown(renderedNoteContent)"></div>
+          <div v-else-if="shareType === 'sticky'" class="sticky-content">{{ noteContent }}</div>
+        </div>
+      </template>
+    </AttachmentCard>
 
-    <div v-if="isExpanded && (shareType === 'note' || shareType === 'sticky')" class="share-expanded-content" @click="handleLinkClick">
-      <div v-if="shareType === 'note'" class="note-content" v-html="sanitizeMarkdown(renderedNoteContent)"></div>
-      <div v-else-if="shareType === 'sticky'" class="sticky-content">{{ noteContent }}</div>
-    </div>
-  </div>
+    <Teleport to="body">
+      <div v-if="showPreview" class="note-preview-backdrop" @click.self="showPreview = false">
+        <div class="note-preview-dialog" role="dialog" aria-modal="true">
+          <div class="note-preview-header">
+            <h3 class="note-preview-title">{{ shareData?.name || '笔记预览' }}</h3>
+            <button class="note-preview-close" @click="showPreview = false">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div class="note-preview-body" @click="handleLinkClick">
+            <div v-if="shareType === 'note'" class="note-preview-content" v-html="sanitizeMarkdown(renderedNoteContent)"></div>
+            <div v-else-if="shareType === 'sticky'" class="note-preview-content note-preview-plain">{{ noteContent }}</div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
+import { formatFileSize } from '../../utils/fileType'
+import AttachmentCard from './AttachmentCard.vue'
 
 const props = defineProps<{
   content: string
@@ -38,9 +71,28 @@ const props = defineProps<{
 }>()
 
 const isExpanded = ref(false)
+const showPreview = ref(false)
 
 const shareType = computed(() => {
   return props.shareData?.type || ''
+})
+
+const shareIconClass = computed(() => {
+  switch (props.shareData?.type) {
+    case 'file': return 'fas fa-file'
+    case 'note': return 'fas fa-file-alt'
+    case 'sticky': return 'fas fa-sticky-note'
+    default: return 'fas fa-share-alt'
+  }
+})
+
+const shareIconBg = computed(() => {
+  switch (props.shareData?.type) {
+    case 'file': return 'linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%)'
+    case 'note': return 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)'
+    case 'sticky': return 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
+    default: return 'linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)'
+  }
 })
 
 const noteContent = computed(() => {
@@ -77,81 +129,52 @@ const toggleContent = () => {
   isExpanded.value = !isExpanded.value
 }
 
-const getShareTypeText = (type?: string): string => {
-  switch (type) {
-    case 'file':
-      return '文件'
-    case 'note':
-      return '笔记'
-    case 'message':
-      return '消息'
-    case 'sticky':
-      return '便签'
-    default:
-      return '分享'
+const typeLabel = computed(() => {
+  switch (props.shareData?.type) {
+    case 'file': return '文件'
+    case 'note': return '笔记'
+    case 'sticky': return '便签'
+    case 'message': return '消息'
+    default: return '分享'
   }
-}
+})
+
+const sizeText = computed(() => {
+  try {
+    const data = JSON.parse(props.content)
+    if (props.shareData?.type === 'file' && typeof data.size === 'number' && data.size > 0) {
+      return formatFileSize(data.size)
+    }
+    if ((props.shareData?.type === 'note' || props.shareData?.type === 'sticky') && data.originalContent) {
+      const len = data.originalContent.length
+      if (len >= 1024) return `${(len / 1024).toFixed(1)} KB`
+      return `${len} 字`
+    }
+  } catch { /* ignore */ }
+  return ''
+})
 </script>
 
 <style scoped>
 .share-message {
-  width: 280px;
-  max-width: min(100%, 320px);
+  width: 300px;
+  max-width: min(100%, 340px);
+  min-width: 0;
   box-sizing: border-box;
 }
 
-.attachment-card {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 28px;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
-  border: 1px solid color-mix(in srgb, var(--border-color), transparent 20%);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
-  cursor: pointer;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+.share-message--expanded {
+  width: 100%;
+  max-width: 100%;
+  align-items: start;
 }
 
-.attachment-card:hover {
-  border-color: color-mix(in srgb, var(--primary-color), transparent 58%);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
-}
-
-.attachment-card__icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.share-icon {
   color: #ffffff;
-  background: linear-gradient(135deg, #7c3aed 0%, #2563eb 100%);
   font-size: 17px;
 }
 
-.attachment-card__icon.file {
-  background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
-}
-
-.attachment-card__icon.note {
-  background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
-}
-
-.attachment-card__icon.sticky {
-  background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
-}
-
-.attachment-card__content {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.attachment-card__title {
+.share-title {
   font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
@@ -162,7 +185,19 @@ const getShareTypeText = (type?: string): string => {
   letter-spacing: -0.01em;
 }
 
-.attachment-card__meta {
+.share-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.share-type-label {
+  color: var(--text-secondary);
+}
+
+.share-meta {
+  min-height: 16px;
   font-size: 12px;
   line-height: 1.35;
   color: var(--text-secondary);
@@ -171,10 +206,58 @@ const getShareTypeText = (type?: string): string => {
   text-overflow: ellipsis;
 }
 
-.attachment-card__action {
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
+.share-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Note preview dialog */
+.note-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.note-preview-dialog {
+  width: min(680px, 90vw);
+  max-height: 80vh;
+  background: var(--card-bg);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.note-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.note-preview-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.note-preview-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   border: none;
   display: flex;
   align-items: center;
@@ -182,21 +265,151 @@ const getShareTypeText = (type?: string): string => {
   color: var(--text-secondary);
   background: transparent;
   cursor: pointer;
-  font-size: 12px;
-  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
-.attachment-card:hover .attachment-card__action {
+.note-preview-close:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+}
+
+.note-preview-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.note-preview-content {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-color);
+}
+
+.note-preview-plain {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.note-preview-content :deep(h1),
+.note-preview-content :deep(h2),
+.note-preview-content :deep(h3),
+.note-preview-content :deep(h4) {
+  margin: 16px 0 8px 0;
+  font-weight: 700;
+  color: var(--text-color);
+  line-height: 1.4;
+}
+
+.note-preview-content :deep(h1) { font-size: 1.4em; }
+.note-preview-content :deep(h2) { font-size: 1.2em; }
+.note-preview-content :deep(h3) { font-size: 1.1em; }
+.note-preview-content :deep(h4) { font-size: 1em; }
+
+.note-preview-content :deep(p) {
+  margin: 8px 0;
+}
+
+.note-preview-content :deep(strong) {
+  font-weight: 700;
+}
+
+.note-preview-content :deep(em) {
+  font-style: italic;
+}
+
+.note-preview-content :deep(pre) {
+  background: var(--hover-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px;
+  margin: 12px 0;
+  overflow-x: auto;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.note-preview-content :deep(code) {
+  background: var(--hover-color);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.note-preview-content :deep(pre code) {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.note-preview-content :deep(ul),
+.note-preview-content :deep(ol) {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.note-preview-content :deep(li) {
+  margin: 4px 0;
+}
+
+.note-preview-content :deep(a) {
   color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color), transparent 90%);
+  text-decoration: underline;
 }
 
+.note-preview-content :deep(blockquote) {
+  margin: 12px 0;
+  padding: 10px 16px;
+  border-left: 4px solid var(--primary-color);
+  background: var(--hover-color);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+}
+
+.note-preview-content :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+  font-size: 14px;
+}
+
+.note-preview-content :deep(th),
+.note-preview-content :deep(td) {
+  border: 1px solid var(--border-color);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.note-preview-content :deep(th) {
+  background: var(--hover-color);
+  font-weight: 600;
+}
+
+.note-preview-content :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 16px 0;
+}
+
+.note-preview-content :deep(img) {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+.note-preview-content :deep(input[type="checkbox"]) {
+  margin-right: 6px;
+}
+
+/* Expanded note/sticky content */
 .share-expanded-content {
   margin-top: 8px;
   padding: 12px;
   background: var(--card-bg);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-color);
   line-height: 1.7;
   border: 1px solid var(--border-color);
@@ -316,78 +529,5 @@ const getShareTypeText = (type?: string): string => {
 
 .share-expanded-content :deep(input[type="checkbox"]) {
   margin-right: 6px;
-}
-
-.share-message.self .attachment-card {
-  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
-  border-color: color-mix(in srgb, var(--border-color), transparent 20%);
-  color: var(--text-color);
-}
-
-:global(.message-item.self) .share-message.self {
-  background: transparent;
-  border: none;
-  color: var(--text-color);
-}
-
-:global(.message-item.self) .share-message.self .attachment-card {
-  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
-  border-color: transparent;
-  color: var(--text-color);
-}
-
-.share-message.self .share-expanded-content {
-  background: var(--card-bg);
-  border-color: var(--border-color);
-  color: var(--text-color);
-}
-
-.share-message.self .share-expanded-content :deep(h1),
-.share-message.self .share-expanded-content :deep(h2),
-.share-message.self .share-expanded-content :deep(h3),
-.share-message.self .share-expanded-content :deep(h4) {
-  color: var(--text-color);
-}
-
-.share-message.self .share-expanded-content :deep(a) {
-  color: var(--primary-color);
-}
-
-.share-message.self .share-expanded-content :deep(blockquote) {
-  background: var(--hover-color);
-  color: var(--text-secondary);
-}
-
-.share-message.self .share-expanded-content :deep(pre),
-.share-message.self .share-expanded-content :deep(code) {
-  background: var(--hover-color);
-  color: var(--text-color);
-}
-
-.share-message.self .share-expanded-content :deep(th) {
-  background: var(--hover-color);
-}
-
-.share-message.self .share-expanded-content :deep(th),
-.share-message.self .share-expanded-content :deep(td) {
-  border-color: var(--border-color);
-}
-
-[data-theme="elegant-dark"] .attachment-card {
-  background: color-mix(in srgb, var(--panel-bg), white 5%);
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: none;
-}
-
-[data-theme="elegant-dark"] .share-message.self .attachment-card {
-  background: color-mix(in srgb, var(--panel-bg), white 5%);
-  border-color: rgba(255, 255, 255, 0.12);
-  color: var(--text-color);
-}
-
-:global([data-theme="elegant-dark"] .message-item.self) .share-message.self .attachment-card {
-  background: color-mix(in srgb, var(--panel-bg), white 5%);
-  border-color: transparent;
-  color: var(--text-color);
 }
 </style>

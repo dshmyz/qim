@@ -137,6 +137,9 @@ const menuItems = computed<ContextMenuItem[]>(() => {
       { label: '创建为任务', icon: 'fas fa-tasks', action: () => emit('create-task') }
     )
   }
+  if (msg.type === 'share' && msg.shareData?.type === 'note') {
+    items.push({ label: '保存到笔记', icon: 'fas fa-book', action: () => emit('add-to-notes-app') })
+  }
   if (msg.isSelf && canRecall.value) {
     items.push({ label: '撤回', icon: 'fas fa-undo', action: () => emit('recall-message') })
   }

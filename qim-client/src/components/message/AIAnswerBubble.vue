@@ -16,10 +16,10 @@
       <span class="typing-dot"></span>
     </div>
 
-    <!-- 附属反馈行：知识来源 / 工具调用 / 分身依据（各组件自身带 v-if 折叠，此处仅透传） -->
-    <KnowledgeSources v-if="knowledgeSources && knowledgeSources.length" :sources="knowledgeSources" />
+    <!-- 附属反馈行：知识来源 / 工具调用 / 分身依据（统一走 AISources，各组件自身带 v-if 折叠） -->
+    <AISources v-if="knowledgeSources && knowledgeSources.length" :sources="knowledgeSources" variant="list" />
     <ToolCallTrace v-if="toolCalls && toolCalls.length" :calls="toolCalls" :open="isStreaming" />
-    <AvatarSources v-if="avatarSources && avatarSources.length" :sources="avatarSources" />
+    <AISources v-if="avatarSources && avatarSources.length" :sources="avatarSources" variant="inline" />
   </div>
 </template>
 
@@ -27,9 +27,8 @@
 import { computed, ref } from 'vue'
 import { useMarkdownRender, handleLinkClick } from '../../composables/useMarkdownRender'
 import ToolCallTrace from './ToolCallTrace.vue'
-import KnowledgeSources from './KnowledgeSources.vue'
-import AvatarSources from '../avatar/AvatarSources.vue'
-import type { ToolCallRecord, KnowledgeSource, AvatarSource } from '../../types'
+import AISources from './AISources.vue'
+import type { ToolCallRecord, AISource } from '../../types'
 import './markdown-content.css'
 
 const props = withDefaults(defineProps<{
@@ -41,8 +40,8 @@ const props = withDefaults(defineProps<{
   /** 气泡壳变体：im = IM 消息气泡，botchat = 分身/AI 独立聊天气泡 */
   variant?: 'im' | 'botchat'
   toolCalls?: ToolCallRecord[]
-  knowledgeSources?: KnowledgeSource[]
-  avatarSources?: AvatarSource[]
+  knowledgeSources?: AISource[]
+  avatarSources?: AISource[]
 }>(), {
   isSelf: false,
   showThinking: true,
@@ -73,7 +72,7 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
 .ai-answer-bubble.im {
   padding: 10px 14px;
   border-radius: 12px;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.6;
 }
 .ai-answer-bubble.im.self {
@@ -86,10 +85,9 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
   color: white;
 }
 .ai-answer-bubble.im:not(.self) {
-  /* 与普通文本/ Markdown 消息气泡同源（--message-bubble-bg），避免用 --sidebar-bg
-     与聊天区背景同色而显得没有背景色/线条 */
-  background: var(--message-bubble-bg);
+  background: transparent;
   color: var(--text-color);
+  border: 1px solid color-mix(in srgb, var(--border-color), transparent 60%);
   border-bottom-left-radius: 4px;
 }
 

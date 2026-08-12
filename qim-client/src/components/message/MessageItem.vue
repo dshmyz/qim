@@ -657,7 +657,7 @@ const convertUrlsToLinks = (text: string): string => {
   border: none;
 }
 
-[data-theme="elegant-dark"] .message-item.self .file-message {
+[data-theme="elegant-dark"] .message-item.self .attachment-card {
   background: var(--primary-color);
   color: #fff;
 }
@@ -674,8 +674,7 @@ const convertUrlsToLinks = (text: string): string => {
   border: none;
 }
 
-[data-theme="ocean-blue"] .message-item.self .file-message {
-  background: var(--hover-color);
+[data-theme="ocean-blue"] .message-item.self .attachment-card {
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
 }
@@ -685,9 +684,13 @@ const convertUrlsToLinks = (text: string): string => {
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-[data-theme="elegant-purple"] .message-item.self .message-bubble,
-[data-theme="elegant-purple"] .message-item.self .file-message {
+[data-theme="elegant-purple"] .message-item.self .message-bubble {
   background: var(--hover-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+[data-theme="elegant-purple"] .message-item.self .attachment-card {
   color: var(--text-color);
   border: 1px solid var(--border-color);
 }
@@ -704,8 +707,7 @@ const convertUrlsToLinks = (text: string): string => {
   border: none;
 }
 
-[data-theme="warm-amber"] .message-item.self .file-message {
-  background: var(--hover-color);
+[data-theme="warm-amber"] .message-item.self .attachment-card {
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
 }
@@ -722,8 +724,7 @@ const convertUrlsToLinks = (text: string): string => {
   border: none;
 }
 
-[data-theme="crimson-red"] .message-item.self .file-message {
-  background: var(--hover-color);
+[data-theme="crimson-red"] .message-item.self .attachment-card {
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
 }
@@ -740,8 +741,7 @@ const convertUrlsToLinks = (text: string): string => {
   border: none;
 }
 
-[data-theme="emerald-green"] .message-item.self .file-message {
-  background: var(--hover-color);
+[data-theme="emerald-green"] .message-item.self .attachment-card {
   background: color-mix(in srgb, var(--primary-color), white 88%);
   color: var(--text-color);
 }

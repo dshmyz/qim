@@ -1,49 +1,55 @@
 <template>
-  <div class="message-bubble file-message attachment-card" :class="{ self: isSelf }" @click="handleCardClick">
-    <div class="attachment-card__icon file-attachment-icon" :style="{ color: iconColor }">
-      <i :class="fileIcon"></i>
-    </div>
-    <div class="attachment-card__content">
+  <AttachmentCard
+    class="file-message"
+    :is-self="isSelf"
+    :style="{ '--ac-icon-bg': 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)' }"
+    @click="handleCardClick"
+  >
+    <i :class="fileIcon" />
+    <template #content>
       <Tooltip :text="fileName || fileUrl.split('/').pop() || fileUrl">
-        <div class="attachment-card__title">{{ fileName || fileUrl.split('/').pop() || fileUrl }}</div>
+        <div class="file-title">{{ fileName || fileUrl.split('/').pop() || fileUrl }}</div>
       </Tooltip>
-      <div class="attachment-card__bottom">
-        <div class="attachment-card__meta">
+      <div class="file-bottom">
+        <div class="file-meta">
           <span v-if="fileTypeLabel">{{ fileTypeLabel }}</span>
           <span v-if="fileTypeLabel && fileSize"> · </span>
           <span v-if="fileSize">{{ formatFileSize(fileSize) }}</span>
         </div>
-        <div class="attachment-card__actions">
+        <div class="file-actions">
           <template v-if="isDownloaded">
-            <button class="file-action-btn attachment-card__action" @click.stop="openFile" title="打开文件">
+            <button class="attachment-card__btn" @click.stop="openFile" title="打开文件">
               <i class="fas fa-external-link-alt"></i>
             </button>
-            <button class="file-action-btn attachment-card__action" @click.stop="showInFolder" title="在文件夹中显示">
+            <button class="attachment-card__btn" @click.stop="showInFolder" title="在文件夹中显示">
               <i class="fas fa-folder-open"></i>
             </button>
           </template>
           <template v-else>
-            <button class="file-action-btn attachment-card__action" @click.stop="downloadFile" title="下载文件">
+            <button class="attachment-card__btn" @click.stop="downloadFile" title="下载文件">
               <i class="fas fa-download"></i>
             </button>
-            <button class="file-action-btn attachment-card__action" @click.stop="saveFileAs" title="另存为">
+            <button class="attachment-card__btn" @click.stop="saveFileAs" title="另存为">
               <i class="fas fa-save"></i>
             </button>
           </template>
         </div>
       </div>
-    </div>
-    <div v-if="isDownloading" class="attachment-card__progress">
-      <div class="attachment-card__progress-bar" :style="{ width: progressPercent + '%' }"></div>
-    </div>
-  </div>
+    </template>
+    <template v-if="isDownloading" #below>
+      <div class="file-progress">
+        <div class="file-progress__bar" :style="{ width: progressPercent + '%' }"></div>
+      </div>
+    </template>
+  </AttachmentCard>
 </template>
 
 <script setup lang="ts">
 import { computed, inject, type Ref } from 'vue'
-import { getFileIcon, getFileIconColor, getFileTypeLabel } from '../../utils/fileType'
+import { getFileIcon, getFileTypeLabel } from '../../utils/fileType'
 import { getFileExtension } from '../../utils/fileType'
 import Tooltip from '../shared/Tooltip.vue'
+import AttachmentCard from './AttachmentCard.vue'
 
 const props = defineProps<{
   content: string
@@ -135,15 +141,6 @@ const fileIcon = computed(() => {
   return getIconByExtension(ext)
 })
 
-// 根据MIME类型或扩展名获取文件图标颜色
-const iconColor = computed(() => {
-  if (mimeType.value) {
-    return getFileIconColor(mimeType.value)
-  }
-  const ext = getFileExtension(fileName.value)
-  return getIconColorByExtension(ext)
-})
-
 // 文件类型标签
 const fileTypeLabel = computed(() => {
   if (mimeType.value) {
@@ -227,83 +224,6 @@ const getIconByExtension = (ext: string): string => {
       return 'fas fa-file-code'
     default:
       return 'fas fa-file'
-  }
-}
-
-// 根据扩展名获取图标颜色（回退方案）
-const getIconColorByExtension = (ext: string): string => {
-  switch (ext) {
-    case 'doc':
-    case 'docx':
-      return '#2b579a'
-    case 'xls':
-    case 'xlsx':
-      return '#217346'
-    case 'ppt':
-    case 'pptx':
-      return '#d24726'
-    case 'pdf':
-      return '#e74c3c'
-    case 'jpg':
-    case 'jpeg':
-    case 'png':
-    case 'gif':
-    case 'webp':
-    case 'svg':
-    case 'bmp':
-      return 'var(--color-success-500)'
-    case 'mp3':
-    case 'wav':
-    case 'ogg':
-    case 'flac':
-    case 'aac':
-      return 'var(--color-warning-500)'
-    case 'mp4':
-    case 'avi':
-    case 'mov':
-    case 'wmv':
-    case 'mkv':
-    case 'flv':
-      return 'var(--color-error-500)'
-    case 'zip':
-    case 'rar':
-    case '7z':
-    case 'tar':
-    case 'gz':
-      return '#f39c12'
-    case 'txt':
-    case 'md':
-    case 'rtf':
-      return 'var(--primary-color)'
-    case 'js':
-    case 'ts':
-    case 'jsx':
-    case 'tsx':
-    case 'html':
-    case 'htm':
-    case 'css':
-    case 'scss':
-    case 'less':
-    case 'php':
-    case 'py':
-    case 'java':
-    case 'cpp':
-    case 'c':
-    case 'h':
-    case 'go':
-    case 'rs':
-    case 'swift':
-    case 'kt':
-    case 'rb':
-    case 'vue':
-    case 'json':
-    case 'xml':
-    case 'yaml':
-    case 'yml':
-    case 'toml':
-      return '#6e7681'
-    default:
-      return 'var(--text-secondary)'
   }
 }
 
@@ -406,48 +326,14 @@ const saveFileAs = () => {
 </script>
 
 <style scoped>
-.attachment-card {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  width: 300px;
-  max-width: min(100%, 340px);
-  padding: 12px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
-  border: 1px solid color-mix(in srgb, var(--border-color), transparent 20%);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
-  box-sizing: border-box;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
-}
-
-.attachment-card:hover {
-  border-color: color-mix(in srgb, var(--primary-color), transparent 58%);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
-}
-
-.attachment-card__icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, currentColor, transparent 90%);
+.file-message :deep(.attachment-card__icon) {
+  color: #ffffff;
+  background: var(--ac-icon-bg);
   font-size: 18px;
 }
 
-.attachment-card__content {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.attachment-card__title {
-  font-size: 13px;
+.file-title {
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
   color: var(--text-color);
@@ -459,7 +345,14 @@ const saveFileAs = () => {
   letter-spacing: -0.01em;
 }
 
-.attachment-card__meta {
+.file-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.file-meta {
   min-height: 16px;
   font-size: 12px;
   line-height: 1.35;
@@ -469,109 +362,24 @@ const saveFileAs = () => {
   text-overflow: ellipsis;
 }
 
-.attachment-card__bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.attachment-card__actions {
+.file-actions {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
 }
 
-.attachment-card__progress {
-  grid-column: 1 / -1;
+.file-progress {
   height: 4px;
   border-radius: 2px;
   overflow: hidden;
   background: color-mix(in srgb, var(--text-secondary), transparent 82%);
 }
 
-.attachment-card__progress-bar {
+.file-progress__bar {
   height: 100%;
   border-radius: 2px;
   background: var(--primary-color);
   transition: width 0.15s ease;
-}
-
-.attachment-card__action {
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-  background: transparent;
-  cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
-}
-
-.attachment-card__action i {
-  font-size: 12px;
-}
-
-.attachment-card:hover .attachment-card__action {
-  color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color), transparent 90%);
-}
-
-.attachment-card__action:active {
-  transform: scale(0.96);
-}
-
-.file-message.self {
-  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
-  border-color: color-mix(in srgb, var(--border-color), transparent 20%);
-  color: var(--text-color);
-}
-
-:global(.message-item.self) .file-message.self {
-  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
-  border-color: transparent;
-  color: var(--text-color);
-}
-
-[data-theme="elegant-dark"] .attachment-card {
-  background: color-mix(in srgb, var(--panel-bg), white 5%);
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: none;
-}
-
-[data-theme="elegant-dark"] .file-message.self {
-  background: color-mix(in srgb, var(--panel-bg), white 5%);
-  border-color: rgba(255, 255, 255, 0.12);
-  color: var(--text-color);
-}
-
-:global([data-theme="elegant-dark"] .message-item.self) .file-message.self {
-  background: color-mix(in srgb, var(--panel-bg), white 5%);
-  border-color: transparent;
-  color: var(--text-color);
-}
-
-:global([data-theme="elegant-purple"] .message-item.self .file-message.self) {
-  background: var(--hover-color);
-  border-color: var(--border-color);
-  color: var(--text-color);
-}
-
-:global([data-theme="elegant-purple"] .message-item.self .attachment-card__title) {
-  color: var(--text-color);
-}
-
-:global([data-theme="elegant-purple"] .message-item.self .attachment-card__meta),
-:global([data-theme="elegant-purple"] .message-item.self .attachment-card__action) {
-  color: var(--text-secondary);
-}
-
-:global([data-theme="elegant-purple"] .message-item.self .attachment-card__action:hover) {
-  color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color), transparent 90%);
 }
 </style>

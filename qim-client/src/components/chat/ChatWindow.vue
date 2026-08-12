@@ -7,6 +7,7 @@
       :current-user="currentUser"
       :server-url="serverUrl"
       :avatar-enabled="avatarEnabled"
+      :avatar-enabled-raw="avatarEnabledRaw"
       :avatar-approval-status="avatarApprovalStatus"
       @invite-members="handleInviteMembers"
       @delete-group="confirmDeleteConversation"
@@ -19,6 +20,7 @@
       @update-ai-settings="handleUpdateAISettings"
       @update-avatar-enabled="handleUpdateAvatarEnabled"
       @update-avatar-takeover="handleAvatarTakeover"
+      @update-extract-todos="handleUpdateExtractTodos"
       @open-group-files="openGroupFiles()"
     />
 
@@ -301,6 +303,8 @@ import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 import { useRealtimeStore } from '../../stores/realtime'
 import { useTaskStore } from '../../stores/task'
 import { useSystemConfigStore } from '../../stores/systemConfig'
+import { useChatStore } from '../../stores/chat'
+import { messageApi } from '../../api/message'
 import { RealtimeConnectionManager, RealtimeViewerConnection } from '../../utils/realtimeConnection'
 import { useAvatar } from '../../composables/useAvatar'
 import { decodeToPlainText } from '../../utils/mentions'
@@ -340,6 +344,7 @@ const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, o
 // 实时通信 store 和连接管理器
 const realtimeStore = useRealtimeStore()
 const systemConfigStore = useSystemConfigStore()
+const chatStore = useChatStore()
 const connectionManager = new RealtimeConnectionManager()
 const viewerConnection = new RealtimeViewerConnection()
 
@@ -395,8 +400,14 @@ const draftReplyTarget = ref<any>(null)   // 当前草稿回复的目标消息
 const isAppendingDraft = ref(false)       // 流式追加中（用于区分用户输入与 AI 填充）
 
 // 分身 composable
-const { takeoverSession, getSession, avatarConfig, avatarApprovalStatus, fetchConfig, fetchSessions, toggleSession, isAvatarActive } = useAvatar()
+const { takeoverSession, resumeSession, getSession, avatarConfig, avatarApprovalStatus, fetchConfig, fetchSessions, toggleSession, isAvatarActive } = useAvatar()
 const avatarEnabled = computed(() => props.conversation?.id ? isAvatarActive(props.conversation.id) : (avatarConfig.value?.enabled ?? false))
+// avatarEnabledRaw：session 的真实开关状态（不含接管判定），供 Switch 反映用户设定
+const avatarEnabledRaw = computed(() => {
+  if (!props.conversation?.id) return avatarConfig.value?.enabled ?? false
+  const session = getSession(props.conversation.id)
+  return session ? session.avatarEnabled : (avatarConfig.value?.activateByDefault ?? false)
+})
 
 // AI 摘要面板状态
 const showSummaryPanel = ref(false)
@@ -425,6 +436,32 @@ const handleUpdateAvatarEnabled = async (enabled: boolean) => {
     }
   } catch (error) {
     $message.error('切换分身状态失败')
+  }
+}
+
+// 自动提取待办开关（群主/管理员专属，独立于 AI 群助手）
+const handleUpdateExtractTodos = async (enabled: boolean) => {
+  if (!props.conversation?.id) return
+  try {
+    const data = await request(`/api/v1/groups/${props.conversation.id}/ai-settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ai_extract_todos: enabled })
+    })
+    if (data.code === 0) {
+      if (props.updateConversation && props.conversation) {
+        props.updateConversation({
+          ...props.conversation,
+          ai_config: {
+            ...props.conversation.ai_config,
+            ai_extract_todos: enabled
+          }
+        })
+      }
+      $message.success(enabled ? '已开启自动提取待办' : '已关闭自动提取待办')
+    }
+  } catch (error) {
+    $message.error('设置失败，请重试')
   }
 }
 
@@ -1815,43 +1852,127 @@ onUnmounted(() => {
 // 滚动到引用的消息位置
 const scrollToQuotedMessage = (quotedMessageId: string) => {
   if (!quotedMessageId) return
-  
   nextTick(() => {
-    const messageElement = document.querySelector(`.message-item[data-message-id="${quotedMessageId}"]`)
-    if (messageElement instanceof HTMLElement) {
-      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      // 给消息添加高亮效果
-      messageElement.classList.add('highlighted-message')
-      setTimeout(() => {
-        messageElement.classList.remove('highlighted-message')
-      }, 2000)
-    }
+    scrollAndHighlightMessage(quotedMessageId)
   })
 }
 
+// 滚动到指定消息并高亮显示（提取为独立辅助函数，避免重复代码）
+const scrollAndHighlightMessage = (messageId: string): boolean => {
+  const messageElement = document.querySelector(`.message-item[data-message-id="${messageId}"]`)
+  if (messageElement instanceof HTMLElement) {
+    messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // 给消息添加高亮效果
+    messageElement.classList.add('highlighted-message')
+    setTimeout(() => {
+      messageElement.classList.remove('highlighted-message')
+    }, 2000)
+    return true
+  }
+  return false
+}
+
 // 滚动到指定消息位置
-const scrollToMessage = (messageId: string) => {
+const scrollToMessage = async (messageId: string) => {
   if (!messageId) return
-  
+
+  // 记录发起时的会话 ID，用于检测会话切换
+  const conversationIdAtStart = props.conversation?.id
+
   // 先检查消息是否在当前的 props.messages 中
   const targetMessage = props.messages.find(m => String(m.id) === String(messageId))
   if (!targetMessage) {
-    logger.warn('目标消息不在当前加载的消息列表中:', messageId)
-    QMessage.info('该消息不在当前可视范围内，请加载更多历史消息后重试')
-    closeMessageManager()
+    // 消息不在当前列表中，尝试加载周围消息
+    logger.info('目标消息不在当前加载的消息列表中，尝试加载周围消息:', messageId)
+    QMessage.info('正在加载目标消息...')
+
+    try {
+      const conversationId = conversationIdAtStart
+      if (!conversationId) {
+        QMessage.error('无法获取会话信息')
+        closeMessageManager()
+        return
+      }
+
+      // 获取该消息周围的消息（前后各加载 20 条）
+      const msgIdNum = Number(messageId)
+      if (isNaN(msgIdNum)) {
+        QMessage.error('无效的消息 ID')
+        closeMessageManager()
+        return
+      }
+
+      // 并行请求：该消息之前的消息、之后的消息、以及目标消息本身
+      const [beforeResult, afterResult, targetResult] = await Promise.all([
+        messageApi.getMessages(conversationId, {
+          before_id: msgIdNum,
+          page_size: 20
+        }),
+        messageApi.getMessages(conversationId, {
+          after_id: msgIdNum,
+          page_size: 20
+        }),
+        // 单独获取目标消息本身
+        messageApi.getMessages(conversationId, {
+          page: 1,
+          page_size: 1,
+          before_id: msgIdNum + 1,
+          after_id: msgIdNum - 1
+        }).catch(() => ({ messages: [], pagination: {} as any }))
+      ])
+
+      // 检查会话是否已切换，如果切换了则放弃操作
+      if (conversationIdAtStart !== props.conversation?.id) {
+        logger.info('会话已切换，放弃消息跳转')
+        closeMessageManager()
+        return
+      }
+
+      // 合并所有消息（前面的消息 + 目标消息 + 后面的消息）
+      const targetMsg = targetResult.messages?.find(m => String(m.id) === String(messageId))
+      const allNewMessages = [
+        ...(beforeResult.messages || []),
+        ...(targetMsg ? [targetMsg] : []),
+        ...(afterResult.messages || [])
+      ]
+
+      if (allNewMessages.length === 0) {
+        QMessage.warning('未找到目标消息，可能已被删除')
+        closeMessageManager()
+        return
+      }
+
+      // 合并到 chatStore
+      chatStore.mergeMessages(conversationId, allNewMessages)
+
+      // 等待 DOM 更新后滚动到目标消息
+      await nextTick()
+      await nextTick() // 多等一次确保渲染完成
+
+      // 再次检查会话是否已切换
+      if (conversationIdAtStart !== props.conversation?.id) {
+        logger.info('会话已切换，放弃消息跳转')
+        closeMessageManager()
+        return
+      }
+
+      if (scrollAndHighlightMessage(messageId)) {
+        QMessage.success('已跳转到目标消息')
+      } else {
+        logger.warn('加载周围消息后仍未找到目标消息 DOM 元素:', messageId)
+        QMessage.warning('消息加载完成，但无法定位到具体位置，请手动滚动查找')
+      }
+    } catch (error) {
+      logger.error('加载目标消息周围消息失败:', error)
+      QMessage.error('加载消息失败，请稍后重试')
+    } finally {
+      closeMessageManager()
+    }
     return
   }
-  
+
   nextTick(() => {
-    const messageElement = document.querySelector(`.message-item[data-message-id="${messageId}"]`)
-    if (messageElement instanceof HTMLElement) {
-      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      // 给消息添加高亮效果
-      messageElement.classList.add('highlighted-message')
-      setTimeout(() => {
-        messageElement.classList.remove('highlighted-message')
-      }, 2000)
-    } else {
+    if (!scrollAndHighlightMessage(messageId)) {
       logger.warn('未找到目标消息 DOM 元素:', messageId)
     }
   })
@@ -2242,6 +2363,36 @@ const addToNotesApp = async () => {
   if (selectedMessage.value) {
     const message = selectedMessage.value
 
+    // 笔记类型的分享消息：直接保存原始笔记内容
+    if (message.type === 'share' && message.shareData?.type === 'note') {
+      try {
+        const sharePayload = JSON.parse(message.content)
+        const originalContent = sharePayload.originalContent || sharePayload.content || ''
+        if (!originalContent) {
+          $message.warning('该笔记内容为空')
+          closeMessageContextMenu()
+          return
+        }
+        const { useNotes } = await import('../../composables/useNotes')
+        const { createNote } = useNotes()
+        const result = await createNote({
+          title: message.shareData.name || '分享笔记',
+          content: originalContent,
+          type: 'note',
+          tags: ['分享笔记']
+        })
+        if (result) {
+          $message.success('笔记已保存')
+        } else {
+          $message.error('保存笔记失败')
+        }
+      } catch {
+        $message.error('保存笔记失败')
+      }
+      closeMessageContextMenu()
+      return
+    }
+
     if (message.type !== 'text' && message.type !== 'markdown' && !message.isAIMessage && !message.is_ai_message) {
       $message.warning('仅支持文本类型的消息添加到笔记')
       closeMessageContextMenu()
@@ -2345,10 +2496,15 @@ const avatarTakeoverUntil = computed(() => {
   return session?.takeoverUntil || null
 })
 
-// 处理分身恢复
+// 处理分身恢复（立即恢复：清空 takeoverUntil，分身马上恢复）
 async function handleAvatarResume() {
   if (!props.conversation) return
-  await takeoverSession(props.conversation.id)
+  try {
+    await resumeSession(props.conversation.id)
+    $message.success('分身已恢复')
+  } catch (e) {
+    $message.error('恢复分身失败')
+  }
 }
 
 // 处理分身延长

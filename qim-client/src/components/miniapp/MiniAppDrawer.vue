@@ -1,6 +1,5 @@
 <template>
   <Teleport to="body">
-    <Transition name="drawer">
       <div v-if="visible" class="drawer-overlay" @click="handleOverlayClick">
         <div class="drawer-panel" :style="{ width: drawerWidth + 'px' }" @click.stop>
           <div class="drawer-header">
@@ -42,7 +41,6 @@
           </div>
         </div>
       </div>
-    </Transition>
   </Teleport>
 </template>
 
@@ -301,29 +299,5 @@ onBeforeUnmount(() => {
 
 .drawer-retry-btn:hover {
   opacity: 0.85;
-}
-
-.drawer-enter-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.drawer-leave-active {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.drawer-enter-from {
-  opacity: 0;
-}
-
-.drawer-enter-from .drawer-panel {
-  transform: translateX(100%);
-}
-
-.drawer-leave-to {
-  opacity: 0;
-}
-
-.drawer-leave-to .drawer-panel {
-  transform: translateX(100%);
 }
 </style>

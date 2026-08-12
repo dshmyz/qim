@@ -38,24 +38,24 @@
 }
 
 .markdown-content pre {
-  background: var(--hover-color);
+  background: color-mix(in srgb, var(--text-color), transparent 94%);
   padding: 8px 10px;
   border-radius: 6px;
   overflow-x: auto;
   font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--text-color);
   margin: 8px 0;
 }
 
 .markdown-content code {
-  background: var(--hover-color);
+  background: color-mix(in srgb, var(--text-color), transparent 92%);
   padding: 2px 5px;
   border-radius: 3px;
   font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
   font-size: 0.88em;
-  color: var(--primary-color);
+  color: var(--text-color);
 }
 
 .markdown-content pre code {
@@ -70,7 +70,6 @@
   color: var(--primary-color);
   background: transparent;
   text-decoration: none;
-  transition: color 0.2s ease;
 }
 
 .markdown-content a:hover {
@@ -125,7 +124,7 @@
 }
 
 .markdown-content th {
-  background: var(--hover-color);
+  background: color-mix(in srgb, var(--text-color), transparent 94%);
   font-weight: 600;
 }
 

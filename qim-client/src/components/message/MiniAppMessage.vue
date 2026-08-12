@@ -1,30 +1,35 @@
 <template>
-  <div class="message-bubble mini-app-message attachment-card" :class="{ self: isSelf }" @click="openMiniApp">
-    <div class="attachment-card__icon mini-app-attachment-icon">
-      <img
-        v-if="displayIcon && !iconError"
-        :src="displayIcon"
-        class="mini-app-icon"
-        :alt="miniAppData?.name"
-        @error="handleIconError"
-      />
-      <div v-else class="mini-app-icon mini-app-icon-fallback" :style="{ background: iconBgColor }">
-        {{ iconInitial }}
+  <AttachmentCard
+    class="mini-app-message"
+    :is-self="isSelf"
+    @click="openMiniApp"
+  >
+    <img
+      v-if="displayIcon && !iconError"
+      :src="displayIcon"
+      class="mini-app-icon"
+      :alt="miniAppData?.name"
+      @error="handleIconError"
+    />
+    <div v-else class="mini-app-icon mini-app-icon-fallback" :style="{ background: iconBgColor }">
+      {{ iconInitial }}
+    </div>
+    <template #content>
+      <div class="mini-app-title">{{ miniAppName }}</div>
+      <div class="mini-app-bottom">
+        <div class="mini-app-meta">小程序</div>
+        <div class="attachment-card__btn">
+          <i class="fas fa-chevron-right"></i>
+        </div>
       </div>
-    </div>
-    <div class="attachment-card__content">
-      <div class="attachment-card__title">{{ miniAppName }}</div>
-      <div class="attachment-card__meta">小程序 · 点击打开</div>
-    </div>
-    <div class="mini-app-arrow attachment-card__action">
-      <i class="fas fa-chevron-right"></i>
-    </div>
-  </div>
+    </template>
+  </AttachmentCard>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { getAvatarColor, getInitial, generateAvatar } from '../../utils/avatar'
+import AttachmentCard from './AttachmentCard.vue'
 
 const props = defineProps<{
   miniAppData?: {
@@ -75,82 +80,8 @@ const openMiniApp = () => {
 </script>
 
 <style scoped>
-.attachment-card {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 28px;
-  align-items: center;
-  gap: 12px;
-  width: 280px;
-  max-width: min(100%, 320px);
-  padding: 12px 12px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
-  border: 1px solid color-mix(in srgb, var(--border-color), transparent 20%);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
-  box-sizing: border-box;
-  cursor: pointer;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
-}
-
-.attachment-card:hover {
-  border-color: color-mix(in srgb, var(--primary-color), transparent 58%);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
-}
-
-.attachment-card__icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
+.mini-app-message :deep(.attachment-card__icon) {
   background: color-mix(in srgb, var(--primary-color), white 88%);
-}
-
-.attachment-card__content {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.attachment-card__title {
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--text-color);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  letter-spacing: -0.01em;
-}
-
-.attachment-card__meta {
-  font-size: 12px;
-  line-height: 1.35;
-  color: var(--text-secondary);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.attachment-card__action {
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-  background: transparent;
-  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
-}
-
-.attachment-card:hover .attachment-card__action {
-  color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color), transparent 90%);
 }
 
 .mini-app-icon {
@@ -171,42 +102,28 @@ const openMiniApp = () => {
   user-select: none;
 }
 
-.mini-app-arrow {
+.mini-app-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-color);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+.mini-app-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mini-app-meta {
+  min-height: 16px;
   font-size: 12px;
-  flex-shrink: 0;
-}
-
-.attachment-card:hover .mini-app-arrow {
-  transform: translateX(2px);
-}
-
-.mini-app-message.self {
-  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
-  border-color: transparent;
-  color: var(--text-color);
-}
-
-:global(.message-item.self) .mini-app-message.self {
-  background: color-mix(in srgb, var(--sidebar-bg), transparent 4%);
-  border-color: transparent;
-  color: var(--text-color);
-}
-
-[data-theme="elegant-dark"] .attachment-card {
-  background: color-mix(in srgb, var(--panel-bg), white 5%);
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: none;
-}
-
-[data-theme="elegant-dark"] .mini-app-message.self {
-  background: color-mix(in srgb, var(--panel-bg), white 5%);
-  border-color: transparent;
-  color: var(--text-color);
-}
-
-:global([data-theme="elegant-dark"] .message-item.self) .mini-app-message.self {
-  background: color-mix(in srgb, var(--panel-bg), white 5%);
-  border-color: transparent;
-  color: var(--text-color);
+  line-height: 1.35;
+  color: var(--text-secondary);
 }
 </style>
