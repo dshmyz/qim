@@ -562,7 +562,6 @@ const createConversation = async () => {
   margin-top: -4px;
   border-radius: 8px;
   border: 2px dashed var(--border-color, #d1d5db);
-  background-color: var(--hover-color, #f9fafb);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -572,7 +571,6 @@ const createConversation = async () => {
 
 .avatar-preview:hover {
   border-color: var(--primary-color, #3b82f6);
-  background-color: color-mix(in srgb, var(--primary-color, #3b82f6), transparent 94%);
 }
 
 .avatar-preview img {
