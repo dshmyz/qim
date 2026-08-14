@@ -53,7 +53,7 @@ qim-server/config/config.yaml
 # qim-client 构建产物
 qim-client/build/
 qim-client/qim-desktop
-qim-client/src-tauri/target/
+qim-client/src-tauri/
 
 # 备份文件
 *.backup

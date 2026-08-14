@@ -3,3 +3,6 @@ vite.config.js
 vite.config.d.ts
 vite.config.js.map
 *.tsbuildinfo
+
+# npm 运行时产物
+.npm/

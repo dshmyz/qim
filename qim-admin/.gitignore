@@ -6,3 +6,6 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# 过时的 landing 构建产物（真正构建走 qim-landing → qim-server/web/webroot）
+dist-landing/
