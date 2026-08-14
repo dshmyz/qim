@@ -9,7 +9,7 @@ export interface AiThresholdSchema {
   default: number
   min: number
   max: number
-  isBool: boolean
+  is_bool: boolean
 }
 
 export const getAIThresholds = (): Promise<AxiosResponse<ApiResponse<Record<string, number>>>> => {

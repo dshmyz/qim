@@ -78,7 +78,7 @@ onMounted(async () => {
         description: s.description,
         min: s.min,
         max: s.max,
-        isBoolean: s.isBool,
+        isBoolean: s.is_bool,
         step: s.max <= 1 ? 0.05 : (s.max <= 20 ? 1 : 5),
         precision: s.max <= 1 ? 2 : 0
       }))
