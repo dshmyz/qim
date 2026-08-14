@@ -1,11 +1,9 @@
 <template>
   <AttachmentCard class="news-message" :class="{ self: isSelf }" @click="openNewsLink">
-    <template #icon>
-      <div class="attachment-card__icon" :class="{ 'news-icon': !newsData?.image }">
-        <img v-if="newsData?.image" :src="newsData.image" class="news-image" :alt="newsData?.title" />
-        <i v-else class="fas fa-newspaper"></i>
-      </div>
-    </template>
+    <div class="attachment-card__icon" :class="{ 'news-icon': !newsData?.image }">
+      <img v-if="newsData?.image" :src="newsData.image" class="news-image" :alt="newsData?.title" />
+      <i v-else class="fas fa-newspaper"></i>
+    </div>
     <template #content>
       <div class="news-title">{{ newsData?.title }}</div>
       <div class="news-bottom">
@@ -56,7 +54,7 @@ const openNewsLink = () => {
 }
 
 .news-title {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   line-height: 1.35;
   color: var(--text-color);
@@ -75,7 +73,7 @@ const openNewsLink = () => {
 
 .news-meta {
   min-height: 16px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   line-height: 1.35;
   color: var(--text-secondary);
 }

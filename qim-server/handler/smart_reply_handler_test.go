@@ -155,7 +155,7 @@ func TestCheckAvatarTriggersDoesNotAutoSubscribe(t *testing.T) {
 	}).Error)
 
 	engine := &SmartReplyEngine{}
-	engine.checkAvatarTriggers(sender.ID, &conv, "普通群聊消息", nil)
+	engine.checkAvatarTriggers(sender.ID, &conv, "普通群聊消息", "text", nil)
 
 	var sessions []model.AvatarSession
 	require.NoError(t, db.Where("conversation_id = ?", conv.ID).Find(&sessions).Error)
@@ -196,7 +196,7 @@ func TestCheckAvatarTriggersDefaultOnActivatesWithoutSession(t *testing.T) {
 	// 但仍会被调用——被调用即证明该成员被选为候选
 	decider := &avatarTriggerDeciderStub{shouldReply: false}
 	engine := &SmartReplyEngine{avatarTriggerSvc: decider}
-	engine.checkAvatarTriggers(sender.ID, &conv, "在吗", nil)
+	engine.checkAvatarTriggers(sender.ID, &conv, "在吗", "text", nil)
 
 	assert.Equal(t, defUser.ID, decider.config.UserID,
 		"ActivateByDefault=true 且无 session 的成员应被选为候选并进入触发判断")

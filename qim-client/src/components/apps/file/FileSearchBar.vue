@@ -91,7 +91,7 @@ defineExpose({
 
 .search-icon {
   color: var(--text-secondary, #8c95a6);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   flex-shrink: 0;
 }
 
@@ -99,7 +99,7 @@ defineExpose({
   border: none;
   background: transparent;
   color: var(--text-color, #4a5568);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   outline: none;
   width: 100%;
   min-width: 0;

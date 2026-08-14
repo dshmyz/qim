@@ -102,7 +102,7 @@ const handleSelectChange = (e: Event) => {
 }
 
 .original-url {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary, #1f2937);
   margin-bottom: 4px;
   font-weight: 500;
@@ -117,7 +117,7 @@ const handleSelectChange = (e: Event) => {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .short-url {
@@ -140,13 +140,13 @@ const handleSelectChange = (e: Event) => {
 }
 
 .count-value {
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   font-weight: 600;
   color: var(--text-primary, #1f2937);
 }
 
 .count-label {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #6b7280);
 }
 
@@ -159,7 +159,7 @@ const handleSelectChange = (e: Event) => {
   padding: 6px 12px;
   border: none;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -222,16 +222,16 @@ const handleSelectChange = (e: Event) => {
   }
 
   .original-url {
-    font-size: 13px;
+    font-size: var(--font-size-xs);
   }
 
   .link-meta {
-    font-size: 11px;
+    font-size: var(--font-size-xxxs);
   }
 
   .action-btn {
     padding: 6px 10px;
-    font-size: 11px;
+    font-size: var(--font-size-xxxs);
   }
 }
 </style>

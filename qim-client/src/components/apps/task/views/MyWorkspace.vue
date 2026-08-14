@@ -91,7 +91,7 @@ const emit = defineEmits<{
   margin-bottom: var(--spacing-3);
 }
 .workspace-section-header h3 {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -102,7 +102,7 @@ const emit = defineEmits<{
   border-radius: 50%;
 }
 .section-count {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   background: var(--border-color);
   color: var(--text-secondary);
   padding: 1px 6px;
@@ -116,7 +116,7 @@ const emit = defineEmits<{
 .workspace-empty {
   padding: var(--spacing-4);
   text-align: center;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 </style>

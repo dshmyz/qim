@@ -1,13 +1,6 @@
 <template>
   <div class="sticky-notes-app" :class="{ fullscreen: isFullscreen }">
     <AppHeader title="便签" @back="$emit('back')">
-      <template #extra-buttons>
-        <ToggleSidebarBtn
-          icon="fas fa-compress"
-          title="收起侧边栏"
-          @click="$emit('toggleSidebar')"
-        />
-      </template>
       <template #actions>
         <div class="header-right">
           <div class="">
@@ -194,7 +187,6 @@ import { showReminder } from '../../utils/notify'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { logger } from '../../utils/logger';
 import AppHeader from './AppHeader.vue'
-import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 import ModalContainer from '../../components/shared/ModalContainer.vue'
 import StickyTagFilter from './sticky/StickyTagFilter.vue'
 import StickyNoteCard from './sticky/StickyNoteCard.vue'
@@ -743,12 +735,12 @@ const setupReminder = (note: any) => {
 
 .empty-notes p {
   margin: 0 0 8px 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   transition: color 0.3s ease;
 }
 
 .empty-hint {
-  font-size: 14px !important;
+  font-size: var(--font-size-sm) !important;
   opacity: 0.7;
   transition: opacity 0.3s ease;
 }
@@ -794,7 +786,7 @@ const setupReminder = (note: any) => {
 }
 
 .modal-header h3 {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -807,7 +799,7 @@ const setupReminder = (note: any) => {
   border: none;
   background-color: transparent;
   color: var(--text-secondary);
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   font-weight: bold;
   cursor: pointer;
   border-radius: 50%;
@@ -833,7 +825,7 @@ const setupReminder = (note: any) => {
 
 .form-group label {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
   margin-bottom: 6px;
@@ -841,7 +833,7 @@ const setupReminder = (note: any) => {
 }
 
 .form-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-top: 4px;
   margin-bottom: 0;
@@ -855,7 +847,7 @@ const setupReminder = (note: any) => {
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   background-color: var(--bg-color);
   transition: all 0.3s ease;
@@ -896,7 +888,7 @@ const setupReminder = (note: any) => {
 }
 
 .color-option.active {
-  border-color: #333;
+  border-color: var(--border-color, #333);
   transform: scale(1.1);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
@@ -912,7 +904,7 @@ const setupReminder = (note: any) => {
   padding: 8px 24px;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1016,16 +1008,16 @@ const setupReminder = (note: any) => {
   }
   
   .empty-icon {
-    font-size: 32px;
+    font-size: var(--font-size-3xl);
     margin-bottom: 12px;
   }
   
   .empty-notes p {
-    font-size: 14px;
+    font-size: var(--font-size-sm);
   }
   
   .empty-hint {
-    font-size: 12px !important;
+    font-size: var(--font-size-xxs) !important;
   }
 }
 
@@ -1124,7 +1116,7 @@ const setupReminder = (note: any) => {
   border: none;
   color: white;
   cursor: pointer;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   padding: var(--spacing-2);
   border-radius: var(--radius-md);
   width: 32px;
@@ -1264,7 +1256,7 @@ const setupReminder = (note: any) => {
 }
 
 .sticky-note-modal-header h3 {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -1276,7 +1268,7 @@ const setupReminder = (note: any) => {
   border: none;
   background-color: transparent;
   color: var(--text-secondary);
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   font-weight: bold;
   cursor: pointer;
   border-radius: 50%;
@@ -1302,14 +1294,14 @@ const setupReminder = (note: any) => {
 
 .sticky-note-form-group label {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
   margin-bottom: 6px;
 }
 
 .sticky-note-form-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-top: 4px;
   margin-bottom: 0;
@@ -1323,7 +1315,7 @@ const setupReminder = (note: any) => {
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   background-color: var(--bg-color);
   transition: all 0.3s ease;
@@ -1376,7 +1368,7 @@ const setupReminder = (note: any) => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: bold;
   color: rgba(0, 0, 0, 0.5);
 }
@@ -1392,7 +1384,7 @@ const setupReminder = (note: any) => {
   padding: 8px 24px;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;

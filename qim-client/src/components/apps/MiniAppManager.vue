@@ -220,7 +220,7 @@ watch(() => props.showMiniAppList, (visible) => {
 .close-btn {
   background: none;
   border: none;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   color: var(--text-secondary);
   cursor: pointer;
   padding: 4px 8px;
@@ -272,7 +272,7 @@ watch(() => props.showMiniAppList, (visible) => {
 }
 
 .mini-app-item-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   margin-bottom: 8px;
   text-align: center;
@@ -289,7 +289,7 @@ watch(() => props.showMiniAppList, (visible) => {
   color: white;
   border: none;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: all 0.2s ease;
 }

@@ -177,7 +177,7 @@ const handleClick = (event: MouseEvent) => {
   border-radius: 12px;
   background: var(--sidebar-bg);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;

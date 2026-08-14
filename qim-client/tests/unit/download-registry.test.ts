@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { DownloadRegistry } from '../../electron/download-registry.js'
 
 describe('DownloadRegistry', () => {
-  it('uses original URL directly (no nonce), so same URL overwrites previous meta', () => {
+  it('same URL queues concurrent downloads FIFO (no nonce), first-in first-out', () => {
     const registry = new DownloadRegistry()
     const first = registry.create({
       url: 'https://example.com/files/1/download',
@@ -21,12 +21,14 @@ describe('DownloadRegistry', () => {
       completeChannel: 'download-complete'
     })
 
-    // 新实现直接用原始 URL，不加 nonce，因此 requestUrl 相同
+    // 同 URL 不加 nonce，requestUrl 相同
     expect(first.requestUrl).toBe(second.requestUrl)
-    // 第二次 create 覆盖了第一次的 meta
+    // FIFO：第一次 consume 返回先进入队列的条目（first.txt）
+    expect(registry.consume(first.requestUrl)?.fileName).toBe('first.txt')
+    // 第二次 consume 返回后进入的条目（second.txt）
     expect(registry.consume(first.requestUrl)?.fileName).toBe('second.txt')
-    // consume 之后 registry 清空，再次 consume 返回 null
-    expect(registry.consume(second.requestUrl)).toBeNull()
+    // 队列已空，再次 consume 返回 null
+    expect(registry.consume(first.requestUrl)).toBeNull()
   })
 
   it('looks up the correct auth header for each pending request URL', () => {

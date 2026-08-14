@@ -1,5 +1,13 @@
 <template>
-  <span class="task-ref-card" :class="{ 'is-loading': loading, 'is-error': error }" @click.stop="handleClick">
+  <span
+    class="task-ref-card"
+    :class="[
+      priorityClass,
+      statusClass,
+      { 'is-loading': loading, 'is-error': error }
+    ]"
+    @click.stop="handleClick"
+  >
     <!-- 加载态 -->
     <template v-if="loading">
       <i class="fas fa-spinner fa-spin task-ref-card__icon"></i>
@@ -13,13 +21,18 @@
 
     <!-- 成功态：轻量卡片 -->
     <template v-else>
+      <span class="task-ref-card__bar"></span>
       <span class="task-ref-card__icon" :class="`status-${task.status}`">
         <i :class="statusIcon"></i>
       </span>
-      <span class="task-ref-card__title">{{ task.title }}</span>
-      <span v-if="task.due_date" class="task-ref-card__due" :class="{ overdue: isOverdue }">
-        <i class="far fa-calendar"></i>
-        {{ dueLabel }}
+      <span class="task-ref-card__body">
+        <span class="task-ref-card__title">{{ task.title }}</span>
+        <span class="task-ref-card__meta">
+          <span v-if="task.due_date" class="task-ref-card__due" :class="{ overdue: isOverdue }">
+            <i class="far fa-calendar"></i>
+            {{ dueLabel }}
+          </span>
+        </span>
       </span>
     </template>
 
@@ -76,6 +89,17 @@ const refText = computed(() => `#T-${props.taskId}`)
 
 // TTL 缓存：同一会话内同一任务在 5 分钟内只拉一次
 const cache = TaskRefCardCache
+
+const priorityClass = computed(() => {
+  switch (task.value?.priority) {
+    case 'high': return 'priority-high'
+    case 'medium': return 'priority-medium'
+    case 'low': return 'priority-low'
+    default: return 'priority-default'
+  }
+})
+
+const statusClass = computed(() => task.value ? `status-${task.value.status}` : '')
 
 const statusIcon = computed(() => {
   switch (task.value?.status) {
@@ -146,25 +170,23 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 8px;
-  margin: 0 2px;
-  border-radius: 6px;
-  /* 中性灰底：用 --card-bg 与 --hover-color 混合，避开气泡的色相区间
-     （self 气泡是主题色浅版，别人气泡是 message-bubble-bg，两者都偏色相；
-      卡片走中性灰，靠"灰 vs 彩"和亮度差与气泡区分） */
-  background: color-mix(in srgb, var(--card-bg, #fff), var(--hover-color, #f5f7fa) 60%);
-  /* 去掉边框：小卡片上的实色边框显硬，靠背景色本身界定边界 */
-  border: none;
-  font-size: 13px;
+  padding: 5px 10px;
+  margin: 2px 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card-bg, #fff), var(--hover-color, #f5f7fa) 50%);
+  border: 1px solid color-mix(in srgb, var(--border-color, #e4e7ed) 60%, transparent);
+  font-size: var(--font-size-xs);
   line-height: 1.4;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.2s ease;
   vertical-align: baseline;
   max-width: 320px;
+  position: relative;
 }
 .task-ref-card:hover {
-  /* hover 时混入更多 hover-color，背景明显变化 */
-  background: color-mix(in srgb, var(--card-bg, #fff), var(--hover-color, #f5f7fa) 100%);
+  background: color-mix(in srgb, var(--card-bg, #fff), var(--hover-color, #f5f7fa) 80%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
 }
 .task-ref-card.is-loading {
   background: var(--hover-color, #f5f7fa);
@@ -174,35 +196,73 @@ onMounted(() => {
   background: transparent;
   padding: 0;
   cursor: default;
+  border: none;
 }
-.task-ref-card__icon {
-  font-size: 12px;
+
+/* ── 优先级左侧色条 ── */
+.task-ref-card__bar {
+  width: 3px;
+  align-self: stretch;
+  border-radius: 2px;
   flex-shrink: 0;
 }
-.task-ref-card__icon.status-completed { color: var(--color-success-500, #67c23a); }
-.task-ref-card__icon.status-in_progress { color: var(--color-warning-500, #e6a23c); }
-.task-ref-card__icon.status-todo { color: var(--color-gray-500, #909399); }
+.task-ref-card.priority-high .task-ref-card__bar { background: #ef4444; }
+.task-ref-card.priority-medium .task-ref-card__bar { background: #f59e0b; }
+.task-ref-card.priority-low .task-ref-card__bar { background: #60a5fa; }
+.task-ref-card.priority-default .task-ref-card__bar { background: var(--border-color, #dcdfe6); }
+
+/* ── 状态图标 ── */
+.task-ref-card__icon {
+  font-size: var(--font-size-sm);
+  flex-shrink: 0;
+}
+.task-ref-card__icon.status-completed { color: var(--color-success-500, #26b361); }
+.task-ref-card__icon.status-in_progress { color: var(--color-warning-500, #f7a826); }
+.task-ref-card__icon.status-todo { color: var(--text-secondary, #a0a0a0); }
+
+/* ── 内容区 ── */
+.task-ref-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
 .task-ref-card__title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  /* 主题色文字：保留"可点击"提示，同时与中性灰底形成对比 */
-  color: var(--primary-color, #3b82f6);
+  color: var(--text-color, #404040);
   font-weight: 500;
+  font-size: var(--font-size-xs);
+}
+/* 已完成：标题加删除线 + 降透明度，和看板一致 */
+.task-ref-card.status-completed .task-ref-card__title {
+  text-decoration: line-through;
+  color: var(--text-secondary, #a0a0a0);
+}
+.task-ref-card.status-completed {
+  opacity: 0.7;
+}
+
+.task-ref-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .task-ref-card__due {
-  font-size: 11px;
-  color: var(--text-secondary, #909399);
-  flex-shrink: 0;
+  font-size: var(--font-size-xxxs);
+  color: var(--text-secondary, #a0a0a0);
 }
 .task-ref-card__due.overdue {
   color: var(--color-error-500, #f56c6c);
+  font-weight: 500;
 }
 .task-ref-card__label {
-  color: var(--text-secondary, #909399);
+  color: var(--text-secondary, #a0a0a0);
 }
 .task-ref-card__label--fallback {
-  color: var(--text-secondary, #909399);
+  color: var(--text-secondary, #a0a0a0);
   text-decoration: none;
 }
 
@@ -210,14 +270,14 @@ onMounted(() => {
 @media (max-width: 768px) {
   .task-ref-card {
     max-width: 240px;
-    font-size: 12px;
+    font-size: var(--font-size-xxs);
   }
 }
 @media (max-width: 480px) {
   .task-ref-card {
     max-width: 180px;
     gap: 4px;
-    padding: 2px 6px;
+    padding: 4px 8px;
   }
   .task-ref-card__due {
     display: none; /* 小屏隐藏到期时间，优先展示标题 */

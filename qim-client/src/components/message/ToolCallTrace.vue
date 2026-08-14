@@ -97,12 +97,12 @@ function formatArgs(args?: Record<string, unknown>): string {
 .tool-call-trace {
   margin-top: 6px;
   padding: 5px 10px;
-  border: 1px solid #e8ecf3;
+  border: 1px solid var(--border-color, #e8ecf3);
   border-left: 3px solid #4f7cff;
   border-radius: 6px;
-  background: #f9fafc;
-  font-size: 12px;
-  color: #666;
+  background: var(--hover-color, #f9fafc);
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary, #666);
   max-width: 100%;
   box-sizing: border-box;
 }
@@ -113,10 +113,10 @@ function formatArgs(args?: Record<string, unknown>): string {
   gap: 6px;
   list-style: none;
   user-select: none;
-  color: #888;
+  color: var(--text-secondary, #888);
 }
 .tool-call-trace summary::-webkit-details-marker { display: none; }
-.tool-call-trace summary i { color: #4f7cff; font-size: 11px; }
+.tool-call-trace summary i { color: #4f7cff; font-size: var(--font-size-xxxs); }
 .tool-call-trace .chevron {
   margin-left: auto;
   font-size: 9px;
@@ -131,10 +131,10 @@ function formatArgs(args?: Record<string, unknown>): string {
   height: 16px;
   line-height: 16px;
   text-align: center;
-  background: #e8ecf3;
-  color: #666;
+  background: var(--border-color, #e8ecf3);
+  color: var(--text-secondary, #666);
   border-radius: 8px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
 }
 .tool-call-trace ul {
   margin: 6px 0 2px;
@@ -146,14 +146,14 @@ function formatArgs(args?: Record<string, unknown>): string {
   align-items: center;
   gap: 6px;
   padding: 4px 0;
-  border-top: 1px dashed #eef1f6;
+  border-top: 1px dashed var(--border-color, #eef1f6);
   min-width: 0;
 }
 .tool-call-trace .trace-row:first-child { border-top: none; }
-.tool-call-trace .trace-icon { flex-shrink: 0; font-size: 11px; }
+.tool-call-trace .trace-icon { flex-shrink: 0; font-size: var(--font-size-xxxs); }
 .tool-call-trace .trace-label {
   flex-shrink: 0;
-  color: #333;
+  color: var(--text-color, #333);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -162,20 +162,20 @@ function formatArgs(args?: Record<string, unknown>): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #999;
+  color: var(--text-secondary, #999);
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 .tool-call-trace .trace-status.error {
   flex-shrink: 0;
   color: #d9534f;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
 }
 .tool-call-trace .trace-status.ok {
   flex-shrink: 0;
   color: #52c41a;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 600;
 }
 .tool-call-trace .trace-status.running {
@@ -184,7 +184,7 @@ function formatArgs(args?: Record<string, unknown>): string {
   align-items: center;
   gap: 4px;
   color: #4f7cff;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
 }
 .tool-call-trace .trace-status.running .spin {

@@ -22,7 +22,7 @@ defineProps<{
   border-radius: 4px;
   background: rgba(59, 130, 246, 0.12);
   color: var(--primary-color, #2563eb);
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 600;
   line-height: 1;
 }

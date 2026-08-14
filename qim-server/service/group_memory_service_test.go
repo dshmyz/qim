@@ -102,15 +102,15 @@ func TestGroupMemory_UpdateMemory_CorrectsAndCrossGroupDenied(t *testing.T) {
 }
 
 // TestGroupMemoryService_ConflictThreshold
-// 群记忆冲突检测门槛默认 0.7；注入阈值服务后经 GetFloat 读取（nil DB 回退默认值 0.7）。
+// 群记忆冲突检测门槛默认 0.3；注入阈值服务后经 GetFloat 读取（nil DB 回退默认值 0.3）。
 func TestGroupMemoryService_ConflictThreshold(t *testing.T) {
 	svc := &GroupMemoryService{}
-	if got := svc.conflictThreshold(); got != 0.7 {
-		t.Errorf("默认冲突门槛应为 0.7，got %v", got)
+	if got := svc.conflictThreshold(); got != 0.3 {
+		t.Errorf("默认冲突门槛应为 0.3，got %v", got)
 	}
 
 	svc.SetThresholdService(NewAiThresholdService(nil))
-	if got := svc.conflictThreshold(); got != 0.7 {
-		t.Errorf("注入阈值服务后应读回默认 0.7，got %v", got)
+	if got := svc.conflictThreshold(); got != 0.3 {
+		t.Errorf("注入阈值服务后应读回默认 0.3，got %v", got)
 	}
 }

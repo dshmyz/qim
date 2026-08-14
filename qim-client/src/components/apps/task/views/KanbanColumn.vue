@@ -108,7 +108,7 @@ function onDrop(event: DragEvent) {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -120,7 +120,7 @@ function onDrop(event: DragEvent) {
   border-radius: 50%;
 }
 .column-count {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   background: var(--border-color);
   color: var(--text-secondary);
   padding: 1px 6px;
@@ -140,7 +140,7 @@ function onDrop(event: DragEvent) {
   align-items: center;
   justify-content: center;
   padding: var(--spacing-4);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   border: 1px dashed var(--border-color);
   border-radius: var(--radius-md);

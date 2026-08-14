@@ -178,7 +178,7 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
   border-radius: 50%;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -213,7 +213,7 @@ onBeforeUnmount(() => {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   transition: border-color 0.15s ease;
 }
 
@@ -225,7 +225,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   color: var(--primary-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .preview-file-name {
@@ -242,7 +242,7 @@ onBeforeUnmount(() => {
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   display: flex;
   align-items: center;

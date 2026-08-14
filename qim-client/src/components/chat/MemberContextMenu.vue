@@ -20,6 +20,7 @@ interface Emits {
   (e: 'set-admin', memberId: string | number, memberName: string, isAdmin: boolean): void
   (e: 'transfer-owner', memberId: string | number, memberName: string): void
   (e: 'send-private-message'): void
+  (e: 'at-mention', member: User | null): void
 }
 
 const props = defineProps<Props>()
@@ -67,6 +68,11 @@ const menuItems = computed<ContextMenuItem[]>(() => [
     label: '查看资料',
     icon: 'fas fa-user',
     action: () => emit('view-member-info', props.member)
+  },
+  {
+    label: '@ 提及',
+    icon: 'fas fa-at',
+    action: () => emit('at-mention', props.member)
   },
   {
     label: isSelectedMemberAdmin.value ? '取消管理员' : '设为管理员',

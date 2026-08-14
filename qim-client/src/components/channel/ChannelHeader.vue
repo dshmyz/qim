@@ -32,14 +32,6 @@
     </div>
     <div class="header-actions">
       <button
-        class="refresh-btn"
-        @click="$emit('refresh')"
-        :aria-label="`刷新 ${channel.name} 消息`"
-        title="刷新消息"
-      >
-        <i class="fas fa-sync-alt"></i>
-      </button>
-      <button
         v-if="channel.is_subscribed && !channel.is_default"
         class="subscribe-btn subscribed"
         @click="$emit('unsubscribe', channel)"
@@ -84,11 +76,10 @@ const props = defineProps<Props>()
 defineEmits<{
   subscribe: [channel: Channel]
   unsubscribe: [channel: Channel]
-  refresh: []
 }>()
 
 const messageCount = computed(() => {
-  return props.channel.messages?.length || 0
+  return props.channel.message_count ?? props.channel.messages?.length ?? 0
 })
 </script>
 
@@ -126,7 +117,7 @@ const messageCount = computed(() => {
 
 .header-title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-color);
   overflow: hidden;
@@ -135,7 +126,7 @@ const messageCount = computed(() => {
 }
 
 .channel-type-tag {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   padding: 1px 6px;
   border-radius: 4px;
   font-weight: 500;
@@ -157,7 +148,7 @@ const messageCount = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   flex-shrink: 0;
 }
@@ -168,14 +159,14 @@ const messageCount = computed(() => {
 }
 
 .meta-item i {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 .header-subtitle {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-top: 2px;
   overflow: hidden;
@@ -210,7 +201,7 @@ const messageCount = computed(() => {
   background: var(--primary-color);
   color: white;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
 }
 
@@ -237,33 +228,4 @@ const messageCount = computed(() => {
   cursor: default;
 }
 
-.refresh-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 14px;
-  margin-right: 8px;
-  transition: all 0.2s ease;
-}
-
-.refresh-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--text-color);
-}
-
-.refresh-btn:active {
-  transform: rotate(180deg);
-}
-
-.refresh-btn:focus {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
-}
 </style>

@@ -212,7 +212,7 @@ onUnmounted(() => {
 }
 
 .code-block-editor__lang-label {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
 }
 
@@ -222,7 +222,7 @@ onUnmounted(() => {
   border-radius: 4px;
   background: var(--card-bg);
   color: var(--text-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   outline: none;
 }
 
@@ -240,7 +240,7 @@ onUnmounted(() => {
   padding: 8px 24px;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.2s ease;
 }

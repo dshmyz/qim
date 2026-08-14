@@ -105,7 +105,7 @@ defineProps<{
   color: var(--text-secondary);
   background: transparent;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   flex-shrink: 0;
 }
 
@@ -119,6 +119,6 @@ defineProps<{
 }
 
 .attachment-card__btn i {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 </style>

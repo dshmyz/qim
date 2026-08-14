@@ -56,6 +56,8 @@
       :member-search-query="memberSearchQuery"
       @message-contextmenu="showMessageContextMenu"
       @show-user-profile="showUserProfile"
+      @quick-mention="handleAvatarQuickMention"
+      @mention-user="handleMentionUser"
       @scroll-to-quoted-message="scrollToQuotedMessage"
       @scroll="closeMessageContextMenu"
       @download-file="downloadFile"
@@ -205,6 +207,7 @@
       @set-admin="handleSetAdminFromOverlay"
       @transfer-owner="handleTransferOwnerFromOverlay"
       @view-member-info="viewMemberInfo"
+      @at-mention="handleMentionUser"
       @close-message-manager="closeMessageManager"
       @scroll-to-message="scrollToMessage"
       @update-confirm-dialog="(v) => showConfirmDialog = v"
@@ -255,6 +258,9 @@
       @cancel="previewVisible = false"
     />
 
+    <!-- 头像右键快速@菜单 -->
+    <AvatarQuickMenu ref="avatarQuickMenuRef" />
+
   </div>
 </template>
 
@@ -298,6 +304,7 @@ const GroupModals = defineAsyncComponent(() => import('../modals/GroupModals.vue
 const AISummaryPanel = defineAsyncComponent(() => import('../ai/AISummaryPanel.vue'))
 const AITranslatePanel = defineAsyncComponent(() => import('../ai/AITranslatePanel.vue'))
 import AvatarTakeoverBanner from '../avatar/AvatarTakeoverBanner.vue'
+import AvatarQuickMenu from './AvatarQuickMenu.vue'
 import AtMentionBanner from '../message/AtMentionBanner.vue'
 import type { MiniAppData } from '../miniapp/MiniAppLoader.vue'
 import { useRealtimeStore } from '../../stores/realtime'
@@ -722,6 +729,7 @@ const chatHeaderRef = ref<any>()
 const chatBodyRef = ref<InstanceType<typeof ChatBody>>()
 const chatInputRef = ref<InstanceType<typeof ChatInputArea>>()
 const overlayRef = ref<InstanceType<typeof OverlayManager>>()
+const avatarQuickMenuRef = ref<InstanceType<typeof AvatarQuickMenu>>()
 const messageInputRef = ref<HTMLTextAreaElement>()
 const showSearch = ref(false)
 const searchQuery = ref('')
@@ -1213,6 +1221,92 @@ const selectAtMember = (member: { id: string; name: string; avatar: string }) =>
   })
 }
 
+// 头像右键快速 @ 成员
+const handleAvatarQuickMention = (user: any, event: MouseEvent) => {
+  if (!user) return
+  avatarQuickMenuRef.value?.open(user, event, (u) => {
+    const textarea = chatInputRef.value?.messageInputRef?.messageInputRef as HTMLTextAreaElement | null
+    const name = u.name || u.username || 'TA'
+    const mentionText = `@${name}`
+    const insertText = inputMessage.value && !/\s$/.test(inputMessage.value) ? ` ${mentionText} ` : `${mentionText} `
+
+    // 检查是否已有 pending @ token，如有则替换
+    const cursorPos = textarea?.selectionStart ?? inputMessage.value.length
+    const mentionToken = findActiveMentionToken(inputMessage.value, cursorPos)
+    if (mentionToken) {
+      // 替换现有的 @token
+      const newText = replaceMentionToken(inputMessage.value, mentionToken, mentionText + ' ')
+      inputMessage.value = newText
+      trackedInputMessage.value = newText
+      // 替换即消费掉当前 @ 补全：关闭面板并重置 pending，否则面板残留、后续输入 @ 状态错乱
+      clearActiveMention()
+      const spanStart = mentionToken.start
+      // 被替换区域内的旧 span 一并移除（trackedInputMessage 已同步，reconcile 不会帮我们清），
+      // 否则旧 @token 与新 span 重叠，高亮与序列化都重复
+      mentionSpans.value = [
+        ...mentionSpans.value.filter(s => s.end <= mentionToken.start || s.start >= mentionToken.end),
+        {
+          start: spanStart,
+          end: spanStart + mentionText.length,
+          text: mentionText,
+          userId: typeof u.id === 'string' ? Number(u.id) : u.id,
+        },
+      ]
+      nextTick(() => {
+        if (textarea) {
+          textarea.selectionStart = textarea.selectionEnd = spanStart + mentionText.length + 1
+          textarea.focus()
+        }
+      })
+    } else {
+      // 在末尾追加
+      const pos = inputMessage.value.length
+      inputMessage.value += insertText
+      trackedInputMessage.value = inputMessage.value
+      mentionSpans.value = [...mentionSpans.value, {
+        start: pos + (insertText.startsWith(' ') ? 1 : 0),
+        end: pos + (insertText.startsWith(' ') ? 1 : 0) + mentionText.length,
+        text: mentionText,
+        userId: typeof u.id === 'string' ? Number(u.id) : u.id,
+      }]
+      nextTick(() => {
+        if (textarea) {
+          textarea.selectionStart = textarea.selectionEnd = inputMessage.value.length
+          textarea.focus()
+        }
+      })
+    }
+    autoResizeTextarea()
+  })
+}
+
+// 双击头像快速 @（无菜单，直接插入）
+const handleMentionUser = (user: any) => {
+  if (!user) return
+  const textarea = chatInputRef.value?.messageInputRef?.messageInputRef as HTMLTextAreaElement | null
+  const name = user.name || user.username || 'TA'
+  const mentionText = `@${name}`
+  const needsSpace = inputMessage.value && !/\s$/.test(inputMessage.value)
+  const insertText = needsSpace ? ` ${mentionText} ` : `${mentionText} `
+
+  const pos = inputMessage.value.length
+  inputMessage.value += insertText
+  trackedInputMessage.value = inputMessage.value
+  mentionSpans.value = [...mentionSpans.value, {
+    start: pos + (needsSpace ? 1 : 0),
+    end: pos + (needsSpace ? 1 : 0) + mentionText.length,
+    text: mentionText,
+    userId: typeof user.id === 'string' ? Number(user.id) : user.id,
+  }]
+  autoResizeTextarea()
+  nextTick(() => {
+    if (textarea) {
+      textarea.selectionStart = textarea.selectionEnd = inputMessage.value.length
+      textarea.focus()
+    }
+  })
+}
+
 // 选择 @ 所有人
 const selectAtAll = () => {
   const textarea = chatInputRef.value?.messageInputRef?.messageInputRef as HTMLTextAreaElement | null
@@ -1235,14 +1329,17 @@ const selectAtAll = () => {
   // 同步更新 trackedInputMessage，防止 watch 触发 reconcile 误判新 span 为跨越编辑区
   trackedInputMessage.value = newText
 
-  // 记录 mention span
+  // 记录 mention span（替换区域内的旧 span 一并移除，避免重叠）
   const span: MentionSpan = {
     start: atPosition,
     end: atPosition + mentionText.length,
     text: mentionText,
     userId: 'all',
   }
-  mentionSpans.value = [...mentionSpans.value, span]
+  mentionSpans.value = [
+    ...mentionSpans.value.filter(s => s.end <= atPosition || s.start >= atEnd),
+    span,
+  ]
 
   autoResizeTextarea()
 
@@ -1616,39 +1713,7 @@ onMounted(() => {
   window.addEventListener('message-read-receipt-updated', handleReadReceiptUpdated)
 
   if (window.electron?.ipcRenderer) {
-    window.electron.ipcRenderer.on('download-progress', (_event: any, result: { downloadId?: string; percent: number; state?: string }) => {
-      if (!result.downloadId) return
-      if (result.state === 'progressing') {
-        downloadProgress.value[result.downloadId] = result.percent
-      } else {
-        // completed / cancelled / interrupted：清除进度条
-        delete downloadProgress.value[result.downloadId]
-      }
-    })
-
-    window.electron.ipcRenderer.on('download-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string; downloadId?: string; cancelled?: boolean }) => {
-      if (result.success && result.filePath) {
-        if (result.downloadId) {
-          delete downloadProgress.value[result.downloadId]
-          saveDownloadedFile(result.downloadId, result.filePath)
-        }
-        $message.success(`文件已下载到: ${result.filePath}`)
-      } else if (!result.cancelled) {
-        $message.error('文件下载失败: ' + (result.error || '未知错误'))
-      }
-    })
-
-    window.electron.ipcRenderer.on('save-file-complete', (_event: any, result: { success: boolean; filePath?: string; error?: string; downloadId?: string; cancelled?: boolean }) => {
-      if (result.success && result.filePath) {
-        if (result.downloadId) {
-          delete downloadProgress.value[result.downloadId]
-          saveDownloadedFile(result.downloadId, result.filePath)
-        }
-        $message.success(`文件已保存到: ${result.filePath}`)
-      } else if (!result.cancelled) {
-        $message.error('文件保存失败: ' + (result.error || '未知错误'))
-      }
-    })
+    registerDownloadIpc()
   }
 
   // 非阻塞加载分身配置和已读状态，不影响界面交互
@@ -1830,6 +1895,9 @@ onUnmounted(() => {
   // 移除全局事件监听器
   window.removeEventListener('forwardNoteToChat', handleForwardNote as EventListener)
   window.removeEventListener('message-read-receipt-updated', handleReadReceiptUpdated)
+
+  // 移除下载 IPC 监听（成对，避免切会话累积）
+  unregisterDownloadIpc()
 
   // 清理 WebSocket handler（使用新的清理机制）
   if (wsHandlersCleanup) {
@@ -2778,6 +2846,83 @@ const handleFileSelect = (event: Event) => {
 const downloadProgress = ref<Record<string, number>>({})
 provide('downloadProgress', downloadProgress)
 
+// 无法获知总量(total=0)的下载：标记 indeterminate，FileMessage 以流动条显示
+const downloadIndeterminate = ref<Record<string, boolean>>({})
+provide('downloadIndeterminate', downloadIndeterminate)
+
+// 正在下载/保存中的消息 id 集合：同一消息在下载结束前不允许重复发起（防多次触发丢事件）
+const downloadingIds = ref<Record<string, boolean>>({})
+const isKeyDownloading = (key: string) => !!downloadingIds.value[key]
+const beginDownload = (key: string) => {
+  downloadingIds.value[key] = true
+}
+const endDownload = (key: string) => {
+  delete downloadingIds.value[key]
+  if (key in downloadProgress.value) delete downloadProgress.value[key]
+  if (key in downloadIndeterminate.value) delete downloadIndeterminate.value[key]
+}
+
+// 下载相关 IPC 监听：命名以便 onUnmounted 成对移除（避免切会话累积重复监听）
+const handleDownloadProgressIpc = (_event: any, result: { downloadId?: string; percent: number; state?: string }) => {
+  if (!result.downloadId) return
+  if (result.state === 'progressing' || result.state === 'indeterminate') {
+    downloadProgress.value[result.downloadId] = result.percent
+    // 记录 indeterminate 状态，供 FileMessage 显示不确定进度动画
+    if (result.state === 'indeterminate') downloadIndeterminate.value[result.downloadId] = true
+  } else {
+    // completed / cancelled / interrupted：清除进度条与并发锁
+    delete downloadIndeterminate.value[result.downloadId]
+    endDownload(result.downloadId)
+  }
+}
+
+const handleDownloadCompleteIpc = (_event: any, result: { success: boolean; filePath?: string; error?: string; downloadId?: string; cancelled?: boolean }) => {
+  if (result.success && result.filePath) {
+    if (result.downloadId) {
+      endDownload(result.downloadId)
+      saveDownloadedFile(result.downloadId, result.filePath)
+    }
+    $message.success(`文件已下载到: ${result.filePath}`)
+  } else if (!result.cancelled) {
+    if (result.downloadId) endDownload(result.downloadId)
+    $message.error('文件下载失败: ' + (result.error || '未知错误'))
+  } else if (result.downloadId) {
+    endDownload(result.downloadId)
+  }
+}
+
+const handleSaveFileCompleteIpc = (_event: any, result: { success: boolean; filePath?: string; error?: string; downloadId?: string; cancelled?: boolean }) => {
+  if (result.success && result.filePath) {
+    if (result.downloadId) {
+      endDownload(result.downloadId)
+      saveDownloadedFile(result.downloadId, result.filePath)
+    }
+    $message.success(`文件已保存到: ${result.filePath}`)
+  } else if (!result.cancelled) {
+    if (result.downloadId) endDownload(result.downloadId)
+    $message.error('文件保存失败: ' + (result.error || '未知错误'))
+  } else if (result.downloadId) {
+    endDownload(result.downloadId)
+  }
+}
+
+// 会话内是否注册了下载 IPC 监听（避免切会话重复注册）
+let downloadIpcRegistered = false
+const registerDownloadIpc = () => {
+  if (downloadIpcRegistered || !window.electron?.ipcRenderer) return
+  window.electron.ipcRenderer.on('download-progress', handleDownloadProgressIpc)
+  window.electron.ipcRenderer.on('download-complete', handleDownloadCompleteIpc)
+  window.electron.ipcRenderer.on('save-file-complete', handleSaveFileCompleteIpc)
+  downloadIpcRegistered = true
+}
+const unregisterDownloadIpc = () => {
+  if (!window.electron?.ipcRenderer) return
+  window.electron.ipcRenderer.removeListener('download-progress', handleDownloadProgressIpc)
+  window.electron.ipcRenderer.removeListener('download-complete', handleDownloadCompleteIpc)
+  window.electron.ipcRenderer.removeListener('save-file-complete', handleSaveFileCompleteIpc)
+  downloadIpcRegistered = false
+}
+
 // 上传进度：0=不上传，1-100=上传中
 const uploadProgress = ref(0)
 
@@ -2797,17 +2942,31 @@ const saveDownloadedFile = (id: string, path: string) => {
   localStorage.setItem(DOWNLOAD_CACHE_KEY, JSON.stringify(downloadedFiles.value))
 }
 
+// 解析聊天文件消息的下载地址。
+// 优先走 /api/v1/files/{id}/download：该接口返回 Content-Length，主进程 getTotalBytes() 非 0，能算真百分比。
+// 历史/旧消息 content 无 id 时回退到存储里的 url（/static/uploads/...，无 Content-Length）。
+const resolveFileUrl = (parsedContent: any): string => {
+  const server = serverUrl.value.replace(/\/$/, '')
+  const fileId = Number(parsedContent?.id)
+  if (fileId > 0) {
+    return `${server}/api/v1/files/${fileId}/download`
+  }
+  const stored = parsedContent?.url || ''
+  if (!stored) return ''
+  return stored.startsWith('http') ? stored : `${server}/${stored.replace(/^\//, '')}`
+}
+
 const downloadFile = async (fileContent: string, messageId?: string) => {
+  // 并发锁：同一消息正在下载/save-as 尚未结束时，忽略重复点击，避免重复发起丢进度事件
+  const lockKey = messageId ? String(messageId) : ''
+  if (lockKey && isKeyDownloading(lockKey)) {
+    $message.info('文件正在下载中，请稍候')
+    return
+  }
   try {
     const parsedContent = JSON.parse(fileContent)
     const finalFileName = parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
-    let fileUrl = parsedContent.url
-
-    if (fileUrl && !fileUrl.startsWith('http')) {
-      const cleanServerUrl = serverUrl.value.replace(/\/$/, '')
-      const cleanFileUrl = fileUrl.replace(/^\//, '')
-      fileUrl = `${cleanServerUrl}/${cleanFileUrl}`
-    }
+    let fileUrl = resolveFileUrl(parsedContent)
 
     if (!fileUrl) {
       $message.error('文件URL为空，无法下载')
@@ -2816,13 +2975,16 @@ const downloadFile = async (fileContent: string, messageId?: string) => {
 
     // Electron：交给主进程用内置下载管理器流式写盘，避免大文件整块读入内存
     if (window.electron?.ipcRenderer) {
-      if (messageId) downloadProgress.value[messageId] = 0
+      if (lockKey) {
+        beginDownload(lockKey)
+        downloadProgress.value[lockKey] = 0
+      }
       window.electron.ipcRenderer.send('download-file', {
         url: fileUrl,
         token: getToken() || '',
         fileName: finalFileName,
         saveDir: props.messageSettings?.defaultSaveDirectory,
-        downloadId: messageId
+        downloadId: lockKey || undefined
       })
       return
     }
@@ -2851,21 +3013,22 @@ const downloadFile = async (fileContent: string, messageId?: string) => {
     $message.success(`文件 ${finalFileName} 已下载到默认目录`)
   } catch (error) {
     logger.error('文件下载失败:', error)
+    if (lockKey) endDownload(lockKey)
     $message.error('文件下载失败: 网络错误')
   }
 }
 
 const saveFileAs = async (fileContent: string, messageId?: string) => {
+  // 并发锁：同一消息未结束时忽略重复点击
+  const lockKey = messageId ? String(messageId) : ''
+  if (lockKey && isKeyDownloading(lockKey)) {
+    $message.info('文件正在下载中，请稍候')
+    return
+  }
   try {
     const parsedContent = JSON.parse(fileContent)
     const finalFileName = parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
-    let fileUrl = parsedContent.url
-
-    if (fileUrl && !fileUrl.startsWith('http')) {
-      const cleanServerUrl = serverUrl.value.replace(/\/$/, '')
-      const cleanFileUrl = fileUrl.replace(/^\//, '')
-      fileUrl = `${cleanServerUrl}/${cleanFileUrl}`
-    }
+    let fileUrl = resolveFileUrl(parsedContent)
 
     if (!fileUrl) {
       $message.error('文件URL为空，无法保存')
@@ -2877,13 +3040,16 @@ const saveFileAs = async (fileContent: string, messageId?: string) => {
       const dialogResult = await window.electron.ipcRenderer.invoke('show-save-dialog', { defaultPath: finalFileName })
       if (dialogResult.canceled || !dialogResult.filePath) return
 
-      if (messageId) downloadProgress.value[messageId] = 0
+      if (lockKey) {
+        beginDownload(lockKey)
+        downloadProgress.value[lockKey] = 0
+      }
       window.electron.ipcRenderer.send('save-file-as', {
         url: fileUrl,
         token: getToken() || '',
         fileName: finalFileName,
         savePath: dialogResult.filePath,
-        downloadId: messageId
+        downloadId: lockKey || undefined
       })
       return
     }
@@ -3045,7 +3211,7 @@ defineExpose({
 .message-selection-count {
   margin-right: auto;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
@@ -3054,7 +3220,7 @@ defineExpose({
   padding: 0 16px;
   border-radius: 8px;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
@@ -3116,7 +3282,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
   position: relative;
   overflow: hidden;
@@ -3194,7 +3360,7 @@ defineExpose({
 .mini-app-panel-header h4 {
   margin: 0;
   color: var(--text-color);
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .mini-app-grid {
@@ -3231,7 +3397,7 @@ defineExpose({
 }
 
 .mini-app-item-name {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
   text-align: center;
   white-space: nowrap;
@@ -3245,7 +3411,7 @@ defineExpose({
 }
 
 .mini-app-action-btn {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 2px 8px;
   background: var(--primary-color);
   color: white;

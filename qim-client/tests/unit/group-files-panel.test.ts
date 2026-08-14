@@ -19,6 +19,20 @@ vi.mock('@/api/groupFiles', () => ({
 
 vi.mock('@/composables/useFileUpload', () => ({
   uploadFile,
+  uploadFilesWithLimit: async (files: File[] | FileList, folderId?: number, options?: {
+    onFileUploaded?: (file: File, fileId: number) => Promise<void>
+  }): Promise<Array<{ file: File; success: boolean; fileId?: number }>> => {
+    const list = Array.from(files)
+    const results: Array<{ file: File; success: boolean; fileId?: number }> = []
+    for (const file of list) {
+      const result = await uploadFile(file, folderId)
+      if (result?.fileId && options?.onFileUploaded) {
+        await options.onFileUploaded(file, result.fileId)
+      }
+      results.push({ file, success: !!result?.fileId, fileId: result?.fileId })
+    }
+    return results
+  },
 }))
 
 describe('GroupFilesPanel', () => {
@@ -44,7 +58,8 @@ describe('GroupFilesPanel', () => {
     await input.trigger('change')
     await flushPromises()
 
-    expect(uploadFile).toHaveBeenCalledWith(expect.any(File))
+    expect(uploadFile).toHaveBeenCalledTimes(1)
+    expect(uploadFile.mock.calls[0][0]).toMatchObject({ name: 'report.txt', type: 'text/plain' })
     expect(attach).toHaveBeenCalledWith(7, 24, null)
   })
 

@@ -97,7 +97,7 @@ function formatEventTime(event: CalendarEvent) {
 }
 
 .event-panel-count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-top: 3px;
 }
@@ -108,11 +108,11 @@ function formatEventTime(event: CalendarEvent) {
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .empty-icon {
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   opacity: 0.4;
   margin-bottom: 6px;
   text-align: center;
@@ -160,19 +160,19 @@ function formatEventTime(event: CalendarEvent) {
 }
 
 .event-card-title {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-color);
 }
 
 .event-card-time {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-top: 3px;
 }
 
 .event-card-desc {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-top: 2px;
   overflow: hidden;
@@ -188,7 +188,7 @@ function formatEventTime(event: CalendarEvent) {
   justify-content: center;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   border-radius: 4px;
   border: none;
   background: transparent;

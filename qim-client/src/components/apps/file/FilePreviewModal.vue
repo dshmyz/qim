@@ -323,7 +323,7 @@ function formatFileDate(dateString?: string): string {
 
 .audio-filename {
   margin: 12px 0 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   text-align: center;
 }
@@ -344,7 +344,7 @@ function formatFileDate(dateString?: string): string {
 }
 
 .unsupported-preview p {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--text-secondary);
   margin: 0 0 20px;
 }
@@ -364,7 +364,7 @@ function formatFileDate(dateString?: string): string {
 }
 
 .error-state p {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--text-secondary);
   margin: 0;
 }
@@ -378,7 +378,7 @@ function formatFileDate(dateString?: string): string {
   color: white;
   border: none;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -392,7 +392,7 @@ function formatFileDate(dateString?: string): string {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -414,7 +414,7 @@ function formatFileDate(dateString?: string): string {
   border-radius: 6px;
   background: var(--card-bg);
   color: var(--text-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   transition: all 0.2s ease;
 }

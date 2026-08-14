@@ -126,7 +126,7 @@ const selectBot = (bot: ExternalBotCandidate) => {
 .close-btn {
   border: none;
   background: transparent;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   line-height: 1;
   cursor: pointer;
   color: var(--text-secondary, #888);
@@ -140,7 +140,7 @@ const selectBot = (bot: ExternalBotCandidate) => {
 
 .add-bot-tip {
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   line-height: 1.6;
   color: var(--text-secondary, #666);
 }
@@ -159,7 +159,7 @@ const selectBot = (bot: ExternalBotCandidate) => {
   background: var(--border-color, #f0f0f0);
   padding: 0 3px;
   border-radius: 3px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 .bot-list {
@@ -212,7 +212,7 @@ const selectBot = (bot: ExternalBotCandidate) => {
 }
 
 .bot-name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-primary, #333);
 }
@@ -225,14 +225,14 @@ const selectBot = (bot: ExternalBotCandidate) => {
   color: #856404;
   border: 1px solid #ffe08a;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   font-weight: 600;
   cursor: help;
   vertical-align: 1px;
 }
 
 .bot-desc {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
   white-space: nowrap;
   overflow: hidden;
@@ -241,7 +241,7 @@ const selectBot = (bot: ExternalBotCandidate) => {
 
 .bot-state {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #999);
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 10px;
@@ -250,20 +250,20 @@ const selectBot = (bot: ExternalBotCandidate) => {
 
 .bot-arrow {
   color: var(--text-secondary, #bbb);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .add-bot-empty {
   padding: 28px 12px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #888);
 }
 
 .add-bot-empty-sub {
   display: block;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-tertiary, #aaa);
 }
 
@@ -281,7 +281,7 @@ const selectBot = (bot: ExternalBotCandidate) => {
   padding: 6px 16px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .btn-cancel:hover {

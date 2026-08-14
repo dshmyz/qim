@@ -19,6 +19,10 @@ type ProviderConfig struct {
 	// 空值时回退到 BaseURL。
 	EmbeddingBaseURL string
 
+	// EmbeddingModel embedding 模型名称（与 chat Model 不同时显式配置）。
+	// 空值时回退到 Model（chat 模型，多数场景不适用 embedding）。
+	EmbeddingModel string
+
 	// ExtraParams 额外的配置参数
 	ExtraParams map[string]interface{}
 }
@@ -35,11 +39,12 @@ func (c *ProviderConfig) IsDualKeySet() bool {
 
 func (c OpenAIConfig) ToProviderConfig() ProviderConfig {
 	return ProviderConfig{
-		APIKey:          c.APIKey,
-		Model:           c.Model,
-		BaseURL:         c.BaseURL,
+		APIKey:           c.APIKey,
+		Model:            c.Model,
+		BaseURL:          c.BaseURL,
 		EmbeddingBaseURL: c.EmbeddingBaseURL,
-		ExtraParams:     map[string]interface{}{},
+		EmbeddingModel:   c.EmbeddingModel,
+		ExtraParams:      map[string]interface{}{},
 	}
 }
 

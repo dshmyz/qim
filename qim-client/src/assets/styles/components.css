@@ -63,7 +63,7 @@
 .user-name {
   font-weight: 500;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .header-actions {
@@ -82,7 +82,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: background 0.2s;
   color: var(--text-color);
   position: relative;
@@ -98,7 +98,7 @@
   border-radius: 8px;
   background: var(--primary-color);
   color: white;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -123,7 +123,7 @@
   width: 100%;
   padding: 8px 12px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xxs);
   outline: none;
   transition: all 0.2s;
   background: var(--input-bg);
@@ -164,12 +164,12 @@
 
 .input-sm {
   padding: var(--spacing-1) var(--spacing-2);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
 }
 
 .input-lg {
   padding: var(--spacing-3) var(--spacing-4);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
 }
 
 /* 按钮组件 - Button Component */
@@ -216,12 +216,12 @@
 
 .btn-sm {
   padding: var(--spacing-1) var(--spacing-3);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
 }
 
 .btn-lg {
   padding: var(--spacing-3) var(--spacing-6);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
 }
 
 /* 卡片组件 - Card Component */
@@ -244,7 +244,7 @@
   display: inline-flex;
   align-items: center;
   padding: var(--spacing-1) var(--spacing-2);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-full);
   white-space: nowrap;
@@ -280,7 +280,7 @@
   display: inline-flex;
   align-items: center;
   padding: var(--spacing-1) var(--spacing-2);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-sm);
   background: var(--color-gray-100);
@@ -376,7 +376,7 @@
   padding: var(--spacing-2) var(--spacing-3);
   background: var(--color-gray-900);
   color: white;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   border-radius: var(--radius-sm);
   white-space: nowrap;
   opacity: 0;
@@ -500,7 +500,7 @@
 .modal-close {
   background: none;
   border: none;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   color: var(--text-secondary);
   cursor: pointer;
   width: 28px;
@@ -597,13 +597,13 @@
 .avatar-sm {
   width: 32px;
   height: 32px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
 }
 
 .avatar-lg {
   width: 48px;
   height: 48px;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
 }
 
 .avatar-xl {
@@ -801,7 +801,7 @@
   background: rgba(64, 158, 255, 0.1);
   color: #409eff;
   text-decoration: none;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
   transition: background 0.15s;
   vertical-align: baseline;
@@ -810,7 +810,7 @@
   background: rgba(64, 158, 255, 0.2);
 }
 .render-card__icon i {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 /* text_chip 类型：高亮标识 */
@@ -821,7 +821,7 @@
   border-radius: 4px;
   background: #f0f0f0;
   color: #666;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 /* Jira 工单卡片专用样式（示例，可扩展） */

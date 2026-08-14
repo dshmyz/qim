@@ -49,6 +49,7 @@
     @transfer-owner="(memberId, _memberName) => emit('transfer-owner', String(memberId))"
     @view-member-info="emit('view-member-info')"
     @send-private-message="emit('send-private-message', selectedMember?.id ?? '')"
+    @at-mention="emit('at-mention', selectedMember)"
   />
 
   <!-- 消息管理器 -->
@@ -140,6 +141,7 @@ const emit = defineEmits<{
   'set-admin': [memberId: string]
   'transfer-owner': [memberId: string]
   'view-member-info': []
+  'at-mention': [member: any]
   'close-message-manager': []
   'scroll-to-message': [messageId: string]
   'update-confirm-dialog': [visible: boolean]

@@ -4,7 +4,6 @@
       :channel="channel"
       @subscribe="$emit('subscribe', $event)"
       @unsubscribe="$emit('unsubscribe', $event)"
-      @refresh="$emit('refresh')"
     />
 
     <div v-if="!channel.is_subscribed && !isCreator" class="subscribe-banner">
@@ -13,12 +12,14 @@
         <span class="banner-title">订阅此频道以参与互动</span>
         <span class="banner-desc">你可以浏览消息，但订阅后才能点赞、评论和发消息</span>
       </div>
+      <button class="banner-subscribe-btn" @click="$emit('subscribe', channel)">
+        <i class="fas fa-plus"></i> 订阅
+      </button>
     </div>
 
     <MessageList
       :messages="channel.messages || []"
       :channel="channel"
-      :mode="displayMode"
       :is-creator="isCreator"
       :loading="loading"
       :sort-order="sortOrder"
@@ -26,54 +27,15 @@
       :interactive="channel.is_subscribed || isCreator"
       :highlight-message-id="highlightMessageId"
       @highlight-consumed="$emit('highlight-consumed')"
-      @update:mode="handleModeChange"
       @update:sort-order="handleSortOrderChange"
+      @refresh="$emit('refresh')"
       @like="handleLike"
       @unlike="handleUnlike"
       @comment="handleComment"
       @copy-link="handleCopyLink"
     />
 
-    <div v-if="channelUsable && isCreator" class="message-input-area">
-      <div class="composer-toolbar">
-        <div class="mode-toggle">
-          <button
-            class="mode-btn"
-            :class="{ active: publishMode === 'edit' }"
-            @click="publishMode = 'edit'"
-          >编辑</button>
-          <button
-            class="mode-btn"
-            :class="{ active: publishMode === 'preview' }"
-            @click="publishMode = 'preview'"
-          >预览</button>
-        </div>
-      </div>
-      <textarea
-        v-if="publishMode === 'edit'"
-        v-model="localMessage"
-        placeholder="输入消息内容，支持 Markdown（# 标题、**粗体**、[链接](url) 等）"
-        rows="5"
-        class="message-textarea"
-        @keydown.enter.ctrl="handleSendMessage"
-        :aria-label="'消息输入框'"
-      ></textarea>
-      <div v-else class="md-preview" v-html="previewContent"></div>
-      <div class="input-actions">
-        <span class="input-hint">Ctrl + Enter 发送</span>
-        <button
-          class="send-btn"
-          @click="handleSendMessage"
-          :disabled="!localMessage.trim()"
-          :aria-label="'发送消息'"
-        >
-          <i class="fas fa-paper-plane"></i>
-          <span>发送</span>
-        </button>
-      </div>
-    </div>
-
-    <div v-else-if="channelUsable && channel.publish_permission === 'all_subscribers' && channel.is_subscribed" class="message-input-area">
+    <div v-if="channelUsable && (isCreator || (channel.publish_permission === 'all_subscribers' && channel.is_subscribed))" class="message-input-area">
       <div class="composer-toolbar">
         <div class="mode-toggle">
           <button
@@ -138,14 +100,11 @@ import MessageList from './MessageList.vue'
 import { renderChannelMarkdown } from '../../utils/channelMarkdown'
 import type { Channel, ChannelMessage } from '../../types'
 
-type DisplayMode = 'card' | 'timeline'
-
 interface Props {
   channel: Channel
   isCreator?: boolean
   loading?: boolean
   initialMessage?: string
-  displayMode?: DisplayMode
   sortOrder?: 'asc' | 'desc'
   highlightMessageId?: string | null
 }
@@ -154,7 +113,6 @@ const props = withDefaults(defineProps<Props>(), {
   isCreator: false,
   loading: false,
   initialMessage: '',
-  displayMode: 'card',
   sortOrder: 'desc',
   highlightMessageId: null
 })
@@ -163,7 +121,6 @@ const emit = defineEmits<{
   subscribe: [channel: Channel]
   unsubscribe: [channel: Channel]
   sendMessage: [channel: Channel, message: string]
-  'update:displayMode': [mode: DisplayMode]
   'update:sortOrder': [sortOrder: 'asc' | 'desc']
   like: [message: ChannelMessage]
   unlike: [message: ChannelMessage]
@@ -204,10 +161,6 @@ watch(
     localMessage.value = newValue
   }
 )
-
-const handleModeChange = (mode: DisplayMode) => {
-  emit('update:displayMode', mode)
-}
 
 const handleSortOrderChange = (sortOrder: 'asc' | 'desc') => {
   emit('update:sortOrder', sortOrder)
@@ -257,7 +210,7 @@ const handleCopyLink = (message: ChannelMessage) => {
 }
 
 .banner-icon {
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   color: var(--primary-color);
   flex-shrink: 0;
 }
@@ -275,8 +228,34 @@ const handleCopyLink = (message: ChannelMessage) => {
 }
 
 .banner-desc {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
+}
+
+.banner-subscribe-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: 5px 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--primary-color);
+  color: white;
+  cursor: pointer;
+  font-size: var(--font-size-xxs);
+  font-weight: var(--font-weight-medium);
+  margin-left: auto;
+  transition: background 0.15s;
+}
+
+.banner-subscribe-btn:hover {
+  background: var(--primary-dark);
+}
+
+.banner-subscribe-btn:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .message-input-area {
@@ -326,7 +305,7 @@ const handleCopyLink = (message: ChannelMessage) => {
   border: none;
   background: transparent;
   padding: 3px 12px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -389,7 +368,7 @@ const handleCopyLink = (message: ChannelMessage) => {
   padding: 12px;
   border-radius: 6px;
   overflow-x: auto;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
   margin: 0.5em 0;
 }
@@ -416,7 +395,7 @@ const handleCopyLink = (message: ChannelMessage) => {
 }
 
 .input-hint {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -460,7 +439,7 @@ const handleCopyLink = (message: ChannelMessage) => {
 }
 
 .message-readonly-hint i {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--primary-color);
 }
 

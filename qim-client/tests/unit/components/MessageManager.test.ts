@@ -555,7 +555,7 @@ describe('MessageManager', () => {
   })
 
   describe('消息点击跳转', () => {
-    it('单击消息项不应跳转', async () => {
+    it('单击消息项（未选中文本）应跳转到原消息', async () => {
       mockMessages([
         {
           id: 1,
@@ -590,17 +590,17 @@ describe('MessageManager', () => {
 
       await wrapper.find('.message-manager-item').trigger('click')
 
-      expect(wrapper.emitted('scrollToMessage')).toBeUndefined()
+      expect(wrapper.emitted('scrollToMessage')).toEqual([[1]])
 
       getSelectionSpy.mockRestore()
     })
 
-    it('双击消息项应跳转', async () => {
+    it('单击但选中了文字时不应跳转', async () => {
       mockMessages([
         {
           id: 1,
           type: 'text',
-          content: '双击查看原消息',
+          content: '这段内容需要复制',
           created_at: '2024-01-01T00:00:00Z',
           is_recalled: false,
           sender: { id: 1, name: 'Alice', avatar: '' },
@@ -609,7 +609,7 @@ describe('MessageManager', () => {
 
       const getSelectionSpy = vi
         .spyOn(window, 'getSelection')
-        .mockReturnValue({ toString: () => '' } as Selection)
+        .mockReturnValue({ toString: () => '内容需要复制' } as Selection)
 
       const wrapper = mount(MessageManager, {
         props: {
@@ -628,9 +628,9 @@ describe('MessageManager', () => {
       })
       await wrapper.vm.$nextTick()
 
-      await wrapper.find('.message-manager-item').trigger('dblclick')
+      await wrapper.find('.message-manager-item').trigger('click')
 
-      expect(wrapper.emitted('scrollToMessage')).toEqual([[1]])
+      expect(wrapper.emitted('scrollToMessage')).toBeUndefined()
 
       getSelectionSpy.mockRestore()
     })

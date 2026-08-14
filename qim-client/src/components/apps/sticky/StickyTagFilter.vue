@@ -46,7 +46,7 @@ defineEmits<{
 }
 
 .filter-label {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   font-weight: var(--font-weight-semibold);
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -54,7 +54,7 @@ defineEmits<{
 }
 
 .clear-btn {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   font-weight: var(--font-weight-medium);
   color: var(--primary-color);
   background: var(--primary-light);
@@ -77,7 +77,7 @@ defineEmits<{
 }
 
 .tag-item {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 1px 6px;
   background: var(--btn-bg);
   color: var(--text-secondary);

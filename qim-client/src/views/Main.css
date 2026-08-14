@@ -226,7 +226,7 @@ button:active {
 }
 
 .loading-text {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--text-color);
   animation: pulse 1.5s ease-in-out infinite;
 }
@@ -279,7 +279,7 @@ button:active {
   justify-content: center;
   color: var(--text-color);
   background: var(--right-content-bg);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   opacity: 0.7;
 }
 
@@ -317,7 +317,7 @@ button:active {
 }
 
 .channel-empty-state p {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
@@ -361,7 +361,7 @@ button:active {
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .back-button:hover {
@@ -377,8 +377,8 @@ button:active {
 }
 
 .elegant-dark-theme {
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: linear-gradient(135deg, #3b82f6 0%, #818cf8 100%);
+  border: 1px solid #2563eb;
 }
 
 .ocean-blue-theme {
@@ -417,8 +417,8 @@ button:active {
 }
 
 .spring-blossom-theme {
-  background: linear-gradient(135deg, #f8bbd9 0%, #e1bee7 50%, #c8e6c9 100%);
-  border: 1px solid #f8bbd9;
+  background: linear-gradient(135deg, #f8bbd0 0%, #ce93d8 100%);
+  border: 1px solid #f8bbd0;
 }
 
 .green-theme {
@@ -536,7 +536,7 @@ button:active {
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   background: var(--input-bg);
   color: var(--text-primary);
   transition: border-color 0.2s;

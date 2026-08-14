@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/database"
@@ -15,15 +16,49 @@ import (
 	"gorm.io/gorm"
 )
 
+// avatarBatchKey 合并窗口桶的键：同一 (UserID, ConversationID) 的连发消息视为一批。
+type avatarBatchKey struct {
+	UserID         uint
+	ConversationID uint
+}
+
+// avatarBatch 合并桶：收集窗口内到达的批内消息，计时器到期后作为一个批量任务提交。
+type avatarBatch struct {
+	base  AvatarTask          // 批首任务（承载 UserID/ConversationID/IsGroupChat/GroupName 等）
+	items []AvatarBatchItem   // 批内逐条消息
+	timer *time.Timer         // trailing-edge 防抖计时器（新消息刷新窗口）
+}
+
+// 合并窗口与批上限。
+const (
+	avatarBatchWindow  = 3 * time.Second // 批内消息间隔上限：≤3s 视作同一批
+	avatarBatchMaxSize = 8               // 单批最多 8 条，超出立即合并并开新批（防无界聚合/刷屏）
+)
+
+// AvatarBatchItem 合并窗口内的一条触发消息。合并器把同一 (UserID, ConversationID)
+// 3 秒窗口内到达的多条触发聚合为一批，worker 据此走批量多模态生成。
+type AvatarBatchItem struct {
+	Msg            string // 消息内容（text 或 image 的 content JSON）
+	MsgType        string // text / image
+	FileID         uint   // MsgType=image 时的文件 id
+	Name           string // MsgType=image 时的文件名
+	TriggerUserID  uint   // 发出者（群聊私聊回弹等按批首发送者）
+	TriggerName    string // 发出者昵称
+}
+
 // AvatarTask 分身任务
 type AvatarTask struct {
 	UserID         uint
 	ConversationID uint
 	TriggerMessage string
+	TriggerMsgType string // 触发消息类型（text/image/file/...），供分身识别图片走多模态
 	TriggerUserID  uint
 	IsGroupChat    bool
 	GroupName      string
 	TriggerName    string
+	// BatchItems 合并窗口聚合后的批内消息。单条触发时恰 1 项；多连发合并时为全部。
+	// worker 据此走批量路径（多文本+多图多模态），非空时优先于 TriggerMessage。
+	BatchItems []AvatarBatchItem
 }
 
 // avatarSendMeta 分身回复发送所需的分身侧元数据。
@@ -44,6 +79,12 @@ type AvatarWorkerPool struct {
 	service  *AvatarService
 	db       *gorm.DB
 	delaySem chan struct{} // 限制延迟发送 goroutine 并发上限
+
+	// 合并窗口：把同一 (UserID, ConversationID) 3 秒内的连发消息聚合为一批，分身只回一条。
+	// mu 保护 buckets 与 closed。Submit 先入桶聚合，计时器到期 flush 成批量任务经 orch.Submit。
+	coalesceMu    sync.Mutex
+	buckets       map[avatarBatchKey]*avatarBatch // 在途合并桶，Flush 后即删
+	coalesceClose bool                            // 是否已关闭，关闭后拒绝新提交并 flush 在途批
 }
 
 // NewAvatarWorkerPool 创建分身工作池。
@@ -63,32 +104,141 @@ func NewAvatarWorkerPool(workers int, globalRPM int, service *AvatarService) *Av
 		delaySem: make(chan struct{}, 100), // 最多 100 个延迟 goroutine 驻留
 		service:  service,
 		db:       service.db,
+		buckets:  make(map[avatarBatchKey]*avatarBatch),
 	}
 
 	return pool
 }
 
-// Close 关闭分身回复编排引擎，回收 worker goroutine。供服务优雅退出时调用。
+// Close 关闭分身回复编排引擎：先 flush 在途合并桶（不丢未到期批），再关闭底层编排器，
+// 回收 worker goroutine。幂等。供服务优雅退出时调用。
 func (p *AvatarWorkerPool) Close() {
+	p.coalesceMu.Lock()
+	if p.coalesceClose {
+		p.coalesceMu.Unlock()
+		p.orch.Close()
+		return
+	}
+	p.coalesceClose = true
+	pending := make(map[avatarBatchKey]*avatarBatch, len(p.buckets))
+	for k, b := range p.buckets {
+		if b.timer != nil {
+			b.timer.Stop()
+		}
+		pending[k] = b
+	}
+	p.buckets = make(map[avatarBatchKey]*avatarBatch)
+	p.coalesceMu.Unlock()
+
+	for _, b := range pending {
+		p.flushBucket(b)
+	}
 	p.orch.Close()
 }
 
-// Submit 提交分身任务。队列满时不再立即丢弃，而是阻塞等待最多 2 秒；
-// 仍失败则记 Warn 并通过 WS 通知分身主人“回复被跳过”，避免静默丢失。
-// 并发治理（限并发/限流）由内部 ReplyOrchestrator 承担，processing 闭包携带完整任务。
+// Submit 提交分身任务。同一 (UserID, ConversationID) 3 秒窗口内的连发消息先进合并桶聚合，
+// 计时器到期 flush 成单一批量任务提交（分身只回一条）；队列满时阻塞等待最多 2 秒，仍失败
+// 则记 Warn 并通过 WS 通知分身主人“回复被跳过”，避免静默丢失。
+// 并发治理（限并发/限流/合并聚合）由内部合并器 + ReplyOrchestrator 承担。
 func (p *AvatarWorkerPool) Submit(task AvatarTask) error {
+	// 从单条任务提取批内消息项：BatchItems 为空时用 TriggerMessage 语义（trigger 侧单条构造）
+	item := AvatarBatchItem{
+		Msg:            task.TriggerMessage,
+		MsgType:        task.TriggerMsgType,
+		TriggerUserID:  task.TriggerUserID,
+		TriggerName:    task.TriggerName,
+	}
+	if task.TriggerMsgType == "image" {
+		item.FileID = parseQuotedFileID(task.TriggerMessage)
+		item.Name = parseQuotedFileName(task.TriggerMessage)
+	}
+	if len(task.BatchItems) > 0 {
+		item = task.BatchItems[0]
+	}
+
+	return p.enqueueToBucket(task, item)
+}
+
+// enqueueToBucket 把一条触发消息并入对应合并桶；计时器到期后 flush。返回 nil 表示已接收。
+func (p *AvatarWorkerPool) enqueueToBucket(task AvatarTask, item AvatarBatchItem) error {
+	p.coalesceMu.Lock()
+	if p.coalesceClose {
+		p.coalesceMu.Unlock()
+		return fmt.Errorf("分身工作池已关闭，放弃批量聚合")
+	}
+	key := avatarBatchKey{UserID: task.UserID, ConversationID: task.ConversationID}
+	b := p.buckets[key]
+	if b == nil {
+		b = &avatarBatch{base: task}
+		p.buckets[key] = b
+	}
+	b.items = append(b.items, item)
+	// 批上限：达到上限立即合并提交（不等待窗口），并开新批等待后续消息
+	if len(b.items) >= avatarBatchMaxSize {
+		if b.timer != nil {
+			b.timer.Stop()
+		}
+		delete(p.buckets, key)
+		b.timer = nil
+		p.coalesceMu.Unlock()
+		p.flushBucket(b)
+		p.coalesceMu.Lock()
+		if !p.coalesceClose {
+			newB := &avatarBatch{base: task}
+			p.buckets[key] = newB
+			newB.timer = time.AfterFunc(avatarBatchWindow, func() { p.fireBucket(key) })
+		}
+		p.coalesceMu.Unlock()
+		return nil
+	}
+	// trailing-edge：新消息到来先停旧计时器再重置窗口
+	if b.timer != nil {
+		b.timer.Stop()
+	}
+	b.timer = time.AfterFunc(avatarBatchWindow, func() { p.fireBucket(key) })
+	p.coalesceMu.Unlock()
+	return nil
+}
+
+// fireBucket 合并桶计时器到期回调：取走该桶并 flush，随后调用方退出锁外。
+func (p *AvatarWorkerPool) fireBucket(key avatarBatchKey) {
+	p.coalesceMu.Lock()
+	b := p.buckets[key]
+	if b == nil {
+		p.coalesceMu.Unlock()
+		return
+	}
+	if b.timer != nil {
+		b.timer.Stop()
+	}
+	delete(p.buckets, key)
+	b.timer = nil
+	p.coalesceMu.Unlock()
+	p.flushBucket(b)
+}
+
+// flushBucket 把合并桶转为一个批量任务经底层编排器提交，分身据此生成一条合并回复。
+func (p *AvatarWorkerPool) flushBucket(b *avatarBatch) {
+	task := b.base
+	task.BatchItems = b.items
+	// 批首作为代表任务的标识字段（回弹目标/群聊私聊等以批首为准）
+	task.TriggerMessage = b.items[0].Msg
+	task.TriggerMsgType = b.items[0].MsgType
+	task.TriggerUserID = b.items[0].TriggerUserID
+	task.TriggerName = b.items[0].TriggerName
+
+	logger.WithModule("AvatarWorkerPool").Info("分身合并批提交", "userID", task.UserID, "convID", task.ConversationID, "batch", len(task.BatchItems))
+
 	if err := p.orch.Submit(task.UserID, func() { p.process(task) }); err != nil {
-		logger.WithModule("AvatarWorkerPool").Warn("分身任务入队超时，回复被跳过",
-			"userID", task.UserID, "convID", task.ConversationID)
+		logger.WithModule("AvatarWorkerPool").Warn("分身批量任务入队超时，回复被跳过",
+			"userID", task.UserID, "convID", task.ConversationID, "batch", len(task.BatchItems))
 		if p.service != nil && p.service.wsNotify != nil {
 			p.service.wsNotify(task.UserID, "avatar_reply_skipped", map[string]interface{}{
 				"conversation_id": task.ConversationID,
 				"reason":          "queue_busy",
 			})
 		}
-		return fmt.Errorf("分身任务入队超时，回复已跳过")
 	}
-	return nil
 }
 
 // process 处理分身任务。由 ReplyOrchestrator 的 worker 调用，
@@ -110,10 +260,37 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		return
 	}
 
-	reply, sources, err := p.service.GenerateReplyWithSources(task.UserID, task.ConversationID, task.TriggerMessage, &avatarConfig)
-	if err != nil {
-		logger.WithModule("AvatarWorkerPool").Error("分身回复生成失败", "user", task.UserID, "conv", task.ConversationID, "error", err)
-		return
+	// 生成回复。三种形态优先级：批量合并(>1条) > 单条图片 > 单条文本。
+	var reply string
+	var sources []KnowledgeSource
+
+	// 合并窗口聚合后的批量任务（批内多条消息）：整批走批量生成，分身只回一条。
+	// 批内可含文本+图片（多模态）；任一图片读图失败/模型不支持时按「尽力而为，失败则跳过」。
+	if len(task.BatchItems) > 1 {
+		logger.WithModule("AvatarWorkerPool").Info("分身批量生成", "userID", task.UserID, "conv", task.ConversationID, "batch", len(task.BatchItems))
+		reply, sources, err = p.service.GenerateReplyBatchWithImageSources(task.UserID, task.ConversationID, task.BatchItems, &avatarConfig)
+		if err != nil {
+			logger.WithModule("AvatarWorkerPool").Info("分身批量生成失败，尽力而为跳过", "user", task.UserID, "conv", task.ConversationID, "batch", len(task.BatchItems), "error", err)
+			return
+		}
+	} else if task.TriggerMsgType == "image" {
+		fileID := parseQuotedFileID(task.TriggerMessage)
+		if fileID == 0 {
+			logger.WithModule("AvatarWorkerPool").Info("分身图片触发消息缺少文件 id，跳过", "user", task.UserID, "conv", task.ConversationID)
+			return
+		}
+		imageName := parseQuotedFileName(task.TriggerMessage)
+		reply, sources, err = p.service.GenerateReplyWithImageSources(task.UserID, task.ConversationID, task.TriggerMessage, imageName, fileID, &avatarConfig)
+		if err != nil {
+			logger.WithModule("AvatarWorkerPool").Info("分身图片识别失败，尽力而为跳过", "user", task.UserID, "conv", task.ConversationID, "fileID", fileID, "error", err)
+			return
+		}
+	} else {
+		reply, sources, err = p.service.GenerateReplyWithSources(task.UserID, task.ConversationID, task.TriggerMessage, &avatarConfig)
+		if err != nil {
+			logger.WithModule("AvatarWorkerPool").Error("分身回复生成失败", "user", task.UserID, "conv", task.ConversationID, "error", err)
+			return
+		}
 	}
 
 	// 空/纯空白回复表示分身选择不回复（如知识范围外且配置为不回复）或 AI 不可用，

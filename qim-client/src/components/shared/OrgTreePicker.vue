@@ -250,7 +250,7 @@ function toggleDept(dept: Department) {
 }
 .toggle {
   width: 14px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary, #999);
   cursor: pointer;
   flex-shrink: 0;
@@ -262,14 +262,14 @@ function toggleDept(dept: Department) {
 }
 .dept-name {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color, #333);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .dept-count {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #999);
   flex-shrink: 0;
   background: var(--hover-color, rgba(0,0,0,0.04));
@@ -277,7 +277,7 @@ function toggleDept(dept: Department) {
   border-radius: 8px;
 }
 .emp-name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color, #333);
   min-width: 50px;
   max-width: 140px;
@@ -287,12 +287,12 @@ function toggleDept(dept: Department) {
   flex: 1;
 }
 .emp-position {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #999);
   flex-shrink: 0;
 }
 .emp-existing-tag {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--color-success-600, #52c41a);
   flex-shrink: 0;
 }
@@ -314,6 +314,6 @@ input[type="checkbox"] {
   text-align: center;
   color: var(--text-secondary, #999);
   padding: 32px 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 </style>

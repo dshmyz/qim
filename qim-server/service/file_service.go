@@ -97,9 +97,6 @@ func (s *FileService) GetFiles(userID uint, page, pageSize int, filters map[stri
 			query = query.Where("mime_type LIKE ?", "video/%")
 		case "audio":
 			query = query.Where("mime_type LIKE ?", "audio/%")
-		case "document":
-			query = query.Where("mime_type LIKE ? OR mime_type LIKE ? OR mime_type LIKE ? OR mime_type LIKE ?",
-				"application/pdf", "application/msword", "application/vnd.ms-excel", "text/%")
 		default:
 			query = query.Where("mime_type LIKE ?", fileType+"/%")
 		}

@@ -127,7 +127,7 @@ defineExpose({
 
 .shortcut-group-title {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -135,7 +135,7 @@ defineExpose({
 .shortcut-reset-btn {
   padding: 4px 12px;
   border-radius: var(--radius-md, 6px);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   transition: all 0.2s;
   border: 1px solid var(--border-color);

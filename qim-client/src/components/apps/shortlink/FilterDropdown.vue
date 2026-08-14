@@ -45,7 +45,7 @@ const handleChange = () => {
   padding: 10px 16px;
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   background: var(--input-bg, white);
   color: var(--text-primary, #1f2937);
   cursor: pointer;

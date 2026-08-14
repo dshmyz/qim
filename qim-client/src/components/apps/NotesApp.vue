@@ -1,14 +1,8 @@
 <template>
   <div class="notes-app" :class="{ fullscreen: isFullscreen }">
     <AppHeader title="笔记" @back="$emit('back')" v-show="!isFullscreen">
-      <template #extra-buttons>
-        <ToggleSidebarBtn
-          icon="fas fa-compress"
-          title="收起侧边栏"
-          @click="$emit('toggleSidebar')"
-        />
-      </template>
       <template #actions>
+        <button class="import-btn" @click="triggerImport"><i class="fas fa-file-import"></i> 导入</button>
         <button class="create-note-btn" @click="handleCreate">+ 新建笔记</button>
       </template>
     </AppHeader>
@@ -41,6 +35,7 @@
             @delete="handleDelete(note.id)"
             @filter-tag="selectedTag = $event"
             @toggle-ai-access="toggleAiAccess(note.id, note.ai_accessible === false)"
+            @contextmenu.prevent="handleNoteContextMenu(note, $event)"
           />
           <div v-if="filteredNotes.length === 0" class="empty-notes">
             <p>没有找到匹配的笔记</p>
@@ -67,13 +62,17 @@
             @share="handleShare"
             @delete="handleDelete(selectedNote.id)"
             @toggle-fullscreen="toggleFullscreen"
+            @show-shortcuts="showShortcutsHelp = true"
+            @insert-table="noteEditorRef?.insertTable()"
           />
           <NoteEditor
             ref="noteEditorRef"
             v-model:title="selectedNote.title"
             v-model:content="selectedNote.content"
             :mode="editorMode"
+            :note-list="noteListForLinks"
             @save="handleSave"
+            @navigate-note="handleNavigateNote"
           />
         </template>
         <div v-else class="empty-note">
@@ -86,7 +85,7 @@
     <input
       ref="fileInputRef"
       type="file"
-      accept=".md,.markdown"
+      accept=".md,.markdown,.txt,.html,.htm,.json,.docx,.pdf"
       style="display: none"
       @change="handleFileSelect"
     />
@@ -97,25 +96,83 @@
       @close="showAnalysisModal = false"
       @confirm="handleAnalysisConfirm"
     />
+
+    <UniversalContextMenu menuId="note-card" :items="noteContextMenuItems" />
+
+    <!-- 快捷键帮助弹窗 -->
+    <Teleport to="body">
+      <div v-if="showShortcutsHelp" class="shortcuts-overlay" @click.self="showShortcutsHelp = false">
+        <div class="shortcuts-modal">
+          <div class="shortcuts-header">
+            <h3><i class="fas fa-keyboard"></i> 快捷键</h3>
+            <button class="shortcuts-close" @click="showShortcutsHelp = false"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="shortcuts-body">
+            <div class="shortcuts-group">
+              <h4>通用</h4>
+              <div class="shortcut-item"><span class="shortcut-desc">保存</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>S</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">新建笔记</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>N</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">搜索替换</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>H</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">查找</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>F</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">全屏</span><span class="shortcut-keys"><kbd>F11</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">显示快捷键</span><span class="shortcut-keys"><kbd>?</kbd></span></div>
+            </div>
+            <div class="shortcuts-group">
+              <h4>格式</h4>
+              <div class="shortcut-item"><span class="shortcut-desc">粗体</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>B</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">斜体</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>I</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">删除线</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">链接</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>K</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">行内代码</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">代码块</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></span></div>
+            </div>
+            <div class="shortcuts-group">
+              <h4>结构</h4>
+              <div class="shortcut-item"><span class="shortcut-desc">一级标题</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">二级标题</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>2</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">三级标题</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>3</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">无序列表</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">有序列表</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">任务列表</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">引用</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd></span></div>
+            </div>
+            <div class="shortcuts-group">
+              <h4>编辑</h4>
+              <div class="shortcut-item"><span class="shortcut-desc">撤销</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">重做</span><span class="shortcut-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">缩进</span><span class="shortcut-keys"><kbd>Tab</kbd></span></div>
+              <div class="shortcut-item"><span class="shortcut-desc">减少缩进</span><span class="shortcut-keys"><kbd>Shift</kbd>+<kbd>Tab</kbd></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import AppHeader from './AppHeader.vue'
-import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 import NoteCard from './notes/NoteCard.vue'
 import NoteToolbar from './notes/NoteToolbar.vue'
 import NoteEditor from './notes/NoteEditor.vue'
 import NoteTagFilter from './notes/NoteTagFilter.vue'
 import AIAnalysisModal from './notes/AIAnalysisModal.vue'
+import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
 import { useNotes } from '../../composables/useNotes'
 import { useAutoSave } from '../../composables/useAutoSave'
+import { useNoteDraft } from '../../composables/useNoteDraft'
+import { openMenu } from '../../composables/useUI'
+import type { ContextMenuItem } from '../shared/context-menu-types'
 import QMessage from '../../utils/qmessage'
 import QMessageBox from '../../utils/qmessagebox'
 import type { Note, AIAnalyzeResult } from '../../types/note'
+import mammoth from 'mammoth'
+import * as pdfjsLib from 'pdfjs-dist'
+import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl
 
-const emit = defineEmits(['back', 'toggleSidebar'])
+const emit = defineEmits(['back'])
 
 const {
   fetchNotes,
@@ -142,24 +199,100 @@ const analysisResult = ref<AIAnalyzeResult | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const isFullscreen = ref(false)
 const noteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
+const showShortcutsHelp = ref(false)
 
-// 自动保存：监听 title/content 变化，防抖 2 秒后调用 updateNote
+const draft = useNoteDraft()
+
+// 自动保存：监听 title/content 变化，防抖 5 秒后调用 updateNote
+// localStorage 即时落盘保底，服务器同步为后台行为
 const autoSave = useAutoSave(
   (id: number, data) => updateNote(id, data),
-  { delay: 2000 }
+  { delay: 5000, maxWait: 30000 }
 )
 // 手动保存进行中标志，与自动保存状态合并后用于禁用保存按钮
 const manualSaving = ref(false)
 const saving = computed(() => manualSaving.value || autoSave.status.value === 'saving')
-const saveStatus = computed(() => autoSave.status.value)
+// 本地草稿已落盘但后端尚未同步标志
+const draftSaved = ref(false)
+const saveStatus = computed(() => {
+  // 手动保存/后端同步中优先显示
+  if (manualSaving.value || autoSave.status.value === 'saving') return 'saving'
+  // 后端同步成功
+  if (autoSave.status.value === 'saved') return 'saved'
+  // 后端保存失败
+  if (autoSave.status.value === 'error') return 'error'
+  // 有未同步的本地草稿
+  if (draftSaved.value) return 'draft'
+  return 'idle'
+})
 // 切换笔记时跳过一次自动保存 watch，避免把"载入新笔记内容"误判为用户编辑
 let skipNextAutoSave = false
+// 跟踪自动保存对应的笔记 ID，供 status → saved 时清理 localStorage 草稿
+let autoSavedNoteId: number | null = null
+// 右键菜单：当前右键的笔记
+const contextMenuNote = ref<Note | null>(null)
+
+function handleNoteContextMenu(note: Note, event: MouseEvent) {
+  contextMenuNote.value = note
+  openMenu('note-card', event.clientX, event.clientY)
+}
+
+const noteContextMenuItems = computed<ContextMenuItem[]>(() => {
+  const note = contextMenuNote.value
+  if (!note) return []
+  return [
+    {
+      label: '编辑',
+      icon: 'fas fa-edit',
+      action: () => { editNote(note) }
+    },
+    {
+      label: 'AI 分析',
+      icon: 'fas fa-robot',
+      action: () => { selectNote(note.id).then(() => handleAnalyze()) }
+    },
+    {
+      label: '导出',
+      icon: 'fas fa-download',
+      action: () => { exportNote(note.id, note.title) }
+    },
+    {
+      label: '分享',
+      icon: 'fas fa-share-alt',
+      action: () => {
+        window.dispatchEvent(new CustomEvent('openShareModal', {
+          detail: { type: 'note', data: note }
+        }))
+      }
+    },
+    {
+      label: note.ai_accessible === false ? '允许分身读取' : '禁止分身读取',
+      icon: note.ai_accessible === false ? 'fas fa-eye' : 'fas fa-eye-slash',
+      action: () => { toggleAiAccess(note.id, note.ai_accessible === false) }
+    },
+    { divider: true },
+    {
+      label: '删除',
+      icon: 'fas fa-trash',
+      danger: true,
+      action: () => { handleDelete(note.id) }
+    }
+  ]
+})
 
 const allTags = computed(() => {
   const tags = new Set<string>()
   notes.value.forEach(n => n.tags?.forEach(t => tags.add(t)))
   return Array.from(tags)
 })
+
+// 供 NoteEditor 内链使用
+const noteListForLinks = computed(() => notes.value.map(n => ({ id: n.id, title: n.title })))
+
+function handleNavigateNote(noteId: number) {
+  const note = notes.value.find(n => n.id === noteId)
+  if (note) selectNote(note.id)
+}
 
 const filteredNotes = computed(() => {
   let result = notes.value
@@ -177,11 +310,20 @@ const filteredNotes = computed(() => {
 })
 
 async function selectNote(id: number) {
+  const oldNoteId = selectedNoteId.value
   // 切换前先把当前笔记的待保存内容落库，避免把 A 笔记的内容写到 B 笔记
-  await autoSave.flush()
+  const flushResult = await autoSave.flush()
+  // 仅在确认落库成功、且保存期间没有新编辑（flush 后无 pending）时才清理草稿；
+  // 否则草稿里是最新的未同步内容，清掉会丢数据（flush 失败 / 保存期间又输入）
+  if (oldNoteId !== null && flushResult === 'saved' && autoSave.status.value !== 'pending') {
+    draft.clear(oldNoteId)
+  }
   skipNextAutoSave = true
+  draftSaved.value = false
   selectedNoteId.value = id
   selectedNote.value = notes.value.find(n => n.id === id) || null
+  // 恢复 localStorage 草稿（断网、崩溃等未同步的内容）
+  nextTick(() => restoreDraft())
 }
 
 function editNote(note: Note) {
@@ -216,20 +358,104 @@ async function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-  
+
+  const ext = file.name.split('.').pop()?.toLowerCase() || ''
+  const baseName = file.name.replace(/\.[^.]+$/, '')
+
   const reader = new FileReader()
   reader.onload = async (e) => {
-    const content = e.target?.result as string
-    const fileName = file.name.replace(/\.(md|markdown)$/i, '')
-    
-    const note = await createNote({ title: fileName, content })
-    if (note) {
-      notes.value.unshift(note)
-      selectNote(note.id)
-      QMessage.success('导入成功')
+    const raw = e.target?.result as string
+
+    try {
+      // DOCX → mammoth 提取 HTML 后转纯文本
+      if (ext === 'docx') {
+        const arrayBuffer = e.target?.result as ArrayBuffer
+        const { value: html } = await mammoth.convertToHtml({ arrayBuffer })
+        const doc = new DOMParser().parseFromString(html, 'text/html')
+        const content = doc.body?.innerText?.trim() || ''
+        const note = await createNote({ title: baseName, content })
+        if (note) { notes.value.unshift(note); selectNote(note.id) }
+        QMessage.success('导入成功')
+        return
+      }
+
+      // PDF → pdfjs-dist 逐页提取文本
+      if (ext === 'pdf') {
+        const arrayBuffer = e.target?.result as ArrayBuffer
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+        const pages: string[] = []
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i)
+          const textContent = await page.getTextContent()
+          const lines: string[] = []
+          let line = ''
+          for (const item of textContent.items as any[]) {
+            line += item.str
+            if (item.hasEOL) {
+              lines.push(line)
+              line = ''
+            }
+          }
+          if (line) lines.push(line)
+          pages.push(lines.join('\n'))
+        }
+        const content = pages.join('\n\n').trim()
+        const note = await createNote({ title: baseName, content })
+        if (note) { notes.value.unshift(note); selectNote(note.id) }
+        QMessage.success('导入成功')
+        return
+      }
+
+      // HTML → 提取 body 纯文本
+      if (ext === 'html' || ext === 'htm') {
+        const doc = new DOMParser().parseFromString(raw, 'text/html')
+        const content = doc.body?.innerText?.trim() || raw
+        const note = await createNote({ title: baseName, content })
+        if (note) { notes.value.unshift(note); selectNote(note.id) }
+        QMessage.success('导入成功')
+        return
+      }
+
+      // JSON → 单条或数组
+      if (ext === 'json') {
+        let data = JSON.parse(raw)
+        if (!Array.isArray(data)) data = [data]
+        const created: Note[] = []
+        for (const item of data) {
+          const title = item.title || baseName
+          const content = item.content || ''
+          if (!content && !item.title) continue
+          const note = await createNote({ title, content })
+          if (note) created.push(note)
+        }
+        if (created.length) {
+          notes.value = [...created, ...notes.value]
+          selectNote(created[0].id)
+          QMessage.success(`成功导入 ${created.length} 篇笔记`)
+        } else {
+          QMessage.warning('未找到有效笔记数据')
+        }
+        return
+      }
+
+      // .md / .markdown / .txt / 其他 → 直接读文本
+      const note = await createNote({ title: baseName, content: raw })
+      if (note) {
+        notes.value.unshift(note)
+        selectNote(note.id)
+        QMessage.success('导入成功')
+      }
+    } catch (err) {
+      console.error('导入失败:', err)
+      QMessage.error('导入失败，请检查文件格式')
     }
   }
-  reader.readAsText(file)
+  // docx/pdf 需要 ArrayBuffer，其余用文本
+  if (ext === 'docx' || ext === 'pdf') {
+    reader.readAsArrayBuffer(file)
+  } else {
+    reader.readAsText(file)
+  }
   input.value = ''
 }
 
@@ -238,15 +464,22 @@ async function handleSave() {
   // 取消可能正在 pending 的自动保存，避免与手动保存重复请求
   autoSave.cancel()
   manualSaving.value = true
-  const ok = await updateNote(selectedNote.value.id, {
+  // 保存内容快照：保存期间用户若继续输入，草稿保留新内容，不清不丢
+  const snapshot = {
     title: selectedNote.value.title,
     content: selectedNote.value.content,
     tags: selectedNote.value.tags
-  })
+  }
+  const ok = await updateNote(selectedNote.value.id, snapshot)
   manualSaving.value = false
   if (ok) {
     // 同步状态：保存期间若有新编辑则保持 pending，否则置 saved
     autoSave.markManuallySaved()
+    // 仅当保存期间没有新编辑（内容与快照一致）才清理草稿与草稿标志
+    if (selectedNote.value.title === snapshot.title && selectedNote.value.content === snapshot.content) {
+      draft.clear(selectedNote.value.id)
+      draftSaved.value = false
+    }
     QMessage.success('保存成功')
   } else {
     QMessage.error(notesError.value || '保存失败')
@@ -311,6 +544,7 @@ async function handleDelete(id: number) {
     if (selectedNoteId.value === id) {
       autoSave.cancel()
     }
+    draft.clear(id)
     notes.value = notes.value.filter(n => n.id !== id)
     if (selectedNoteId.value === id) {
       selectedNoteId.value = null
@@ -320,10 +554,16 @@ async function handleDelete(id: number) {
   }
 }
 
+function handleVisibilityChange() {
+  if (document.visibilityState === 'hidden') void autoSave.flush()
+}
+
 onMounted(async () => {
   notes.value = await fetchNotes()
 
   document.addEventListener('keydown', handleKeydown)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener('beforeunload', handleVisibilityChange)
 })
 
 // 监听标题/正文变化触发自动保存；tags/summary 走独立接口，不纳入防抖源
@@ -335,6 +575,15 @@ watch(
       return
     }
     if (!val || !selectedNote.value) return
+    // localStorage 即时落盘：每次击键 <1ms，数据不丢失
+    draft.save(selectedNote.value.id, {
+      title: val[0],
+      content: val[1],
+      tags: selectedNote.value.tags || []
+    })
+    draftSaved.value = true
+    // 服务器同步走防抖，后台静默完成
+    autoSavedNoteId = selectedNote.value.id
     autoSave.schedule(selectedNote.value.id, {
       title: val[0],
       content: val[1],
@@ -343,13 +592,54 @@ watch(
   }
 )
 
+// 服务器同步成功 → 清理 localStorage 草稿 + 清除草稿标志
+watch(
+  () => autoSave.status.value,
+  (newStatus) => {
+    if (newStatus === 'saved' && autoSavedNoteId !== null) {
+      draft.clear(autoSavedNoteId)
+      autoSavedNoteId = null
+      draftSaved.value = false
+    }
+  }
+)
+
+/** 从 localStorage 恢复未同步的草稿 */
+function restoreDraft() {
+  if (!selectedNote.value) return
+  const cached = draft.load(selectedNote.value.id)
+  if (!cached) return
+  // 服务器内容不早于本地草稿（草稿已同步 / 已过期）：以服务器为准，丢弃草稿。
+  // 旧格式草稿无 savedAt，保守保留走内容比较；updated_at 缺失时视为无服务器版本，恢复草稿
+  const serverTime = selectedNote.value.updated_at ? new Date(selectedNote.value.updated_at).getTime() : 0
+  if (cached.savedAt !== undefined && cached.savedAt <= serverTime) {
+    draft.clear(selectedNote.value.id)
+    return
+  }
+  if (cached.content === selectedNote.value.content && cached.title === selectedNote.value.title) {
+    draft.clear(selectedNote.value.id)
+    return
+  }
+  skipNextAutoSave = true
+  selectedNote.value.title = cached.title
+  selectedNote.value.content = cached.content
+  if (cached.tags?.length) selectedNote.value.tags = cached.tags
+}
+
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('beforeunload', handleVisibilityChange)
   // 尝试保存未提交的改动；fire-and-forget，组件卸载不等候
   void autoSave.flush()
 })
 
 function handleKeydown(e: KeyboardEvent) {
+  // 快捷键帮助弹窗打开时不拦截
+  if (showShortcutsHelp.value) {
+    if (e.key === 'Escape') showShortcutsHelp.value = false
+    return
+  }
   if (e.key === 'Escape' && isFullscreen.value) {
     isFullscreen.value = false
     return
@@ -363,6 +653,18 @@ function handleKeydown(e: KeyboardEvent) {
     e.preventDefault()
     handleSave()
     return
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+    e.preventDefault()
+    handleCreate()
+    return
+  }
+  // ? 键打开快捷键帮助（排除在输入框/编辑器内的场景）
+  if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const el = e.target as HTMLElement
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.closest('.cm-editor') || el.isContentEditable) return
+    e.preventDefault()
+    showShortcutsHelp.value = true
   }
 }
 </script>
@@ -422,9 +724,9 @@ function handleKeydown(e: KeyboardEvent) {
   padding-right: 36px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-color);
-  background: var(--content-bg);
+  background: transparent;
   box-sizing: border-box;
   transition: all var(--transition-base);
 }
@@ -445,7 +747,7 @@ function handleKeydown(e: KeyboardEvent) {
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-secondary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
 }
 
 .notes-list {
@@ -498,9 +800,31 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 .empty-note p {
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   margin: 0;
   font-weight: var(--font-weight-medium);
+}
+
+.import-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 32px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-color);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.import-btn:hover {
+  background: var(--hover-color);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
 }
 
 @media (max-width: 768px) {
@@ -518,5 +842,105 @@ function handleKeydown(e: KeyboardEvent) {
   .note-main {
     padding: var(--spacing-4);
   }
+}
+
+/* 快捷键帮助弹窗（Teleport 到 body，需要 :global） */
+:global(.shortcuts-overlay) {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+:global(.shortcuts-modal) {
+  background: var(--card-bg, #fff);
+  border-radius: 12px;
+  width: 520px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+:global(.shortcuts-header) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+:global(.shortcuts-header h3) {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-color);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+:global(.shortcuts-close) {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:global(.shortcuts-close:hover) {
+  background: var(--hover-color);
+}
+
+:global(.shortcuts-body) {
+  padding: 16px 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+:global(.shortcuts-group h4) {
+  margin: 0 0 8px 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+:global(.shortcut-item) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+:global(.shortcut-desc) {
+  font-size: var(--font-size-xs);
+  color: var(--text-color);
+}
+
+:global(.shortcut-keys) {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--font-size-xxs);
+}
+
+:global(.shortcut-keys kbd) {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: var(--font-size-xxxs);
+  font-family: inherit;
+  color: var(--text-color);
+  background: var(--content-bg, #f5f5f5);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 var(--border-color);
 }
 </style>

@@ -152,33 +152,33 @@ onMounted(loadGraph)
 <style scoped>
 .ai-graph { position: relative; min-height: 320px; }
 .graph-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-color, #eee); }
-.graph-stats { display: flex; gap: 16px; font-size: 13px; color: var(--text-secondary, #666); }
-.btn { padding: 4px 12px; font-size: 13px; background: var(--card-bg, #f5f5f5); color: var(--text-color, #333); border: 1px solid var(--border-color, #ddd); border-radius: 6px; cursor: pointer; }
+.graph-stats { display: flex; gap: 16px; font-size: var(--font-size-xs); color: var(--text-secondary, #666); }
+.btn { padding: 4px 12px; font-size: var(--font-size-xs); background: var(--card-bg, #f5f5f5); color: var(--text-color, #333); border: 1px solid var(--border-color, #ddd); border-radius: 6px; cursor: pointer; }
 .btn:hover { background: var(--primary-color-alpha, rgba(99, 102, 241, 0.08)); }
 .graph-body { display: flex; align-items: stretch; }
 .graph-stage { flex: 1; min-width: 0; }
 .graph-canvas { height: 420px; position: relative; }
 .graph-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 320px; color: var(--text-secondary, #999); text-align: center; padding: 24px; }
 .graph-empty i { font-size: 36px; margin-bottom: 8px; color: var(--text-secondary, #bbb); }
-.graph-empty p { font-size: 13px; }
+.graph-empty p { font-size: var(--font-size-xs); }
 .loading-spinner { width: 32px; height: 32px; border: 3px solid #eee; border-top: 3px solid var(--primary-color); border-radius: 50%; animation: graphspin 0.8s linear infinite; }
 @keyframes graphspin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
 /* 右侧固定详情卡片（对齐分身影像图谱）；显式提升到拓扑画布之上，避免被图谱层级压住/数据重叠 */
 .node-detail { position: relative; z-index: 20; width: 240px; flex-shrink: 0; border-left: 1px solid var(--border-color, #eee); background: var(--card-bg, #fff); display: flex; flex-direction: column; max-height: 420px; }
 .node-detail-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border-color, #f0f0f0); }
-.node-detail-title { font-size: 14px; font-weight: 600; color: var(--text-color, #333); flex: 1; word-break: break-all; }
-.node-detail-close { border: none; background: transparent; color: var(--text-secondary, #999); cursor: pointer; padding: 2px 4px; font-size: 12px; }
+.node-detail-title { font-size: var(--font-size-sm); font-weight: 600; color: var(--text-color, #333); flex: 1; word-break: break-all; }
+.node-detail-close { border: none; background: transparent; color: var(--text-secondary, #999); cursor: pointer; padding: 2px 4px; font-size: var(--font-size-xxs); }
 .node-detail-close:hover { color: var(--text-color, #333); }
-.node-detail-meta { font-size: 12px; color: var(--text-secondary, #666); padding: 10px 14px 2px; }
+.node-detail-meta { font-size: var(--font-size-xxs); color: var(--text-secondary, #666); padding: 10px 14px 2px; }
 .node-detail-body { flex: 1; overflow-y: auto; padding: 0 14px 14px; }
-.node-detail-content { font-size: 12px; color: var(--text-secondary, #666); line-height: 1.5; word-break: break-all; margin-top: 4px; }
-.badge { font-size: 11px; padding: 1px 8px; border-radius: 10px; }
+.node-detail-content { font-size: var(--font-size-xxs); color: var(--text-secondary, #666); line-height: 1.5; word-break: break-all; margin-top: 4px; }
+.badge { font-size: var(--font-size-xxxs); padding: 1px 8px; border-radius: 10px; }
 .badge.knowledge { background: rgba(20, 184, 166, 0.12); color: #0d9488; }
 .badge.entity { background: rgba(22, 163, 74, 0.12); color: #15803d; }
 .source-list { list-style: none; margin: 6px 0 0; padding: 0; }
-.source-list li { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--primary-color, #6366f1); line-height: 1.5; padding: 4px 0; margin-bottom: 4px; border-bottom: 1px dashed var(--border-color, #eee); }
+.source-list li { display: flex; align-items: flex-start; gap: 6px; font-size: var(--font-size-xxs); color: var(--primary-color, #6366f1); line-height: 1.5; padding: 4px 0; margin-bottom: 4px; border-bottom: 1px dashed var(--border-color, #eee); }
 .source-list li i { margin-top: 2px; color: var(--text-secondary, #999); }
-.dim { font-size: 12px; color: var(--text-secondary, #999); padding: 10px 14px; }
+.dim { font-size: var(--font-size-xxs); color: var(--text-secondary, #999); padding: 10px 14px; }
 .slide-enter-active, .slide-leave-active { transition: max-width 0.18s ease, opacity 0.18s ease; }
 </style>

@@ -51,7 +51,7 @@ const buttonClass = computed(() => ({
   border-radius: 4px;
   cursor: pointer;
   color: var(--text-secondary, #666);
-  font-size: 16px;
+  font-size: var(--font-size-base);
   transition: all 0.2s ease;
 }
 
@@ -94,6 +94,6 @@ const buttonClass = computed(() => ({
 }
 
 .toolbar-btn-text {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 </style>

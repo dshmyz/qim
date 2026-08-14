@@ -36,8 +36,8 @@
           <p v-else>{{ memory.content }}</p>
         </div>
         <div class="memory-meta">
-          <span v-if="memory.metadata?.importance" class="memory-importance" :title="'重要度 ' + Math.round(Number(memory.metadata.importance)) + '/5'">
-            {{ '★'.repeat(Math.round(Number(memory.metadata.importance))) }}{{ '☆'.repeat(5 - Math.round(Number(memory.metadata.importance))) }}
+          <span v-if="memory.metadata?.importance" class="memory-importance" :title="'重要度 ' + clampImportance(memory.metadata.importance) + '/5'">
+            {{ '★'.repeat(clampImportance(memory.metadata.importance)) }}{{ '☆'.repeat(5 - clampImportance(memory.metadata.importance)) }}
           </span>
           <span class="memory-time">{{ formatTime(memory.metadata?.remembered_at) }}</span>
           <button class="forget-btn" @click="handleForgetMemory(memory)" title="删除记忆">
@@ -94,6 +94,12 @@ function debounce<T extends (...args: any[]) => any>(
       func(...args)
     }, wait)
   }
+}
+
+// 把 importance 值安全转为 0-5 整数，非数字/越界值降级为 0，防止 '★'.repeat(NaN) 崩溃
+function clampImportance(val: unknown): number {
+  const n = Math.round(Number(val))
+  return Number.isNaN(n) ? 0 : Math.max(0, Math.min(5, n))
 }
 
 interface MemoryRecord {
@@ -213,7 +219,7 @@ async function saveEdit(memory: MemoryRecord) {
       editingId.value = null
       window.$QMessage?.success('记忆已纠正')
     } else {
-      window.$QMessage?.error(data?.code ? '纠正失败' : '纠正失败')
+      window.$QMessage?.error(data?.code ? '服务器错误' : '纠正失败')
     }
   } catch (e) {
     console.error('纠正记忆失败', e)
@@ -241,7 +247,7 @@ onMounted(() => {
 
 .panel-header h4 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
 }
 
@@ -252,13 +258,13 @@ onMounted(() => {
 }
 
 .count-value {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--primary-color);
 }
 
 .count-label {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -274,7 +280,7 @@ onMounted(() => {
   border-radius: 8px;
   background: var(--bg-color);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .search-input:focus {
@@ -288,7 +294,7 @@ onMounted(() => {
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .memory-list {
@@ -308,7 +314,7 @@ onMounted(() => {
 
 .memory-content p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
   color: var(--text-color);
 }
@@ -323,11 +329,11 @@ onMounted(() => {
 .memory-importance {
   color: #f5a623;
   letter-spacing: 1px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 .memory-time {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -338,7 +344,7 @@ onMounted(() => {
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .forget-btn:hover {
@@ -353,7 +359,7 @@ onMounted(() => {
   border-radius: 6px;
   background: var(--bg-color);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-family: inherit;
   line-height: 1.5;
   resize: vertical;
@@ -370,7 +376,7 @@ onMounted(() => {
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -397,18 +403,18 @@ onMounted(() => {
 }
 
 .empty-state i {
-  font-size: 40px;
+  font-size: var(--font-size-4xl);
   margin-bottom: 8px;
   display: block;
 }
 
 .empty-state p {
   margin: 8px 0 4px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .empty-state small {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 

@@ -183,6 +183,7 @@ export interface Channel {
   subscriber_count?: number
   last_active_at?: number
   last_message?: ChannelMessage
+  message_count?: number
   unread_count?: number
   category?: string
 }

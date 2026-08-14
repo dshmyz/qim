@@ -209,14 +209,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 
 .merged-forward-record-header h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .merged-forward-record-breadcrumb {
   overflow: hidden;
   margin-bottom: 3px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -260,7 +260,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 }
 
 .merged-forward-record-item strong {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--primary-color, #1890ff);
 }
 
@@ -302,7 +302,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 .merged-forward-record-nested-limit {
   flex: 0 0 auto;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .merged-forward-record-nested-action {
@@ -322,7 +322,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 .merged-forward-record-time {
   margin: 5px 0 5px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 

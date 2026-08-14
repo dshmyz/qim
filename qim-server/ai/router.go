@@ -32,13 +32,21 @@ func (r *ModelRouter) SelectProvider(
 	if !ok {
 		route = r.routes[r.defaultTask]
 	}
+	// embedding 且无显式 embedding 路由时，会回退到 defaultTask（通常为 chat）路由，
+	// 此时 route.Model 是文本模型名，绝不能经 WithModel 塞给 embedding 端点（会把 gpt-4o
+	// 之类发送到 /embeddings 导致 400/404）。返回空模型让 Embed() 走 provider.Embedding()
+	// 使用 provider 自身配置的 embedding 模型。显式配置了 embedding 路由时不受影响。
+	routeModel := route.Model
+	if taskType == TaskTypeEmbedding && !ok {
+		routeModel = ""
+	}
 
 	for _, ov := range overrides {
 		if ov.TaskType == taskType && ov.Provider != "" {
 			if p, ok := pool[ov.Provider]; ok && p.IsConfigured() {
 				model := ov.Model
 				if model == "" {
-					model = route.Model
+					model = routeModel
 				}
 				return p, model, nil
 			}
@@ -67,7 +75,7 @@ func (r *ModelRouter) SelectProvider(
 			lastErr = fmt.Errorf("provider %s does not support embedding", name)
 			continue
 		}
-		return provider, route.Model, nil
+		return provider, routeModel, nil
 	}
 
 	// Fallback：显式配置的候选都不可用（或根本未配置路由）时，按 name 排序后
@@ -85,7 +93,7 @@ func (r *ModelRouter) SelectProvider(
 			if taskType == TaskTypeEmbedding && !provider.SupportsEmbedding() {
 				continue
 			}
-			return provider, route.Model, nil
+			return provider, routeModel, nil
 		}
 	}
 

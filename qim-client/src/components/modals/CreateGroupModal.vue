@@ -330,7 +330,7 @@ const createConversation = async () => {
 
 .user-profile-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-color, #1f2937);
 }
@@ -338,7 +338,7 @@ const createConversation = async () => {
 .user-profile-header .close-btn {
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   cursor: pointer;
   color: var(--text-secondary, #6b7280);
   padding: 0;
@@ -409,7 +409,7 @@ const createConversation = async () => {
 }
 
 .info-item label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color, #374151);
   display: flex;
@@ -420,7 +420,7 @@ const createConversation = async () => {
 .info-item label::after {
   content: '*';
   color: #ef4444;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 /* 讨论组名称标签不需要星号 */
@@ -435,7 +435,7 @@ const createConversation = async () => {
 
 /* 成员选择器的标签样式 */
 .member-selector-header label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color, #374151);
   display: flex;
@@ -446,11 +446,11 @@ const createConversation = async () => {
 .member-selector-header label::after {
   content: '*';
   color: #ef4444;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .selected-count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #6b7280);
   display: flex;
   align-items: center;
@@ -461,7 +461,7 @@ const createConversation = async () => {
   background: none;
   border: none;
   color: var(--primary-color, #3b82f6);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
@@ -478,7 +478,7 @@ const createConversation = async () => {
   padding: 0 12px;
   border: 1px solid var(--border-color, #d1d5db);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   box-sizing: border-box;
   background-color: var(--card-bg, #fff);
   color: var(--text-color, #1f2937);
@@ -492,7 +492,7 @@ const createConversation = async () => {
 
 .profile-input::placeholder {
   color: var(--text-secondary, #9ca3af);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 /* 搜索框样式 */
@@ -510,7 +510,7 @@ const createConversation = async () => {
   position: absolute;
   left: 12px;
   color: var(--text-secondary, #9ca3af);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .member-search-input {
@@ -518,7 +518,7 @@ const createConversation = async () => {
   padding: 9px 14px 9px 36px;
   border: 1px solid var(--border-color, #d1d5db);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   box-sizing: border-box;
   background-color: var(--card-bg, #fff);
   color: var(--text-color, #1f2937);
@@ -536,7 +536,7 @@ const createConversation = async () => {
   background: none;
   border: none;
   color: var(--text-secondary, #9ca3af);
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   cursor: pointer;
   width: 20px;
   height: 20px;
@@ -588,7 +588,7 @@ const createConversation = async () => {
 }
 
 .avatar-placeholder i {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .avatar-preview:hover .avatar-placeholder {
@@ -680,7 +680,7 @@ const createConversation = async () => {
 
 .member-name {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color, #374151);
   font-weight: 400;
   margin-bottom: 2px;
@@ -688,7 +688,7 @@ const createConversation = async () => {
 
 .member-position {
   display: block;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #6b7280);
 }
 
@@ -729,7 +729,7 @@ const createConversation = async () => {
 
 .empty-state p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 400;
 }
 
@@ -745,7 +745,7 @@ const createConversation = async () => {
   border: 1px solid var(--border-color, #d1d5db);
   border-radius: 6px;
   padding: 8px 16px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color, #374151);
   cursor: pointer;
 }
@@ -770,7 +770,7 @@ const createConversation = async () => {
 .save-btn {
   padding: 9px 18px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   border: 1px solid transparent;
@@ -833,7 +833,7 @@ const createConversation = async () => {
   }
   
   .user-profile-header h3 {
-    font-size: 18px;
+    font-size: var(--font-size-lg);
   }
   
   .user-profile-body {

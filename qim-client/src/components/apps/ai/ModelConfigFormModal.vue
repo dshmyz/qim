@@ -147,7 +147,7 @@ async function handleSubmit() {
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -161,7 +161,7 @@ async function handleSubmit() {
   background: var(--bg-color);
   color: var(--text-primary);
   box-sizing: border-box;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .form-group input:focus,
@@ -183,12 +183,12 @@ async function handleSubmit() {
   border: none;
   cursor: pointer;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .error-message {
   color: #d32f2f;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -208,7 +208,7 @@ async function handleSubmit() {
   padding: 10px 24px;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;

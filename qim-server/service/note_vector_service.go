@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -271,17 +272,18 @@ func (s *NoteVectorService) BuildNoteGraph(userID uint, maxNodes int) (*MemoryGr
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				joined := strings.Join(j.chunks, "\n")
-				if len(joined) > 2000 {
-					joined = joined[:2000]
+				// rune 切分（而非字节），避免从多字节字符中间截断产生非法 UTF-8
+				if runes := []rune(joined); len(runes) > 2000 {
+					joined = string(runes[:2000])
 				}
 				entStrs := extractNoteEntities(s.aiService, joined)
+				entStr := strings.Join(entStrs, ",")
+				// 缓存结果（含空结果），避免同笔记每次建图都重复调用 LLM 提取实体
+				cacheKey := fmt.Sprintf("%d:%s", userID, j.noteID)
+				s.entityCache.Store(cacheKey, entStr)
 				if len(entStrs) == 0 {
 					return
 				}
-				entStr := strings.Join(entStrs, ",")
-				// 写入 groupMap + 缓存
-				cacheKey := fmt.Sprintf("%d:%s", userID, j.noteID)
-				s.entityCache.Store(cacheKey, entStr)
 				mu.Lock()
 				if g, ok := groupMap[j.noteID]; ok {
 					g.entities = entStr
@@ -300,6 +302,8 @@ func (s *NoteVectorService) BuildNoteGraph(userID uint, maxNodes int) (*MemoryGr
 		}
 		notes = append(notes, noteItem{noteID: g.noteID, title: g.title, entities: entList})
 	}
+	// 按 noteID 排序保证确定性：map 迭代顺序随机，不排序则每次请求截取的节点子集不同
+	sort.Slice(notes, func(i, j int) bool { return notes[i].noteID < notes[j].noteID })
 	if len(notes) > maxNodes {
 		notes = notes[:maxNodes]
 	}

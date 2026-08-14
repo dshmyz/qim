@@ -285,6 +285,9 @@ func (p *OpenAIProvider) Embedding(text string) ([]float32, error) {
 	}
 
 	embeddingModel := p.config.Model
+	if p.config.EmbeddingModel != "" {
+		embeddingModel = p.config.EmbeddingModel
+	}
 
 	// embedding base URL：火山引擎等平台的 embedding 接口路径与 chat 不同
 	// （如 /api/v3/embeddings vs /api/plan/v3/chat/completions），通过配置显式指定。

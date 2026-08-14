@@ -99,7 +99,7 @@ onMounted(loadMyBots)
 }
 
 .loading i {
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   margin-right: 8px;
 }
 
@@ -123,7 +123,7 @@ onMounted(loadMyBots)
   background: var(--primary-color);
   color: white;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .bot-list-container {
@@ -144,7 +144,7 @@ onMounted(loadMyBots)
   background: var(--primary-color);
   color: white;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -204,7 +204,7 @@ onMounted(loadMyBots)
 .status-badge {
   padding: 4px 10px;
   border-radius: 12px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
 }
 
@@ -231,7 +231,7 @@ onMounted(loadMyBots)
 
 .bot-body p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   line-height: 1.4;
 }
@@ -239,7 +239,7 @@ onMounted(loadMyBots)
 .reject-reason {
   margin-top: 8px !important;
   color: #F44336 !important;
-  font-size: 12px !important;
+  font-size: var(--font-size-xxs) !important;
 }
 
 .bot-actions {
@@ -255,7 +255,7 @@ onMounted(loadMyBots)
   border-radius: 6px;
   background: var(--card-bg);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   display: flex;
   align-items: center;
   justify-content: center;

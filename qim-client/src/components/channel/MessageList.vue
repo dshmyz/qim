@@ -6,26 +6,14 @@
         <span class="message-count">{{ messages.length }} 条消息</span>
       </div>
       <div class="toolbar-right">
-        <div class="mode-toggle" role="group" aria-label="显示模式">
-          <button
-            class="mode-btn"
-            :class="{ active: mode === 'card' }"
-            @click="$emit('update:mode', 'card')"
-            :aria-pressed="mode === 'card'"
-            aria-label="卡片模式"
-          >
-            <i class="fas fa-th-large"></i>
-          </button>
-          <button
-            class="mode-btn"
-            :class="{ active: mode === 'timeline' }"
-            @click="$emit('update:mode', 'timeline')"
-            :aria-pressed="mode === 'timeline'"
-            aria-label="时间线模式"
-          >
-            <i class="fas fa-stream"></i>
-          </button>
-        </div>
+        <button
+          class="refresh-btn"
+          @click="$emit('refresh')"
+          aria-label="刷新消息"
+          title="刷新消息"
+        >
+          <i class="fas fa-sync-alt"></i>
+        </button>
         <div class="sort-toggle">
           <button
             class="sort-btn"
@@ -45,11 +33,11 @@
       v-else-if="!messages || messages.length === 0"
       icon="fa-comment-alt"
       title="暂无消息"
-      description="还没有任何消息，等待创建者发布第一条消息吧！"
+      :description="isCreator ? '发布第一条消息吧！' : '等待创建者发布第一条消息'"
     />
 
     <div v-else class="list-content">
-      <div v-if="mode === 'card'" class="card-grid">
+      <div class="card-grid">
         <MessageCard
           v-for="message in sortedMessages"
           :key="message.id"
@@ -64,13 +52,6 @@
           @copy-link="handleCopyLink"
         />
       </div>
-
-      <MessageTimeline
-        v-else
-        :messages="sortedMessages"
-        :creator-id="creatorId"
-        :interactive="interactive"
-      />
     </div>
   </div>
 </template>
@@ -80,16 +61,13 @@ import { computed, watch, nextTick } from 'vue'
 import LoadingSpinner from '../shared/LoadingSpinner.vue'
 import EmptyState from '../shared/EmptyState.vue'
 import MessageCard from './MessageCard.vue'
-import MessageTimeline from './MessageTimeline.vue'
 import type { ChannelMessage, Channel } from '../../types'
 
-type DisplayMode = 'card' | 'timeline'
 type SortOrder = 'asc' | 'desc'
 
 interface Props {
   messages: ChannelMessage[]
   channel?: Channel
-  mode?: DisplayMode
   isCreator?: boolean
   loading?: boolean
   sortOrder?: SortOrder
@@ -99,7 +77,6 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  mode: 'card',
   isCreator: false,
   loading: false,
   sortOrder: 'desc',
@@ -109,8 +86,8 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  'update:mode': [mode: DisplayMode]
   'update:sortOrder': [sortOrder: SortOrder]
+  refresh: []
   like: [message: ChannelMessage]
   unlike: [message: ChannelMessage]
   comment: [message: ChannelMessage]
@@ -205,13 +182,13 @@ const handleCopyLink = (message: ChannelMessage) => {
 
 .list-title {
   margin: 0;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--text-color);
 }
 
 .message-count {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   padding: 2px var(--spacing-2);
   background: var(--hover-color);
@@ -224,44 +201,6 @@ const handleCopyLink = (message: ChannelMessage) => {
   gap: var(--spacing-3);
 }
 
-.mode-toggle {
-  display: flex;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.mode-btn {
-  padding: var(--spacing-1) var(--spacing-3);
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mode-btn:not(:last-child) {
-  border-right: 1px solid var(--border-color);
-}
-
-.mode-btn:hover {
-  background: var(--hover-color);
-  color: var(--primary-color);
-}
-
-.mode-btn.active {
-  background: var(--primary-color);
-  color: white;
-}
-
-.mode-btn:focus {
-  outline: 2px solid var(--primary-color);
-  outline-offset: -2px;
-}
-
 .sort-btn {
   display: flex;
   align-items: center;
@@ -272,7 +211,7 @@ const handleCopyLink = (message: ChannelMessage) => {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   transition: all var(--transition-fast);
 }
 
@@ -283,6 +222,35 @@ const handleCopyLink = (message: ChannelMessage) => {
 }
 
 .sort-btn:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  transition: all 0.2s ease;
+}
+
+.refresh-btn:hover {
+  background: var(--hover-color);
+  color: var(--primary-color);
+}
+
+.refresh-btn:active {
+  transform: rotate(180deg);
+}
+
+.refresh-btn:focus {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }

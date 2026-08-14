@@ -81,7 +81,7 @@ function updatePosition() {
   color: #fff;
   padding: 5px 10px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   max-width: 400px;
   word-break: break-all;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);

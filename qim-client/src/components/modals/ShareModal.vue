@@ -211,22 +211,14 @@ const emit = defineEmits(['close', 'confirm'])
 
 const searchQuery = ref('')
 const activeTab = ref('conversations')
-const selectedUsers = ref<string[]>([])
 const selectedGroups = ref<string[]>([])
 const selectedConversations = ref<string[]>([])
 const selectedOrgMembers = ref<any[]>([])
 
-// OrgTreePicker 与 selectedUsers 双向同步
-watch(selectedOrgMembers, (members) => {
-  selectedUsers.value = members.map(m => String(m.id))
-}, { deep: true })
-
-watch(selectedUsers, (ids) => {
-  // 仅当外部清除时同步回 OrgTreePicker（如弹窗重置）
-  if (ids.length === 0 && selectedOrgMembers.value.length > 0) {
-    selectedOrgMembers.value = []
-  }
-})
+// selectedUsers 由 OrgTreePicker 选中项直接派生，消除双向 watch 冗余
+const selectedUsers = computed(() =>
+  selectedOrgMembers.value.map(m => String(m.id))
+)
 
 // ── 计算属性 ──
 const shareType = computed(() => props.share?.type || '')
@@ -285,15 +277,18 @@ const previewDesc = computed(() => {
 })
 
 // ── 常用联系人（从会话列表取最近单聊） ──
+// 会话排序：置顶优先 + 时间倒序（recentContacts / sortedConversations 共用）
+const compareConversation = (a: any, b: any) => {
+  if (a.is_pinned && !b.is_pinned) return -1
+  if (!a.is_pinned && b.is_pinned) return 1
+  return (b.timestamp || 0) - (a.timestamp || 0)
+}
+
 const recentContacts = computed(() => {
   if (!props.conversations || !Array.isArray(props.conversations)) return []
   return props.conversations
     .filter((c) => c.type === 'single' && !c.is_deleted)
-    .sort((a: any, b: any) => {
-      if (a.is_pinned && !b.is_pinned) return -1
-      if (!a.is_pinned && b.is_pinned) return 1
-      return (b.timestamp || 0) - (a.timestamp || 0)
-    })
+    .sort(compareConversation)
     .slice(0, 8)
     .map((c) => ({
       id: c.id,
@@ -309,23 +304,7 @@ const sortedConversations = computed(() => {
   if (!props.conversations || !Array.isArray(props.conversations)) return []
   return [...props.conversations]
     .filter((c) => !c.is_deleted)
-    .sort((a: any, b: any) => {
-      if (a.is_pinned && !b.is_pinned) return -1
-      if (!a.is_pinned && b.is_pinned) return 1
-      return (b.timestamp || 0) - (a.timestamp || 0)
-    })
-})
-
-// ── 搜索过滤 ──
-const filteredUsers = computed(() => {
-  if (!props.users || !Array.isArray(props.users)) return []
-  if (!searchQuery.value) return props.users
-  const query = searchQuery.value.toLowerCase()
-  return props.users.filter(user =>
-    user.name.toLowerCase().includes(query) ||
-    (user.username && user.username.toLowerCase().includes(query)) ||
-    (user.department && user.department.toLowerCase().includes(query))
-  )
+    .sort(compareConversation)
 })
 
 const filteredGroups = computed(() => {
@@ -357,15 +336,6 @@ const toggleContact = (contact: { id: string; type: string }) => {
 }
 
 const MAX_RECIPIENTS = 50
-
-const toggleUserSelection = (userId: string) => {
-  const index = selectedUsers.value.indexOf(userId)
-  if (index > -1) {
-    selectedUsers.value.splice(index, 1)
-  } else if (totalSelected.value < MAX_RECIPIENTS) {
-    selectedUsers.value.push(userId)
-  }
-}
 
 const toggleGroupSelection = (groupId: string) => {
   const index = selectedGroups.value.indexOf(groupId)
@@ -421,18 +391,21 @@ const confirm = () => {
     })
     .filter(id => id !== '')
 
+  // 去重：同一用户可能同时从组织树和单聊会话被选中，合并后去重避免重复发送
+  const allUserIds = [...selectedUsers.value, ...singleConvUserIds]
+  const uniqueUserIds = [...new Set(allUserIds)]
+
   emit('confirm', {
-    users: [...selectedUsers.value, ...singleConvUserIds],
+    users: uniqueUserIds,
     groups: selectedGroups.value
   })
 }
 
 watch(() => props.visible, (newVal) => {
   if (newVal) {
-    selectedUsers.value = []
     selectedGroups.value = []
     selectedConversations.value = []
-    selectedOrgMembers.value = []
+    selectedOrgMembers.value = [] // selectedUsers 是 computed，清 selectedOrgMembers 即可
     searchQuery.value = ''
     activeTab.value = 'conversations'
   }
@@ -460,7 +433,7 @@ watch(() => props.visible, (newVal) => {
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   flex-shrink: 0;
 }
 
@@ -485,13 +458,13 @@ watch(() => props.visible, (newVal) => {
 }
 
 .share-preview-title {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-color, #333);
 }
 
 .share-preview-desc {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
 }
 
@@ -506,7 +479,7 @@ watch(() => props.visible, (newVal) => {
   padding: 8px 32px 8px 12px;
   border: 1px solid var(--border-color, #d9d9d9);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: all 0.2s;
   background: var(--input-bg, #ffffff);
   color: var(--text-color, #333);
@@ -530,7 +503,7 @@ watch(() => props.visible, (newVal) => {
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-secondary, #999);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 /* ── 骨架屏 ── */
@@ -584,7 +557,7 @@ watch(() => props.visible, (newVal) => {
 }
 
 .share-recent-label {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
   margin-bottom: 8px;
 }
@@ -622,7 +595,7 @@ watch(() => props.visible, (newVal) => {
 }
 
 .share-recent-name {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-color, #333);
   max-width: 56px;
   overflow: hidden;
@@ -657,7 +630,7 @@ watch(() => props.visible, (newVal) => {
   padding: 8px 12px;
   background: none;
   border: none;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #666);
   cursor: pointer;
   transition: all 0.2s;
@@ -714,7 +687,7 @@ watch(() => props.visible, (newVal) => {
 }
 
 .share-item-name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-color, #333);
   white-space: nowrap;
@@ -726,12 +699,12 @@ watch(() => props.visible, (newVal) => {
 }
 
 .share-item-pin {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--primary-color, #1890ff);
 }
 
 .share-item-desc {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
   white-space: nowrap;
   overflow: hidden;
@@ -748,7 +721,7 @@ watch(() => props.visible, (newVal) => {
   align-items: center;
   justify-content: center;
   color: var(--primary-color, #1890ff);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   transition: all 0.2s;
   flex-shrink: 0;
 }
@@ -763,7 +736,7 @@ watch(() => props.visible, (newVal) => {
   text-align: center;
   padding: 40px 0;
   color: var(--text-secondary, #999);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 /* ── Footer ── */
@@ -773,7 +746,7 @@ watch(() => props.visible, (newVal) => {
   border-radius: 6px;
   background: var(--card-bg, white);
   color: var(--text-color, #333);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -789,7 +762,7 @@ watch(() => props.visible, (newVal) => {
   border-radius: 6px;
   background: var(--primary-color, #1890ff);
   color: white;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -830,20 +803,20 @@ watch(() => props.visible, (newVal) => {
 }
 
 .share-progress-text {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #999);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .share-selected-count {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #999);
   margin-right: auto;
 }
 
 .share-max-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #bbb);
   margin-right: auto;
 }

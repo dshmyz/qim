@@ -345,7 +345,7 @@ function removeKeyword(index: number) {
   align-items: center;
   padding: 4px 12px;
   border-radius: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 
@@ -357,7 +357,7 @@ function removeKeyword(index: number) {
 .btn-apply {
   padding: 4px 16px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   border: none;
@@ -388,7 +388,7 @@ function removeKeyword(index: number) {
   border-radius: 6px;
   background: var(--bg-color);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   transition: color 0.2s, border-color 0.2s, background-color 0.2s;
 }
@@ -411,7 +411,7 @@ function removeKeyword(index: number) {
 .setting-item > label {
   display: block;
   margin-bottom: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -422,14 +422,14 @@ function removeKeyword(index: number) {
 }
 
 .setting-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
 .setting-hint {
   display: block;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -447,7 +447,7 @@ function removeKeyword(index: number) {
   border-radius: 6px;
   background: var(--bg-color);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   box-sizing: border-box;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -467,7 +467,7 @@ function removeKeyword(index: number) {
   border-radius: 6px;
   background: var(--bg-color) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8.825L1.175 4 2.238 2.938 6 6.7l3.763-3.762L10.825 4z'/%3E%3C/svg%3E") no-repeat right 12px center;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   box-sizing: border-box;
   cursor: pointer;
   transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
@@ -498,12 +498,12 @@ function removeKeyword(index: number) {
 }
 
 .trigger-label {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
 .trigger-value {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
 }
@@ -533,7 +533,7 @@ function removeKeyword(index: number) {
   background: var(--primary-color-alpha, rgba(99, 102, 241, 0.1));
   color: var(--primary-color);
   border-radius: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   animation: tag-fade-in 0.15s ease;
 }
 
@@ -547,7 +547,7 @@ function removeKeyword(index: number) {
   border: none;
   color: var(--primary-color);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   padding: 0;
   width: 16px;
   height: 16px;

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/dshmyz/gracedb/pkg/gracedb"
+	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/stretchr/testify/assert"
@@ -286,4 +287,155 @@ func TestAvatarReplyGraph_MemoryRecallThreshold(t *testing.T) {
 	if got := g.memoryRecallThreshold(); got != 0.5 {
 		t.Errorf("注入阈值服务后应读回默认 0.5，got %v", got)
 	}
+}
+
+// capturingAvatarProvider 测试用 Provider 桩：在复用 fakeAvatarProvider 的默认回复基础上，
+// 捕获最近一次 Chat 收到的 ai.Message 列表，供断言多模态 ImageURL 是否透传给模型。
+type capturingAvatarProvider struct {
+	fakeAvatarProvider
+	lastMessages []ai.Message
+}
+
+var _ ai.Provider = (*capturingAvatarProvider)(nil)
+
+func (c *capturingAvatarProvider) Chat(messages []ai.Message) (string, error) {
+	c.lastMessages = messages
+	return c.reply, nil
+}
+
+// TestAvatarReplyGraph_ExecuteWithImageSources 验证分身图片触发消息走多模态生成：
+// 1) 生成的回复能经 fake provider 返回；2) 透传给模型的最后一条 user 消息携带图片 data URL。
+// 图片路径忽略知识范围外静默（能看图就回，看不了由 worker 跳过），此处用 out-of-scope 配置验证仍回复。
+func TestAvatarReplyGraph_ExecuteWithImageSources(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{
+		UserID:             1,
+		Enabled:            true,
+		Name:               "分身",
+		KnowledgeScopeJSON: `{}`, // 无知识来源，验证图片路径不被范围外静默挡住
+		ReplyStrategyJSON:  `{"replyOutOfScope":false}`,
+	}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	capProv := &capturingAvatarProvider{}
+	capProv.reply = "识别到图片：一只猫"             // 继承 fakeAvatarProvider.reply 字段
+	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	aiSvc.SetProviderForTesting("fake-avatar", capProv)
+
+	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
+	require.NoError(t, g.BuildGraph())
+
+	const dataURL = "data:image/png;base64,cccc"
+	reply, _, err := g.ExecuteWithImageSources(context.Background(), 1, 1, `{"id":1,"url":"/files/x.png"}`, dataURL, "cat.png", &cfg)
+	require.NoError(t, err)
+	assert.Equal(t, "识别到图片：一只猫", reply, "分身应返回多模态图片识别的回复")
+
+	// 取透传给模型的最后一条 user 消息，断言携带图片 data URL
+	var lastUser ai.Message
+	for _, m := range capProv.lastMessages {
+		if m.Role == "user" {
+			lastUser = m
+		}
+	}
+	assert.Equal(t, dataURL, lastUser.ImageURL, "分身图片路径应把 base64 data URL 作为 ImageURL 交给模型")
+	assert.Contains(t, lastUser.Content, "cat.png", "分身图片路径应提示模型识别该图片")
+}
+
+// TestExecuteWithImageSources_FailNoSilentFalse 图片生成失败时（模型不支持视觉/调用报错）应返回错误，
+// 由调用方（worker）按「尽力而为失败则跳过」降级，而非产出假回复。
+func TestExecuteWithImageSources_ModelError(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{UserID: 1, Enabled: true, Name: "分身"}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
+	require.NoError(t, g.BuildGraph())
+
+	_, _, err := g.ExecuteWithImageSources(context.Background(), 1, 1, `{"id":1}`, "data:image/png;base64,dddd", "x.png", &cfg)
+	// aiSvc 未配置 provider → GetCompletion 返回未配置错误，图片路径应如实上抛，由 worker 跳过
+	assert.Error(t, err, "模型不可用时应返回错误而非静默假回复")
+}
+
+// TestAvatarReplyGraph_ExecuteBatchWithImagesSources 验证分身「合并窗口连发一批消息」走批量多模态生成：
+// 1) 批内多条文本按序拼入 prompt；2) 批内多张图片全部作为 data URL 注入（ai.Message.ImageURLs）；
+// 3) 生成回复能经 fake provider 返回。批内无文本（全图）时也应正常生成。
+func TestAvatarReplyGraph_ExecuteBatchWithImagesSources(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{
+		UserID:             1,
+		Enabled:            true,
+		Name:               "分身",
+		KnowledgeScopeJSON: `{}`, // 无知识来源，验证批量路径不被范围外静默挡住
+		ReplyStrategyJSON:  `{"replyOutOfScope":false}`,
+	}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	capProv := &capturingAvatarProvider{}
+	capProv.reply = "识别到两张图：猫和狗"
+	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	aiSvc.SetProviderForTesting("fake-avatar", capProv)
+
+	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
+	require.NoError(t, g.BuildGraph())
+
+	const img1 = "data:image/png;base64,aaa"
+	const img2 = "data:image/png;base64,bbb"
+	reply, _, err := g.ExecuteBatchWithImagesSources(
+		context.Background(), 1, 1,
+		[]string{"第一句", "第二句"}, []string{img1, img2}, []string{"猫.png", "狗.png"},
+		&cfg,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "识别到两张图：猫和狗", reply, "分身批量路径应返回多模态合并回复")
+
+	// 取透传给模型的最后一条 user 消息，断言携带两张图片及全部批内文本
+	var lastUser ai.Message
+	for _, m := range capProv.lastMessages {
+		if m.Role == "user" {
+			lastUser = m
+		}
+	}
+	assert.Len(t, lastUser.ImageURLs, 2, "批量路径应把多张图作为 ImageURLs 交给模型")
+	assert.Equal(t, []string{img1, img2}, lastUser.ImageURLs, "多图应按序透传")
+	assert.Equal(t, img1, lastUser.ImageURL, "多图时首图仍回填 ImageURL（向后兼容）")
+	assert.Contains(t, lastUser.Content, "第一句", "批内第一条文本应进入 prompt")
+	assert.Contains(t, lastUser.Content, "第二句", "批内第二条文本应进入 prompt")
+
+	// 批内全为图片（无文本）：占位提示 + 图片注入，仍应正常生成
+	capProv.reply = "看图回复"
+	reply2, _, err2 := g.ExecuteBatchWithImagesSources(
+		context.Background(), 1, 1,
+		[]string{"对方发来了一张/多张图片，请识别其内容并结合对话回复。"}, []string{img1}, []string{"猫.png"},
+		&cfg,
+	)
+	require.NoError(t, err2)
+	assert.Equal(t, "看图回复", reply2, "批内全图也应走多模态生成")
+}
+
+// TestAvatarReplyGraph_ExecuteBatch_ModelError 批量多模态生成模型不可用时应返回错误（由 worker
+// 按「尽力而为失败则跳过」整批跳过），而非静默产出假回复。
+func TestAvatarReplyGraph_ExecuteBatch_ModelError(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{UserID: 1, Enabled: true, Name: "分身"}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	aiSvc := ai.NewAIService(&ai.AIConfig{}) // 未配置 provider → GetCompletion 报错
+	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
+	require.NoError(t, g.BuildGraph())
+
+	_, _, err := g.ExecuteBatchWithImagesSources(
+		context.Background(), 1, 1,
+		[]string{"第一句"}, []string{"data:image/png;base64,aaa"}, []string{"x.png"},
+		&cfg,
+	)
+	assert.Error(t, err, "批量多模态模型不可用时应返回错误")
 }

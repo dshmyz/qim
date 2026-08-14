@@ -304,6 +304,7 @@ const pageSize = 20
 const jumpToPage = ref(1)
 const showImagePreview = ref(false)
 const previewImageUrl = ref('')
+const previewImageDownloadUrl = ref('')
 const previewImageFilename = ref('image.png')
 
 const getMessageDisplay = (message: any) => resolveMessageDisplay(message)
@@ -489,6 +490,25 @@ const resolveMediaUrl = (message: any): string => {
   return mediaUrl
 }
 
+// 下载走 /api/v1/files/{id}/download（带 Content-Length，主进程能算真百分比）；
+// 展示（img src）仍用 resolveMediaUrl（/static/uploads 无鉴权，浏览器可直载）。
+const resolveDownloadUrl = (message: any): string => {
+  const serverUrl = getStoredServerUrl()
+  const fileId = parseContentId(typeof message?.content === 'string' ? message.content : '')
+  if (fileId > 0) return `${serverUrl.replace(/\/$/, '')}/api/v1/files/${fileId}/download`
+  const mediaUrl = resolveMediaUrl(message)
+  return mediaUrl
+}
+
+const parseContentId = (content: string): number => {
+  try {
+    const n = Number(JSON.parse(content)?.id)
+    return Number.isFinite(n) ? n : 0
+  } catch {
+    return 0
+  }
+}
+
 const downloadMedia = async (url: string, filename: string, successMessage: string, errorMessage: string) => {
   if (!url) {
     QMessage.error(errorMessage)
@@ -509,12 +529,13 @@ const downloadMedia = async (url: string, filename: string, successMessage: stri
 
 // 下载文件
 const downloadFile = async (message: any) => {
-  await downloadMedia(resolveMediaUrl(message), getFileName(message), '文件下载已开始', '文件下载失败')
+  await downloadMedia(resolveDownloadUrl(message), getFileName(message), '文件下载已开始', '文件下载失败')
 }
 
 // 预览图片
 const previewImage = (message: any) => {
   previewImageUrl.value = resolveMediaUrl(message)
+  previewImageDownloadUrl.value = resolveDownloadUrl(message)
   previewImageFilename.value = getFileName(message) || 'image.png'
   showImagePreview.value = true
 }
@@ -523,6 +544,7 @@ const previewImage = (message: any) => {
 const closeImagePreview = () => {
   showImagePreview.value = false
   previewImageUrl.value = ''
+  previewImageDownloadUrl.value = ''
   previewImageFilename.value = 'image.png'
 }
 
@@ -542,8 +564,9 @@ const handleMediaClick = (message: any, event: MouseEvent) => {
 
 // 下载图片
 const downloadImage = async () => {
-  if (!previewImageUrl.value) return
-  await downloadMedia(previewImageUrl.value, previewImageFilename.value, '图片下载已开始', '图片下载失败')
+  const url = previewImageDownloadUrl.value || previewImageUrl.value
+  if (!url) return
+  await downloadMedia(url, previewImageFilename.value, '图片下载已开始', '图片下载失败')
 }
 
 // 获取文件名
@@ -741,7 +764,7 @@ onMounted(() => {
   background: linear-gradient(135deg, #3385ff, #6366f1);
   border-radius: 10px;
   color: #fff;
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .header-left h3 {
@@ -762,7 +785,7 @@ onMounted(() => {
   border-radius: 10px;
   color: var(--text-secondary, #9ca3af);
   cursor: pointer;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   transition: all 0.15s;
 }
 
@@ -800,7 +823,7 @@ onMounted(() => {
   position: absolute;
   left: 14px;
   color: var(--text-secondary, #9ca3af);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   pointer-events: none;
 }
 
@@ -811,7 +834,7 @@ onMounted(() => {
   border-radius: 10px;
   background: var(--input-bg, #f9fafb);
   color: var(--text-color, #1a1a2e);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: all 0.2s;
 }
 
@@ -835,7 +858,7 @@ onMounted(() => {
   border-radius: 50%;
   color: var(--text-secondary, #9ca3af);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .search-clear:hover {
@@ -848,7 +871,7 @@ onMounted(() => {
   border-radius: 10px;
   background: linear-gradient(135deg, #3385ff, #4f46e5);
   color: #fff;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -878,7 +901,7 @@ onMounted(() => {
 }
 
 .filter-group label {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 600;
   color: var(--text-secondary, #9ca3af);
   text-transform: uppercase;
@@ -891,7 +914,7 @@ onMounted(() => {
   border-radius: 8px;
   background: var(--input-bg, #f9fafb);
   color: var(--text-color, #1a1a2e);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   transition: all 0.2s;
   appearance: none;
@@ -919,7 +942,7 @@ onMounted(() => {
   border-radius: 8px;
   background: var(--input-bg, #f9fafb);
   color: var(--text-color, #1a1a2e);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   flex: 1;
 }
 
@@ -929,7 +952,7 @@ onMounted(() => {
 }
 
 .date-range-separator {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #9ca3af);
 }
 
@@ -949,7 +972,7 @@ onMounted(() => {
   padding: 48px 20px;
   text-align: center;
   color: var(--text-secondary, #9ca3af);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .message-manager-item {
@@ -986,7 +1009,7 @@ onMounted(() => {
 .message-sender {
   font-weight: 600;
   color: var(--text-color, #1a1a2e);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -995,13 +1018,13 @@ onMounted(() => {
 }
 
 .message-time {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #9ca3af);
   flex-shrink: 0;
 }
 
 .message-type {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
   padding: 3px 8px;
   border-radius: 6px;
@@ -1013,7 +1036,7 @@ onMounted(() => {
   color: #3385ff;
 }
 
-.message-type i { font-size: 10px; }
+.message-type i { font-size: var(--font-size-tiny); }
 
 .message-type-recalled {
   background: #f3f4f6;
@@ -1021,7 +1044,7 @@ onMounted(() => {
 }
 
 .message-manager-item-content {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #6b7280);
   line-height: 1.5;
   overflow: hidden;
@@ -1089,7 +1112,7 @@ onMounted(() => {
 
 .message-file-link i {
   color: #3385ff;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .mini-app-info, .share-info, .news-info {
@@ -1107,21 +1130,21 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   color: #3385ff;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   flex-shrink: 0;
 }
 
 .mini-app-name, .share-title, .news-title {
   font-weight: 500;
   color: var(--text-color, #1a1a2e);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .mini-app-description, .share-description, .news-description {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #9ca3af);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1139,7 +1162,7 @@ onMounted(() => {
 }
 
 .pagination-info {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #9ca3af);
 }
 
@@ -1162,7 +1185,7 @@ onMounted(() => {
   border-radius: 6px;
   background: var(--input-bg, #f9fafb);
   color: var(--text-color, #1a1a2e);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   text-align: center;
 }
 
@@ -1175,7 +1198,7 @@ onMounted(() => {
   padding: 7px 14px;
   border: 1.5px solid var(--border-color, #e5e7eb);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   background: #fff;
   color: var(--text-color, #1a1a2e);
   cursor: pointer;
@@ -1200,7 +1223,7 @@ onMounted(() => {
   border-radius: 8px;
   background: #3385ff;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
@@ -1234,7 +1257,7 @@ onMounted(() => {
   background: rgba(255,255,255,0.1);
   border: none;
   color: #fff;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   width: 36px;
   height: 36px;
   display: flex;
@@ -1268,7 +1291,7 @@ onMounted(() => {
   border-radius: 10px;
   background: linear-gradient(135deg, #3385ff, #4f46e5);
   color: #fff;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   display: flex;

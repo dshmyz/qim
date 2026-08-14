@@ -112,7 +112,7 @@ defineEmits<{
 }
 
 .avatar i {
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   color: var(--primary-color);
 }
 
@@ -131,7 +131,7 @@ defineEmits<{
 .status-badge {
   padding: 2px 8px;
   border-radius: 12px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
 }
 
@@ -162,7 +162,7 @@ defineEmits<{
 
 .info p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -189,7 +189,7 @@ defineEmits<{
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: all 0.2s;
 }
 
@@ -208,12 +208,12 @@ defineEmits<{
 }
 
 .loading-container i {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   color: var(--primary-color);
 }
 
 .loading-container span {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 </style>

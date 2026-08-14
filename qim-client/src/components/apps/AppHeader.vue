@@ -36,7 +36,7 @@ defineEmits<{
   justify-content: space-between;
   align-items: center;
   padding: 0 16px;
-  background-color: var(--card-bg);
+  background-color: var(--sidebar-bg);
   height: 56px;
   box-sizing: border-box;
 }
@@ -57,7 +57,7 @@ defineEmits<{
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: background 0.2s;
   color: var(--primary-color);
 }
@@ -76,7 +76,7 @@ defineEmits<{
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: background 0.2s;
   color: var(--primary-color);
 }
@@ -92,7 +92,7 @@ defineEmits<{
 }
 
 .header-info h2 {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color);
   margin: 0;
@@ -103,13 +103,13 @@ defineEmits<{
 
 .header-info :deep(.header-description) {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
 .header-icon {
   color: var(--primary-color);
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .header-right {
@@ -128,7 +128,7 @@ defineEmits<{
   padding: 8px 12px 8px 36px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   background-color: var(--bg-color);
   color: var(--text-primary);
   transition: all 0.3s ease;
@@ -146,7 +146,7 @@ defineEmits<{
   position: absolute;
   left: 12px;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: color 0.3s ease;
 }
 
@@ -168,7 +168,7 @@ defineEmits<{
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -200,7 +200,7 @@ defineEmits<{
   border-radius: 6px;
   cursor: pointer;
   color: var(--text-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   transition: all 0.2s ease;
 }

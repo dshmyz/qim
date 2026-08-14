@@ -25,7 +25,7 @@
       </div>
 
       <div class="card-content">
-        <div ref="contentRef" class="content-text" v-html="renderedContent"></div>
+        <div ref="contentRef" class="content-text" v-html="renderedContent" @click="handleLinkClick"></div>
       </div>
 
       <div v-if="interactive" class="card-actions">
@@ -39,20 +39,20 @@
           <i :class="isLiked ? 'fas fa-heart' : 'far fa-heart'"></i>
           <span>{{ likeCount > 0 ? likeCount : '点赞' }}</span>
         </button>
-        <button 
+        <button
           v-if="canComment"
-          class="action-btn" 
-          @click="toggleCommentInput" 
+          class="action-btn"
+          @click="toggleCommentInput"
           :class="{ active: showCommentInput }"
           aria-label="评论"
         >
           <i class="far fa-comment"></i>
           <span>{{ comments.length > 0 ? comments.length : '评论' }}</span>
         </button>
-      </div>
-      <div v-else-if="interactive && !canComment" class="card-actions-locked">
-        <i class="fas fa-lock"></i>
-        <span>评论已关闭</span>
+        <div v-else class="comment-locked-inline">
+          <i class="fas fa-lock"></i>
+          <span>评论已关闭</span>
+        </div>
       </div>
       <div v-else class="card-actions-locked">
         <i class="fas fa-lock"></i>
@@ -76,7 +76,7 @@
             />
             <div class="comment-content">
               <span class="comment-author">{{ getDisplayName(comment.user) }}</span>
-              <span class="comment-text" v-html="renderComment(comment.content)"></span>
+              <span class="comment-text" v-html="renderComment(comment.content)" @click="handleLinkClick"></span>
               <span class="comment-time">{{ formatTime(comment.created_at) }}</span>
             </div>
           </div>
@@ -115,6 +115,7 @@ import { getDisplayName } from '../../utils/avatar'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { useCodeHighlight } from '../../composables/useCodeHighlight'
+import { handleLinkClick } from '../../composables/useMarkdownRender'
 import { request } from '../../composables/useRequest'
 import { renderChannelMarkdown } from '../../utils/channelMarkdown'
 import type { ChannelMessage, Channel } from '../../types'
@@ -361,7 +362,7 @@ const submitComment = async () => {
 }
 
 .author-name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-color);
   display: flex;
@@ -373,7 +374,7 @@ const submitComment = async () => {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 1px 6px;
   background: linear-gradient(135deg, var(--primary-color), #6366f1);
   color: white;
@@ -386,7 +387,7 @@ const submitComment = async () => {
 }
 
 .author-time {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -396,7 +397,7 @@ const submitComment = async () => {
 
 .content-text {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   line-height: 1.7;
   word-break: break-word;
@@ -456,7 +457,7 @@ const submitComment = async () => {
   padding: 12px;
   border-radius: 6px;
   overflow-x: auto;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
   margin: 0.5em 0;
 }
@@ -511,7 +512,7 @@ const submitComment = async () => {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   border-radius: 6px;
   transition: all 0.15s;
 }
@@ -527,7 +528,7 @@ const submitComment = async () => {
 }
 
 .action-btn i {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .like-btn.active {
@@ -546,13 +547,24 @@ const submitComment = async () => {
   gap: 6px;
   padding-top: 12px;
   border-top: 1px dashed var(--border-color);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   opacity: 0.5;
 }
 
+.comment-locked-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary);
+  opacity: 0.4;
+  margin-left: auto;
+  padding: 5px 12px;
+}
+
 .card-actions-locked i {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 .message-card.has-comments {
@@ -598,14 +610,14 @@ const submitComment = async () => {
 }
 
 .comment-author {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   color: var(--text-color);
   margin-right: 8px;
 }
 
 .comment-text {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
   line-height: 1.5;
   display: block;
@@ -633,7 +645,7 @@ const submitComment = async () => {
 }
 
 .comment-time {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   margin-top: 4px;
   display: block;
@@ -652,7 +664,7 @@ const submitComment = async () => {
   border: none;
   background: transparent;
   resize: none;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
   line-height: 1.5;
   box-sizing: border-box;
@@ -674,7 +686,7 @@ const submitComment = async () => {
 }
 
 .comment-hint {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
 }
 
@@ -702,6 +714,6 @@ const submitComment = async () => {
 }
 
 .comment-submit-btn i {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 </style>

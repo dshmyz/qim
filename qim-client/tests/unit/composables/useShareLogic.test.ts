@@ -53,7 +53,9 @@ const createShareLogic = () => {
 describe('useShareLogic - loadShareUsersAndGroups', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.clearAllMocks()
+    // clearAllMocks 不清未消费的 mockResolvedValueOnce 队列，须用 resetAllMocks
+    vi.resetAllMocks()
+    createShareLogic().invalidateShareCache()
   })
 
   it('loads group conversations from paginated conversation response data', async () => {
@@ -128,7 +130,9 @@ describe('useShareLogic - loadShareUsersAndGroups', () => {
 describe('useShareLogic - message forwarding', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.clearAllMocks()
+    // clearAllMocks 不清未消费的 mockResolvedValueOnce 队列，须用 resetAllMocks
+    vi.resetAllMocks()
+    createShareLogic().invalidateShareCache()
   })
 
   it('sends one merged forward message for multiple source messages', async () => {

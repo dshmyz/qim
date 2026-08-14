@@ -371,10 +371,9 @@ export function useUI() {
     selectedUser.value = user
   }
 
-  // 关闭用户资料
+  // 关闭用户资料（不清理 selectedUser，避免组织架构面板连带消失）
   const closeUserProfile = () => {
     showUserProfile.value = false
-    selectedUser.value = null
   }
 
   // ========== 创建会话模态框操作 ==========

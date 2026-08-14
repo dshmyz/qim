@@ -63,7 +63,7 @@ const remainingText = computed(() => {
   padding: 8px 16px;
   background: #FFF8E1;
   border-bottom: 1px solid rgba(255, 152, 0, 0.2);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .banner-content {
@@ -89,7 +89,7 @@ const remainingText = computed(() => {
 .banner-btn {
   padding: 4px 12px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   border: none;
   transition: opacity 0.2s;

@@ -124,7 +124,7 @@ const visibleMessages = computed(() => {
   display: grid;
   gap: 2px;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
 }
 
@@ -143,7 +143,7 @@ const visibleMessages = computed(() => {
 
 .merged-forward-more {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .merged-forward-expand {
@@ -156,7 +156,7 @@ const visibleMessages = computed(() => {
   color: var(--primary-color);
   background: transparent;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   transition: background 0.16s ease;
 }
 

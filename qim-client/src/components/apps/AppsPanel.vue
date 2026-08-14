@@ -2,11 +2,6 @@
   <div class="right-content">
     <div class="panel-header">
       <div class="header-left-group">
-        <ToggleSidebarBtn
-          icon="fas fa-compress"
-          title="收起侧边栏"
-          @click="$emit('toggleSidebar')"
-        />
         <h2>{{ pageTitle }}</h2>
       </div>
     </div>
@@ -63,15 +58,14 @@
           <div
             v-for="app in quickTools"
             :key="app.id"
-            :class="['quick-tool-item', { 'quick-tool-highlight': app.id === 'short_link' }]"
+            class="quick-tool-item"
             @click="$emit('openApp', app.id)"
           >
             <div class="quick-tool-icon"><i :class="app.icon"></i></div>
             <div class="quick-tool-info">
               <span class="quick-tool-name">{{ app.name }}</span>
-              <span class="quick-tool-desc">{{ app.description || '快速访问' }}</span>
+              <span v-if="app.description" class="quick-tool-desc">{{ app.description }}</span>
             </div>
-            <div v-if="app.id === 'short_link'" class="quick-tool-badge">快速工具</div>
           </div>
         </div>
       </div>
@@ -101,7 +95,6 @@
 </template>
 
 <script setup lang="ts">
-import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 
 interface App {
   id: string
@@ -122,7 +115,6 @@ interface Props {
 defineProps<Props>()
 
 defineEmits<{
-  'toggleSidebar': []
   'openApp': [appId: string]
 }>()
 </script>
@@ -150,7 +142,7 @@ defineEmits<{
 
 .panel-header h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color, #333);
 }
@@ -182,7 +174,7 @@ defineEmits<{
 
 .section-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--text-color, #333);
 }
 
@@ -190,7 +182,7 @@ defineEmits<{
   padding: 2px 8px;
   background: var(--primary-color, #409eff);
   color: white;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   border-radius: 10px;
 }
 
@@ -221,13 +213,13 @@ defineEmits<{
 }
 
 .main-app-icon {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   margin-bottom: 8px;
   color: var(--primary-color, #409eff);
 }
 
 .main-app-name {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   text-align: center;
   color: var(--text-color, #333);
 }
@@ -259,29 +251,6 @@ defineEmits<{
   box-shadow: 0 4px 12px var(--shadow-color, rgba(0, 0, 0, 0.15));
 }
 
-/* 短链接管理突出显示样式 */
-.quick-tool-highlight {
-  background: var(--card-bg, #fff) !important;
-  border: 2px solid var(--primary-color, #409eff) !important;
-}
-
-.quick-tool-highlight:hover {
-  background: var(--hover-color, #f5f5f5) !important;
-  border-color: var(--active-color, #66b1ff) !important;
-}
-
-.quick-tool-icon {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--primary-color, #409eff);
-  border-radius: 10px;
-  color: white;
-  font-size: 18px;
-}
-
 .quick-tool-info {
   display: flex;
   flex-direction: column;
@@ -290,27 +259,16 @@ defineEmits<{
 }
 
 .quick-tool-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color, #333);
 }
 
 .quick-tool-desc {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
 }
 
-.quick-tool-badge {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  padding: 2px 8px;
-  background: var(--primary-color, #409eff);
-  color: white;
-  font-size: 10px;
-  border-radius: 8px;
-  font-weight: 500;
-}
 
 /* 自定义应用样式 */
 .custom-apps-section {
@@ -343,19 +301,19 @@ defineEmits<{
 }
 
 .custom-app-icon {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   margin-bottom: 8px;
   color: var(--primary-color, #409eff);
 }
 
 .custom-app-name {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   text-align: center;
   color: var(--text-color, #333);
 }
 
 .custom-app-url {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   text-align: center;
   color: var(--text-secondary, #999);
   overflow: hidden;
@@ -392,13 +350,13 @@ defineEmits<{
 }
 
 .system-app-icon {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   margin-bottom: 8px;
   color: var(--text-secondary, #999);
 }
 
 .system-app-name {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   text-align: center;
   color: var(--text-color, #333);
 }

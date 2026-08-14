@@ -292,7 +292,7 @@ const handleToggle = () => {
 /* 空文件夹提示 */
 .folder-empty {
   padding: 6px 0 6px 36px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   opacity: 0.6;
 }

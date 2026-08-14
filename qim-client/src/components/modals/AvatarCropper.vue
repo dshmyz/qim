@@ -384,7 +384,7 @@ watch([zoom, rotation, panX, panY], () => {
 
 .cropper-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-color, #111827);
 }
@@ -431,7 +431,7 @@ watch([zoom, rotation, panX, panY], () => {
 }
 
 .preview-label {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-secondary, #6b7280);
   margin-bottom: 12px;
@@ -457,7 +457,7 @@ watch([zoom, rotation, panX, panY], () => {
 }
 
 .preview-size-label {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #6b7280);
 }
 
@@ -475,7 +475,7 @@ watch([zoom, rotation, panX, panY], () => {
 }
 
 .control-label {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-secondary, #6b7280);
 }
@@ -500,7 +500,7 @@ watch([zoom, rotation, panX, panY], () => {
 }
 
 .control-value {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #6b7280);
   min-width: 40px;
   text-align: center;
@@ -542,7 +542,7 @@ watch([zoom, rotation, panX, panY], () => {
   padding: 10px 24px;
   border: none;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;

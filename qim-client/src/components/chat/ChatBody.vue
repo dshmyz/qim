@@ -14,6 +14,8 @@
       :selected-message-ids="selectedMessageIds"
       @message-contextmenu="(e, m) => emit('message-contextmenu', e, m)"
       @show-user-profile="(u) => emit('show-user-profile', u)"
+      @quick-mention="(u, e) => emit('quick-mention', u, e)"
+      @mention-user="(u) => emit('mention-user', u)"
       @scroll-to-quoted-message="(id) => emit('scroll-to-quoted-message', id)"
       @download-file="(d, id) => emit('download-file', d, id)"
       @save-as="(d, id) => emit('save-as', d, id)"
@@ -57,6 +59,15 @@ interface Member {
   name: string
   avatar: string
   role?: 'owner' | 'admin' | 'member'
+  type?: string
+  position?: string
+  department?: string
+  status?: string
+  signature?: string
+  ip?: string
+  username?: string
+  nickname?: string
+  user?: Record<string, any>
 }
 
 /** 消息已读信息 */
@@ -85,6 +96,8 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   'message-contextmenu': [event: MouseEvent, message: Message]
   'show-user-profile': [user: User]
+  'quick-mention': [user: any, event: MouseEvent]
+  'mention-user': [user: any]
   'scroll': []
   'scroll-to-quoted-message': [id: string]
   'download-file': [data: string, id?: string]
@@ -116,14 +129,22 @@ const showMemberSidebar = computed(() => {
   return props.conversation?.type === 'group' || props.conversation?.type === 'discussion'
 })
 
-/** 将 User[] 映射为 Member[]，适配 MemberSidebar 的类型要求 */
+/** 将 User[] 映射为 Member[]，适配 MemberSidebar 的类型要求（保留名片展示所需字段） */
 const sidebarMembers = computed<Member[]>(() => {
   return (props.conversation?.members || []).map(user => ({
     id: user.id,
     name: user.name,
     avatar: getAvatarUrl(user.avatar, user.name || '用户', props.serverUrl),
     role: user.role as Member['role'] ?? 'member',
-    type: (user as any).type
+    type: (user as any).type,
+    position: (user as any).position || '',
+    department: (user as any).department || '',
+    status: user.status,
+    signature: user.signature,
+    ip: user.ip,
+    username: user.username,
+    nickname: user.nickname,
+    user: user as Record<string, any>
   }))
 })
 

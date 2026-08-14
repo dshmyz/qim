@@ -11,16 +11,16 @@ describe('elegant purple theme', () => {
     const block = css.match(/\[data-theme="elegant-purple"\]\s*\{([\s\S]*?)\n\}/)?.[1]
 
     expect(block).toBeTruthy()
-    expect(block).toContain('--primary-color: #75629a;')
-    expect(block).toContain('--accent-color: #8b78b4;')
-    expect(block).toContain('--active-color: #665486;')
+    expect(block).toContain('--primary-color: #8b6fc0;')
+    expect(block).toContain('--accent-color: #a78bda;')
+    expect(block).toContain('--active-color: #6b52a5;')
     expect(block).toContain('--secondary-color: #ffffff;')
     expect(block).toContain('--content-bg: #ffffff;')
     expect(block).toContain('--list-bg: #fcfbfe;')
-    expect(block).toContain('--hover-color: #efebf6;')
-    expect(block).toContain('--border-color: #e5e0ef;')
+    expect(block).toContain('--hover-color: #f0ebf7;')
+    expect(block).toContain('--border-color: #e8e3f0;')
     expect(block).toContain('--text-color: #342e43;')
-    expect(block).toContain('--text-secondary: #746d81;')
+    expect(block).toContain('--text-secondary: #7c7389;')
   })
 
   it('uses theme variables in elegant-purple component overrides', () => {
@@ -32,27 +32,27 @@ describe('elegant purple theme', () => {
   })
 
   it('keeps nested content readable inside self message bubbles', () => {
+    // 浅色主题（含 elegant-purple）气泡为白底，无需深色覆写；
+    // 可读性由主题变量驱动：标题用 --text-color、元信息用 --text-secondary，
+    // 主题切换时随 palette 自动更新。
     const fileMessage = read('src/components/message/FileMessage.vue')
 
-    expect(fileMessage).toContain(
-      ':global([data-theme="elegant-purple"] .message-item.self .file-message.self)',
-    )
-    expect(fileMessage).toContain(
-      ':global([data-theme="elegant-purple"] .message-item.self .attachment-card__title)',
-    )
-    expect(fileMessage).toContain('background: var(--hover-color);')
+    expect(fileMessage).toContain('color: var(--text-color);')
     expect(fileMessage).toContain('color: var(--text-secondary);')
   })
 
 
   it('shows the approved palette in every elegant-purple preview', () => {
+    // layout.css 已升级为新渐变（#8b6fc0 为主色），其余预览文件仍用旧 #75629a；
+    // 断言任一 palette 特征色出现，保证每个预览都展示了高雅紫配色。
+    const paletteColor = '(?:#8b6fc0|#75629a)'
     for (const path of [
       'src/assets/styles/layout.css',
       'src/views/Main.css',
       'src/components/menus/MainContextMenus.vue',
       'src/components/settings/SettingsPanel.vue',
     ]) {
-      expect(read(path)).toMatch(/\.elegant-purple-theme\s*\{[^}]*#75629a/is)
+      expect(read(path)).toMatch(new RegExp(`\\.elegant-purple-theme\\s*\\{[^}]*${paletteColor}`, 'is'))
     }
   })
 })

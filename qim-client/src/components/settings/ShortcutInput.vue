@@ -125,7 +125,7 @@ function handleKeyDown(e: KeyboardEvent) {
 
 .shortcut-label {
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .shortcut-controls {
@@ -141,7 +141,7 @@ function handleKeyDown(e: KeyboardEvent) {
   border-radius: var(--radius-md, 6px);
   background: var(--card-bg);
   color: var(--text-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   text-align: center;
   outline: none;
@@ -163,7 +163,7 @@ function handleKeyDown(e: KeyboardEvent) {
   background: transparent;
   color: var(--text-secondary, #999);
   cursor: pointer;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   padding: 2px 6px;
   line-height: 1;
   border-radius: 4px;

@@ -1,134 +1,120 @@
 <template>
   <div v-if="group" class="group-detail-panel">
     <div class="group-profile-container">
-      <!-- 群聊信息卡片 -->
       <div class="group-profile-card">
-        <!-- 群头像和基本信息 -->
-        <div class="group-profile-avatar-section">
-          <div class="group-avatar-container" :class="{ 'is-owner': isGroupOwner(group) }" @click="isGroupOwner(group) && triggerAvatarUpload()">
+        <!-- 头像 + 群信息 -->
+        <div class="group-info-header">
+          <div class="group-avatar-wrapper" :class="{ 'is-owner': isGroupOwner(group) }" @click="isGroupOwner(group) && triggerAvatarUpload()">
             <Avatar
               :src="group.avatar"
               :name="group.name"
               :server-url="serverUrl"
               :alt="group.name"
               size="xl"
+              shape="circle"
               class="group-avatar"
             />
             <div v-if="isGroupOwner(group)" class="avatar-overlay">
               <i class="fas fa-camera"></i>
-              <span>更换头像</span>
             </div>
           </div>
           <input ref="avatarInput" type="file" accept="image/*" style="display: none" @change="handleAvatarChange" />
-          <div class="group-basic-info">
-            <div class="group-name-wrapper">
-              <h2 class="group-full-name">{{ group.name }}</h2>
-              <button v-if="isGroupOwner(group) || isGroupAdmin(group)" class="edit-name-btn" @click="$emit('editGroupName')">
-                <i class="fas fa-edit"></i>
-              </button>
-            </div>
-            <p class="group-member-count">{{ group.members ? group.members.length + '人' : '0人' }}</p>
+          <div class="group-name-row">
+            <h2>{{ group.name }}</h2>
+            <button v-if="isGroupOwner(group) || isGroupAdmin(group)" class="edit-name-btn" @click="$emit('editGroupName')">
+              <i class="fas fa-pen"></i>
+            </button>
+          </div>
+          <div class="group-detail-meta">
+            <span class="group-badge-pill"><i class="fas fa-users"></i> {{ group.members ? group.members.length : 0 }} 人</span>
+            <span v-if="group.type === 'group'" class="group-badge-pill type">群聊</span>
+            <span v-else class="group-badge-pill type">讨论组</span>
           </div>
         </div>
-        
-        <!-- 信息分组 -->
-        <div class="group-info-sections">
-          <!-- 基本信息 -->
-          <div class="info-section">
-            <div class="section-title">
-              <i class="fas fa-info-circle"></i>
-              <h3>群聊信息</h3>
-            </div>
-            <div class="info-grid">
-              <div class="info-item">
-                <span class="info-label">群成员</span>
-                <span class="info-value">{{ group.members ? group.members.length : 0 }}人</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">群主</span>
-                <span class="info-value">{{ getGroupOwner(group) || '未知' }}</span>
-              </div>
-              <div class="info-item full-width">
-                <span class="info-label">群公告</span>
-                <div class="group-announcement">
-                  <span class="announcement-content">{{ group.announcement || '暂无公告' }}</span>
-                  <button v-if="isGroupOwner(group)" class="edit-announcement-btn" @click="$emit('editAnnouncement')">
-                    <i class="fas fa-edit"></i>
-                  </button>
-                </div>
+
+        <!-- 群公告 -->
+        <div class="announcement-bar" v-if="group.announcement || isGroupOwner(group)">
+          <i class="fas fa-bullhorn ann-icon"></i>
+          <span class="ann-text">{{ group.announcement || '暂无公告' }}</span>
+          <button v-if="isGroupOwner(group)" class="edit-inline-btn" @click="$emit('editAnnouncement')">
+            <i class="fas fa-pen"></i>
+          </button>
+        </div>
+
+        <!-- 群聊信息 + 邀请权限合并 -->
+        <div class="info-section">
+          <div class="section-title">群信息</div>
+          <div class="info-list">
+            <div class="info-row">
+              <span class="info-row-icon"><i class="fas fa-crown"></i></span>
+              <div class="info-row-text">
+                <span class="info-row-label">群主</span>
+                <span class="info-row-value">{{ getGroupOwner(group) || '未知' }}</span>
               </div>
             </div>
-          </div>
-          
-          <!-- 权限设置 -->
-          <div class="info-section" v-if="group.type === 'group'">
-            <div class="section-title">
-              <i class="fas fa-shield-alt"></i>
-              <h3>权限设置</h3>
+            <!-- 非群主：只读显示 -->
+            <div class="info-row" v-if="group.type === 'group' && !isGroupOwner(group)">
+              <span class="info-row-icon"><i class="fas fa-user-lock"></i></span>
+              <div class="info-row-text">
+                <span class="info-row-label">邀请权限</span>
+                <span class="info-row-value">{{ getInvitePermissionText(group.invite_permission) }}</span>
+              </div>
             </div>
-            <div class="info-grid">
-              <div class="info-item full-width">
-                <span class="info-label">邀请权限</span>
-                <div class="permission-setting" v-if="isGroupOwner(group)">
-                  <select 
-                    v-model="invitePermission" 
-                    @change="updateInvitePermission" 
-                    @click.stop
-                    @mousedown.stop
-                    @mouseup.stop
-                    class="permission-select"
-                  >
-                    <option value="owner_admin">群主和管理员</option>
-                    <option value="all">所有成员</option>
-                  </select>
-                </div>
-                <span v-else class="info-value">{{ getInvitePermissionText(group.invite_permission) }}</span>
+            <!-- 群主：可编辑 -->
+            <div class="info-row" v-if="group.type === 'group' && isGroupOwner(group)">
+              <span class="info-row-icon"><i class="fas fa-user-lock"></i></span>
+              <div class="info-row-text">
+                <span class="info-row-label">邀请权限</span>
+                <select
+                  v-model="invitePermission"
+                  @change="updateInvitePermission"
+                  @click.stop @mousedown.stop @mouseup.stop
+                  class="permission-select"
+                >
+                  <option value="owner_admin">群主和管理员</option>
+                  <option value="all">所有成员</option>
+                </select>
               </div>
             </div>
           </div>
         </div>
-        
-        <!-- 操作按钮 -->
-        <div class="group-action-buttons">
+
+        <!-- 操作按钮（合并为一行 flex-wrap） -->
+        <div class="action-bar">
           <button class="action-btn primary" @click="$emit('enter', group)">
             <i class="fas fa-comment"></i>
             <span>进入群聊</span>
           </button>
           <button class="action-btn secondary" @click="$emit('invite', group)">
             <i class="fas fa-user-plus"></i>
-            <span>邀请成员</span>
+            <span>邀请</span>
           </button>
-          <button v-if="group.type === 'group'" class="action-btn secondary group-files-action" @click="showGroupFiles = true">
+          <button v-if="group.type === 'group'" class="action-btn secondary" @click="showGroupFiles = true">
             <i class="fas fa-folder-open"></i>
-            <span>群资料</span>
+            <span>群文件</span>
           </button>
-          <button class="action-btn tertiary" @click="$emit('openAISettings')" v-if="group.type === 'group'">
+          <button v-if="group.type === 'group'" class="action-btn secondary" @click="$emit('openAISettings')">
             <i class="fas fa-robot"></i>
-            <span>AI 设置</span>
+            <span>AI</span>
           </button>
-          <button
-            v-if="group.type === 'group' && (isGroupOwner(group) || isGroupAdmin(group))"
-            class="action-btn tertiary"
-            title="拉外部 agent 机器人进群，成员可 @ 触发机器人回复"
-            @click="$emit('addBotToGroup', group)"
-          >
-            <i class="fas fa-robot"></i>
-            <span>添加机器人</span>
+          <button v-if="group.type === 'group' && (isGroupOwner(group) || isGroupAdmin(group))" class="action-btn secondary" title="添加外部 agent 机器人" @click="$emit('addBotToGroup', group)">
+            <i class="fas fa-plus"></i>
+            <span>机器人</span>
           </button>
         </div>
-        
+
         <!-- 群成员列表 -->
-        <div class="group-members-section">
-          <div class="section-title">
-            <i class="fas fa-users"></i>
-            <h3>群成员列表</h3>
+        <div class="members-section">
+          <div class="section-header">
+            <span class="section-title">群成员</span>
+            <span class="section-count">{{ group.members ? group.members.length : 0 }}</span>
           </div>
           <div class="members-grid">
-            <div v-for="member in group.members" :key="member.id" class="member-item" @click="$emit('openChat', member)" @contextmenu.prevent="$emit('showMemberContextMenu', $event, member)">
-              <Avatar :src="member.avatar" :name="member.name" :server-url="serverUrl" :alt="member.name" size="sm" class="member-avatar" />
+            <div v-for="member in group.members" :key="member.id" class="member-card" @click="$emit('openChat', member)" @contextmenu.prevent="$emit('showMemberContextMenu', $event, member)">
+              <Avatar :src="member.avatar" :name="member.name" :server-url="serverUrl" :alt="member.name" size="sm" shape="circle" class="member-avatar" />
               <span class="member-name">{{ member.name }}</span>
-              <span v-if="member.role === 'owner'" class="member-role owner">群主</span>
-              <span v-else-if="member.role === 'admin'" class="member-role admin">管理员</span>
+              <span v-if="member.role === 'owner'" class="member-role-badge owner">群主</span>
+              <span v-else-if="member.role === 'admin'" class="member-role-badge admin">管理</span>
             </div>
           </div>
         </div>
@@ -356,7 +342,8 @@ const handleAvatarChange = async (event: Event) => {
 .group-detail-panel {
   flex: 1;
   overflow-y: auto;
-  padding: 0;
+  overflow-x: hidden;
+  background: var(--right-content-bg, #f5f5f5);
 }
 
 .group-detail-placeholder {
@@ -385,416 +372,377 @@ const handleAvatarChange = async (event: Event) => {
 
 .placeholder-content p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary, #666);
 }
 
-/* 群聊详情样式 */
-.group-profile-container {
-  position: relative;
-  padding: 12px;
-  margin: 0;
+/* ---- 头像 + 群信息区 ---- */
+.group-info-header {
+  padding: 28px 20px 20px;
+  text-align: center;
+  background: var(--card-bg, #fff);
 }
 
-.group-profile-card {
+.group-avatar-wrapper {
   position: relative;
-  background: var(--card-bg);
-  border-radius: 10px;
-  padding: 18px;
-  border: 1px solid var(--border-color, #e8e8e8);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
-  z-index: 1;
-}
-
-.group-profile-avatar-section {
-  display: flex;
-  align-items: center;
+  display: inline-block;
   margin-bottom: 14px;
-  padding-bottom: 0;
+  cursor: default;
 }
 
-.group-avatar-container {
-  position: relative;
-  margin-right: 16px;
-}
-
-.group-avatar-container.is-owner {
+.group-avatar-wrapper.is-owner {
   cursor: pointer;
 }
 
-.group-avatar-container.is-owner:hover .avatar-overlay {
+.group-avatar-wrapper.is-owner:hover .avatar-overlay {
   opacity: 1;
 }
 
 .group-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
-  object-fit: cover;
-  border: 3px solid white;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-  transition: transform 0.3s ease;
-}
-
-.group-avatar:hover {
-  transform: scale(1.05);
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 3px solid var(--border-color, rgba(0,0,0,0.08));
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .avatar-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  border-radius: 10px;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: #fff;
   opacity: 0;
-  transition: opacity 0.3s ease;
-  font-size: 12px;
-  gap: 4px;
+  transition: opacity 0.2s;
+  font-size: var(--font-size-lg);
 }
 
-.avatar-overlay i {
-  font-size: 18px;
-}
-
-.group-basic-info {
-  flex: 1;
-}
-
-.group-full-name {
-  margin: 0 0 4px 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-color);
-  letter-spacing: 0.3px;
-}
-
-.group-member-count {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.group-name-wrapper {
+.group-name-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
-.group-name-wrapper h2 {
+.group-name-row h2 {
   margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--text-color, #333);
 }
 
 .edit-name-btn {
-  background: none;
+  background: var(--hover-color, rgba(0,0,0,0.04));
   border: none;
-  color: var(--primary-color);
+  color: var(--text-secondary);
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
-  transition: background 0.2s;
-  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: var(--font-size-xxxs);
+  transition: all 0.2s;
 }
 
 .edit-name-btn:hover {
-  background: var(--primary-light);
+  background: var(--border-color, rgba(0,0,0,0.08));
+  color: var(--text-color);
 }
 
-.ai-settings-btn {
-  background: var(--primary-color);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
-  font-size: 13px;
-  cursor: pointer;
+.group-detail-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
-  transition: opacity 0.2s;
+  justify-content: center;
+  gap: 8px;
 }
 
-.ai-settings-btn:hover {
+.group-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xxxs);
+  color: var(--text-secondary);
+  background: var(--hover-color, rgba(0,0,0,0.04));
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.group-badge-pill.type {
+  background: var(--primary-color);
+  color: #fff;
   opacity: 0.85;
 }
 
-.group-info-sections {
-  margin-bottom: 14px;
-}
-
-.info-section {
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
-.section-title {
+/* ---- 群公告 ---- */
+.announcement-bar {
   display: flex;
   align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 0;
-}
-
-.section-title i {
-  font-size: 14px;
-  color: var(--primary-color);
-  margin-right: 8px;
-}
-
-.section-title h3 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-}
-
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.info-item.full-width {
-  grid-column: 1 / -1;
-}
-
-.info-label {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 600;
-}
-
-.info-value {
-  font-size: 13px;
-  color: var(--text-color);
-  font-weight: 500;
-}
-
-.group-announcement {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  text-align: left;
-  width: 100%;
-}
-
-.announcement-content {
-  flex: 1;
-  font-size: 13px;
-  color: var(--text-color);
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--card-bg, #fff);
+  border-bottom: 1px solid var(--border-color, rgba(0,0,0,0.06));
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
   line-height: 1.5;
-  text-align: left;
-  border: none;
-  background: none;
-  padding: 0;
 }
 
-.edit-announcement-btn {
-  background: none;
-  border: none;
+.ann-icon {
+  font-size: var(--font-size-xxs);
+  opacity: 0.4;
   color: var(--primary-color);
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
-  transition: background 0.2s;
-  font-size: 13px;
   flex-shrink: 0;
 }
 
-.edit-announcement-btn:hover {
-  background: var(--primary-light);
-}
-
-.group-action-buttons {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  padding-top: 8px;
-  margin-bottom: 12px;
-}
-
-.action-btn {
-  padding: 8px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 90px;
-  justify-content: center;
-}
-
-.action-btn.primary {
-  background: var(--primary-color);
-  border-color: var(--primary-color);
-  color: white;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-}
-
-.action-btn.primary:hover {
-  background: var(--active-color);
-  border-color: var(--active-color);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
-}
-
-.action-btn.secondary {
-  background: var(--input-bg);
-  border-color: var(--border-color);
-  color: var(--text-color);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.action-btn.secondary:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
-}
-
-.action-btn.secondary.group-files-action {
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-secondary);
-}
-
-.action-btn.secondary.group-files-action:hover {
-  background: var(--hover-color);
-  transform: none;
-  box-shadow: none;
-}
-
-.action-btn.tertiary {
-  background: transparent;
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
-}
-
-.action-btn.tertiary:hover {
-  background: var(--primary-color);
-  color: white;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-}
-
-.group-members-section {
-  margin-top: 14px;
-}
-
-.members-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 16px;
-  margin-top: 12px;
-}
-
-.member-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 8px;
-  border-radius: 8px;
-  transition: background 0.2s;
-}
-
-.member-item:hover {
-  background: var(--hover-color);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-.member-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  object-fit: cover;
-  margin-bottom: 8px;
-  border: 2px solid var(--border-color);
-  transition: transform 0.3s ease;
-}
-
-.member-avatar:hover {
-  transform: scale(1.1);
-}
-
-.member-name {
-  font-size: 12px;
-  color: var(--text-color);
-  margin-bottom: 4px;
-  word-break: break-all;
-}
-
-.member-role {
-  font-size: 10px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-weight: 500;
+.ann-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.member-role.owner {
-  background: linear-gradient(135deg, #ffd700, #ffaa00);
-  color: #fff;
-  box-shadow: 0 2px 4px rgba(255, 215, 0, 0.3);
+.edit-inline-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: var(--font-size-xxxs);
+  flex-shrink: 0;
+  transition: all 0.2s;
 }
 
-.member-role.admin {
-  background: linear-gradient(135deg, #4facfe, #00f2fe);
-  color: #fff;
-  box-shadow: 0 2px 4px rgba(79, 172, 254, 0.3);
+.edit-inline-btn:hover {
+  background: var(--hover-color);
+  color: var(--primary-color);
 }
 
-/* 权限设置样式 */
-.permission-setting {
+/* ---- 信息列表 ---- */
+.info-section {
+  padding: 16px 20px;
+  background: var(--card-bg, #fff);
+  border-bottom: 1px solid var(--border-color, rgba(0,0,0,0.06));
+}
+
+.section-title {
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 12px;
+}
+
+.info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  transition: background-color 0.15s;
+}
+
+.info-row:hover {
+  background: var(--hover-color, rgba(0,0,0,0.03));
+}
+
+.info-row-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--hover-color, rgba(0,0,0,0.04));
+  color: var(--text-secondary);
+  font-size: var(--font-size-xxs);
+  flex-shrink: 0;
+}
+
+.info-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.info-row-label {
   display: block;
-  width: 100%;
+  font-size: var(--font-size-xxxs);
+  color: var(--text-secondary);
+  margin-bottom: 1px;
+}
+
+.info-row-value {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--text-color);
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .permission-select {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
+  padding: 4px 28px 4px 10px;
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
   border-radius: 6px;
-  background: var(--input-bg);
-  font-size: 13px;
+  background: var(--card-bg);
   color: var(--text-color);
-  font-weight: 500;
+  font-size: var(--font-size-xs);
   cursor: pointer;
-  outline: none;
-  transition: all 0.2s ease;
-  box-sizing: border-box;
-  min-height: 36px;
-}
-
-.permission-select:hover {
-  border-color: var(--primary-color);
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239ca3af'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
 }
 
 .permission-select:focus {
+  outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
 }
 
 .permission-select option {
   background: var(--card-bg);
   color: var(--text-color);
-  padding: 8px;
+}
+
+/* ---- 操作按钮 ---- */
+.action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--card-bg, #fff);
+  border-bottom: 1px solid var(--border-color, rgba(0,0,0,0.06));
+}
+
+.action-btn {
+  flex: 1 0 auto;
+  min-width: 0;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 10px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.action-btn.primary {
+  background: var(--primary-color);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
+}
+
+.action-btn.primary:hover {
+  background: var(--active-color);
+  box-shadow: 0 4px 14px rgba(102, 126, 234, 0.35);
+  transform: translateY(-1px);
+}
+
+.action-btn.secondary {
+  background: var(--hover-color, rgba(0,0,0,0.04));
+  color: var(--text-color);
+}
+
+.action-btn.secondary:hover {
+  background: var(--border-color, rgba(0,0,0,0.08));
+  transform: translateY(-1px);
+}
+
+/* ---- 群成员 ---- */
+.members-section {
+  padding: 16px 20px;
+  background: var(--card-bg, #fff);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.section-header .section-title {
+  margin-bottom: 0;
+}
+
+.section-count {
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.08);
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.members-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 8px;
+}
+
+.member-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 8px 4px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.member-card:hover {
+  background: var(--hover-color, rgba(0,0,0,0.03));
+}
+
+.member-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-bottom: 4px;
+}
+
+.member-name {
+  font-size: var(--font-size-xxxs);
+  color: var(--text-color);
+  max-width: 56px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.member-role-badge {
+  font-size: var(--font-size-tiny);
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.member-role-badge.owner {
+  background: rgba(255, 215, 0, 0.15);
+  color: #d4a017;
+}
+
+.member-role-badge.admin {
+  background: rgba(79, 172, 254, 0.1);
+  color: #2196f3;
 }
 </style>
+

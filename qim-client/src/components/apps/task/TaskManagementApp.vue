@@ -1,11 +1,6 @@
 <template>
   <div class="task-app">
     <AppHeader title="任务管理" @back="$emit('back')">
-      <template #extra-buttons>
-        <button class="icon-btn" @click="$emit('toggleSidebar')">
-          <i class="fas fa-compress"></i>
-        </button>
-      </template>
       <template #actions>
         <div class="header-search">
           <i class="fas fa-search"></i>
@@ -116,7 +111,6 @@ const contextMenu = reactive({
 
 defineEmits<{
   back: []
-  toggleSidebar: []
 }>()
 
 onMounted(async () => {
@@ -323,14 +317,14 @@ async function onSubmitTask(data: {
   background: var(--input-bg);
 }
 .header-search i {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 .header-search-input {
   width: 140px;
   height: 100%;
   border: none;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-primary);
   background: transparent;
   outline: none;
@@ -348,7 +342,7 @@ async function onSubmitTask(data: {
   color: #fff;
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
 }
@@ -384,9 +378,9 @@ async function onSubmitTask(data: {
   justify-content: center;
   gap: var(--spacing-3);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
-.task-loading i { font-size: 24px; color: #8b5cf6; }
+.task-loading i { font-size: var(--font-size-2xl); color: #8b5cf6; }
 .icon-btn {
   background: none;
   border: none;
@@ -394,7 +388,7 @@ async function onSubmitTask(data: {
   color: var(--text-secondary);
   padding: var(--spacing-1) var(--spacing-2);
   border-radius: var(--radius-sm);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 .icon-btn:hover {
   background: var(--hover-bg);

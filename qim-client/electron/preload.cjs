@@ -60,7 +60,7 @@ contextBridge.exposeInMainWorld('electron', {
   },
   shell: {
     openExternal: (url) => {
-      shell.openExternal(url)
+      return shell.openExternal(url)
     }
   },
   safeStorage: {

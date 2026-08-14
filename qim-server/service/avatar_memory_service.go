@@ -39,12 +39,12 @@ func (s *AvatarMemoryService) SetThresholdService(t *AiThresholdService) {
 	s.thresholdSvc = t
 }
 
-// conflictThreshold 返回冲突检测分数门槛：未注入阈值服务时回退默认 0.7。
+// conflictThreshold 返回冲突检测分数门槛：未注入阈值服务时回退默认 0.3。
 func (s *AvatarMemoryService) conflictThreshold() float64 {
 	if s.thresholdSvc != nil {
-		return s.thresholdSvc.GetFloat("ai.conflict_detection_threshold", 0.7)
+		return s.thresholdSvc.GetFloat("ai.conflict_detection_threshold", 0.3)
 	}
-	return 0.7
+	return 0.3
 }
 
 // memoryConflicts LLM 判定新旧记忆是否冲突；判定器未注入时用默认 LLM 实现。
@@ -225,7 +225,7 @@ func (s *AvatarMemoryService) ForgetMemory(userID uint, memoryDocID string) erro
 }
 
 func (s *AvatarMemoryService) GetMemoryCount(userID uint) (int64, error) {
-	memories, err := s.GetUserMemories(userID, 10000)
+	memories, err := s.GetUserMemories(userID, 100000)
 	if err != nil {
 		return 0, err
 	}
@@ -430,7 +430,7 @@ func (s *AvatarMemoryService) DeleteMemory(userID uint, memoryDocID string) erro
 		return nil
 	}
 	// 先列出该用户的全部记忆，确认 memoryDocID 在其中，防止越权删除
-	memories, err := s.GetUserMemories(userID, 10000)
+	memories, err := s.GetUserMemories(userID, 100000)
 	if err != nil {
 		return err
 	}
@@ -454,7 +454,7 @@ func (s *AvatarMemoryService) UpdateMemory(userID uint, memoryDocID, newContent 
 	if s.db == nil {
 		return nil
 	}
-	memories, err := s.GetUserMemories(userID, 10000)
+	memories, err := s.GetUserMemories(userID, 100000)
 	if err != nil {
 		return err
 	}

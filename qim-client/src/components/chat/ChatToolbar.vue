@@ -250,7 +250,7 @@ onUnmounted(() => {
   border-radius: 6px;
   background: var(--tooltip-bg, rgba(32, 32, 32, 0.92));
   color: #fff;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   line-height: 1;
   white-space: nowrap;
   pointer-events: none;
@@ -282,7 +282,7 @@ onUnmounted(() => {
   border-radius: 0 4px 4px 0;
   cursor: pointer;
   color: var(--text-secondary, #666);
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 0;
   margin-left: -6px;
   transition: all 0.2s ease;
@@ -313,7 +313,7 @@ onUnmounted(() => {
   gap: 8px;
   padding: 8px 14px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-primary, #333);
   white-space: nowrap;
   transition: background 0.15s ease;
@@ -325,7 +325,7 @@ onUnmounted(() => {
 
 .screenshot-menu-item i {
   width: 16px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #666);
 }
 
@@ -350,7 +350,7 @@ onUnmounted(() => {
   border-radius: 0 4px 4px 0;
   cursor: pointer;
   color: var(--text-secondary, #666);
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 0;
   margin-left: -6px;
   transition: all 0.2s ease;
@@ -381,7 +381,7 @@ onUnmounted(() => {
   gap: 8px;
   padding: 8px 14px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-primary, #333);
   white-space: nowrap;
   transition: background 0.15s ease;
@@ -393,7 +393,7 @@ onUnmounted(() => {
 
 .call-menu-item i {
   width: 16px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #666);
 }
 

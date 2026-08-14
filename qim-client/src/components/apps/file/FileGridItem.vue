@@ -275,7 +275,7 @@ function handleDelete() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
@@ -302,7 +302,7 @@ function handleDelete() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   transition: all var(--transition-base);
 }
 
@@ -338,7 +338,7 @@ function handleDelete() {
   padding: 4px 10px;
   background: var(--color-gray-900, #1a202c);
   color: #fff;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   border-radius: 4px;
   white-space: nowrap;
   max-width: 320px;
@@ -352,7 +352,7 @@ function handleDelete() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 

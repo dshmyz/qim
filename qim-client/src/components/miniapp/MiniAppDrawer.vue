@@ -160,7 +160,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   color: var(--text-color, #fff);
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
 }
 
@@ -273,13 +273,13 @@ onBeforeUnmount(() => {
 }
 
 .error-title {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   margin: 0;
 }
 
 .error-message {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary, #888);
   margin: 0;
   max-width: 300px;
@@ -292,7 +292,7 @@ onBeforeUnmount(() => {
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: opacity 0.2s ease;
 }

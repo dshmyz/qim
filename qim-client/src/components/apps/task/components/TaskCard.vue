@@ -127,7 +127,7 @@ function onDragEnd(event: DragEvent) {
   transform: rotate(2deg);
 }
 .task-card-title {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-primary);
   line-height: 1.4;
@@ -140,7 +140,7 @@ function onDragEnd(event: DragEvent) {
   margin-top: 6px;
 }
 .task-tag {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-weight: 500;
@@ -165,7 +165,7 @@ function onDragEnd(event: DragEvent) {
   transition: width var(--animation-base) ease;
 }
 .progress-text {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: #7c3aed;
   flex-shrink: 0;
 }
@@ -197,7 +197,7 @@ function onDragEnd(event: DragEvent) {
   font-weight: 500;
 }
 .task-due {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary);
 }
 .task-card-right {
@@ -206,7 +206,7 @@ function onDragEnd(event: DragEvent) {
   gap: 6px;
 }
 .task-meta-item {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary);
 }
 </style>

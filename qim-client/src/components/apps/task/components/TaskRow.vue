@@ -90,13 +90,13 @@ const avatarColor = computed(() => {
   border: none;
   cursor: pointer;
   padding: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   display: flex;
   align-items: center;
 }
 .row-title {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -104,13 +104,13 @@ const avatarColor = computed(() => {
 }
 .row-tags { display: flex; gap: 4px; }
 .task-tag {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-weight: 500;
 }
 .row-priority {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-weight: 500;
@@ -119,7 +119,7 @@ const avatarColor = computed(() => {
 .row-priority.priority-medium { background: #fffbeb; color: #d97706; }
 .row-priority.priority-low { background: #eff6ff; color: #3b82f6; }
 .row-due {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   flex-shrink: 0;
 }

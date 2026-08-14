@@ -103,7 +103,7 @@ const openMiniApp = () => {
 }
 
 .mini-app-title {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   line-height: 1.35;
   color: var(--text-color);
@@ -122,7 +122,7 @@ const openMiniApp = () => {
 
 .mini-app-meta {
   min-height: 16px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   line-height: 1.35;
   color: var(--text-secondary);
 }

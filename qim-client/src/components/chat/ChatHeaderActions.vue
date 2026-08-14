@@ -2,7 +2,7 @@
   <div class="group-panel-container">
     <!-- 头部操作区域 -->
     <div class="group-header-actions">
-      <span v-if="conversation?.type === 'group'" class="header-icon" title="群资料" @click.stop="emit('open-group-files')">
+      <span v-if="conversation?.type === 'group'" class="header-icon" title="群文件" @click.stop="emit('open-group-files')">
         <i class="fas fa-folder-open"></i>
       </span>
       <span v-if="isGroupOrDiscussion" class="header-icon" title="邀请成员" @click.stop="handleInviteMembers">
@@ -22,7 +22,9 @@
 
     <!-- 头部下拉菜单 -->
     <UniversalContextMenu menuId="header" :items="headerMenuItems">
-      <!-- 自动提取待办（仅群主/管理员可见，放在普通菜单项区域） -->
+      <!-- AI 区域分隔线 -->
+      <div v-if="systemConfigStore.enableAI && isGroupOrDiscussion && showAvatarToggle" class="ucm-divider"></div>
+      <!-- 自动提取待办（仅群主/管理员可见，放在 AI 分身区域） -->
       <div v-if="isGroupOrDiscussion && isAdminOrOwner" class="avatar-toggle-menu-item" data-tip="AI 从群聊消息中自动识别待办事项并创建任务" @mouseenter="positionTooltip" @mouseleave="positionTooltip($event, true)">
         <div class="avatar-toggle-header">
           <span class="ucm-icon"><i class="fas fa-list-check" style="color: #8b5cf6"></i></span>
@@ -35,7 +37,6 @@
         </div>
       </div>
       <!-- AI 分身开关（自定义内容） -->
-      <div v-if="systemConfigStore.enableAI && isGroupOrDiscussion && showAvatarToggle" class="ucm-divider"></div>
       <div v-if="systemConfigStore.enableAI && showAvatarToggle" class="avatar-toggle-menu-item" :data-tip="avatarApprovalStatus === 'approved' ? (isGroupOrDiscussion ? '被 @ 时替你回复，AI 代替你回复消息' : '代替你回复消息，AI 代替你回复消息') : ''" @mouseenter="positionTooltip" @mouseleave="positionTooltip($event, true)">
         <div class="avatar-toggle-header">
           <span class="ucm-icon"><i class="fas fa-user-circle" style="color: #3b82f6"></i></span>
@@ -443,7 +444,7 @@ function handleUpdateAISettings(settings: any) {
   cursor: pointer;
   color: var(--text-color);
   opacity: 0.7;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   border-radius: 6px;
   transition: background 0.2s;
   position: relative;
@@ -472,7 +473,7 @@ function handleUpdateAISettings(settings: any) {
   padding: 12px 16px;
   cursor: pointer;
   transition: background-color 0.2s;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .menu-item:hover {
@@ -496,7 +497,7 @@ function handleUpdateAISettings(settings: any) {
 .avatar-takeover-menu-item .ucm-icon {
   width: 18px;
   flex-shrink: 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   text-align: center;
   color: var(--primary-color);
 }
@@ -521,7 +522,7 @@ function handleUpdateAISettings(settings: any) {
   color: #fff;
   padding: 6px 10px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   line-height: 1.5;
   white-space: nowrap;
   pointer-events: none;
@@ -542,7 +543,7 @@ function handleUpdateAISettings(settings: any) {
 
 .avatar-toggle-title {
   flex: 1;
-  font-size: 12.5px;
+  font-size: var(--font-size-xxs);
   color: var(--text-color);
 }
 
@@ -552,7 +553,7 @@ function handleUpdateAISettings(settings: any) {
   gap: 10px;
   margin: 6px 0 2px;
   padding: 0 0 2px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   opacity: 0.75;
 }
@@ -561,7 +562,7 @@ function handleUpdateAISettings(settings: any) {
   width: 18px;
   flex-shrink: 0;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 .avatar-takeover-menu-item {
@@ -570,7 +571,7 @@ function handleUpdateAISettings(settings: any) {
   gap: 10px;
   padding: 8px 10px;
   border-radius: 6px;
-  font-size: 12.5px;
+  font-size: var(--font-size-xxs);
   color: var(--text-color);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s;

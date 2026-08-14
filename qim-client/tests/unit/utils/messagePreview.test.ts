@@ -8,7 +8,7 @@ describe('getMessagePreview', () => {
     expect(getMessagePreview({ type: 'share', content: JSON.stringify({ name: '设计说明' }) }))
       .toEqual({ kind: 'share', label: '分享：设计说明' })
     expect(getMessagePreview({ type: 'unknown', content: JSON.stringify({ raw: true }) }))
-      .toEqual({ kind: 'unknown', label: '未知消息' })
+      .toEqual({ kind: 'text', label: '{"raw":true}' })
   })
 
   it('formats file payloads and finite byte sizes', () => {

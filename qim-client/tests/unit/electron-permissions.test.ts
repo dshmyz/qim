@@ -6,7 +6,7 @@ const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), '
 
 describe('Electron permission policy', () => {
   it('allows sanitized clipboard writes while leaving other permissions denied', () => {
-    expect(mainProcess).toContain("['media', 'clipboard-sanitized-write'].includes(permission)")
+    expect(mainProcess).toContain("['media', 'clipboard-sanitized-write', 'clipboard-read', 'notifications', 'fullscreen'].includes(permission)")
     expect(mainProcess).toContain('callback(false)')
   })
 })

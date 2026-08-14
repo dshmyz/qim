@@ -36,7 +36,7 @@ const footerText = computed(() => {
   gap: 4px;
   padding: 2px 8px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -50,7 +50,7 @@ const footerText = computed(() => {
 .avatar-reply-badge--footer {
   background: transparent;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   padding: 0;
   opacity: 0.6;
 }
@@ -61,7 +61,7 @@ const footerText = computed(() => {
 }
 
 .badge-text {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 [data-theme="elegant-dark"] .avatar-reply-badge--badge,

@@ -104,13 +104,13 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-color);
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
 }
 
 .search-popup-count {
   font-weight: normal;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -153,7 +153,7 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
 }
 
 .search-popup-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
   white-space: nowrap;
@@ -169,12 +169,12 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
 }
 
 .search-popup-username {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
 .search-popup-type {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   background: var(--hover-color);
   padding: 1px 6px;
@@ -182,7 +182,7 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
 }
 
 .search-popup-status {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   padding: 1px 6px;
   border-radius: 8px;
 }

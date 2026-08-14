@@ -41,7 +41,7 @@ const handleClick = () => {
   color: var(--text-primary);
   cursor: pointer;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   line-height: 1;
   white-space: nowrap;
   outline: none;

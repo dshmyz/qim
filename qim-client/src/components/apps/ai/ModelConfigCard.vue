@@ -68,7 +68,7 @@ function formatDate(dateStr: string) {
 }
 
 .provider-icon {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   width: 48px;
   height: 48px;
   display: flex;
@@ -86,7 +86,7 @@ function formatDate(dateStr: string) {
 
 .card-info p {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -125,7 +125,7 @@ function formatDate(dateStr: string) {
 }
 
 .status {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -140,7 +140,7 @@ function formatDate(dateStr: string) {
 }
 
 .date {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 </style>

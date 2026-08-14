@@ -160,25 +160,25 @@ watch(() => props.src, () => {
 .avatar-xs {
   width: 28px;
   height: 28px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .avatar-sm {
   width: 32px;
   height: 32px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .avatar-md {
   width: 40px;
   height: 40px;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .avatar-lg {
   width: 48px;
   height: 48px;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
 }
 
 .avatar-xl {

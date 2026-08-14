@@ -260,7 +260,7 @@ watch(
 
 .at-mention-panel-header h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -276,7 +276,7 @@ watch(
   border-radius: 6px;
   background: var(--input-bg);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   box-sizing: border-box;
   transition: border-color 0.2s ease;
 }
@@ -322,7 +322,7 @@ watch(
 }
 
 .at-mention-item-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   white-space: nowrap;
   overflow: hidden;
@@ -333,7 +333,7 @@ watch(
   padding: 24px 12px;
   text-align: center;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .at-mention-empty p {

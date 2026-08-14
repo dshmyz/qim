@@ -1,13 +1,6 @@
 <template>
   <div class="short-link-manager">
     <AppHeader title="短链接管理" @back="$emit('back')">
-      <template #extra-buttons>
-        <ToggleSidebarBtn
-          icon="fas fa-compress"
-          title="收起侧边栏"
-          @click="$emit('toggleSidebar')"
-        />
-      </template>
       <template #subtitle>
         <p class="header-description">生成、管理和跟踪你的短链接</p>
       </template>
@@ -78,7 +71,6 @@ import QMessage from '../../utils/qmessage'
 import QMessageBox from '../../utils/qmessagebox'
 import { useServerUrl } from '../../composables/useServerUrl'
 import AppHeader from './AppHeader.vue'
-import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 import QuickGenerateSection from './shortlink/QuickGenerateSection.vue'
 import StatsCards from './shortlink/StatsCards.vue'
 import ShortLinkList from './shortlink/ShortLinkList.vue'
@@ -89,7 +81,7 @@ import ConfirmDialog from '../shared/ConfirmDialog.vue'
 import type { ShortLink } from './shortlink/ShortLinkItem.vue'
 
 // 定义事件
-const emit = defineEmits(['back', 'toggleSidebar'])
+const emit = defineEmits(['back'])
 
 // 服务器URL
 const { serverUrl } = useServerUrl()

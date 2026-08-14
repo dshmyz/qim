@@ -323,7 +323,7 @@ onUnmounted(() => {
 }
 
 .pdf-error p {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--text-secondary);
   margin: 0;
 }
@@ -337,7 +337,7 @@ onUnmounted(() => {
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -396,7 +396,7 @@ onUnmounted(() => {
 
 .page-info,
 .scale-info {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   min-width: 60px;
   text-align: center;

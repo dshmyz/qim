@@ -61,7 +61,7 @@ const handleTry = () => {
   background: var(--primary-light, rgba(59, 130, 246, 0.08));
   border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-color, #303133);
   animation: slash-hint-in 0.25s ease;
 }
@@ -101,7 +101,7 @@ const handleTry = () => {
   color: #fff;
   border: none;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -122,7 +122,7 @@ const handleTry = () => {
   color: var(--text-secondary, #909399);
   cursor: pointer;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   transition: background 0.15s;
 }
 

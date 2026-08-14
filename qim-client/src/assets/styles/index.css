@@ -171,6 +171,6 @@ body.linux-platform::after {
 @media (max-width: 768px) {
   html,
   body {
-    font-size: var(--font-size-xs);
+    font-size: var(--font-size-xxs);
   }
 }

@@ -8,6 +8,7 @@
       title="最近联系人"
     >
       <span class="option-icon"><i class="fas fa-comment-dots"></i></span>
+      <span v-if="(unreadCount ?? 0) > 0" class="unread-badge">{{ (unreadCount ?? 0) > 99 ? '99+' : unreadCount }}</span>
     </div>
     <div
       class="option-item"
@@ -40,6 +41,7 @@
       title="频道"
     >
       <span class="option-icon"><i class="fas fa-bullhorn"></i></span>
+      <span v-if="(channelUnreadCount ?? 0) > 0" class="unread-badge">{{ (channelUnreadCount ?? 0) > 99 ? '99+' : channelUnreadCount }}</span>
     </div>
     <div class="option-spacer"></div>
     <div class="bottom-options">
@@ -60,6 +62,8 @@ const productName = getProductName()
 
 defineProps<{
   activeOption: string
+  unreadCount?: number
+  channelUnreadCount?: number
 }>()
 
 defineEmits<{
@@ -96,7 +100,7 @@ defineEmits<{
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--side-options-title-color, var(--text-color));
   letter-spacing: 0.5px;
@@ -119,6 +123,24 @@ defineEmits<{
   -webkit-app-region: no-drag;
 }
 
+.unread-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: #f56c6c;
+  color: #fff;
+  font-size: var(--font-size-tiny);
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 8px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
 .option-item:hover {
   background: var(--hover-bg);
   color: var(--primary-color);
@@ -134,7 +156,7 @@ defineEmits<{
 }
 
 .option-icon {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   color: inherit;
 }
 

@@ -128,7 +128,7 @@ const handleSave = async () => {
 <style scoped>
 .quick-reply-manager__tip {
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #909399);
   line-height: 1.5;
 }
@@ -153,7 +153,7 @@ const handleSave = async () => {
   padding: 8px 10px;
   border: 1px solid var(--border-color, #dcdfe6);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color, #303133);
   background: var(--input-bg, #fff);
   outline: none;
@@ -188,7 +188,7 @@ const handleSave = async () => {
   padding: 16px;
   text-align: center;
   color: var(--text-secondary, #909399);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .quick-reply-manager__add-btn {
@@ -199,7 +199,7 @@ const handleSave = async () => {
   color: var(--primary-color, #3385ff);
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   width: 100%;
   transition: all 0.15s;
 }
@@ -215,7 +215,7 @@ const handleSave = async () => {
   background: rgba(245, 108, 108, 0.1);
   color: var(--color-danger, #f56c6c);
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .quick-reply-manager__footer {
@@ -232,7 +232,7 @@ const handleSave = async () => {
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   transition: all 0.15s;
 }
 

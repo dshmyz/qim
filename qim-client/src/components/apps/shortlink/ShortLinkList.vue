@@ -245,7 +245,7 @@ defineExpose({
 
 .list-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-primary, #1f2937);
 }
@@ -261,7 +261,7 @@ defineExpose({
   color: var(--text-secondary, #6b7280);
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -302,7 +302,7 @@ defineExpose({
   align-items: center;
   gap: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
 }
 
@@ -311,7 +311,7 @@ defineExpose({
 }
 
 .selected-count {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -324,7 +324,7 @@ defineExpose({
   padding: 8px 16px;
   border: 1px solid transparent;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -427,11 +427,11 @@ defineExpose({
 .empty-state p {
   margin: 8px 0;
   color: var(--text-secondary, #6b7280);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .empty-hint {
-  font-size: 12px !important;
+  font-size: var(--font-size-xxs) !important;
   opacity: 0.8;
 }
 </style>

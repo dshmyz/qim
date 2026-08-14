@@ -191,12 +191,12 @@ defineExpose({
 
 .header-name {
   font-weight: 500;
-  font-size: 16px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
 }
 
 .header-status {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--color-success-500);
   display: flex;
   align-items: center;
@@ -206,14 +206,14 @@ defineExpose({
 .ip-info {
   color: var(--text-color);
   opacity: 0.7;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   /* padding: 2px 0px; */
   /* background: var(--hover-color); */
   border-radius: 3px;
 }
 
 .online-status {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   padding: 1px 6px;
   border-radius: 3px;
   margin-right: 8px;
@@ -232,7 +232,7 @@ defineExpose({
 .signature-info {
   color: var(--text-color);
   opacity: 0.6;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   max-width: 400px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -245,7 +245,7 @@ defineExpose({
   gap: 4px;
   background: var(--input-bg);
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   max-width: 400px;
   overflow: hidden;
@@ -254,7 +254,7 @@ defineExpose({
 }
 
 .header-announcement-inline i {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   flex-shrink: 0;
 }
@@ -280,7 +280,7 @@ defineExpose({
 }
 
 .avatar-toggle-label {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   color: var(--text-secondary);
   white-space: nowrap;

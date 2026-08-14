@@ -100,7 +100,7 @@ const getReadUserAvatar = (user: ReadUser): string => {
 
 .read-users-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -108,7 +108,7 @@ const getReadUserAvatar = (user: ReadUser): string => {
 .read-users-header .close-btn {
   background: transparent;
   border: none;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   cursor: pointer;
   color: var(--text-secondary);
   width: 32px;
@@ -129,7 +129,7 @@ const getReadUserAvatar = (user: ReadUser): string => {
 
 .read-users-header .close-btn i {
   display: block !important;
-  font-size: 16px !important;
+  font-size: var(--font-size-base) !important;
   line-height: 1 !important;
 }
 
@@ -143,7 +143,7 @@ const getReadUserAvatar = (user: ReadUser): string => {
   text-align: center;
   color: var(--text-secondary);
   padding: 24px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .read-users-list {
@@ -178,13 +178,13 @@ const getReadUserAvatar = (user: ReadUser): string => {
 }
 
 .read-user-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   font-weight: 500;
 }
 
 .read-icon {
   color: #4caf50;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 </style>

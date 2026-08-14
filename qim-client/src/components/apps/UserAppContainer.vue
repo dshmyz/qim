@@ -1,13 +1,6 @@
 <template>
   <div class="user-app-container">
     <AppHeader :title="app.name" @back="$emit('back')">
-      <template #extra-buttons>
-        <ToggleSidebarBtn
-          icon="fas fa-compress"
-          title="收起侧边栏"
-          @click="$emit('toggleSidebar')"
-        />
-      </template>
     </AppHeader>
     <div v-if="app.url" class="user-app-content">
       <!-- Electron 环境使用 <webview>：独立会话（按应用隔离登录态）+ 逐应用弹窗策略；
@@ -41,7 +34,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import AppHeader from './AppHeader.vue'
-import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 
 const props = defineProps<{
   app: {
@@ -51,7 +43,7 @@ const props = defineProps<{
   }
 }>()
 
-defineEmits(['back', 'toggleSidebar'])
+defineEmits(['back'])
 
 // Electron 环境判断：window.electron 由 preload 注入，纯浏览器下不存在
 const isElectron = !!window.electron
@@ -185,11 +177,11 @@ onBeforeUnmount(() => {
 
 .empty-user-app p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .empty-user-app .empty-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-tertiary);
 }
 </style>

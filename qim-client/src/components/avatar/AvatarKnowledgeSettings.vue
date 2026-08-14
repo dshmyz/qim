@@ -119,12 +119,12 @@ function updateScope(key: keyof AvatarKnowledgeScope, value: boolean) {
 
 .section-header i {
   color: var(--primary-color);
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .section-header h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -159,7 +159,7 @@ function updateScope(key: keyof AvatarKnowledgeScope, value: boolean) {
 
 .label-title {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
   margin-bottom: 4px;
@@ -167,7 +167,7 @@ function updateScope(key: keyof AvatarKnowledgeScope, value: boolean) {
 
 .label-hint {
   display: block;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -226,7 +226,7 @@ input:checked + .slider:before {
   padding: 12px; 
   background: rgba(59, 130, 246, 0.06); 
   border-radius: 8px; 
-  font-size: 12px; 
+  font-size: var(--font-size-xxs); 
   color: var(--text-secondary); 
   border-left: 3px solid var(--primary-color);
 }

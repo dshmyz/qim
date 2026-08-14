@@ -175,7 +175,7 @@ const sizeText = computed(() => {
 }
 
 .share-title {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   line-height: 1.35;
   color: var(--text-color);
@@ -198,7 +198,7 @@ const sizeText = computed(() => {
 
 .share-meta {
   min-height: 16px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   line-height: 1.35;
   color: var(--text-secondary);
   overflow: hidden;
@@ -245,7 +245,7 @@ const sizeText = computed(() => {
 }
 
 .note-preview-title {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color);
   margin: 0;
@@ -265,7 +265,7 @@ const sizeText = computed(() => {
   color: var(--text-secondary);
   background: transparent;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   flex-shrink: 0;
 }
 
@@ -281,7 +281,7 @@ const sizeText = computed(() => {
 }
 
 .note-preview-content {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.7;
   color: var(--text-color);
 }
@@ -326,7 +326,7 @@ const sizeText = computed(() => {
   margin: 12px 0;
   overflow-x: auto;
   font-family: 'Fira Code', 'Courier New', monospace;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
 }
 
@@ -335,7 +335,7 @@ const sizeText = computed(() => {
   border-radius: 4px;
   padding: 2px 6px;
   font-family: 'Fira Code', 'Courier New', monospace;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .note-preview-content :deep(pre code) {
@@ -372,7 +372,7 @@ const sizeText = computed(() => {
   border-collapse: collapse;
   width: 100%;
   margin: 12px 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .note-preview-content :deep(th),
@@ -409,7 +409,7 @@ const sizeText = computed(() => {
   padding: 12px;
   background: var(--card-bg);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
   line-height: 1.7;
   border: 1px solid var(--border-color);
@@ -453,7 +453,7 @@ const sizeText = computed(() => {
   margin: 10px 0;
   overflow-x: auto;
   font-family: 'Fira Code', 'Courier New', monospace;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
 }
 
@@ -462,7 +462,7 @@ const sizeText = computed(() => {
   border-radius: 3px;
   padding: 2px 6px;
   font-family: 'Fira Code', 'Courier New', monospace;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
 }
 
@@ -500,7 +500,7 @@ const sizeText = computed(() => {
   border-collapse: collapse;
   width: 100%;
   margin: 10px 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .share-expanded-content :deep(th),

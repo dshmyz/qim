@@ -84,6 +84,14 @@ export const useChatStore = defineStore('chat', () => {
     })
   })
 
+  // 会话未读消息总数（排除已静音的会话）
+  const totalUnreadCount = computed(() => {
+    return conversations.value.reduce((sum, c) => {
+      if (c.muted) return sum
+      return sum + (c.unread_count || 0)
+    }, 0)
+  })
+
   // 基础方法
   function setCurrentConversation(id: string | null) {
     currentConversationId.value = id
@@ -422,6 +430,7 @@ export const useChatStore = defineStore('chat', () => {
     currentConversation,
     currentMessages,
     sortedConversations,
+    totalUnreadCount,
     // 基础方法
     setCurrentConversation,
     setMessages,

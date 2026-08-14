@@ -56,22 +56,22 @@ function addSubTask() {
 .subtask-list { margin-bottom: var(--spacing-3); }
 .subtask-label {
   display: block;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   color: var(--text-secondary);
   margin-bottom: var(--spacing-1);
 }
 .subtask-items { display: flex; flex-direction: column; gap: var(--spacing-1); }
 .subtask-item { display: flex; align-items: center; gap: var(--spacing-2); padding: var(--spacing-1) 0; }
-.subtask-check { background: none; border: none; cursor: pointer; padding: 0; font-size: 14px; }
-.subtask-title { flex: 1; font-size: 12px; color: var(--text-primary); }
+.subtask-check { background: none; border: none; cursor: pointer; padding: 0; font-size: var(--font-size-sm); }
+.subtask-title { flex: 1; font-size: var(--font-size-xxs); color: var(--text-primary); }
 .subtask-title.completed { text-decoration: line-through; color: var(--text-secondary); }
 .subtask-delete {
   background: none;
   border: none;
   cursor: pointer;
   padding: 0;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary);
   opacity: 0;
   transition: opacity var(--animation-fast) ease;
@@ -84,7 +84,7 @@ function addSubTask() {
   padding: var(--spacing-1) var(--spacing-2);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-primary);
   background: var(--input-bg);
 }

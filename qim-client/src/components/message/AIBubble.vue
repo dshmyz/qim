@@ -53,11 +53,11 @@ defineEmits<{
 }
 
 .ai-icon {
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .ai-label {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   color: #0ea5e9;
 }
@@ -85,7 +85,7 @@ defineEmits<{
 }
 
 .ai-source {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--color-text-tertiary);
 }
 

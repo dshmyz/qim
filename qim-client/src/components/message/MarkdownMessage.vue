@@ -44,7 +44,7 @@ const { html, containerRef } = useMarkdownRender(
      同色而显得没有背景色/线条 */
   background: var(--message-bubble-bg);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
   word-break: break-word;
 }

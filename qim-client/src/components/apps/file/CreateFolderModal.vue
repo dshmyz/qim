@@ -129,7 +129,7 @@ async function handleSubmit() {
 
 .form-group label {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
   margin-bottom: 8px;
@@ -140,7 +140,7 @@ async function handleSubmit() {
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   background: var(--input-bg);
   color: var(--text-color);
   transition: all 0.2s ease;
@@ -169,7 +169,7 @@ select.form-input {
 .modal-btn {
   padding: 8px 24px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;

@@ -12,14 +12,11 @@
     </summary>
     <ul>
       <li v-for="(src, i) in sources" :key="i">
-        <span v-if="src.source" class="source-tag">{{ sourceLabel(src.source) }}</span>
+        <span v-if="src.source || src.type" class="source-tag">{{ sourceLabel(src.source, src.type) }}</span>
         <span
           class="title"
-          :class="{ clickable: src.id }"
-          :title="src.id ? `点击查看详情（${src.source || '未知来源'}）` : src.title"
-          @click="src.id && showSourceDetail(src)"
         >{{ src.title || '未命名' }}</span>
-        <span class="score">{{ formatScore(src.score) }}</span>
+        <span v-if="src.snippet" class="snippet">{{ src.snippet }}</span>
       </li>
     </ul>
   </details>
@@ -38,7 +35,7 @@
       class="avatar-source-tag"
       :title="src.snippet || ''"
     >
-      {{ sourceLabel(src.source) }}
+      {{ sourceLabel(src.source, src.type) }}
       <template v-if="src.title">《{{ src.title }}》</template>
     </span>
   </div>
@@ -52,20 +49,13 @@ type NormalizedSource = 'knowledge' | 'notes' | 'memory'
 
 defineProps<{
   sources?: AISource[]
-  /** list = 群助手/Bot 折叠列表（带分数），inline = 分身行内标签（snippet tooltip） */
+  /** list = 群助手/Bot 折叠列表（带来源标签+标题，悬停/点击看摘要），inline = 分身行内标签（snippet tooltip） */
   variant: 'list' | 'inline'
 }>()
 
-// 分数格式化：0.92 → 92%
-const formatScore = (score?: number) => {
-  if (typeof score !== 'number' || isNaN(score)) return ''
-  return Math.round(score * 100) + '%'
-}
-
-// 来源标签映射（统一单套）：source 的 knowledge→知识库 / notes→笔记 / memory→记忆；
-// 同时并联未统一前分身旧 shape 的 type（note→笔记 / group→群知识 / memory→记忆），
-// 保证历史消息回放时沿用旧 `type` 字段的来源也能正确归一，不落回裸英文。
-const sourceLabel = (source?: string): string => {
+// 来源标签映射（统一单套）：新数据走 source（knowledge/notes/memory），
+// 兼容旧 shape 的 type（note→笔记 / group→群知识 / memory→记忆）。
+const sourceLabel = (source?: string, type?: string): string => {
   const labels: Record<string, string> = {
     knowledge: '知识库',
     notes: '笔记',
@@ -73,13 +63,9 @@ const sourceLabel = (source?: string): string => {
     note: '笔记',
     group: '群知识',
   }
-  return labels[source ?? ''] || source || '资料'
-}
-
-// 点击知识来源：显示来源详情（类型+ID）
-const showSourceDetail = (src: AISource) => {
-  const label = sourceLabel(src.source)
-  window.$QMessage?.info?.(`${label} · ID: ${src.id}`)
+  // 优先读 source，无则回退到 type（兼容分身旧 shape），最终兜底中文
+  const key = source || type
+  return labels[key ?? ''] || key || '资料'
 }
 </script>
 
@@ -88,11 +74,11 @@ const showSourceDetail = (src: AISource) => {
 .knowledge-sources {
   margin-top: 6px;
   padding: 4px 10px;
-  border: 1px solid #e8ecf3;
+  border: 1px solid var(--border-color, #e8ecf3);
   border-radius: 6px;
-  background: #f9fafc;
-  font-size: 12px;
-  color: #666;
+  background: var(--hover-color, #f9fafc);
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary, #666);
 }
 .knowledge-sources summary {
   cursor: pointer;
@@ -101,10 +87,10 @@ const showSourceDetail = (src: AISource) => {
   gap: 6px;
   list-style: none;
   user-select: none;
-  color: #888;
+  color: var(--text-secondary, #888);
 }
 .knowledge-sources summary::-webkit-details-marker { display: none; }
-.knowledge-sources summary i { color: #4f7cff; font-size: 11px; }
+.knowledge-sources summary i { color: #4f7cff; font-size: var(--font-size-xxxs); }
 .knowledge-sources .count {
   display: inline-block;
   min-width: 16px;
@@ -112,10 +98,10 @@ const showSourceDetail = (src: AISource) => {
   height: 16px;
   line-height: 16px;
   text-align: center;
-  background: #e8ecf3;
-  color: #666;
+  background: var(--border-color, #e8ecf3);
+  color: var(--text-secondary, #666);
   border-radius: 8px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
 }
 .knowledge-sources ul {
   margin: 6px 0 2px;
@@ -124,11 +110,11 @@ const showSourceDetail = (src: AISource) => {
 }
 .knowledge-sources li {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 8px;
   padding: 3px 0;
-  border-top: 1px dashed #eef1f6;
+  border-top: 1px dashed var(--border-color, #eef1f6);
 }
 .knowledge-sources li:first-child { border-top: none; }
 .knowledge-sources .source-tag {
@@ -138,8 +124,8 @@ const showSourceDetail = (src: AISource) => {
   line-height: 14px;
   font-size: 9px;
   border-radius: 3px;
-  background: #e8ecf3;
-  color: #888;
+  background: var(--border-color, #e8ecf3);
+  color: var(--text-secondary, #888);
   white-space: nowrap;
 }
 .knowledge-sources .title {
@@ -147,23 +133,18 @@ const showSourceDetail = (src: AISource) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #333;
+  color: var(--text-color, #333);
 }
-.knowledge-sources .title.clickable {
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-color: #ccc;
-  text-underline-offset: 2px;
-}
-.knowledge-sources .title.clickable:hover {
-  color: #4f7cff;
-  text-decoration-color: #4f7cff;
-}
-.knowledge-sources .score {
-  flex-shrink: 0;
-  color: #4f7cff;
-  font-size: 11px;
-  font-weight: 500;
+.knowledge-sources .snippet {
+  width: 100%;
+  margin-top: 2px;
+  font-size: var(--font-size-xxxs);
+  line-height: 1.4;
+  color: var(--text-secondary, #999);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* ===== inline 变体（原 AvatarSources.vue）===== */
@@ -173,7 +154,7 @@ const showSourceDetail = (src: AISource) => {
   flex-wrap: wrap;
   gap: 4px 8px;
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   line-height: 1.4;
   color: var(--text-secondary, #666);
   opacity: 0.75;

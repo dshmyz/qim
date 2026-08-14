@@ -1,5 +1,6 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { createPinia } from 'pinia'
 import FileManagementApp from '../../../src/components/apps/FileManagementApp.vue'
 
 const { mockFile, mockDownloadFile } = vi.hoisted(() => ({
@@ -73,6 +74,7 @@ vi.mock('../../../src/utils/qmessage', () => ({
 describe('FileManagementApp preview', () => {
   const originalCreateObjectURL = URL.createObjectURL
   const originalRevokeObjectURL = URL.revokeObjectURL
+  let wrapper: ReturnType<typeof mountApp> | undefined
 
   beforeEach(() => {
     URL.createObjectURL = vi.fn(() => 'blob:preview')
@@ -83,11 +85,16 @@ describe('FileManagementApp preview', () => {
     })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
+      json: () => Promise.resolve({ code: 0, data: [] }),
       text: () => Promise.resolve('hello world'),
+      blob: () => Promise.resolve(new Blob(['hello world'], { type: 'text/plain' })),
     }))
   })
 
   afterEach(() => {
+    // 先正确卸载组件树（Teleport 等挂载到 body 的节点随之移除），再清空 body
+    wrapper?.unmount()
+    wrapper = undefined
     document.body.innerHTML = ''
     URL.createObjectURL = originalCreateObjectURL
     URL.revokeObjectURL = originalRevokeObjectURL
@@ -95,9 +102,10 @@ describe('FileManagementApp preview', () => {
   })
 
   function mountApp() {
-    return mount(FileManagementApp, {
+    wrapper = mount(FileManagementApp, {
       attachTo: document.body,
       global: {
+        plugins: [createPinia()],
         stubs: {
           UploadProgressBar: true,
           CreateFolderModal: true,
@@ -105,6 +113,7 @@ describe('FileManagementApp preview', () => {
         },
       },
     })
+    return wrapper
   }
 
   it('opens a stable preview modal when a file row is double-clicked', async () => {
@@ -165,7 +174,7 @@ describe('FileManagementApp preview', () => {
     })
     await flushPromises()
 
-    const previewAction = Array.from(document.body.querySelectorAll('.context-menu-item'))
+    const previewAction = Array.from(document.body.querySelectorAll('.ucm-item'))
       .find((item) => item.textContent?.includes('预览')) as HTMLElement | undefined
 
     expect(previewAction).toBeTruthy()
@@ -195,7 +204,13 @@ describe('FileManagementApp preview', () => {
     await wrapper.find('button[title="下载"]').trigger('click')
     await flushPromises()
 
-    expect(mockDownloadFile).toHaveBeenCalledWith(mockFile.id)
+    // 浏览器回退走 fetch(带 Authorization 头的下载 URL)→ blob → 触发 <a download> 点击。
+    // mount 期间 useFolderTree 也会走一次 fetch,因此只断言下载 URL 那一次调用
+    const fetchMock = fetch as ReturnType<typeof vi.fn>
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/files/1/download'),
+      expect.objectContaining({ method: 'GET', cache: 'no-store' })
+    )
     expect(click).toHaveBeenCalledTimes(1)
     expect(appendChild).toHaveBeenCalled()
     expect(removeChild).toHaveBeenCalled()

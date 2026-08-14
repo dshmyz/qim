@@ -575,7 +575,7 @@ defineExpose({
 
 .icon-btn {
   padding: 5px 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   background: transparent;
   border: none;
   border-radius: 4px;
@@ -597,7 +597,7 @@ defineExpose({
 .header-action-btn {
   height: 32px;
   padding: 0 12px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -641,7 +641,7 @@ defineExpose({
 .search-input {
   width: 100%;
   padding: 7px 12px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   background: var(--list-bg);
@@ -664,7 +664,7 @@ defineExpose({
   flex: 1;
   padding: 10px 14px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   cursor: pointer;
   position: relative;
@@ -689,7 +689,7 @@ defineExpose({
 .tab-badge {
   background: var(--primary-color);
   color: white;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 1px 5px;
   border-radius: 8px;
   min-width: 16px;
@@ -706,12 +706,12 @@ defineExpose({
 }
 
 .sort-label {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
 .sort-option {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   cursor: pointer;
   padding: 2px 8px;
@@ -745,7 +745,7 @@ defineExpose({
 }
 
 .section-label {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--primary-color);
   font-weight: 600;
   padding: 4px 12px;
@@ -809,7 +809,7 @@ defineExpose({
   justify-content: center;
   flex-shrink: 0;
   color: var(--primary-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .notification-content {
@@ -826,7 +826,7 @@ defineExpose({
 }
 
 .notification-title {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-color);
   line-height: 1.3;
@@ -844,11 +844,11 @@ defineExpose({
 
 .badge-important {
   color: #e67e22;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
 }
 
 .badge-handled {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary);
   background: var(--hover-color);
   padding: 1px 6px;
@@ -856,7 +856,7 @@ defineExpose({
 }
 
 .notification-text {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-bottom: 4px;
   line-height: 1.4;
@@ -875,7 +875,7 @@ defineExpose({
 }
 
 .notification-time {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary);
   opacity: 0.7;
 }
@@ -902,7 +902,7 @@ defineExpose({
 
 .action-btn {
   padding: 3px 10px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   border-radius: 4px;
   border: none;
   cursor: pointer;
@@ -945,7 +945,7 @@ defineExpose({
 
 .tool-btn {
   padding: 3px 6px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   background: transparent;
   border: none;
   border-radius: 3px;
@@ -974,13 +974,13 @@ defineExpose({
 }
 
 .empty-notifications i {
-  font-size: 40px;
+  font-size: var(--font-size-4xl);
   margin-bottom: 14px;
   opacity: 0.4;
 }
 
 .empty-notifications p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 </style>

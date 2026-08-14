@@ -78,12 +78,22 @@ describe('AI组件单元测试', () => {
     it('处理中时应显示加载状态', () => {
       const wrapper = mount(AIQuickActions, {
         props: {
-          isProcessing: true,
+          processingAction: 'summary',
         },
       })
 
-      expect(wrapper.find('.ai-processing').exists()).toBe(true)
-      expect(wrapper.text()).toContain('处理中')
+      // 逐按钮 loading：处理中的动作按钮显示加载态，其余保持可用
+      const summaryAction = wrapper
+        .findAllComponents(AIQuickActionItem)
+        .find((item) => item.props('label') === '总结对话')
+      expect(summaryAction).toBeTruthy()
+      expect(summaryAction!.props('loading')).toBe(true)
+      expect(summaryAction!.find('button.is-loading').exists()).toBe(true)
+
+      const replyAction = wrapper
+        .findAllComponents(AIQuickActionItem)
+        .find((item) => item.props('label') === '帮我回复')
+      expect(replyAction!.props('loading')).toBe(false)
     })
 
     it('点击按钮应触发action事件', async () => {
@@ -97,7 +107,7 @@ describe('AI组件单元测试', () => {
       await firstAction.trigger('click')
 
       expect(wrapper.emitted('action')).toHaveLength(1)
-      expect(wrapper.emitted('action')![0][0]).toBe('summary')
+      expect(wrapper.emitted('action')![0][0]).toBe('draft-reply')
     })
   })
 

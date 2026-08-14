@@ -6,7 +6,7 @@
 /* 成员上下文菜单样式 */
 .context-menu-icon {
   margin-right: 10px;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   width: 20px;
   text-align: center;
 }
@@ -40,7 +40,7 @@
   padding: 10px 16px;
   cursor: pointer;
   transition: background 0.2s;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
 }
 
@@ -50,7 +50,7 @@
 
 .action-menu-icon {
   margin-right: 10px;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   width: 20px;
   text-align: center;
   color: var(--primary-color);
@@ -73,7 +73,7 @@
   padding: 10px 16px;
   cursor: pointer;
   transition: background 0.2s;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
 }
 
@@ -83,7 +83,7 @@
 
 .user-context-menu-icon {
   margin-right: 10px;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   width: 20px;
   text-align: center;
   color: var(--primary-color);
@@ -126,7 +126,7 @@
 .context-menu-item {
   padding: 8px 16px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-color);
   transition: background 0.2s;
 }

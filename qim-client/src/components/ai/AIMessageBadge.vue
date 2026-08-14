@@ -21,18 +21,18 @@ defineProps<{
   border-radius: 10px;
   background: rgba(102, 126, 234, 0.05);
   /* color: rgba(102, 126, 234, 0.7); */
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
 }
 
 .ai-message-badge.compact {
   padding: 1px 6px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   gap: 4px;
 }
 
 .ai-badge-icon {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   opacity: 0.8;
 }
 
@@ -41,7 +41,7 @@ defineProps<{
 }
 
 .ai-generated-tag {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   opacity: 0.7;
   font-weight: 400;
 }

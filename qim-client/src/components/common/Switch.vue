@@ -158,7 +158,7 @@ function handleToggle() {
 }
 
 .q-switch__label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
   user-select: none;

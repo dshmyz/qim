@@ -86,7 +86,7 @@ const timeLabel = computed(() => {
   width: 100%;
 }
 .file-cmd-item__icon {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -100,18 +100,18 @@ const timeLabel = computed(() => {
   gap: 2px;
 }
 .file-cmd-item__name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color, #303133);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .file-cmd-item__meta {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #909399);
 }
 .file-cmd-item__time {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #909399);
   flex-shrink: 0;
   display: inline-flex;

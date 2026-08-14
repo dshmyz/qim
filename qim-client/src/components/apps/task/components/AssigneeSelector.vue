@@ -137,7 +137,7 @@ function getAvatarColor(name: string) {
 .assignee-selector { margin-bottom: var(--spacing-3); position: relative; }
 .assignee-label {
   display: block;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   color: var(--text-secondary);
   margin-bottom: var(--spacing-1);
@@ -151,7 +151,7 @@ function getAvatarColor(name: string) {
   border-radius: var(--radius-sm);
   background: var(--input-bg);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-primary);
 }
 .assignee-trigger:hover { border-color: #8b5cf6; }
@@ -173,7 +173,7 @@ function getAvatarColor(name: string) {
   padding: var(--spacing-1) var(--spacing-2);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   margin-bottom: var(--spacing-2);
   color: var(--text-primary);
   background: var(--input-bg);
@@ -181,7 +181,7 @@ function getAvatarColor(name: string) {
 .assignee-search:focus { outline: none; border-color: #8b5cf6; }
 .search-loading {
   padding: var(--spacing-2) var(--spacing-3);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   text-align: center;
 }
@@ -201,7 +201,7 @@ function getAvatarColor(name: string) {
   background: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-primary);
   text-align: left;
 }

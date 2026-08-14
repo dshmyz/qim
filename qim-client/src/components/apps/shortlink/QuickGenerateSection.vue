@@ -102,7 +102,7 @@ defineExpose({
 .generate-header h3 {
   margin: 0;
   color: var(--text-primary, #1f2937);
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   flex-shrink: 0;
   max-width: 100%;
@@ -123,7 +123,7 @@ defineExpose({
   color: var(--text-secondary, #666);
   border: 1px solid var(--border-color, #ddd);
   border-radius: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
@@ -154,7 +154,7 @@ defineExpose({
   padding-right: 80px;
   border: none;
   border-radius: 12px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   background: white;
   color: var(--text-primary, #1f2937);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -172,7 +172,7 @@ defineExpose({
   top: 50%;
   transform: translateY(-50%);
   color: #9ca3af;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   pointer-events: none;
 }
 
@@ -182,7 +182,7 @@ defineExpose({
   color: white;
   border: none;
   border-radius: 12px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
@@ -221,13 +221,13 @@ defineExpose({
 
 .result-label {
   color: var(--text-secondary, #6b7280);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   margin-bottom: 4px;
 }
 
 .result-url {
   color: var(--text-primary, #1f2937);
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   word-break: break-all;
   overflow-wrap: break-word;
@@ -239,7 +239,7 @@ defineExpose({
   color: white;
   border: none;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;

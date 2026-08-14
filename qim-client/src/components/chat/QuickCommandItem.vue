@@ -32,7 +32,7 @@ const text = computed(() => props.item.text)
   width: 100%;
 }
 .quick-cmd-item__icon {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--primary-color, #3385ff);
   flex-shrink: 0;
   display: inline-flex;
@@ -41,7 +41,7 @@ const text = computed(() => props.item.text)
 }
 .quick-cmd-item__text {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color, #303133);
   white-space: nowrap;
   overflow: hidden;

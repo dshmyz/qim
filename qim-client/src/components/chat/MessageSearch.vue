@@ -93,8 +93,8 @@ defineEmits<{
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  color: #666;
-  font-size: 14px;
+  color: var(--text-secondary, #666);
+  font-size: var(--font-size-sm);
 }
 
 .search-loading {
@@ -107,7 +107,7 @@ defineEmits<{
   content: '';
   width: 16px;
   height: 16px;
-  border: 2px solid #e0e0e0;
+  border: 2px solid var(--border-color, #e0e0e0);
   border-top: 2px solid #1976d2;
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -128,8 +128,8 @@ defineEmits<{
   align-items: center;
   margin-bottom: 16px;
   padding-bottom: 8px;
-  font-size: 14px;
-  color: #333;
+  font-size: var(--font-size-sm);
+  color: var(--text-color, #333);
 }
 
 .clear-search-btn {
@@ -139,7 +139,7 @@ defineEmits<{
   border-radius: 4px;
   color: #1976d2;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   transition: all 0.2s ease;
 }
 
@@ -149,6 +149,6 @@ defineEmits<{
 }
 
 .search-no-results {
-  color: #999;
+  color: var(--text-secondary, #999);
 }
 </style>

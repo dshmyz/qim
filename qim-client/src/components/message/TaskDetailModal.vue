@@ -256,8 +256,8 @@ function formatTime(timeStr: string): string {
   justify-content: center;
   gap: 8px;
   padding: 40px 0;
-  color: #909399;
-  font-size: 14px;
+  color: var(--text-secondary, #909399);
+  font-size: var(--font-size-sm);
 }
 .task-detail-error {
   color: #f56c6c;
@@ -282,17 +282,17 @@ function formatTime(timeStr: string): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   flex-shrink: 0;
 }
 .task-detail-icon.status-completed { background: #f0f9eb; color: #67c23a; }
 .task-detail-icon.status-in_progress { background: #fdf6ec; color: #e6a23c; }
-.task-detail-icon.status-todo { background: #f4f4f5; color: #909399; }
+.task-detail-icon.status-todo { background: var(--card-bg, #f4f4f5); color: var(--text-secondary, #909399); }
 .task-detail-title {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
-  color: #303133;
+  color: var(--text-color, #303133);
   line-height: 1.4;
   word-break: break-word;
 }
@@ -303,7 +303,7 @@ function formatTime(timeStr: string): string {
   flex-wrap: wrap;
   gap: 16px;
   padding: 12px;
-  background: #f5f7fa;
+  background: var(--hover-color, #f5f7fa);
   border-radius: 8px;
 }
 .task-detail-meta-item {
@@ -312,12 +312,12 @@ function formatTime(timeStr: string): string {
   gap: 4px;
 }
 .task-detail-meta-label {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary, #909399);
 }
 .task-detail-meta-value {
-  font-size: 13px;
-  color: #303133;
+  font-size: var(--font-size-xs);
+  color: var(--text-color, #303133);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -327,12 +327,12 @@ function formatTime(timeStr: string): string {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 10px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
 }
 .task-detail-badge.status-completed { background: #f0f9eb; color: #67c23a; }
 .task-detail-badge.status-in_progress { background: #fdf6ec; color: #e6a23c; }
-.task-detail-badge.status-todo { background: #f4f4f5; color: #909399; }
+.task-detail-badge.status-todo { background: var(--card-bg, #f4f4f5); color: var(--text-secondary, #909399); }
 .task-detail-badge.priority-high { background: #fef0f0; color: #f56c6c; }
 .task-detail-badge.priority-urgent { background: #fef0f0; color: #f56c6c; }
 .task-detail-badge.priority-medium { background: #fdf6ec; color: #e6a23c; }
@@ -345,29 +345,29 @@ function formatTime(timeStr: string): string {
   gap: 8px;
 }
 .task-detail-section-title {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
-  color: #606266;
+  color: var(--text-secondary, #606266);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 .task-detail-count {
-  background: #e4e7ed;
-  color: #606266;
+  background: var(--border-color, #e4e7ed);
+  color: var(--text-secondary, #606266);
   padding: 0 6px;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
 }
 .task-detail-description {
-  font-size: 13px;
-  color: #303133;
+  font-size: var(--font-size-xs);
+  color: var(--text-color, #303133);
   line-height: 1.6;
   padding: 10px 12px;
-  background: #fafbfc;
+  background: var(--hover-color, #fafbfc);
   border-radius: 6px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--border-color, #ebeef5);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -377,9 +377,9 @@ function formatTime(timeStr: string): string {
   flex-direction: row;
   gap: 24px;
   padding: 10px 12px;
-  background: #fafbfc;
+  background: var(--hover-color, #fafbfc);
   border-radius: 6px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--border-color, #ebeef5);
 }
 .task-detail-person {
   display: flex;
@@ -387,12 +387,12 @@ function formatTime(timeStr: string): string {
   gap: 2px;
 }
 .task-detail-section-label {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary, #909399);
 }
 .task-detail-person-name {
-  font-size: 13px;
-  color: #303133;
+  font-size: var(--font-size-xs);
+  color: var(--text-color, #303133);
 }
 
 /* 子任务 */
@@ -410,17 +410,17 @@ function formatTime(timeStr: string): string {
   gap: 8px;
   padding: 6px 10px;
   border-radius: 6px;
-  font-size: 13px;
-  color: #303133;
-  background: #fafbfc;
+  font-size: var(--font-size-xs);
+  color: var(--text-color, #303133);
+  background: var(--hover-color, #fafbfc);
 }
 .task-detail-subtask.done {
-  color: #909399;
+  color: var(--text-secondary, #909399);
   text-decoration: line-through;
 }
 .task-detail-subtask i {
-  font-size: 14px;
-  color: #c0c4cc;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary, #c0c4cc);
 }
 .task-detail-subtask.done i {
   color: #67c23a;
@@ -437,7 +437,7 @@ function formatTime(timeStr: string): string {
   color: #409eff;
   padding: 2px 10px;
   border-radius: 10px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 /* 时间 */
@@ -445,8 +445,8 @@ function formatTime(timeStr: string): string {
   flex-direction: row;
   gap: 16px;
   padding-top: 8px;
-  border-top: 1px solid #ebeef5;
-  font-size: 12px;
-  color: #909399;
+  border-top: 1px solid var(--border-color, #ebeef5);
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary, #909399);
 }
 </style>

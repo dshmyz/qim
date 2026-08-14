@@ -111,7 +111,7 @@ const handleBlur = () => {
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   outline: none;
 }
 
@@ -119,7 +119,7 @@ const handleBlur = () => {
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   cursor: pointer;
   padding: 0 4px;
 }

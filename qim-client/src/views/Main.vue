@@ -48,8 +48,10 @@
     </div>
     
     <!-- 左侧垂直选项栏（固定定位，从顶部延伸到底部） -->
-    <SideOptions 
+    <SideOptions
       v-model:activeOption="activeOption"
+      :unread-count="chatStore.totalUnreadCount"
+      :channel-unread-count="channelStore.totalUnreadCount"
       @showMoreMenu="showMoreMenu"
       @showThemeMenu="showThemeMenu"
       @showSettingsMenu="showSettingsMenu"
@@ -59,8 +61,9 @@
     <div class="main-content-area">
       <!-- 主内容区域 -->
       <div class="main-content">
-      <!-- 侧边栏 -->
+      <!-- 侧边栏：应用页面不渲染，让内容区占满 -->
       <Sidebar
+        v-if="activeOption !== 'apps'"
         ref="sidebarRef"
         :currentUser="currentUser || { username: '用户', name: '用户' }"
         :activeOption="activeOption"
@@ -79,7 +82,7 @@
         :isLoadingConversations="isLoadingConversations"
         :groups="[...(userGroups || [])]"
         @update:searchQuery="searchQuery = $event"
-        @showUserProfile="showUserProfile = true"
+        @showUserProfile="showSelfProfile"
         @showNotification="handleNotificationCenter"
         @showActionMenu="showActionMenu"
         @selectConversation="handleConversationSelect"
@@ -176,15 +179,14 @@
                 v-if="channelStore.selectedChannel"
                 :channel="channelStore.selectedChannel"
                 :isCreator="isChannelCreator(channelStore.selectedChannel)"
-                :displayMode="channelStore.messageMode"
-                :sortOrder="'desc'"
+                :sortOrder="channelSortOrder"
                 :loading="channelStore.messagesLoading"
                 :highlight-message-id="channelStore.pendingMessageId"
                 @highlight-consumed="channelStore.clearPendingMessageId"
                 @subscribe="handleChannelSubscribe"
                 @unsubscribe="handleChannelUnsubscribe"
                 @sendMessage="handleChannelSendMessage"
-                @update:displayMode="handleDisplayModeChange"
+                @update:sort-order="handleChannelSortOrderChange"
                 @like="handleMessageLike"
                 @unlike="handleMessageUnlike"
                 @comment="handleMessageComment"
@@ -243,7 +245,6 @@
           :customApps="customApps"
           :systemApps="systemApps"
           :pageTitle="getPageTitle()"
-          @toggleSidebar="toggleSidebar"
           @openApp="openApp"
         />
 
@@ -251,7 +252,7 @@
         <div v-else-if="selectedAppId === 'file_manager'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <FileManagementApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
+              <FileManagementApp @back="selectedAppId = ''" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -263,7 +264,7 @@
         <div v-else-if="selectedAppId === 'notes'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <NotesApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
+              <NotesApp @back="selectedAppId = ''" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -275,7 +276,7 @@
         <div v-else-if="selectedAppId === 'task_manager'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <TaskManagementApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
+              <TaskManagementApp @back="selectedAppId = ''" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -287,7 +288,7 @@
         <div v-else-if="selectedAppId === 'calendar'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <CalendarApp :focus-event-id="focusEventId" @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" @openTaskApp="selectedAppId = 'task_manager'" @consumed-focus="focusEventId = ''" />
+              <CalendarApp :focus-event-id="focusEventId" @back="selectedAppId = ''" @openTaskApp="selectedAppId = 'task_manager'" @consumed-focus="focusEventId = ''" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -299,7 +300,7 @@
         <div v-else-if="selectedAppId === 'sticky_notes'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <StickyNotesApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
+              <StickyNotesApp @back="selectedAppId = ''" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -314,7 +315,6 @@
               <UserAppContainer
                 :app="currentUserApp"
                 @back="selectedAppId = ''"
-                @toggleSidebar="toggleSidebar"
               />
             </template>
             <template #fallback>
@@ -327,7 +327,7 @@
         <div v-else-if="selectedAppId === 'app-management'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <AppManagementApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
+              <AppManagementApp @back="selectedAppId = ''" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -339,7 +339,7 @@
         <div v-else-if="systemConfigStore.enableAI && selectedAppId === 'ai_assistant'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <AIAssistantApp @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
+              <AIAssistantApp @back="selectedAppId = ''" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -351,7 +351,7 @@
         <div v-else-if="systemConfigStore.enableAI && selectedAppId === 'avatar'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <AvatarSettingsPanel @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
+              <AvatarSettingsPanel @back="selectedAppId = ''" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -363,7 +363,7 @@
         <div v-else-if="selectedAppId === 'short_link'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <ShortLinkManager @back="selectedAppId = ''" @toggleSidebar="toggleSidebar" />
+              <ShortLinkManager @back="selectedAppId = ''" />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -2000,9 +2000,12 @@ const handleNotification = (data: any) => {
         : data.action_payload
       if (payload.channel_id) {
         const channelId = String(payload.channel_id)
-        channelStore.incrementUnread(channelId)
         if (channelStore.selectedChannelId === channelId && activeOption.value === 'channels') {
+          // 正打开该频道：刷新消息并清零未读，而非累加
+          channelStore.markChannelRead(channelId)
           channelStore.fetchChannelMessages(channelId)
+        } else {
+          channelStore.incrementUnread(channelId)
         }
       }
     } catch (e) {
@@ -2535,6 +2538,21 @@ const handleUserClick = (employee: any) => {
   selectedUser.value = employee
 }
 
+// 离开组织架构 tab 时清理 selectedUser，避免其他场景误用旧数据
+watch(activeOption, (val) => {
+  if (val !== 'org') {
+    selectedUser.value = null
+  }
+})
+
+// 打开「我的资料」弹窗：先清掉残留的选中用户。
+// SelfProfileModal 的 :visible 依赖 !selectedUser，若之前打开过同事资料后未清理，
+// 点「个人资料」会被 UserProfile 的旧用户遮蔽（弹窗不出现）
+const showSelfProfile = () => {
+  selectedUser.value = null
+  showUserProfile.value = true
+}
+
 // 展开的部门（运行时动态设置）
 const expandedDepartments = ref<string[]>([])
 
@@ -2574,6 +2592,10 @@ const allApps = computed(() => {
 })
 
 // 快速工具列表（分类为 tool 的内置应用，如短链接管理）
+const quickToolDescriptions: Record<string, string> = {
+  short_link: '生成和管理短链接',
+}
+
 const quickTools = computed(() => {
   return builtInApps.value
     .filter(app => app.category === 'tool')
@@ -2581,7 +2603,7 @@ const quickTools = computed(() => {
       id: app.code || String(app.id),
       name: app.name,
       icon: app.icon || 'fas fa-cube',
-      description: '',
+      description: app.description || quickToolDescriptions[app.code || ''] || '',
     }))
 })
 
@@ -2880,12 +2902,13 @@ const handleChannelRefresh = () => {
   }
 }
 
-const handleChannelSendMessage = async (channel: any, message: string) => {
-  await sendChannelMessage(channel, message)
+const channelSortOrder = ref<'asc' | 'desc'>('desc')
+const handleChannelSortOrderChange = (order: 'asc' | 'desc') => {
+  channelSortOrder.value = order
 }
 
-const handleDisplayModeChange = (mode: 'card' | 'timeline') => {
-  channelStore.setMessageMode(mode)
+const handleChannelSendMessage = async (channel: any, message: string) => {
+  await sendChannelMessage(channel, message)
 }
 
 const handleMessageLike = async (message: any) => {

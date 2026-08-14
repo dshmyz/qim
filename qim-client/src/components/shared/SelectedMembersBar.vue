@@ -37,7 +37,7 @@ defineEmits<{
   padding: 3px 8px 3px 6px;
   background: var(--hover-color, rgba(99, 102, 241, 0.08));
   border-radius: 14px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 .chip-name {
   max-width: 80px;
@@ -49,7 +49,7 @@ defineEmits<{
 .chip-remove {
   cursor: pointer;
   color: var(--text-secondary, #999);
-  font-size: 16px;
+  font-size: var(--font-size-base);
   line-height: 1;
   padding: 0 3px;
   transition: color 0.15s;

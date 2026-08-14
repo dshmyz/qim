@@ -3,35 +3,36 @@
    从 main.css 拆分
    ======================================== */
 
-/* 炫酷黑主题 */
+/* 炫酷黑主题 —— 冷灰蓝 + 柔和蓝 accent，科技冷调不刺眼 */
 [data-theme="elegant-dark"] {
-  --primary-color: #4b5563;
-  --primary-light: #374151;
-  --secondary-color: #0a0a0a;
-  --text-color: #e5e7eb;
-  --border-color: #374151;
-  --hover-color: #2d3748;
-  --active-color: #6b7280;
-  --sidebar-bg: #0f0f0f;
-  --window-controls-bg: #0f0f0f;
-  --context-menu-bg: #1f2937;
-  --context-menu-hover: #374151;
-  --accent-color: #4b5563;
-  --text-secondary: #9ca3af;
+  --primary-color: #60a5fa;       /* Blue 400 - 主色（原 #3b82f6 太电光，降低饱和减少刺眼）*/
+  --primary-light: #2b3a55;       /* 深蓝灰 tint - 与卡片 #1e293b 区分，保证暗色下 hover/选中高亮可见 */
+  --secondary-color: #1e293b;     /* Slate 800 - 与其他表面统一 */
+  --text-color: #e2e8f0;          /* Slate 200 - 主文本（原 #e5e7eb 偏白有眩光，微降亮度）*/
+  --text-secondary: #94a3b8;      /* Slate 400 - 次文本 */
+  --border-color: #334155;        /* Slate 700 - 边框（原 #475569 过于突出，降低视觉噪音）*/
+  --hover-color: #334155;         /* Slate 700 - 悬停 */
+  --active-color: #2563eb;        /* Blue 600 - 激活态 */
+  --accent-color: #60a5fa;        /* Blue 400 - 强调（与主色统一，减少色彩碎片）*/
+  --sidebar-bg: #1e293b;          /* Slate 800 */
+  --content-bg: #1e293b;            /* Slate 800 - 与 sidebar/card 统一 */
+  --window-controls-bg: #1e293b;
+  --context-menu-bg: #1e293b;
+  --context-menu-hover: #334155;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-  --panel-bg: #121212;
-  --list-bg: #1a1a1a;
-  --card-bg: #161616;
-  --header-panel-bg: #0f0f0f;
-  --content-bg: #0a0a0a;
-  --right-content-bg: #0f0f0f;
-  --right-content-header-bg: #1a1a1a;
-  --input-bg: #1f2937;
-  --modal-bg: #1f293b;
-  --btn-bg: #374151;
-  --side-options-bg: #0f0f0f;
-  --message-bubble-bg: #1f2937;
+  --panel-bg: #1e293b;
+  --list-bg: #1e293b;
+  --card-bg: #1e293b;
+  --header-panel-bg: #1e293b;
+  --right-content-bg: #1e293b;
+  --right-content-header-bg: #1e293b;
+  --input-bg: #2d3a4d;            /* 蓝灰（原 #334155 对输入框太亮，略微收回）*/
+  --modal-bg: #1e293b;
+  --btn-bg: #334155;
+  --bg-color: #1e293b;            /* ModalContainer 弹窗头/底/取消按钮背景（原未定义，fallback 白色）*/
+  --side-options-bg: linear-gradient(180deg, #1e293b 0%, #334155 100%);
+  --message-bubble-bg: #334155;
 }
 
 /* 炫酷黑主题 - 侧边栏内容区域 */
@@ -306,32 +307,32 @@
 
 /* 高雅紫主题 */
 [data-theme="elegant-purple"] {
-  --primary-color: #75629a;
-  --primary-light: #efebf6;
+  --primary-color: #8b6fc0;           /* 紫罗兰主色，饱和度 36%，比原 #75629a 更鲜亮 */
+  --primary-light: #f3eff9;           /* 极淡紫调 tint，用于 hover/浅底 */
   --secondary-color: #ffffff;
-  --text-color: #342e43;
-  --border-color: #e5e0ef;
-  --hover-color: #efebf6;
-  --active-color: #665486;
-  --sidebar-bg: #ffffff;
+  --text-color: #342e43;              /* 深紫灰，对比度优秀 */
+  --border-color: #e8e3f0;            /* 淡紫边框 */
+  --hover-color: #f0ebf7;             /* 悬停紫调 */
+  --active-color: #6b52a5;            /* 深紫，按下态 */
+  --sidebar-bg: #ffffff;              /* 与其他浅色主题统一纯白 */
   --window-controls-bg: #ffffff;
   --context-menu-bg: #ffffff;
-  --context-menu-hover: #efebf6;
-  --accent-color: #8b78b4;
-  --text-secondary: #746d81;
-  --shadow-sm: 0 1px 2px 0 rgba(64, 53, 91, 0.07);
-  --shadow-md: 0 4px 6px -1px rgba(64, 53, 91, 0.12), 0 2px 4px -1px rgba(64, 53, 91, 0.08);
-  --panel-bg: #ffffff;
+  --context-menu-hover: #f0ebf7;
+  --accent-color: #a78bda;            /* 亮紫强调，与 primary 拉开明度 */
+  --text-secondary: #7c7389;          /* 中灰紫 */
+  --shadow-sm: 0 1px 2px 0 rgba(107, 82, 165, 0.07);
+  --shadow-md: 0 4px 6px -1px rgba(107, 82, 165, 0.12), 0 2px 4px -1px rgba(107, 82, 165, 0.08);
+  --panel-bg: #ffffff;                /* 与其他浅色主题统一纯白 */
   --list-bg: #fcfbfe;
-  --card-bg: #ffffff;
-  --header-panel-bg: #efebf6;
+  --card-bg: #ffffff;                 /* 卡片保持纯白形成层次 */
+  --header-panel-bg: #faf8fd;         /* 与 sidebar-bg 统一 */
   --content-bg: #ffffff;
-  --right-content-bg: #ffffff;
+  --right-content-bg: #ffffff;        /* 与其他浅色主题统一纯白 */
   --right-content-header-bg: #ffffff;
   --input-bg: #ffffff;
   --modal-bg: #ffffff;
-  --btn-bg: #efebf6;
-  --side-options-bg: linear-gradient(135deg, #a497c6 0%, #8b78b4 50%, #665486 100%);
+  --btn-bg: #f0ebf7;                  /* 按钮紫调底 */
+  --side-options-bg: linear-gradient(135deg, #a78bda 0%, #8b6fc0 50%, #6b52a5 100%);
 }
 
 /* 高雅紫主题 - 文本颜色 */
@@ -344,7 +345,7 @@
 
 /* 高雅紫主题 - 侧边栏头部 */
 [data-theme="elegant-purple"] .sidebar-header {
-  background: #ffffff;
+  background: var(--sidebar-bg);
 }
 
 [data-theme="elegant-purple"] .sidebar-header .user-name {
@@ -354,7 +355,7 @@
 
 /* 高雅紫主题 - 窗口控制栏左侧 */
 [data-theme="elegant-purple"] .window-controls-left {
-  background: linear-gradient(135deg, #a497c6 0%, #8b78b4 50%, #665486 100%);
+  background: linear-gradient(135deg, #a78bda 0%, #8b6fc0 50%, #6b52a5 100%);
 }
 
 /* 月牙黄主题 */
@@ -668,33 +669,35 @@
   background: linear-gradient(135deg, #333333 0%, #666666 100%);
 }
 
-/* 春日花主题 */
+/* 春日花主题 —— 樱花粉 + 梅紫，统一春日色系（修正原黄/绿/紫杂色） */
 [data-theme="spring-blossom"] {
-  --primary-color: #f8bbd9;
-  --primary-light: #fff9c4;
-  --primary-dark: #e1bee7;
-  --secondary-color: #fffef5;
-  --text-color: #6b21a8;
-  --text-secondary: #9333ea;
-  --border-color: #c8e6c9;
-  --hover-color: #fff3cd;
-  --active-color: #e1bee7;
+  --primary-color: #f06292;       /* 樱花粉 - 主色（Pink 300，柔和且有存在感，按钮/链接白底可读）*/
+  --primary-light: #fce4ec;       /* 樱花浅 - 真·primary 浅 tint（原错误用黄色 #fff9c4）*/
+  --primary-dark: #ec407a;        /* 玫瑰红 - primary 深色（Pink 400）*/
+  --secondary-color: #fffafc;     /* 极淡粉白 */
+  --text-color: #831843;          /* 深梅 - 主文本（Pink 900，粉家族内最暗，保证对比度）*/
+  --text-secondary: #be185d;      /* 玫红 - 次文本（Pink 700）*/
+  --border-color: #f8bbd0;        /* 柔粉边框（原错误绿色 #c8e6c9，复制残留）*/
+  --hover-color: #fce4ec;         /* 悬停浅粉（原错误黄色 #fff3cd）*/
+  --active-color: #f8bbd0;        /* 激活粉 */
   --sidebar-bg: #ffffff;
-  --content-bg: #fffef5;
+  --content-bg: #ffffff;            /* 与其他浅色主题统一为白色 */
   --window-controls-bg: #ffffff;
   --context-menu-bg: #ffffff;
-  --context-menu-hover: #fff3cd;
-  --accent-color: #f8bbd9;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --context-menu-hover: #fce4ec;  /* 悬停浅粉（原错误黄色）*/
+  --accent-color: #c084fc;        /* 薰衣草强调 - 与粉色 primary 区分（原 == primary 无层次）*/
+  --shadow-sm: 0 1px 2px 0 rgba(131, 24, 67, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(131, 24, 67, 0.08), 0 2px 4px -1px rgba(131, 24, 67, 0.05);
   --panel-bg: #ffffff;
-  --list-bg: #fffef5;
+  --list-bg: #fffafc;
   --card-bg: #ffffff;
-  --header-panel-bg: #fff9c4;
+  --header-panel-bg: #fce4ec;     /* 浅粉（原错误黄色 #fff9c4）*/
   --right-content-bg: #ffffff;
   --right-content-header-bg: #ffffff;
   --input-bg: #ffffff;
-  --side-options-bg: linear-gradient(135deg, #fce4ec 0%, #f8bbd9 100%);
+  --modal-bg: #ffffff;            /* 补齐缺失变量（原回退到 :root 默认）*/
+  --btn-bg: #fce4ec;              /* 补齐缺失变量，粉色按钮底 */
+  --side-options-bg: linear-gradient(135deg, #fce4ec 0%, #f8bbd0 50%, #ce93d8 100%);
 }
 
 /* 春日花主题 - 文本颜色 */
@@ -707,7 +710,7 @@
 
 /* 春日花主题 - 窗口控制栏左侧 */
 [data-theme="spring-blossom"] .window-controls-left {
-  background: linear-gradient(135deg, #fce4ec 0%, #f8bbd9 100%);
+  background: linear-gradient(135deg, #fce4ec 0%, #f8bbd0 50%, #ce93d8 100%);
 }
 
 /* ========================================
@@ -717,22 +720,22 @@
 /* 炫酷黑主题 - 短链接管理 */
 [data-theme="elegant-dark"] .short-link-manager,
 [data-theme="elegant-dark"] .short-link-manager * {
-  --bg-color: #0a0a0a;
-  --card-bg: #161616;
-  --shadow-color: rgba(0, 0, 0, 0.3);
-  --shadow-color-hover: rgba(0, 0, 0, 0.4);
-  --border-color: #374151;
-  --hover-color: #2d3748;
-  --primary-color: #667eea;
-  --primary-light: rgba(102, 126, 234, 0.15);
+  --bg-color: #111827;            /* Slate 900（与主主题 content-bg 一致）*/
+  --card-bg: #1e293b;             /* Slate 800 */
+  --shadow-color: rgba(0, 0, 0, 0.4);
+  --shadow-color-hover: rgba(0, 0, 0, 0.5);
+  --border-color: #475569;        /* Slate 600（与主主题一致）*/
+  --hover-color: #334155;         /* Slate 700（与主主题一致）*/
+  --primary-color: #3b82f6;
+  --primary-light: rgba(59, 130, 246, 0.15);
   --text-primary: #e5e7eb;
-  --text-secondary: #9ca3af;
-  --accent-gradient-start: #667eea;
-  --accent-gradient-end: #764ba2;
-  --accent-shadow: rgba(102, 126, 234, 0.3);
-  --accent-color: #667eea;
-  --button-bg: #2d3748;
-  --button-bg-hover: #374151;
+  --text-secondary: #94a3b8;
+  --accent-gradient-start: #3b82f6;
+  --accent-gradient-end: #818cf8;
+  --accent-shadow: rgba(59, 130, 246, 0.3);
+  --accent-color: #60a5fa;
+  --button-bg: #334155;           /* Slate 700（与主主题 btn-bg 一致）*/
+  --button-bg-hover: #475569;     /* Slate 600 */
 }
 
 /* 天青蓝主题 - 短链接管理 */
@@ -759,22 +762,22 @@
 /* 高雅紫主题 - 短链接管理 */
 [data-theme="elegant-purple"] .short-link-manager,
 [data-theme="elegant-purple"] .short-link-manager * {
-  --bg-color: #f8f7fb;
+  --bg-color: #faf8fd;
   --card-bg: #ffffff;
-  --shadow-color: rgba(64, 53, 91, 0.07);
-  --shadow-color-hover: rgba(64, 53, 91, 0.12);
-  --border-color: #e5e0ef;
-  --hover-color: #efebf6;
-  --primary-color: #75629a;
-  --primary-light: rgba(117, 98, 154, 0.12);
+  --shadow-color: rgba(107, 82, 165, 0.07);
+  --shadow-color-hover: rgba(107, 82, 165, 0.12);
+  --border-color: #e8e3f0;
+  --hover-color: #f0ebf7;
+  --primary-color: #8b6fc0;
+  --primary-light: rgba(139, 111, 192, 0.12);
   --text-primary: #342e43;
-  --text-secondary: #746d81;
-  --accent-gradient-start: #a497c6;
-  --accent-gradient-end: #665486;
-  --accent-shadow: rgba(117, 98, 154, 0.18);
-  --accent-color: #8b78b4;
-  --button-bg: #efebf6;
-  --button-bg-hover: #e5e0ef;
+  --text-secondary: #7c7389;
+  --accent-gradient-start: #a78bda;
+  --accent-gradient-end: #6b52a5;
+  --accent-shadow: rgba(139, 111, 192, 0.18);
+  --accent-color: #a78bda;
+  --button-bg: #f0ebf7;
+  --button-bg-hover: #e8e3f0;
 }
 
 /* 月牙黄主题 - 短链接管理 */
@@ -927,20 +930,20 @@
 /* 春日花主题 - 短链接管理 */
 [data-theme="spring-blossom"] .short-link-manager,
 [data-theme="spring-blossom"] .short-link-manager * {
-  --bg-color: #fffef5;
+  --bg-color: #fffafc;            /* 极淡粉白（原暖黄 #fffef5）*/
   --card-bg: #ffffff;
-  --shadow-color: rgba(0, 0, 0, 0.05);
-  --shadow-color-hover: rgba(0, 0, 0, 0.1);
-  --border-color: #c8e6c9;
-  --hover-color: #fff9c4;
-  --primary-color: #f8bbd9;
-  --primary-light: rgba(248, 187, 217, 0.1);
-  --text-primary: #4a148c;
-  --text-secondary: #f8bbd9;
-  --accent-gradient-start: #fce4ec;
-  --accent-gradient-end: #f8bbd9;
-  --accent-shadow: rgba(248, 187, 217, 0.2);
-  --accent-color: #f8bbd9;
-  --button-bg: #fff9c4;
-  --button-bg-hover: #f0f9ff;
+  --shadow-color: rgba(131, 24, 67, 0.06);
+  --shadow-color-hover: rgba(131, 24, 67, 0.1);
+  --border-color: #f8bbd0;        /* 柔粉边框（原错误绿色 #c8e6c9）*/
+  --hover-color: #fce4ec;         /* 悬停浅粉（原错误黄色 #fff9c4）*/
+  --primary-color: #f06292;       /* 樱花粉 - 与主主题一致 */
+  --primary-light: rgba(240, 98, 146, 0.1);
+  --text-primary: #831843;        /* 深梅 - 与主主题文本统一（原 #4a148c 紫色）*/
+  --text-secondary: #be185d;      /* 玫红 - 次文本（原 #f8bbd9 粉字白底低对比度）*/
+  --accent-gradient-start: #f8bbd0;
+  --accent-gradient-end: #ce93d8; /* 粉→紫渐变，呼应主主题樱花+紫藤 */
+  --accent-shadow: rgba(240, 98, 146, 0.2);
+  --accent-color: #c084fc;        /* 薰衣草强调 - 与主主题一致 */
+  --button-bg: #fce4ec;           /* 浅粉按钮底（原错误黄色 #fff9c4）*/
+  --button-bg-hover: #f8bbd0;     /* 粉色 hover（原错误蓝色 #f0f9ff）*/
 }

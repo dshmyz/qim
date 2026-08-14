@@ -160,11 +160,11 @@ watch(() => props.searchQuery, (newQuery) => {
 }
 
 .tab-icon {
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .tab-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -174,18 +174,18 @@ watch(() => props.searchQuery, (newQuery) => {
 
 .category-icon {
   margin-right: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--primary-color);
 }
 
 .category-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
 }
 
 .category-toggle {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-color);
   opacity: 0.7;
   transition: transform 0.2s;
@@ -233,7 +233,7 @@ watch(() => props.searchQuery, (newQuery) => {
 }
 
 .panel-category-app-icon {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   margin-right: 12px;
   width: 20px;
   text-align: center;
@@ -241,7 +241,7 @@ watch(() => props.searchQuery, (newQuery) => {
 }
 
 .panel-category-app-name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
   flex: 1;
 }
@@ -249,7 +249,7 @@ watch(() => props.searchQuery, (newQuery) => {
 .panel-category-empty {
   padding: 16px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #999);
 }
 </style>

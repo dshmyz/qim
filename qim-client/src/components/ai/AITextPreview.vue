@@ -148,7 +148,7 @@ const iconClass = computed(() => iconMap[props.actionType] || 'fas fa-check')
 }
 
 .ai-preview-label {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   color: var(--text-secondary, #9ca3af);
   text-transform: uppercase;
@@ -158,7 +158,7 @@ const iconClass = computed(() => iconMap[props.actionType] || 'fas fa-check')
 .ai-preview-text {
   padding: 12px 14px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
@@ -182,7 +182,7 @@ const iconClass = computed(() => iconMap[props.actionType] || 'fas fa-check')
   align-items: center;
   justify-content: center;
   color: var(--text-secondary, #9ca3af);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .ai-preview-footer {
@@ -197,7 +197,7 @@ const iconClass = computed(() => iconMap[props.actionType] || 'fas fa-check')
   padding: 8px 16px;
   border: none;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   display: flex;

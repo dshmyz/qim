@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"net/http"
-
 	"github.com/dshmyz/qim/qim-server/config"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
@@ -59,6 +57,5 @@ func GetAIThresholdSchema(c *gin.Context) {
 			Max:         t.Max,
 		})
 	}
-	_ = http.StatusOK // suppress unused import
 	response.Success(c, result)
 }

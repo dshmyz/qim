@@ -89,6 +89,7 @@ export function useShareLogic(
     if (cachedDepartments && cachedUsers && cachedGroups && now - cacheTimestamp < CACHE_TTL_MS) {
       shareUsers.value = cachedUsers
       shareGroups.value = cachedGroups
+      shareDepartments.value = cachedDepartments
       return
     }
 
@@ -353,7 +354,8 @@ export function useShareLogic(
           await handleSwitchConversation(conversation.id)
         }
       } else if (groups.length > 0 && succeeded.length > 0) {
-        const firstGroupId = groups[0]?.id
+        // groups 是 string[]（群 id 列表），直接取第一个元素作为跳转目标
+        const firstGroupId = groups[0]
         if (firstGroupId) {
           await handleSwitchConversation(firstGroupId)
         }

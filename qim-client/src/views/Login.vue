@@ -819,7 +819,7 @@ const closeWindow = () => {
   height: 32px;
   border: none;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -831,7 +831,7 @@ const closeWindow = () => {
 
 .window-control-btn:hover {
   background: rgba(220, 222, 225, 0.8);
-  color: #333;
+  color: var(--text-color, #333);
 }
 
 .minimize-btn:hover {
@@ -884,13 +884,13 @@ const closeWindow = () => {
   margin: 0 0 6px 0;
   font-size: 22px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-color, #333);
   letter-spacing: 1px;
 }
 
 .login-header p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #888;
 }
 
@@ -988,7 +988,7 @@ const closeWindow = () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #666;
   cursor: pointer;
 }
@@ -1000,7 +1000,7 @@ const closeWindow = () => {
 }
 
 .server-settings-btn {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #666666;
   background: none;
   border: none;
@@ -1010,7 +1010,7 @@ const closeWindow = () => {
 }
 
 .server-settings-btn:hover {
-  color: #333333;
+  color: var(--text-color, #333333);
 }
 
 .twofa-form {
@@ -1023,14 +1023,14 @@ const closeWindow = () => {
 
 .twofa-title {
   margin: 0 0 16px 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
-  color: #333;
+  color: var(--text-color, #333);
 }
 
 .twofa-message {
   margin: 0 0 32px 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #666;
   line-height: 1.4;
 }
@@ -1044,7 +1044,7 @@ const closeWindow = () => {
 .twofa-input {
   width: 100%;
   height: 48px;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   letter-spacing: 8px;
   text-align: center;
   border: 1px solid #e4e7ed;
@@ -1068,7 +1068,7 @@ const closeWindow = () => {
 .twofa-button {
   width: 100%;
   height: 48px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   border-radius: 8px;
   background: #5b8def;
@@ -1095,7 +1095,7 @@ const closeWindow = () => {
 }
 
 .twofa-action-btn {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #64b5f6;
   background: none;
   border: none;
@@ -1150,7 +1150,7 @@ const closeWindow = () => {
 }
 
 .auth-divider span {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #999;
 }
 
@@ -1171,8 +1171,8 @@ const closeWindow = () => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-size: 14px;
-  color: #606266;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary, #606266);
   transition: all 0.2s ease;
 }
 
@@ -1183,7 +1183,7 @@ const closeWindow = () => {
 }
 
 .auth-provider-btn i {
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .dialog-overlay {
@@ -1216,9 +1216,9 @@ const closeWindow = () => {
 
 .dialog-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
-  color: #333;
+  color: var(--text-color, #333);
 }
 
 .dialog-close {
@@ -1226,7 +1226,7 @@ const closeWindow = () => {
   height: 28px;
   border: none;
   background: none;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   cursor: pointer;
   color: #666;
   border-radius: 4px;
@@ -1238,7 +1238,7 @@ const closeWindow = () => {
 
 .dialog-close:hover {
   background: #f0f0f0;
-  color: #333;
+  color: var(--text-color, #333);
 }
 
 .dialog-body {
@@ -1252,7 +1252,7 @@ const closeWindow = () => {
 }
 
 .form-group label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #666;
 }
 
@@ -1260,7 +1260,7 @@ const closeWindow = () => {
   padding: 10px 12px;
   border: 1px solid #dcdfe6;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   outline: none;
   transition: border-color 0.2s ease;
 }
@@ -1281,7 +1281,7 @@ const closeWindow = () => {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   background: white;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -1314,7 +1314,7 @@ const closeWindow = () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: rgba(102, 102, 102, 0.5);
 }
 

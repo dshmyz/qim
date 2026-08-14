@@ -153,28 +153,28 @@ async function handlePreview() {
 .avatar-persona-settings { padding: 16px; }
 .learn-section { margin-bottom: 20px; padding: 16px; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color); }
 .learn-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.learn-header h4 { margin: 0; font-size: 14px; }
-.learn-btn { padding: 6px 14px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.learn-header h4 { margin: 0; font-size: var(--font-size-sm); }
+.learn-btn { padding: 6px 14px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: var(--font-size-xs); }
 .learn-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .progress-bar { height: 6px; background: var(--border-color); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
 .progress-fill { height: 100%; background: var(--primary-color); border-radius: 3px; transition: width 0.3s; }
-.progress-text { font-size: 12px; color: var(--text-secondary); }
-.result-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+.progress-text { font-size: var(--font-size-xxs); color: var(--text-secondary); }
+.result-label { font-size: var(--font-size-xxs); color: var(--text-secondary); margin-bottom: 6px; }
 .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-.clear-btn { padding: 4px 10px; background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; cursor: pointer; font-size: 12px; }
+.clear-btn { padding: 4px 10px; background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; cursor: pointer; font-size: var(--font-size-xxs); }
 .clear-btn:hover { border-color: #F44336; color: #F44336; }
 .clear-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.result-content { font-size: 13px; color: var(--text-primary); line-height: 1.6; padding: 10px; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); white-space: pre-wrap; }
-.learn-error { color: #F44336; font-size: 13px; display: flex; align-items: center; gap: 8px; }
-.retry-btn { padding: 4px 10px; background: transparent; border: 1px solid #F44336; color: #F44336; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.result-content { font-size: var(--font-size-xs); color: var(--text-primary); line-height: 1.6; padding: 10px; background: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); white-space: pre-wrap; }
+.learn-error { color: #F44336; font-size: var(--font-size-xs); display: flex; align-items: center; gap: 8px; }
+.retry-btn { padding: 4px 10px; background: transparent; border: 1px solid #F44336; color: #F44336; border-radius: 4px; cursor: pointer; font-size: var(--font-size-xxs); }
 .setting-item { margin-bottom: 16px; }
-.setting-item > label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
-.setting-hint { display: block; margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
-.form-textarea, .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; font-family: inherit; resize: vertical; transition: border-color 0.2s, box-shadow 0.2s; }
+.setting-item > label { display: block; margin-bottom: 6px; font-size: var(--font-size-sm); font-weight: 500; }
+.setting-hint { display: block; margin-top: 4px; font-size: var(--font-size-xxs); color: var(--text-secondary); }
+.form-textarea, .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: var(--font-size-sm); box-sizing: border-box; font-family: inherit; resize: vertical; transition: border-color 0.2s, box-shadow 0.2s; }
 .form-textarea:focus, .form-input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--primary-color-alpha, rgba(99, 102, 241, 0.15)); }
 .preview-area { display: flex; gap: 8px; }
 .preview-area .form-input { flex: 1; }
-.preview-btn { padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+.preview-btn { padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: var(--font-size-xs); white-space: nowrap; }
 .preview-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .preview-result { margin-top: 12px; }
 </style>

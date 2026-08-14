@@ -108,19 +108,19 @@ const generateSecret = () => {
 <style scoped>
 .config-section { border-top: 1px solid #eee; padding-top: 14px; }
 .config-section:first-child { border-top: none; padding-top: 0; }
-.config-section h4 { margin: 0 0 10px; font-size: 14px; color: #333; }
+.config-section h4 { margin: 0 0 10px; font-size: var(--font-size-sm); color: var(--text-color, #333); }
 .mode-options { display: flex; flex-direction: column; gap: 8px; }
 .mode-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
 .mode-option:hover { border-color: #bbb; }
 .mode-option.active { border-color: var(--primary-color, #4f7cff); background: rgba(79, 124, 255, 0.06); }
 .mode-option input { margin-top: 3px; }
 .mode-text { display: flex; flex-direction: column; gap: 2px; }
-.mode-title { font-size: 13px; font-weight: 600; color: #333; }
-.mode-desc { font-size: 12px; color: #888; }
+.mode-title { font-size: var(--font-size-xs); font-weight: 600; color: var(--text-color, #333); }
+.mode-desc { font-size: var(--font-size-xxs); color: #888; }
 .form-field { margin-bottom: 14px; }
-.form-field label { display: block; font-size: 13px; color: #555; margin-bottom: 5px; }
-.form-field input { width: 100%; padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; box-sizing: border-box; }
-.field-hint { font-size: 11px; color: #aaa; margin: 4px 0 0; }
+.form-field label { display: block; font-size: var(--font-size-xs); color: #555; margin-bottom: 5px; }
+.form-field input { width: 100%; padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: var(--font-size-xs); box-sizing: border-box; }
+.field-hint { font-size: var(--font-size-xxxs); color: #aaa; margin: 4px 0 0; }
 .field-hint-warn { color: #b88200; }
 .warn-badge {
   display: inline-block;
@@ -129,12 +129,12 @@ const generateSecret = () => {
   color: #856404;
   border: 1px solid #ffe08a;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   font-weight: 600;
   margin-right: 4px;
 }
 .secret-field { display: flex; gap: 6px; }
 .secret-field input { flex: 1; }
-.mini-btn { padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.mini-btn { padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; cursor: pointer; font-size: var(--font-size-xxs); white-space: nowrap; }
 .mini-btn:hover { background: #f0f0f0; }
 </style>

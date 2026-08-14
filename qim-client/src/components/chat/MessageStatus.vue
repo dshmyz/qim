@@ -78,7 +78,7 @@ const statusClass = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   line-height: 1;
   color: var(--text-secondary, #999);
   opacity: 0.8;
@@ -86,7 +86,7 @@ const statusClass = computed(() => {
 }
 
 .message-status i {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
 }
 
 /* 发送中状态 */

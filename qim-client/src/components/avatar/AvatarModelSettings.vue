@@ -71,7 +71,7 @@ function update<K extends keyof AvatarConfig>(key: K, value: AvatarConfig[K]) {
 .setting-item > label {
   display: block;
   margin-bottom: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -86,7 +86,7 @@ function update<K extends keyof AvatarConfig>(key: K, value: AvatarConfig[K]) {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .radio-label input[type="radio"] {
@@ -102,7 +102,7 @@ function update<K extends keyof AvatarConfig>(key: K, value: AvatarConfig[K]) {
   border-radius: 6px;
   background: var(--bg-color) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8.825L1.175 4 2.238 2.938 6 6.7l3.763-3.762L10.825 4z'/%3E%3C/svg%3E") no-repeat right 12px center;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   box-sizing: border-box;
   cursor: pointer;
   transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
@@ -121,7 +121,7 @@ function update<K extends keyof AvatarConfig>(key: K, value: AvatarConfig[K]) {
 .setting-hint {
   display: block;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 

@@ -72,3 +72,57 @@ func TestSelectProviderVisionFallsBackToDefault(t *testing.T) {
 			"chat-svc", "gpt-4o-mini", provider.Name(), model)
 	}
 }
+
+// TestSelectProviderEmbeddingNoRouteUsesProviderDefault 验证 embedding 任务未显式配置路由时
+// 回退到 defaultTask（chat）路由，但**模型名必须返回空串**：此时 chat 路由的模型是文本模型，
+// 绝不能经 WithModel 塞给 embedding 端点（会把 gpt-4o 之类发送到 /embeddings 导致 400/404）。
+// 空模型让 Embed() 走 provider.Embedding() 使用自身配置的 embedding 模型。
+// （对照：vision 回退仍返回 chat 模型——视觉模型可读图；embedding 是唯一必须丢弃 chat 模型的场景。）
+func TestSelectProviderEmbeddingNoRouteUsesProviderDefault(t *testing.T) {
+	router := NewModelRouter(RouterConfig{
+		DefaultTask: TaskTypeChat,
+		Routes: map[TaskType]Route{
+			TaskTypeChat: {Provider: "chat-svc", Model: "gpt-4o-mini", Fallback: []string{"embed-svc"}},
+		},
+	})
+	pool := map[string]Provider{
+		"chat-svc":  &nameableStub{name: "chat-svc"},
+		"embed-svc": &nameableStub{name: "embed-svc"},
+	}
+
+	provider, model, err := router.SelectProvider(pool, TaskTypeEmbedding)
+	if err != nil {
+		t.Fatalf("embedding 选路失败: %v", err)
+	}
+	if provider == nil {
+		t.Fatal("embedding 应选中某个 provider")
+	}
+	if model != "" {
+		t.Fatalf("embedding 未配路由时不应返回 chat 模型名，实际 %q", model)
+	}
+}
+
+// TestSelectProviderEmbeddingExplicitRouteKeepsModel 验证显式配置了 embedding 路由时，
+// 返回该路由配置的 embedding 模型（不受"回退到 chat 路由返回空"规则影响）。
+func TestSelectProviderEmbeddingExplicitRouteKeepsModel(t *testing.T) {
+	router := NewModelRouter(RouterConfig{
+		DefaultTask: TaskTypeChat,
+		Routes: map[TaskType]Route{
+			TaskTypeChat:      {Provider: "chat-svc", Model: "gpt-4o-mini"},
+			TaskTypeEmbedding: {Provider: "embed-svc", Model: "text-embedding-3-small"},
+		},
+	})
+	pool := map[string]Provider{
+		"chat-svc":  &nameableStub{name: "chat-svc"},
+		"embed-svc": &nameableStub{name: "embed-svc"},
+	}
+
+	provider, model, err := router.SelectProvider(pool, TaskTypeEmbedding)
+	if err != nil {
+		t.Fatalf("embedding 选路失败: %v", err)
+	}
+	if provider.Name() != "embed-svc" || model != "text-embedding-3-small" {
+		t.Fatalf("显式 embedding 路由应返回其模型 (%s/%s)，实际 %s/%s",
+			"embed-svc", "text-embedding-3-small", provider.Name(), model)
+	}
+}

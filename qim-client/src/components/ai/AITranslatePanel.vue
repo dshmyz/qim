@@ -139,7 +139,7 @@ const copyTranslation = async () => {
 
 .panel-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .close-btn {
@@ -147,7 +147,7 @@ const copyTranslation = async () => {
   height: 32px;
   border: none;
   background: transparent;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   cursor: pointer;
   color: var(--text-secondary);
   border-radius: 6px;
@@ -175,7 +175,7 @@ const copyTranslation = async () => {
 }
 
 .translating-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   margin-top: 8px;
   opacity: 0.7;
 }
@@ -202,7 +202,7 @@ const copyTranslation = async () => {
 }
 
 .section-label {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   margin-bottom: 8px;
   font-weight: 500;

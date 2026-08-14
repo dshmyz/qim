@@ -214,7 +214,7 @@ onBeforeUnmount(() => {
   border-radius: 16px;
   cursor: pointer;
   color: var(--text-secondary, #8c95a6);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   transition: all 0.2s ease;
   white-space: nowrap;
@@ -233,7 +233,7 @@ onBeforeUnmount(() => {
 }
 
 .date-icon {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 .arrow-icon {
@@ -285,7 +285,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   cursor: pointer;
   color: var(--text-color, #4a5568);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   transition: all 0.15s ease;
   text-align: left;
   width: 100%;
@@ -305,7 +305,7 @@ onBeforeUnmount(() => {
 .preset-item i {
   width: 16px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .date-custom {
@@ -313,7 +313,7 @@ onBeforeUnmount(() => {
 }
 
 .date-custom-title {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   color: var(--text-secondary, #8c95a6);
   padding: 0 12px 8px;
@@ -335,7 +335,7 @@ onBeforeUnmount(() => {
 }
 
 .date-field label {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #8c95a6);
 }
 
@@ -343,7 +343,7 @@ onBeforeUnmount(() => {
   padding: 6px 8px;
   border: 1px solid var(--border-color, #e8ecf0);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color, #4a5568);
   background: var(--card-bg, #fff);
   outline: none;
@@ -362,7 +362,7 @@ onBeforeUnmount(() => {
   color: #fff;
   border: none;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -393,7 +393,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   cursor: pointer;
   color: var(--error-color, #e53e3e);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   transition: all 0.15s ease;
   text-align: left;
 }

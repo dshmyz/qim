@@ -100,10 +100,10 @@ function removeKeyword(index: number) {
 .ai-trigger-settings { padding: 16px; }
 .setting-item { margin-bottom: 20px; }
 .setting-item:last-child { margin-bottom: 0; }
-.setting-item label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; color: var(--text-color); }
+.setting-item label { display: block; margin-bottom: 6px; font-size: var(--font-size-sm); font-weight: 500; color: var(--text-color); }
 .toggle-label { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
-.setting-hint { display: block; margin-top: 6px; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
-.form-select, .form-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s; }
+.setting-hint { display: block; margin-top: 6px; font-size: var(--font-size-xs); color: var(--text-secondary); line-height: 1.5; }
+.form-select, .form-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-color); color: var(--text-color); font-size: var(--font-size-sm); box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s; }
 .form-select:focus, .form-input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1); }
 .form-input::placeholder { color: var(--text-secondary); opacity: 0.6; }
 .switch { position: relative; display: inline-block; width: 50px; height: 24px; min-width: 50px; }
@@ -115,6 +115,6 @@ input:checked + .slider:before { transform: translateX(26px); }
 .slider.round { border-radius: 24px; }
 .keyword-input-wrapper { display: flex; flex-direction: column; gap: 8px; }
 .keyword-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.keyword-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: var(--primary-color-alpha, rgba(99, 102, 241, 0.1)); color: var(--primary-color); border-radius: 12px; font-size: 13px; }
-.remove-tag { background: none; border: none; color: var(--primary-color); cursor: pointer; font-size: 14px; padding: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
+.keyword-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: var(--primary-color-alpha, rgba(99, 102, 241, 0.1)); color: var(--primary-color); border-radius: 12px; font-size: var(--font-size-xs); }
+.remove-tag { background: none; border: none; color: var(--primary-color); cursor: pointer; font-size: var(--font-size-sm); padding: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
 </style>

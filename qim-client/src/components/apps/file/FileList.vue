@@ -116,12 +116,12 @@ const emit = defineEmits<{
 const selectedFileIds = ref<Set<number>>(new Set())
 const scrollContainerRef = ref<HTMLElement | null>(null)
 
-const columnMinWidths = [40, 120, 60, 60, 100, 40, 160]
+const columnMinWidths = [40, 120, 60, 60, 130, 40, 160]
 
 const gridStyle = computed(() => {
   const m = columnMinWidths
   return {
-    gridTemplateColumns: `minmax(${m[0]}px, ${m[0]}px) minmax(${m[1]}px, 1fr) minmax(${m[2]}px, 80px) minmax(${m[3]}px, 80px) minmax(${m[4]}px, 140px) minmax(${m[5]}px, ${m[5]}px) minmax(${m[6]}px, ${m[6]}px)`
+    gridTemplateColumns: `minmax(${m[0]}px, ${m[0]}px) minmax(${m[1]}px, 1fr) minmax(${m[2]}px, 80px) minmax(${m[3]}px, 80px) minmax(${m[4]}px, 180px) minmax(${m[5]}px, ${m[5]}px) minmax(${m[6]}px, ${m[6]}px)`
   } as Record<string, string>
 })
 
@@ -221,7 +221,7 @@ defineExpose({
   gap: 0;
   padding: 0 16px;
   background: var(--hover-color);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
   border-bottom: 1px solid var(--border-color);
@@ -311,7 +311,7 @@ defineExpose({
 }
 
 .empty-state p {
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   margin: 0;
 }
 
@@ -319,7 +319,7 @@ defineExpose({
 @media (max-width: 1024px) {
   .file-table-header,
   .file-table-body :deep(.file-list-item) {
-    grid-template-columns: 40px minmax(120px, 1fr) minmax(60px, 80px) minmax(60px, 80px) minmax(100px, 140px) 0px 160px;
+    grid-template-columns: 40px minmax(120px, 1fr) minmax(60px, 80px) minmax(60px, 80px) minmax(130px, 180px) 0px 160px;
   }
 
   .header-star,
@@ -331,7 +331,7 @@ defineExpose({
 @media (max-width: 768px) {
   .file-table-header,
   .file-table-body :deep(.file-list-item) {
-    grid-template-columns: 40px minmax(100px, 1fr) 0px minmax(60px, 80px) minmax(80px, 120px) 0px 0px;
+    grid-template-columns: 40px minmax(100px, 1fr) 0px minmax(60px, 80px) minmax(100px, 150px) 0px 0px;
   }
 
   .header-type,
@@ -351,7 +351,7 @@ defineExpose({
 @media (max-width: 480px) {
   .file-table-header,
   .file-table-body :deep(.file-list-item) {
-    grid-template-columns: 0px minmax(80px, 1fr) 0px 0px minmax(80px, 120px) 0px 0px;
+    grid-template-columns: 0px minmax(80px, 1fr) 0px 0px minmax(100px, 150px) 0px 0px;
   }
 
   .header-icon,

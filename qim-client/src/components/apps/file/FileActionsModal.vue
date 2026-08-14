@@ -191,7 +191,7 @@ async function handleSubmit() {
   padding: 8px 16px;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.2s ease;
   background: var(--hover-color);
@@ -199,7 +199,7 @@ async function handleSubmit() {
 }
 
 .tab-btn i {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .tab-btn:hover {
@@ -227,7 +227,7 @@ async function handleSubmit() {
 
 .form-group label {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
   margin-bottom: 8px;
@@ -238,7 +238,7 @@ async function handleSubmit() {
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   background: var(--input-bg);
   color: var(--text-color);
   transition: all 0.2s ease;
@@ -267,14 +267,14 @@ select.form-input {
 .original-name,
 .current-location {
   margin: 8px 0 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
 .modal-btn {
   padding: 8px 24px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;

@@ -61,7 +61,7 @@
             <Avatar :src="selectedGroup?.avatar" :name="selectedGroup?.name || '群聊'" :server-url="serverUrl" :alt="selectedGroup?.name" size="xl" />
           </div>
           <div class="group-details">
-            <div class="group-name" style="font-size: 20px;">{{ selectedGroup?.name }}</div>
+            <div class="group-name" style="font-size: var(--font-size-xl);">{{ selectedGroup?.name }}</div>
             <div class="group-members-count">{{ selectedGroup?.members?.length || 0 }} 位成员</div>
           </div>
         </div>
@@ -306,7 +306,7 @@ const removeSelected = (member: Employee) => {
 
 .add-members-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color, #1a1a1a);
   letter-spacing: -0.01em;
@@ -320,7 +320,7 @@ const removeSelected = (member: Employee) => {
   justify-content: center;
   background: none;
   border: none;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   cursor: pointer;
   color: var(--text-secondary, #999);
   border-radius: 6px;
@@ -357,12 +357,12 @@ const removeSelected = (member: Employee) => {
 
 .group-name {
   font-weight: 500;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color, #1a1a1a);
 }
 
 .group-members-count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
   margin-top: 2px;
 }
@@ -376,7 +376,7 @@ const removeSelected = (member: Employee) => {
   padding: 8px 12px 8px 34px;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   background: var(--modal-bg, #fff) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 10px center;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -393,13 +393,13 @@ const removeSelected = (member: Employee) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-color, #1a1a1a);
 }
 
 .selected-count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 400;
   color: var(--text-secondary, #999);
 }
@@ -437,12 +437,12 @@ const removeSelected = (member: Employee) => {
 }
 
 .member-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color, #1a1a1a);
 }
 
 .member-position {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
 }
 
@@ -474,7 +474,7 @@ const removeSelected = (member: Employee) => {
   padding: 10px 14px;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color, #1a1a1a);
   transition: border-color 0.2s, box-shadow 0.2s;
   box-sizing: border-box;
@@ -491,7 +491,7 @@ const removeSelected = (member: Employee) => {
 }
 
 .group-name-tip {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
   margin: 8px 0 0;
   line-height: 1.5;
@@ -509,7 +509,7 @@ const removeSelected = (member: Employee) => {
   border-radius: 8px;
   resize: vertical;
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color, #1a1a1a);
   line-height: 1.6;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -527,7 +527,7 @@ const removeSelected = (member: Employee) => {
 }
 
 .announcement-tip {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
   margin: 8px 0 0;
   line-height: 1.5;
@@ -549,12 +549,12 @@ const removeSelected = (member: Employee) => {
 
 .detail-label {
   color: var(--text-secondary, #999);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .detail-value {
   color: var(--text-color, #1a1a1a);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 /* ── 底部按钮 ── */
@@ -570,7 +570,7 @@ const removeSelected = (member: Employee) => {
   padding: 8px 22px;
   border: none;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;

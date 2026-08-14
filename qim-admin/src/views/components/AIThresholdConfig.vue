@@ -9,7 +9,17 @@
         :label="item.label"
       >
         <div class="form-item-with-desc">
+          <!-- 布尔阈值（0/1）用 switch，避免连续输入 0.95 被 int 截断为 0 静默关闭功能 -->
+          <el-switch
+            v-if="item.isBoolean"
+            v-model="thresholds[item.key]"
+            :active-value="1"
+            :inactive-value="0"
+            active-text="开启"
+            inactive-text="关闭"
+          />
           <el-input-number
+            v-else
             v-model="thresholds[item.key]"
             :min="item.min"
             :max="item.max"
@@ -48,6 +58,7 @@ const thresholdItems = ref<Array<{
   description: string
   min: number
   max: number
+  isBoolean: boolean
   step: number
   precision: number
 }>>([])
@@ -67,6 +78,7 @@ onMounted(async () => {
         description: s.description,
         min: s.min,
         max: s.max,
+        isBoolean: s.min === 0 && s.max === 1,
         step: s.max <= 1 ? 0.05 : (s.max <= 20 ? 1 : 5),
         precision: s.max <= 1 ? 2 : 0
       }))

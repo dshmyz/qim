@@ -143,12 +143,12 @@ function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: Avat
 
 .section-header i {
   color: var(--primary-color);
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .section-header h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -172,7 +172,7 @@ function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: Avat
 .setting-label { 
   display: block; 
   margin-bottom: 8px; 
-  font-size: 14px; 
+  font-size: var(--font-size-sm); 
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -180,7 +180,7 @@ function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: Avat
 .setting-hint { 
   display: block; 
   margin-top: 6px; 
-  font-size: 12px; 
+  font-size: var(--font-size-xxs); 
   color: var(--text-secondary); 
 }
 
@@ -191,7 +191,7 @@ function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: Avat
   border-radius: 6px;
   background: var(--bg-color) url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") no-repeat right 10px center;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   box-sizing: border-box;
   appearance: none;
   -webkit-appearance: none;
@@ -252,7 +252,7 @@ function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: Avat
 }
 
 .threshold-value {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--primary-color);
   min-width: 50px;
@@ -273,7 +273,7 @@ function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: Avat
 
 .toggle-label .label-title {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
   margin-bottom: 4px;
@@ -281,7 +281,7 @@ function updateStrategy<K extends keyof AvatarReplyStrategy>(key: K, value: Avat
 
 .toggle-label .label-hint {
   display: block;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 

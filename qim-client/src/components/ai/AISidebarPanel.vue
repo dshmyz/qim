@@ -450,7 +450,7 @@ const autoResize = () => {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #6b7280);
   transition: all 0.15s;
 }
@@ -461,7 +461,7 @@ const autoResize = () => {
 }
 
 .confirm-hint {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
 }
 
@@ -472,14 +472,14 @@ const autoResize = () => {
   align-items: center;
   gap: 6px;
   padding: 6px 16px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #9ca3af);
   border-bottom: 1px solid var(--border-color, #e5e7eb);
   background: color-mix(in srgb, var(--primary-color, #6366f1) 4%, transparent);
 }
 
 .ai-sidebar-context i {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   opacity: 0.7;
 }
 
@@ -500,7 +500,7 @@ const autoResize = () => {
   border: none;
   background: transparent;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #9ca3af);
   padding: 2px 5px;
   border-radius: 4px;
@@ -585,7 +585,7 @@ const autoResize = () => {
 
 .empty-sub {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #9ca3af);
 }
 
@@ -603,7 +603,7 @@ const autoResize = () => {
   border-radius: 10px;
   background: var(--card-bg, #fff);
   color: var(--text-color, #374151);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: all 0.15s;
   display: flex;
@@ -613,7 +613,7 @@ const autoResize = () => {
 }
 
 .ai-sidebar-suggestions button i {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--primary-color, #6366f1);
   opacity: 0.8;
 }
@@ -652,7 +652,7 @@ const autoResize = () => {
 .ai-msg-bubble {
   padding: 10px 14px;
   border-radius: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.6;
   word-break: break-word;
 }
@@ -715,7 +715,7 @@ const autoResize = () => {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary, #9ca3af);
   opacity: 0;
   transition: opacity 0.15s, color 0.15s, background 0.15s;
@@ -732,7 +732,7 @@ const autoResize = () => {
 
 /* Timestamp */
 .msg-time {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary, #9ca3af);
 }
 
@@ -781,7 +781,7 @@ const autoResize = () => {
   background: rgba(0, 0, 0, 0.06);
   padding: 1px 4px;
   border-radius: 3px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 .ai-msg-content :deep(pre) {
   background: rgba(0, 0, 0, 0.05);
@@ -796,7 +796,7 @@ const autoResize = () => {
 .ai-msg-content :deep(h2),
 .ai-msg-content :deep(h3) {
   margin: 12px 0 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
 }
 .ai-msg-content :deep(blockquote) {
@@ -806,13 +806,13 @@ const autoResize = () => {
   background: color-mix(in srgb, var(--primary-color, #6366f1) 4%, transparent);
   border-radius: 0 6px 6px 0;
   color: var(--text-secondary, #6b7280);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 .ai-msg-content :deep(table) {
   width: 100%;
   border-collapse: collapse;
   margin: 8px 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 .ai-msg-content :deep(th),
 .ai-msg-content :deep(td) {
@@ -846,7 +846,7 @@ const autoResize = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color, #1f2937);
   z-index: 10;
   transition: all 0.15s;
@@ -878,7 +878,7 @@ const autoResize = () => {
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 10px;
   padding: 10px 12px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-family: inherit;
   line-height: 1.5;
   outline: none;
@@ -909,7 +909,7 @@ const autoResize = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: opacity 0.15s;
   flex-shrink: 0;
 }
@@ -946,7 +946,7 @@ const autoResize = () => {
 /* Input hint */
 .ai-sidebar-input-hint {
   text-align: center;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary, #c0c0c0);
   padding: 0 16px 8px;
   user-select: none;
@@ -961,7 +961,7 @@ const autoResize = () => {
 /* Status lines (tool execution progress) */
 .ai-msg-content :deep(.status-line) {
   display: block;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #9ca3af);
   padding: 2px 0;
 }

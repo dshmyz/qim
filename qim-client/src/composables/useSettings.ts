@@ -167,8 +167,22 @@ export function useSettings(currentUser: any, serverUrl: any, request: any) {
   }
 
   const applyFontSize = (fontSize: number) => {
-    document.documentElement.style.setProperty('--font-size-base', `${fontSize}px`)
-    document.body.style.fontSize = `${fontSize}px`
+    // fontSize 是正文基准（默认 14px），其他级别等比缩放
+    const ratio = fontSize / 14
+    const r = (base: number) => Math.round(base * ratio * 10) / 10
+    const root = document.documentElement.style
+    root.setProperty('--font-size-tiny', `${r(10)}px`)
+    root.setProperty('--font-size-xxxs', `${r(11)}px`)
+    root.setProperty('--font-size-xxs',  `${r(12)}px`)
+    root.setProperty('--font-size-xs',   `${r(13)}px`)
+    root.setProperty('--font-size-sm',   `${fontSize}px`)      // 正文 = 用户选择值
+    root.setProperty('--font-size-base', `${r(16)}px`)
+    root.setProperty('--font-size-lg',   `${r(18)}px`)
+    root.setProperty('--font-size-xl',   `${r(20)}px`)
+    root.setProperty('--font-size-2xl',  `${r(24)}px`)
+    root.setProperty('--font-size-3xl',  `${r(32)}px`)
+    root.setProperty('--font-size-4xl',  `${r(40)}px`)
+
     const container = document.querySelector('.im-container') as HTMLElement
     if (container) {
       container.style.fontSize = fontSize + 'px'

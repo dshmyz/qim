@@ -116,7 +116,13 @@ describe('ChatToolbar code block button', () => {
     const wrapper = mountToolbar({ isElectron: true })
     await flushPromises()
 
-    expect(wrapper.find('.screenshot-menu-item span').text()).toBe('截图（Ctrl+Shift+A）')
+    // 菜单由 UniversalContextMenu 渲染，经 Teleport 挂到 body，且仅在打开时渲染
+    await wrapper.find('.screenshot-dropdown-trigger').trigger('click')
+    await flushPromises()
+
+    const firstItem = document.body.querySelector('.ucm-item')
+    expect(firstItem).not.toBeNull()
+    expect(firstItem!.querySelector('.ucm-label')?.textContent).toBe('截图（Ctrl+Shift+A）')
   })
 })
 

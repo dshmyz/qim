@@ -38,7 +38,7 @@ const entry = computed(() => props.item)
   width: 100%;
 }
 .cmd-list-item__icon {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -46,19 +46,19 @@ const entry = computed(() => props.item)
   color: var(--primary-color, #3b82f6);
 }
 .cmd-list-item__trigger {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-color, #303133);
   flex-shrink: 0;
   font-family: monospace;
 }
 .cmd-list-item__title {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #909399);
   flex-shrink: 0;
 }
 .cmd-list-item__desc {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #909399);
   flex: 1;
   white-space: nowrap;

@@ -16,13 +16,8 @@ export const useChannelStore = defineStore('channel', () => {
     const stored = localStorage.getItem('channel-viewMode')
     return (stored === 'list' || stored === 'card') ? stored : 'card'
   }
-  const getStoredMessageMode = (): 'card' | 'timeline' => {
-    const stored = localStorage.getItem('channel-messageMode')
-    return (stored === 'card' || stored === 'timeline') ? stored : 'card'
-  }
 
   const viewMode = ref<'list' | 'card'>(getStoredViewMode())
-  const messageMode = ref<'card' | 'timeline'>(getStoredMessageMode())
   const loading = ref(false)
   const messagesLoading = ref(false)
 
@@ -215,18 +210,12 @@ export const useChannelStore = defineStore('channel', () => {
     localStorage.setItem('channel-viewMode', mode)
   }
 
-  function setMessageMode(mode: 'card' | 'timeline') {
-    messageMode.value = mode
-    localStorage.setItem('channel-messageMode', mode)
-  }
-
   return {
     channels,
     selectedChannelId,
     openTabs,
     pendingMessageId,
     viewMode,
-    messageMode,
     loading,
     messagesLoading,
     selectedChannel,
@@ -241,7 +230,6 @@ export const useChannelStore = defineStore('channel', () => {
     addTab,
     removeTab,
     setViewMode,
-    setMessageMode,
     markChannelRead,
     incrementUnread,
     isChannelCreator,

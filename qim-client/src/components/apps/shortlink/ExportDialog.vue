@@ -276,7 +276,7 @@ const handleClose = () => {
 }
 
 .form-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
 }
@@ -313,18 +313,18 @@ const handleClose = () => {
 }
 
 .format-info i {
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   color: var(--primary-color);
 }
 
 .format-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
 }
 
 .format-desc {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -350,7 +350,7 @@ const handleClose = () => {
 
 .radio-label,
 .checkbox-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
 }
 
@@ -373,13 +373,13 @@ const handleClose = () => {
   padding: 10px 12px;
   background: var(--color-gray-50, #f9fafb);
   border-bottom: 1px solid var(--border-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-color);
 }
 
 .preview-count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: normal;
   color: var(--text-secondary);
 }
@@ -392,7 +392,7 @@ const handleClose = () => {
 }
 
 .preview-content code {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-all;
@@ -401,7 +401,7 @@ const handleClose = () => {
 .q-btn {
   padding: 8px 20px;
   border-radius: var(--radius-md);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: all var(--transition-fast);

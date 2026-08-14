@@ -382,8 +382,8 @@ func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []
 		"content":           msg.Content,
 		"quoted_message_id": msg.QuotedMessageID,
 		"is_recalled":       msg.IsRecalled,
-		// userReadSet 非 nil → per-user 已读；nil → 全局 is_read（发送响应场景）
-		"is_read":           userReadSet != nil && userReadSet[msg.ID],
+		// 发送者自己的消息始终已读（无需回执）；其余看 per-user 回执
+		"is_read":           userReadSet != nil && (msg.SenderID == currentUserID || userReadSet[msg.ID]),
 		"is_avatar_reply":   msg.Origin == "avatar",
 		"is_ai_message":     msg.Origin == "assistant" || msg.Origin == "avatar" || msg.Sender.Type == "bot" || msg.Sender.Type == "system",
 		// 流式消息标记：type=streaming 即进行中。客户端据此显示 typing 动画；

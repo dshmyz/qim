@@ -335,30 +335,30 @@ function formatSize(bytes: number) {
 .setting-section { margin-bottom: 20px; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .header-actions { display: flex; gap: 8px; }
-.section-label { font-size: 14px; font-weight: 500; }
-.add-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: 13px; cursor: pointer; }
+.section-label { font-size: var(--font-size-sm); font-weight: 500; }
+.add-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color); font-size: var(--font-size-xs); cursor: pointer; }
 .add-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
 .empty-state { text-align: center; padding: 32px; color: var(--text-secondary); }
-.empty-state i { font-size: 40px; margin-bottom: 8px; display: block; }
+.empty-state i { font-size: var(--font-size-4xl); margin-bottom: 8px; display: block; }
 .document-list { display: flex; flex-direction: column; gap: 8px; }
 .document-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; }
 .doc-info { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-.doc-icon { font-size: 20px; color: var(--text-secondary); flex-shrink: 0; }
+.doc-icon { font-size: var(--font-size-xl); color: var(--text-secondary); flex-shrink: 0; }
 .doc-details { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.doc-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.doc-size { font-size: 12px; color: var(--text-secondary); }
-.doc-error { font-size: 12px; color: #dc2626; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: break-all; }
+.doc-name { font-size: var(--font-size-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-size { font-size: var(--font-size-xxs); color: var(--text-secondary); }
+.doc-error { font-size: var(--font-size-xxs); color: #dc2626; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: break-all; }
 .doc-status { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 12px; white-space: nowrap; }
-.status-badge i { font-size: 12px; }
+.status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: var(--font-size-xxs); white-space: nowrap; }
+.status-badge i { font-size: var(--font-size-xxs); }
 .status-pending { background: #f0f0f0; color: #666; }
 .status-processing { background: #e0f2fe; color: #0284c7; }
 .status-completed { background: #dcfce7; color: #16a34a; }
 .status-failed { background: #fee2e2; color: #dc2626; }
-.retry-btn { margin-left: 4px; padding: 1px 6px; border: 1px solid #dc2626; border-radius: 4px; background: white; color: #dc2626; font-size: 11px; cursor: pointer; flex-shrink: 0; }
+.retry-btn { margin-left: 4px; padding: 1px 6px; border: 1px solid #dc2626; border-radius: 4px; background: white; color: #dc2626; font-size: var(--font-size-xxxs); cursor: pointer; flex-shrink: 0; }
 .retry-btn:hover { background: #dc2626; color: white; }
 .retry-btn:disabled { opacity: 0.5; cursor: not-allowed; background: white; color: #dc2626; }
-.remove-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; font-size: 14px; border-radius: 4px; flex-shrink: 0; }
+.remove-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; font-size: var(--font-size-sm); border-radius: 4px; flex-shrink: 0; }
 .remove-btn:hover { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
 
 .file-picker-section {
@@ -379,7 +379,7 @@ function formatSize(bytes: number) {
 }
 
 .picker-title {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -410,20 +410,20 @@ function formatSize(bytes: number) {
 }
 
 .file-icon {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--text-secondary);
 }
 
 .file-name {
   flex: 1;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   /* 覆盖全局 main.css 里的 .file-name{text-align:center}：
      该全局规则会把「选择文档」列表的文件名居中，需在此显式改回左对齐。 */
   text-align: left;
 }
 
 .file-size {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -436,7 +436,7 @@ function formatSize(bytes: number) {
 .btn {
   padding: 6px 12px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   border: none;
 }

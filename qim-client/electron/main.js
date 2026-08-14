@@ -300,8 +300,12 @@ function registerDownloadHandlers(sess) {
     item.on('updated', (_e, state) => {
       if (state !== 'progressing') return
       const total = item.getTotalBytes()
-      const percent = total > 0 ? Math.floor((item.getReceivedBytes() / total) * 100) : 0
-      sendProgress(percent, 'progressing')
+      const received = item.getReceivedBytes()
+      // total 为 0（无 Content-Length / chunked / 压缩流）：无法算百分比，
+      // 改发 indeterminate，前端用流动条表示"仍在下载"，避免误以为卡在 0%。
+      const indeterminate = total <= 0
+      const percent = indeterminate ? 0 : Math.floor((received / total) * 100)
+      sendProgress(percent, indeterminate ? 'indeterminate' : 'progressing')
     })
 
     item.once('done', (_e, state) => {
@@ -329,6 +333,8 @@ function registerDownloadHandlers(sess) {
           })
         }
       }
+      // 收尾清理：该 URL 无更多待下载实例时移除 token 记录
+      downloadRegistry.finalize(meta.url)
     })
   })
 }

@@ -74,7 +74,7 @@ defineProps<{
 
 .stat-label {
   color: var(--text-secondary, #6b7280);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   margin-bottom: 8px;
 }
 
@@ -86,7 +86,7 @@ defineProps<{
 }
 
 .stat-trend {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   margin-top: 4px;
 }
 
@@ -118,7 +118,7 @@ defineProps<{
   }
 
   .stat-value {
-    font-size: 24px;
+    font-size: var(--font-size-2xl);
   }
 }
 </style>

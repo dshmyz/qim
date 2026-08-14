@@ -251,7 +251,7 @@ defineExpose({})
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: background 0.2s;
   color: var(--text-color);
   position: relative;
@@ -270,9 +270,9 @@ defineExpose({})
   min-width: 16px;
   height: 16px;
   border-radius: 8px;
-  background: var(--primary-color);
+  background: #f56c6c;
   color: white;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -298,7 +298,7 @@ defineExpose({})
 .user-name {
   font-weight: 500;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .user-text {
@@ -308,7 +308,7 @@ defineExpose({})
 }
 
 .user-bio {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -332,7 +332,7 @@ defineExpose({})
   width: 100%;
   padding: 8px 12px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   outline: none;
   transition: all 0.2s;
   background: var(--panel-bg);
@@ -355,7 +355,7 @@ defineExpose({})
   color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   display: flex;
   align-items: center;
 }
@@ -393,7 +393,7 @@ defineExpose({})
   .icon-btn {
     width: 28px;
     height: 28px;
-    font-size: 13px;
+    font-size: var(--font-size-xs);
   }
 }
 

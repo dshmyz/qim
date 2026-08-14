@@ -131,7 +131,7 @@ async function confirmDelete(config: UserAIConfig) {
 
 .configs-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .add-btn {
@@ -158,7 +158,7 @@ async function confirmDelete(config: UserAIConfig) {
 }
 
 .loading i {
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   margin-right: 8px;
 }
 
@@ -175,7 +175,7 @@ async function confirmDelete(config: UserAIConfig) {
 }
 
 .hint {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -190,7 +190,7 @@ async function confirmDelete(config: UserAIConfig) {
   background: #FFF8E1;
   border-radius: 6px;
   color: #FF9800;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   display: flex;
   align-items: center;
   gap: 8px;

@@ -292,7 +292,7 @@ watch(() => props.searchQuery, (newQuery) => {
 }
 
 .toggle-icon {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-color);
   opacity: 0.7;
   width: 12px;
@@ -312,19 +312,19 @@ watch(() => props.searchQuery, (newQuery) => {
 }
 
 .department-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   font-weight: 500;
 }
 
 .sub-department-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   font-weight: 500;
 }
 
 .employee-name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
   font-weight: 500;
   min-width: 60px;
@@ -348,7 +348,7 @@ watch(() => props.searchQuery, (newQuery) => {
 }
 
 .employee-position {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-color);
   opacity: 0.7;
   flex-shrink: 0;
@@ -357,7 +357,7 @@ watch(() => props.searchQuery, (newQuery) => {
 }
 
 .department-stats {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   flex-shrink: 0;
   margin-left: 6px;
@@ -429,7 +429,7 @@ watch(() => props.searchQuery, (newQuery) => {
 
 .empty-org .placeholder-content p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary, #666);
 }
 

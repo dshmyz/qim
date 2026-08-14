@@ -20,8 +20,8 @@ defineProps<{
 .system-message-content {
   padding: 4px 12px;
   background: rgba(150, 150, 150, 0.15);
-  color: #999999;
-  font-size: 12px;
+  color: var(--text-secondary, #999999);
+  font-size: var(--font-size-xxs);
   border-radius: 12px;
   line-height: 1.4;
 }

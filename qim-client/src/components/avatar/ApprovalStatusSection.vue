@@ -131,7 +131,7 @@ const statusIcon = computed(() => {
 }
 
 .status-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
 }
@@ -142,7 +142,7 @@ const statusIcon = computed(() => {
   gap: 6px;
   padding: 4px 12px;
   border-radius: 16px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 
@@ -173,7 +173,7 @@ const statusIcon = computed(() => {
 }
 
 .approval-hint {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   margin: 0;
 }
@@ -191,7 +191,7 @@ const statusIcon = computed(() => {
 }
 
 .approval-time {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin: 0;
 }
@@ -201,7 +201,7 @@ const statusIcon = computed(() => {
 }
 
 .reason-text {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   background: rgba(239, 68, 68, 0.05);
   padding: 8px 12px;
@@ -217,7 +217,7 @@ const statusIcon = computed(() => {
   gap: 6px;
   padding: 8px 16px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   border: none;

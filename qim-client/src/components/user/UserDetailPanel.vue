@@ -12,73 +12,87 @@
     </div>
     <div class="user-profile-container">
       <div class="user-profile-card">
-        <div class="user-profile-avatar-section">
-          <div class="user-avatar-container">
+        <!-- 头像 + 基本信息 -->
+        <div class="user-info-header">
+          <div class="user-avatar-wrapper">
             <Avatar
               :src="detail.avatar"
               :name="detail.name"
               :server-url="serverUrl"
               :alt="detail.name"
               size="xl"
+              shape="circle"
               class="user-avatar"
             />
           </div>
-          <div class="user-basic-info">
-            <h2 class="user-full-name">{{ detail.name }}</h2>
-            <p class="user-department">{{ detail.department || '暂无部门' }}</p>
-            <p v-if="detail.signature" class="user-signature">{{ detail.signature }}</p>
+          <h2 class="user-name">
+            {{ detail.name }}
+            <span v-if="roleLabel" class="user-role-tag">{{ roleLabel.text }}</span>
+          </h2>
+          <div class="user-sub">
+            <span class="user-department">{{ detail.department || '暂无部门' }}<template v-if="detail.position"> · {{ detail.position }}</template></span>
+            <span v-if="statusLabel" class="user-status-badge" :class="{ 'is-online': statusInfo?.status === 'online' }">
+              <span class="status-dot" :class="statusInfo?.status || 'offline'"></span>{{ statusLabel }}
+            </span>
           </div>
         </div>
-        
-        <div class="user-info-sections">
-          <div class="info-section">
-            <div class="section-title">
-              <i class="fas fa-user-circle"></i>
-              <h3>基本信息</h3>
-            </div>
-            <div class="info-grid">
-              <div class="info-item">
-                <span class="info-label">姓名</span>
-                <span class="info-value">{{ detail.name }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">账号</span>
-                <span class="info-value">{{ detail.username || '暂无' }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">邮箱</span>
-                <span class="info-value">{{ detail.email || '暂无' }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">手机</span>
-                <span class="info-value">{{ detail.mobile || '暂无' }}</span>
+
+        <!-- 签名 -->
+        <div v-if="detail.signature" class="signature-bar">
+          <span>{{ detail.signature }}</span>
+        </div>
+
+        <!-- 信息列表 -->
+        <div class="info-section">
+          <div class="section-title">基本信息</div>
+          <div class="info-list">
+            <div class="info-row">
+              <span class="info-row-icon"><i class="fas fa-user"></i></span>
+              <div class="info-row-text">
+                <span class="info-row-label">账号</span>
+                <span class="info-row-value">{{ detail.username || '暂无' }}</span>
               </div>
             </div>
-          </div>
-          
-          <div class="info-section">
-            <div class="section-title">
-              <i class="fas fa-briefcase"></i>
-              <h3>工作信息</h3>
+            <div class="info-row">
+              <span class="info-row-icon"><i class="fas fa-envelope"></i></span>
+              <div class="info-row-text">
+                <span class="info-row-label">邮箱</span>
+                <span class="info-row-value">{{ detail.email || '暂无' }}</span>
+              </div>
             </div>
-            <div class="info-grid">
-              <div class="info-item">
-                <span class="info-label">部门</span>
-                <span class="info-value">{{ detail.department || '暂无' }}</span>
+            <div class="info-row">
+              <span class="info-row-icon"><i class="fas fa-mobile-alt"></i></span>
+              <div class="info-row-text">
+                <span class="info-row-label">手机</span>
+                <span class="info-row-value">{{ detail.mobile || '暂无' }}</span>
               </div>
-              <div class="info-item">
-                <span class="info-label">职位</span>
-                <span class="info-value">{{ detail.position || '暂无' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-row-icon"><i class="fas fa-building"></i></span>
+              <div class="info-row-text">
+                <span class="info-row-label">部门</span>
+                <span class="info-row-value">{{ detail.department || '暂无' }}</span>
               </div>
-              <div class="info-item">
-                <span class="info-label">IP</span>
-                <span class="info-value">{{ detail.ip || '暂无' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-row-icon"><i class="fas fa-briefcase"></i></span>
+              <div class="info-row-text">
+                <span class="info-row-label">职位</span>
+                <span class="info-row-value">{{ detail.position || '暂无' }}</span>
+              </div>
+            </div>
+            <div v-if="detail.ip" class="info-row">
+              <span class="info-row-icon"><i class="fas fa-globe"></i></span>
+              <div class="info-row-text">
+                <span class="info-row-label">IP</span>
+                <span class="info-row-value muted">{{ detail.ip }}</span>
               </div>
             </div>
           </div>
         </div>
-        
-        <div class="user-action-buttons">
+
+        <!-- 操作按钮 -->
+        <div class="action-bar">
           <button v-if="detail.type !== 'bot'" class="action-btn primary" @click="$emit('privateChat', detail)">
             <i class="fas fa-comment"></i>
             <span>发起私聊</span>
@@ -98,9 +112,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { getCurrentUser } from '../../utils/user'
 import { request } from '../../composables/useRequest'
+import { useUserStatus } from '../../composables/useUserStatus'
 import Avatar from '../shared/Avatar.vue'
 import ToggleSidebarBtn from '../shared/ToggleSidebarBtn.vue'
 
@@ -125,6 +140,52 @@ interface Props {
 const props = defineProps<Props>()
 
 const detail = ref<any>({ ...props.user })
+
+// 用户在线状态
+const { subscribeUserStatus, unsubscribeUserStatus, getUserStatus, formatLastOnline } = useUserStatus()
+
+// 订阅用户状态（切换用户时更新）
+watch(() => props.user?.id, (newId, oldId) => {
+  if (oldId) unsubscribeUserStatus(Number(oldId))
+  if (newId) subscribeUserStatus(Number(newId))
+}, { immediate: true })
+
+onUnmounted(() => {
+  if (props.user?.id) unsubscribeUserStatus(Number(props.user.id))
+})
+
+const statusInfo = computed(() => getUserStatus(Number(props.user?.id)))
+
+const avatarBadge = computed(() => {
+  if (detail.value.type === 'bot' || detail.value.type === 'system') {
+    return { type: 'icon' as const, icon: 'fas fa-robot', title: 'AI 助手', color: 'var(--primary-color, #1890ff)' }
+  }
+  const s = statusInfo.value?.status
+  if (s) {
+    return { type: 'status' as const, status: s, title: s === 'online' ? '在线' : s === 'busy' ? '忙碌' : '离线' }
+  }
+  return null
+})
+
+const statusLabel = computed(() => {
+  if (detail.value.type === 'bot' || detail.value.type === 'system') return 'AI 助手'
+  const s = statusInfo.value?.status
+  if (s === 'online') return '在线'
+  if (s === 'busy') return '忙碌'
+  if (s === 'offline') {
+    const lastOnline = statusInfo.value?.lastOnline
+    if (lastOnline) return formatLastOnline(lastOnline) || '离线'
+    return '离线'
+  }
+  return ''
+})
+
+const roleLabel = computed(() => {
+  const r = detail.value.role
+  if (r === 'owner') return { text: '群主', cls: 'owner' }
+  if (r === 'admin') return { text: '管理员', cls: 'admin' }
+  return null
+})
 
 const fetchUserDetail = async () => {
   detail.value = { ...props.user }
@@ -183,7 +244,7 @@ defineEmits<{
 
 .panel-header h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color, #333);
 }
@@ -195,196 +256,241 @@ defineEmits<{
 }
 
 .user-profile-container {
-  position: relative;
-  padding: 12px;
-  margin: 0;
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .user-profile-card {
-  position: relative;
-  background: var(--card-bg);
-  border-radius: 10px;
-  padding: 18px;
-  border: 1px solid var(--border-color, #e8e8e8);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
-  z-index: 1;
+  padding: 0;
 }
 
-.user-profile-avatar-section {
-  display: flex;
-  align-items: center;
+/* ---- 头像 + 基本信息区 ---- */
+.user-info-header {
+  padding: 28px 20px 20px;
+  text-align: center;
+  background: var(--card-bg, #fff);
+}
+
+.user-avatar-wrapper {
+  position: relative;
+  display: inline-block;
   margin-bottom: 14px;
-  padding-bottom: 0;
-}
-
-.user-avatar-container {
-  position: relative;
-  margin-right: 16px;
 }
 
 .user-avatar {
-  width: 56px;
-  height: 56px;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 3px solid var(--border-color, rgba(0,0,0,0.08));
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.user-name {
+  margin: 0 0 4px;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--text-color, #333);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.user-role-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
   border-radius: 10px;
-  object-fit: cover;
-  border: 3px solid white;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-  transition: transform 0.3s ease;
-}
-
-.user-avatar:hover {
-  transform: scale(1.05);
-}
-
-.user-basic-info {
-  flex: 1;
-}
-
-.user-full-name {
-  margin: 0 0 4px 0;
-  font-size: 18px;
+  font-size: var(--font-size-xxxs);
   font-weight: 600;
-  color: var(--text-color);
-  letter-spacing: 0.3px;
+  background: var(--primary-color);
+  color: #fff;
+  opacity: 0.85;
+}
+
+.user-sub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 4px;
 }
 
 .user-department {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
-.user-signature {
-  margin: 4px 0 0;
-  font-size: 13px;
+.user-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
+  background: var(--hover-color, rgba(0,0,0,0.04));
+  padding: 2px 10px;
+  border-radius: 20px;
 }
 
-.user-info-sections {
-  margin-bottom: 14px;
+.user-status-badge.is-online {
+  color: #52c41a;
 }
 
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #d9d9d9;
+  flex-shrink: 0;
+}
+
+.status-dot.online { background-color: #52c41a; }
+.status-dot.busy { background-color: #ff4d4f; }
+.status-dot.offline { background-color: #d9d9d9; }
+
+/* ---- 签名区 ---- */
+.signature-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--card-bg, #fff);
+  border-bottom: 1px solid var(--border-color, rgba(0,0,0,0.06));
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ---- 信息列表 ---- */
 .info-section {
-  border-radius: 8px;
-  padding: 10px 12px;
+  padding: 16px 20px;
 }
 
 .section-title {
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 12px;
+}
+
+.info-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 8px;
+}
+
+.info-row {
   display: flex;
   align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 0;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  min-width: 0;
+  transition: background-color 0.15s;
 }
 
-.section-title i {
-  font-size: 14px;
-  color: var(--primary-color);
-  margin-right: 8px;
+.info-row:hover {
+  background: var(--hover-color, rgba(0,0,0,0.03));
 }
 
-.section-title h3 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-
-.info-item {
+.info-row-icon {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--hover-color, rgba(0,0,0,0.04));
+  color: var(--text-secondary);
+  font-size: var(--font-size-xxs);
+  flex-shrink: 0;
 }
 
-.info-label {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 600;
+.info-row-text {
+  flex: 1;
+  min-width: 0;
 }
 
-.info-value {
-  font-size: 14px;
+.info-row-label {
+  display: block;
+  font-size: var(--font-size-xxxs);
+  color: var(--text-secondary);
+  margin-bottom: 1px;
+}
+
+.info-row-value {
+  display: block;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
   font-weight: 500;
+  word-break: break-all;
+  line-height: 1.4;
 }
 
-.user-action-buttons {
+.info-row-value.muted {
+  color: var(--text-secondary);
+  font-weight: 400;
+  font-size: var(--font-size-xxs);
+}
+
+/* ---- 操作按钮 ---- */
+.action-bar {
   display: flex;
   gap: 8px;
-  justify-content: center;
-  padding-top: 8px;
-  margin-bottom: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color, rgba(0,0,0,0.06));
 }
 
 .action-btn {
-  padding: 8px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 12px;
+  flex: 1;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 5px;
-  min-width: 90px;
   justify-content: center;
+  gap: 6px;
 }
 
 .action-btn.primary {
   background: var(--primary-color);
-  border-color: var(--primary-color);
-  color: white;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
 }
 
 .action-btn.primary:hover {
   background: var(--active-color);
-  border-color: var(--active-color);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 14px rgba(102, 126, 234, 0.35);
+  transform: translateY(-1px);
 }
 
 .action-btn.secondary {
-  background: var(--input-bg);
-  border-color: var(--border-color);
+  background: var(--hover-color, rgba(0,0,0,0.04));
   color: var(--text-color);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .action-btn.secondary:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+  background: var(--border-color, rgba(0,0,0,0.08));
+  transform: translateY(-1px);
 }
 
 @media (max-width: 768px) {
-  .user-profile-container {
-    padding: 10px;
+  .info-row {
+    padding: 8px 10px;
   }
-  
-  .user-profile-card {
-    padding: 14px;
-  }
-  
-  .info-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .user-action-buttons {
+
+  .action-bar {
     flex-direction: column;
-  }
-  
-  .action-btn {
-    width: 100%;
+    gap: 6px;
   }
 }
 </style>

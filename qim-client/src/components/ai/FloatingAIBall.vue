@@ -302,7 +302,7 @@ onUnmounted(() => {
   .floating-ai-ball {
     width: 48px;
     height: 48px;
-    font-size: 20px;
+    font-size: var(--font-size-xl);
   }
 }
 </style>

@@ -8,6 +8,9 @@ export interface UserProfileInfo {
   email?: string
   mobile?: string
   department?: string
+  position?: string
+  signature?: string
+  status?: string
   ip?: string
   avatar?: string
   // 用户类型（user/bot/system 等），由后端返回，部分场景需要区分
@@ -56,6 +59,9 @@ export async function fetchUserProfile(userId: string | number, fallbackUser?: a
           email: userData.email,
           mobile: userData.phone,
           department: userData.department,
+          position: userData.position,
+          signature: userData.signature,
+          status: userData.status,
           ip: userData.ip,
           avatar: userData.avatar || fallbackUser?.avatar,
           type: userData.type

@@ -1,23 +1,21 @@
 <template>
-  <ModalContainer
-    :visible="visible"
-    title="个人信息"
-    width="680px"
-    :overlay-style="{ backdropFilter: 'blur(4px)', webkitBackdropFilter: 'blur(4px)' }"
-    @close="$emit('close')"
-    @cancel="$emit('close')"
-  >
-    <div class="profile-layout">
-      <div class="avatar-section">
-        <div class="avatar-wrapper">
+  <div v-if="visible" class="self-profile-modal" @click="$emit('close')">
+    <div class="self-profile-content" @click.stop>
+      <!-- 关闭按钮 -->
+      <button class="modal-close-btn" @click="$emit('close')">
+        <i class="fas fa-times"></i>
+      </button>
+
+      <!-- Hero 渐变头部 -->
+      <div class="self-hero">
+        <div class="self-avatar-wrapper" @click="triggerAvatarUpload">
           <img
             :src="avatarUrl"
             :alt="currentUser?.username || 'avatar'"
-            class="avatar-image"
+            class="self-avatar-img"
           />
-          <div class="avatar-overlay" @click="triggerAvatarUpload">
+          <div class="avatar-overlay">
             <i class="fas fa-camera"></i>
-            <span>更换头像</span>
           </div>
         </div>
         <input
@@ -27,79 +25,91 @@
           class="avatar-input-hidden"
           @change="handleAvatarSelect"
         />
-        <p class="avatar-hint">点击头像可更换，支持 JPG、PNG 格式</p>
-      </div>
-
-      <div class="form-section">
-        <div class="form-group">
-          <label class="form-label">姓名</label>
-          <div class="form-value readonly">{{ localProfile.nickname }}</div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">账号</label>
-          <div class="form-value readonly">{{ localProfile.username }}</div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">签名</label>
+        <div class="self-hero-name">{{ localProfile.nickname }}</div>
+        <div class="self-hero-account">@{{ localProfile.username }}</div>
+        <div class="self-signature-block">
           <textarea
             v-model="localProfile.signature"
-            class="form-textarea"
-            placeholder="输入个人签名，让大家更了解你"
-            rows="3"
+            class="self-signature-input"
+            placeholder="写一句签名吧…"
+            rows="1"
+            maxlength="100"
           ></textarea>
         </div>
+      </div>
 
-        <div class="form-row">
-          <div class="form-group half">
-            <label class="form-label">手机</label>
-            <div class="form-value readonly">{{ localProfile.phone || '未设置' }}</div>
-          </div>
-          <div class="form-group half">
-            <label class="form-label">邮箱</label>
-            <div class="form-value readonly">{{ localProfile.email || '未设置' }}</div>
+      <!-- 信息区 -->
+      <div class="self-info">
+        <div class="info-item">
+          <span class="info-icon"><i class="fas fa-at"></i></span>
+          <div class="info-content">
+            <label>账号</label>
+            <span class="info-value">{{ localProfile.username || '未设置' }}</span>
           </div>
         </div>
-
-        <div class="form-row">
-          <div class="form-group half">
-            <label class="form-label">性别</label>
-            <div class="form-value readonly">{{ formatGender(localProfile.gender) }}</div>
-          </div>
-          <div class="form-group half">
-            <label class="form-label">部门</label>
-            <div class="form-value readonly">{{ localProfile.department || '未设置' }}</div>
+        <div class="info-item">
+          <span class="info-icon"><i class="fas fa-building"></i></span>
+          <div class="info-content">
+            <label>部门</label>
+            <span class="info-value" :class="{ 'info-value-empty': !localProfile.department }">{{ localProfile.department || '未设置' }}</span>
           </div>
         </div>
-
-        <div class="form-group">
-          <label class="form-label">加入时间</label>
-          <div class="form-value readonly">{{ localProfile.joinDate || '未设置' }}</div>
+        <div class="info-item">
+          <span class="info-icon"><i class="fas fa-mobile-alt"></i></span>
+          <div class="info-content">
+            <label>手机</label>
+            <span class="info-value" :class="{ 'info-value-empty': !localProfile.phone }">{{ localProfile.phone || '未绑定' }}</span>
+          </div>
+        </div>
+        <div class="info-item">
+          <span class="info-icon"><i class="fas fa-envelope"></i></span>
+          <div class="info-content">
+            <label>邮箱</label>
+            <span class="info-value" :class="{ 'info-value-empty': !localProfile.email }">{{ localProfile.email || '未绑定' }}</span>
+          </div>
+        </div>
+        <div class="info-item">
+          <span class="info-icon"><i class="fas fa-venus-mars"></i></span>
+          <div class="info-content">
+            <label>性别</label>
+            <span class="info-value">{{ formatGender(localProfile.gender) }}</span>
+          </div>
+        </div>
+        <div class="info-item">
+          <span class="info-icon"><i class="fas fa-calendar"></i></span>
+          <div class="info-content">
+            <label>加入时间</label>
+            <span class="info-value info-value-muted">{{ localProfile.joinDate || '—' }}</span>
+          </div>
         </div>
       </div>
+
+      <!-- 操作栏 -->
+      <div class="self-profile-footer">
+        <button class="action-btn primary" @click="handleSave">
+          <i class="fas fa-check"></i>
+          <span>保存</span>
+        </button>
+        <button class="action-btn secondary" @click="$emit('close')">
+          <span>取消</span>
+        </button>
+      </div>
+
+      <!-- AvatarCropper -->
+      <AvatarCropper
+        v-if="showCropper"
+        :image-url="pendingImageUrl"
+        @confirm="handleCropConfirm"
+        @cancel="handleCropCancel"
+      />
     </div>
-
-    <template #footer>
-      <button class="btn btn-secondary" @click="$emit('close')">取消</button>
-      <button class="btn btn-primary" @click="handleSave">保存</button>
-    </template>
-
-    <!-- AvatarCropper 放在 modal 的 stacking context 内，确保层级正确 -->
-    <AvatarCropper
-      v-if="showCropper"
-      :image-url="pendingImageUrl"
-      @confirm="handleCropConfirm"
-      @cancel="handleCropCancel"
-    />
-  </ModalContainer>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { generateAvatar, isAbsoluteUrl } from '../../utils/avatar'
 import AvatarCropper from './AvatarCropper.vue'
-import ModalContainer from '../shared/ModalContainer.vue'
 
 interface Props {
   visible: boolean
@@ -156,15 +166,8 @@ const handleAvatarSelect = (event: Event) => {
   const input = event.target as HTMLInputElement
   if (input.files && input.files.length > 0) {
     const file = input.files[0]
-
-    if (!file.type.startsWith('image/')) {
-      return
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      return
-    }
-
+    if (!file.type.startsWith('image/')) return
+    if (file.size > 5 * 1024 * 1024) return
     pendingImageUrl.value = URL.createObjectURL(file)
     showCropper.value = true
     input.value = ''
@@ -194,180 +197,304 @@ const handleSave = () => {
 </script>
 
 <style scoped>
-.profile-layout {
-  display: grid;
-  grid-template-columns: 180px 1fr;
-  gap: 28px;
+/* ---- 模态框容器 ---- */
+.self-profile-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
 }
 
-.avatar-section {
+.self-profile-content {
+  background-color: var(--card-bg, #fff);
+  border-radius: 16px;
+  width: 400px;
+  max-width: 90%;
+  max-height: 85vh;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding-top: 4px;
+  position: relative;
 }
 
-.avatar-wrapper {
+/* ---- 关闭按钮 ---- */
+.modal-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: rgba(255, 255, 255, 0.85);
+  color: #666;
+  font-size: var(--font-size-xxs);
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s;
+}
+
+.modal-close-btn:hover {
+  background: #fff;
+  color: #333;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* ---- Hero 渐变头部 ---- */
+.self-hero {
   position: relative;
-  width: 120px;
-  height: 120px;
+  padding: 32px 24px 20px;
+  text-align: center;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--active-color, #4f6ef7) 100%);
+  overflow: hidden;
+}
+
+.self-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.15), transparent 60%);
+  pointer-events: none;
+}
+
+.self-avatar-wrapper {
+  position: relative;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   overflow: hidden;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  border: 2px solid var(--border-color, #e5e7eb);
+  display: inline-block;
+  margin-bottom: 14px;
+  border: 3px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s ease;
 }
 
-.avatar-image {
+.self-avatar-wrapper:hover {
+  transform: scale(1.06);
+}
+
+.self-avatar-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 .avatar-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   opacity: 0;
   transition: opacity 0.2s;
-  color: #ffffff;
+  color: #fff;
+  font-size: var(--font-size-lg);
 }
 
-.avatar-wrapper:hover .avatar-overlay {
+.self-avatar-wrapper:hover .avatar-overlay {
   opacity: 1;
-}
-
-.avatar-overlay i {
-  font-size: 22px;
-  margin-bottom: 4px;
-}
-
-.avatar-overlay span {
-  font-size: 12px;
 }
 
 .avatar-input-hidden {
   display: none;
 }
 
-.avatar-hint {
-  margin-top: 10px;
+.self-hero-name {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  margin-bottom: 2px;
+}
+
+.self-hero-account {
   font-size: 12px;
-  color: var(--text-secondary, #6b7280);
-  text-align: center;
-  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 10px;
 }
 
-.form-section {
+.self-signature-block {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 6px;
+  padding: 0 8px;
 }
 
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+.self-signature-input {
+  flex: 1;
+  max-width: 280px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  resize: none;
+  font-family: inherit;
+  text-align: center;
+  transition: all 0.2s;
+  box-sizing: border-box;
 }
 
-.form-group.half {
+.self-signature-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.self-signature-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ---- 信息区 ---- */
+.self-info {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
   flex: 1;
 }
 
-.form-label {
-  font-size: 12px;
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  transition: background-color 0.15s;
+}
+
+.info-item:hover {
+  background: var(--hover-color, rgba(0,0,0,0.03));
+}
+
+.info-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--hover-color, rgba(0,0,0,0.04));
+  color: var(--text-secondary);
+  font-size: var(--font-size-xxs);
+  flex-shrink: 0;
+}
+
+.info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.info-content label {
+  font-size: var(--font-size-xxxs);
+  color: var(--text-secondary, #999);
   font-weight: 500;
-  color: var(--text-secondary, #6b7280);
-  letter-spacing: 0.2px;
 }
 
-.form-input,
-.form-textarea {
-  padding: 9px 12px;
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--text-color, #111827);
-  background: var(--input-bg, #ffffff);
-  transition: border-color 0.2s, box-shadow 0.2s;
+.info-content .info-value {
+  font-size: var(--font-size-xs);
+  color: var(--text-color, #333);
+  font-weight: 500;
+  word-break: break-all;
+  line-height: 1.4;
 }
 
-.form-input:focus,
-.form-textarea:focus {
-  outline: none;
-  border-color: var(--primary-color, #3b82f6);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+.info-content .info-value-empty {
+  color: var(--text-secondary, #d1d5db);
 }
 
-.form-textarea {
-  resize: vertical;
-  min-height: 72px;
-  line-height: 1.5;
-  font-family: inherit;
+.info-content .info-value-muted {
+  color: var(--text-secondary, #999);
+  font-weight: 400;
+  font-size: var(--font-size-xxs);
 }
 
-.form-value.readonly {
-  padding: 9px 12px;
-  background: var(--secondary-color, #f9fafb);
-  border-radius: 8px;
-  font-size: 14px;
-  color: var(--text-color, #111827);
-  border: 1px solid transparent;
+/* ---- 操作栏 ---- */
+.self-profile-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color, rgba(0,0,0,0.06));
+  display: flex;
+  gap: 8px;
 }
 
-.btn {
-  padding: 9px 22px;
+.action-btn {
+  flex: 1;
+  padding: 10px 16px;
   border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
+  border-radius: 10px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
-.btn-secondary {
-  background: var(--secondary-color, #f3f4f6);
-  color: var(--text-color, #374151);
+.action-btn i {
+  font-size: var(--font-size-xs);
 }
 
-.btn-secondary:hover {
-  background: var(--hover-color, #e5e7eb);
-}
-
-.btn-primary {
+.action-btn.primary {
   background: var(--primary-color, #3b82f6);
-  color: #ffffff;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
 }
 
-.btn-primary:hover {
+.action-btn.primary:hover {
   background: var(--active-color, #2563eb);
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
-@media (max-width: 768px) {
-  .profile-layout {
-    grid-template-columns: 1fr;
-    gap: 20px;
-  }
+.action-btn.secondary {
+  background: var(--hover-color, rgba(0,0,0,0.04));
+  color: var(--text-color, #333);
+}
 
-  .avatar-section {
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--border-color, #e5e7eb);
-  }
+.action-btn.secondary:hover {
+  background: var(--border-color, rgba(0,0,0,0.08));
+  transform: translateY(-1px);
+}
 
-  .form-row {
-    grid-template-columns: 1fr;
-  }
+/* 高雅紫主题 */
+[data-theme="elegant-purple"] .action-btn.primary {
+  background: var(--primary-color, #75629a);
+}
+[data-theme="elegant-purple"] .action-btn.primary:hover {
+  background: var(--active-color, #665486);
+}
+
+/* 中国红主题 */
+[data-theme="chinesered"] .action-btn.primary {
+  background: var(--primary-color, #c41e3a);
+}
+[data-theme="chinesered"] .action-btn.primary:hover {
+  background: var(--active-color, #a31d32);
 }
 </style>

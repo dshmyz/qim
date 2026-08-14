@@ -612,7 +612,7 @@ defineExpose({
 
 .title {
   color: #fff;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -627,7 +627,7 @@ defineExpose({
   border: none;
   border-radius: 6px;
   color: #fff;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -665,7 +665,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   color: #fff;
 }
 
@@ -686,13 +686,13 @@ defineExpose({
 
 .incoming-title {
   color: #fff;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
 }
 
 .incoming-subtitle {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .incoming-actions {
@@ -708,7 +708,7 @@ defineExpose({
   border-radius: 8px;
   color: #ef4444;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -725,7 +725,7 @@ defineExpose({
   border-radius: 8px;
   color: #fff;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -765,7 +765,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   color: #fff;
   position: relative;
   z-index: 1;
@@ -840,13 +840,13 @@ defineExpose({
 
 .outgoing-name {
   color: #fff;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
 }
 
 .outgoing-status {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .btn-cancel-call {
@@ -856,7 +856,7 @@ defineExpose({
   border-radius: 8px;
   color: #ef4444;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -879,7 +879,7 @@ defineExpose({
 }
 
 .connecting-icon {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   color: #f59e0b;
 }
 
@@ -923,7 +923,7 @@ defineExpose({
 }
 
 .video-placeholder span {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .local-video-pip {
@@ -970,7 +970,7 @@ defineExpose({
   border-radius: 4px;
   color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   z-index: 2;
   transition: all 0.2s;
 }
@@ -998,13 +998,13 @@ defineExpose({
 
 .voice-name {
   color: #fff;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
 }
 
 .voice-duration {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-family: 'SF Mono', Monaco, monospace;
 }
 
@@ -1019,7 +1019,7 @@ defineExpose({
 
 .duration {
   color: rgba(255, 255, 255, 0.7);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-family: 'SF Mono', Monaco, monospace;
 }
 
@@ -1034,7 +1034,7 @@ defineExpose({
   border: none;
   border-radius: 6px;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -1079,7 +1079,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #fff;
   flex-shrink: 0;
 }
@@ -1111,7 +1111,7 @@ defineExpose({
   align-items: center;
   gap: 6px;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 
@@ -1129,13 +1129,13 @@ defineExpose({
 
 .minimized-duration {
   color: rgba(255, 255, 255, 0.7);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-family: 'SF Mono', Monaco, monospace;
 }
 
 .minimized-name {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1149,7 +1149,7 @@ defineExpose({
 .minimized-actions .action-btn {
   flex: 1;
   padding: 5px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   justify-content: center;
 }
 

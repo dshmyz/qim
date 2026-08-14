@@ -54,7 +54,7 @@ const handleSearch = () => {
   padding: 10px 16px 10px 40px;
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   background: var(--input-bg, white);
   color: var(--text-primary, #1f2937);
   transition: all 0.2s;
@@ -72,7 +72,7 @@ const handleSearch = () => {
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-secondary, #9ca3af);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   pointer-events: none;
 }
 </style>

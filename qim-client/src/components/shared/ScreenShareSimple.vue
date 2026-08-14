@@ -986,7 +986,7 @@ defineExpose({
 
 .title {
   color: #fff;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -1001,7 +1001,7 @@ defineExpose({
   border: none;
   border-radius: 6px;
   color: #fff;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -1035,7 +1035,7 @@ defineExpose({
 
 .source-picker-header h3 {
   color: #fff;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   margin: 0;
 }
 
@@ -1044,7 +1044,7 @@ defineExpose({
   border: none;
   color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   padding: 4px;
 }
 
@@ -1063,7 +1063,7 @@ defineExpose({
   align-items: center;
   gap: 8px;
   color: rgba(255, 255, 255, 0.85);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   margin: 4px 0 10px;
 }
@@ -1118,13 +1118,13 @@ defineExpose({
 
 .source-placeholder {
   color: rgba(255, 255, 255, 0.3);
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
 }
 
 .source-name {
   padding: 8px;
   color: #fff;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   background: rgba(0, 0, 0, 0.3);
   white-space: nowrap;
   overflow: hidden;
@@ -1156,7 +1156,7 @@ defineExpose({
 
 .source-hint {
   color: rgba(255, 255, 255, 0.55);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1184,7 +1184,7 @@ defineExpose({
   border-radius: 6px;
   color: #fff;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .btn-secondary:hover {
@@ -1198,7 +1198,7 @@ defineExpose({
   border-radius: 6px;
   color: #fff;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .btn-primary:disabled {
@@ -1236,7 +1236,7 @@ defineExpose({
 
 .incoming-title {
   color: #fff;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 500;
 }
 
@@ -1253,7 +1253,7 @@ defineExpose({
   border-radius: 8px;
   color: #ef4444;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -1268,7 +1268,7 @@ defineExpose({
   border-radius: 8px;
   color: #fff;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -1317,7 +1317,7 @@ defineExpose({
 
 .waiting-sub {
   color: rgba(255, 255, 255, 0.55);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .waiting-countdown {
@@ -1328,12 +1328,12 @@ defineExpose({
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.7);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   transition: all 0.2s;
 }
 
 .waiting-countdown i {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 .waiting-countdown.urgent {
@@ -1369,7 +1369,7 @@ defineExpose({
 }
 
 .video-placeholder i {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
 }
 
 .pause-overlay {
@@ -1391,18 +1391,18 @@ defineExpose({
 }
 
 .pause-overlay__inner i {
-  font-size: 40px;
+  font-size: var(--font-size-4xl);
   color: #f59e0b;
   margin-bottom: 4px;
 }
 
 .pause-overlay__title {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
 }
 
 .pause-overlay__desc {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: rgba(255, 255, 255, 0.7);
 }
 
@@ -1416,7 +1416,7 @@ defineExpose({
 
 .duration {
   color: rgba(255, 255, 255, 0.7);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-family: 'SF Mono', Monaco, monospace;
 }
 
@@ -1431,7 +1431,7 @@ defineExpose({
   border: none;
   border-radius: 6px;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -1488,7 +1488,7 @@ defineExpose({
   gap: 4px;
   background: rgba(0, 0, 0, 0.6);
   color: #f59e0b;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
 }
 
@@ -1511,7 +1511,7 @@ defineExpose({
   align-items: center;
   gap: 6px;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
 }
 
@@ -1533,13 +1533,13 @@ defineExpose({
 
 .minimized-duration {
   color: rgba(255, 255, 255, 0.7);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-family: 'SF Mono', Monaco, monospace;
 }
 
 .minimized-name {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1553,7 +1553,7 @@ defineExpose({
 .minimized-actions .action-btn {
   flex: 1;
   padding: 6px 10px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 .expand-btn {
@@ -1672,7 +1672,7 @@ defineExpose({
 
 .fullscreen-title {
   color: #fff;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 500;
 }
 
@@ -1683,7 +1683,7 @@ defineExpose({
   border-radius: 6px;
   color: #fff;
   cursor: pointer;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   transition: all 0.2s;
 }
 
@@ -1712,7 +1712,7 @@ defineExpose({
 
 .fullscreen-duration {
   color: rgba(255, 255, 255, 0.9);
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-family: 'SF Mono', Monaco, monospace;
 }
 
@@ -1728,7 +1728,7 @@ defineExpose({
   border-radius: 8px;
   color: #fff;
   cursor: pointer;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   transition: all 0.2s;
 }
 

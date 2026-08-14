@@ -101,7 +101,7 @@ const emit = defineEmits<{
   padding: var(--spacing-2) var(--spacing-3);
   border-bottom: 2px solid var(--border-color);
   background: var(--card-bg);
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -133,7 +133,7 @@ const emit = defineEmits<{
   padding: var(--spacing-8);
   gap: var(--spacing-2);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 .list-empty i { font-size: 28px; opacity: 0.4; }
 </style>

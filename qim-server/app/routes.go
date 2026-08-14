@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -83,7 +85,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				return nil
 			},
 		}
-		uk = service.NewUnifiedKnowledgeService(groupDocSvc, fallback, di.GlobalContainer.AiThresholdService)
+		uk = service.NewUnifiedKnowledgeService(groupDocSvc, fallback, di.GlobalContainer.AiThresholdService, aiSvc)
 	}
 
 	handler.InitSmartReplyEngine(aiSvc)
@@ -949,7 +951,37 @@ func serveStorageFile(c *gin.Context, storagePath string) {
 	if upload.ShouldForceDownload(storagePath) {
 		c.Header("Content-Disposition", "attachment")
 	}
+	// 设置 Content-Length：否则 Go 对该大小未知的流会回退到 Transfer-Encoding: chunked，
+	// Electron 下载器的 getTotalBytes() 读到 0，无法计算下载进度（前端进度条卡 0%）。
+	if size, ok := storageObjectSize(reader); ok && size >= 0 {
+		c.Header("Content-Length", strconv.FormatInt(size, 10))
+	}
 	if _, err := io.Copy(c.Writer, reader); err != nil {
 		return
 	}
+}
+
+// storageObjectSize 尝试获取存储流的总大小（字节）。优先用 fs.File.Stat（不改动读游标），
+// 兜底用 io.Seeker 跳到末尾量长度再复位。无法获知时返回 ok=false，调用方不设 Content-Length。
+func storageObjectSize(r io.Reader) (int64, bool) {
+	if f, ok := r.(fs.File); ok {
+		if fi, err := f.Stat(); err == nil {
+			return fi.Size(), true
+		}
+	}
+	if s, ok := r.(io.Seeker); ok {
+		cur, err := s.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return 0, false
+		}
+		end, err := s.Seek(0, io.SeekEnd)
+		if err != nil {
+			return 0, false
+		}
+		if _, err := s.Seek(cur, io.SeekStart); err != nil {
+			return 0, false
+		}
+		return end, true
+	}
+	return 0, false
 }

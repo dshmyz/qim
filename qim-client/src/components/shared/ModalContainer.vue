@@ -118,7 +118,7 @@ const handleOverlayClick = () => {
 }
 
 .modal-container-title {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary, #333);
   margin: 0;
@@ -130,7 +130,7 @@ const handleOverlayClick = () => {
   border: none;
   background-color: transparent;
   color: var(--text-secondary, #999);
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   font-weight: bold;
   cursor: pointer;
   border-radius: 50%;
@@ -165,7 +165,7 @@ const handleOverlayClick = () => {
   padding: 8px 24px;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -221,7 +221,7 @@ const handleOverlayClick = () => {
   }
   
   .modal-container-title {
-    font-size: 16px;
+    font-size: var(--font-size-base);
   }
   
   .modal-container-body {

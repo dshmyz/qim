@@ -44,7 +44,7 @@
 }
 
 .mini-app-modal-title {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -52,7 +52,7 @@
 .mini-app-modal-close {
   background: none;
   border: none;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   color: var(--text-secondary);
   cursor: pointer;
 }
@@ -147,7 +147,7 @@
 
 .share-preview-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -172,19 +172,19 @@
 }
 
 .share-preview-title {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color);
   margin-bottom: 8px;
 }
 
 .share-file-size {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
 .share-preview-content-text {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
   color: var(--text-color);
   white-space: pre-wrap;
@@ -195,7 +195,7 @@
   margin-top: 16px;
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -214,7 +214,7 @@
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .share-file-action-btn:hover {
@@ -231,6 +231,20 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+/* 暗色主题：与 StickyNoteCard 相同的深橄榄底 + 浅黄文字，保持便签语义且可读 */
+[data-theme="elegant-dark"] .sticky-note-preview {
+  background: linear-gradient(145deg, #4a4520 0%, #3d3a18 100%);
+}
+
+[data-theme="elegant-dark"] .sticky-note-preview .sticky-note-title,
+[data-theme="elegant-dark"] .sticky-note-preview .sticky-note-body {
+  color: #e6d98a;
+}
+
+[data-theme="elegant-dark"] .sticky-note-preview .share-preview-meta {
+  color: #a1887f;
+}
+
 .sticky-note-preview .share-preview-header {
   background: rgba(0, 0, 0, 0.05);
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
@@ -241,18 +255,18 @@
 }
 
 .sticky-note-title {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: bold;
-  color: #333;
+  color: var(--text-color);
   margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 1px dashed rgba(0, 0, 0, 0.2);
 }
 
 .sticky-note-body {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   line-height: 1.5;
-  color: #333;
+  color: var(--text-color);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -300,7 +314,7 @@
 
 .error-icon {
   color: #f56c6c;
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   margin-bottom: 16px;
   flex-shrink: 0;
 }
@@ -313,7 +327,7 @@
 .error-message p {
   margin: 0 0 8px 0;
   color: #f56c6c;
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .error-actions {
@@ -326,7 +340,7 @@
   padding: 6px 16px;
   border: none;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: all 0.3s ease;
 }
@@ -387,7 +401,7 @@
 
 .about-dialog-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -395,7 +409,7 @@
 .about-dialog-close {
   border: none;
   background: transparent;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   cursor: pointer;
   color: var(--text-secondary);
   width: 28px;
@@ -422,7 +436,7 @@
 .about-dialog-logo {
   margin-bottom: 16px;
   color: var(--primary-color);
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
 }
 
 .about-dialog-logo img {
@@ -433,39 +447,39 @@
 
 .about-dialog-content h2 {
   margin: 0 0 12px 0;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   font-weight: 600;
   color: var(--text-color);
 }
 
 .about-dialog-content .version {
   margin: 0 0 8px 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
 .about-dialog-content .date {
   margin: 0 0 8px 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
 .about-dialog-content .author {
   margin: 0 0 8px 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
 .about-dialog-content .copyright {
   margin: 0 0 16px 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   opacity: 0.8;
 }
 
 .about-dialog-content .description {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.6;
 }
@@ -481,7 +495,7 @@
   padding: 10px 28px;
   background: var(--list-bg);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -515,7 +529,7 @@
 }
 
 .logout-dialog {
-  background: white;
+  background: var(--modal-bg, #fff);
   border-radius: 8px;
   width: 360px;
   max-width: 90%;
@@ -532,15 +546,15 @@
 
 .logout-dialog-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
-  color: #333;
+  color: var(--text-color);
 }
 
 .logout-dialog-close {
   border: none;
   background: transparent;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   cursor: pointer;
   color: var(--text-secondary);
   width: 28px;
@@ -565,8 +579,8 @@
 
 .logout-dialog-message {
   margin: 0;
-  font-size: 16px;
-  color: #333;
+  font-size: var(--font-size-base);
+  color: var(--text-color);
   line-height: 1.5;
 }
 
@@ -580,7 +594,7 @@
 .logout-dialog-button {
   padding: 10px 28px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -632,7 +646,7 @@
 }
 
 .update-dialog {
-  background: white;
+  background: var(--modal-bg, #fff);
   border-radius: 8px;
   width: 360px;
   max-width: 90%;
@@ -649,15 +663,15 @@
 
 .update-dialog-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
-  color: #333;
+  color: var(--text-color);
 }
 
 .update-dialog-close {
   border: none;
   background: transparent;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   cursor: pointer;
   color: var(--text-secondary);
   width: 28px;
@@ -703,7 +717,7 @@
 
 .download-text {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #666;
 }
 
@@ -732,7 +746,7 @@
 
 .progress-text {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: #999;
   text-align: center;
 }
@@ -758,14 +772,14 @@
 
 .result-text {
   margin: 0;
-  font-size: 16px;
-  color: #333;
+  font-size: var(--font-size-base);
+  color: var(--text-color);
   font-weight: 500;
 }
 
 .version-info {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #999;
 }
 
@@ -780,7 +794,7 @@
   padding: 10px 28px;
   background: var(--list-bg);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -821,10 +835,10 @@
   }
 
   .error-icon {
-    font-size: 24px;
+    font-size: var(--font-size-2xl);
   }
 
   .error-message p {
-    font-size: 14px;
+    font-size: var(--font-size-sm);
   }
 }

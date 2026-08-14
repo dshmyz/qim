@@ -72,7 +72,7 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
 .ai-answer-bubble.im {
   padding: 10px 14px;
   border-radius: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.6;
 }
 .ai-answer-bubble.im.self {

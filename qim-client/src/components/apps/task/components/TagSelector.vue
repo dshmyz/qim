@@ -48,14 +48,14 @@ function toggleTag(tag: Tag) {
 .tag-selector { margin-bottom: var(--spacing-3); }
 .tag-label {
   display: block;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   color: var(--text-secondary);
   margin-bottom: var(--spacing-1);
 }
 .tag-list { display: flex; flex-wrap: wrap; gap: var(--spacing-1); }
 .tag-item {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);

@@ -107,7 +107,7 @@ function onSubmit() {
 .task-form-group { margin-bottom: var(--spacing-3); }
 .task-form-group label {
   display: block;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   color: var(--text-secondary);
   margin-bottom: var(--spacing-1);
@@ -119,7 +119,7 @@ function onSubmit() {
   padding: var(--spacing-2) var(--spacing-3);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-primary);
   background: var(--input-bg);
   transition: border-color var(--animation-fast) ease;
@@ -135,7 +135,7 @@ function onSubmit() {
   padding: var(--spacing-2) var(--spacing-4);
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--animation-fast) ease;

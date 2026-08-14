@@ -22,11 +22,11 @@ describe('attachment message card style', () => {
 
     expect(wrapper.find('.attachment-card').exists()).toBe(true)
     expect(wrapper.find('.attachment-card__icon').exists()).toBe(true)
-    expect(wrapper.find('.attachment-card__title').text()).toBe('产品需求说明.pdf')
-    expect(wrapper.find('.attachment-card__meta').text()).toContain('PDF')
-    expect(wrapper.find('.attachment-card__meta').text()).toContain('2.4 MB')
+    expect(wrapper.find('.file-title').text()).toBe('产品需求说明.pdf')
+    expect(wrapper.find('.file-meta').text()).toContain('PDF')
+    expect(wrapper.find('.file-meta').text()).toContain('2.4 MB')
     expect(wrapper.find('.file-type-label').exists()).toBe(false)
-    expect(wrapper.findAll('.file-action-btn')).toHaveLength(2)
+    expect(wrapper.findAll('.attachment-card__btn')).toHaveLength(2)
   })
 
   it('renders mini app messages with the same attachment card language', () => {
@@ -42,8 +42,8 @@ describe('attachment message card style', () => {
 
     expect(wrapper.find('.attachment-card').exists()).toBe(true)
     expect(wrapper.find('.attachment-card__icon').exists()).toBe(true)
-    expect(wrapper.find('.attachment-card__title').text()).toBe('项目日报')
-    expect(wrapper.find('.attachment-card__meta').text()).toBe('小程序 · 点击打开')
+    expect(wrapper.find('.mini-app-title').text()).toBe('项目日报')
+    expect(wrapper.find('.mini-app-meta').text()).toBe('小程序')
     expect(wrapper.find('.mini-app-type-label').exists()).toBe(false)
   })
 
@@ -59,7 +59,7 @@ describe('attachment message card style', () => {
       },
     })
 
-    expect(wrapper.find('.attachment-card__title').text()).toBe('审批助手')
+    expect(wrapper.find('.mini-app-title').text()).toBe('审批助手')
     expect(wrapper.find('.mini-app-icon-fallback').text()).toBe('审')
   })
 
@@ -91,8 +91,8 @@ describe('attachment message card style', () => {
 
     expect(wrapper.find('.attachment-card').exists()).toBe(true)
     expect(wrapper.find('.attachment-card__icon').exists()).toBe(true)
-    expect(wrapper.find('.attachment-card__title').text()).toBe('产品更新公告')
-    expect(wrapper.find('.attachment-card__meta').text()).toBe('资讯 · 查看详情')
+    expect(wrapper.find('.news-title').text()).toBe('产品更新公告')
+    expect(wrapper.find('.news-meta').text()).toBe('资讯 · 查看详情')
     expect(wrapper.find('.news-info').exists()).toBe(false)
   })
 
@@ -109,8 +109,8 @@ describe('attachment message card style', () => {
 
     expect(wrapper.find('.attachment-card').exists()).toBe(true)
     expect(wrapper.find('.attachment-card__icon').exists()).toBe(true)
-    expect(wrapper.find('.attachment-card__title').text()).toBe('会议纪要')
-    expect(wrapper.find('.attachment-card__meta').text()).toBe('笔记 · 点击查看')
-    expect(wrapper.find('.share-type-label').exists()).toBe(false)
+    expect(wrapper.find('.share-title').text()).toBe('会议纪要')
+    expect(wrapper.find('.share-meta').text()).toBe('笔记 · 6 字')
+    expect(wrapper.find('.share-type-label').exists()).toBe(true)
   })
 })

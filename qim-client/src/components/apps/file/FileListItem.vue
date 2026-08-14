@@ -233,7 +233,7 @@ function handleDelete() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   padding: 10px 8px;
 }
 
@@ -255,7 +255,7 @@ function handleDelete() {
   padding: 4px 10px;
   background: var(--color-gray-900, #1a202c);
   color: #fff;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   border-radius: 4px;
   white-space: nowrap;
   max-width: 320px;
@@ -267,7 +267,7 @@ function handleDelete() {
 
 .file-type,
 .file-size {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -281,7 +281,7 @@ function handleDelete() {
 }
 
 .file-date {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -292,7 +292,7 @@ function handleDelete() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   padding: 10px 8px;
 }
 
@@ -318,7 +318,7 @@ function handleDelete() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   transition: all var(--transition-base);
 }
 

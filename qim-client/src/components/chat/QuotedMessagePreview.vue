@@ -150,7 +150,7 @@ const handleClick = () => {
 }
 
 .quoted-message-preview__sender {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   color: var(--text-color, #333);
   opacity: 0.85;
@@ -160,7 +160,7 @@ const handleClick = () => {
 }
 
 .quoted-message-preview__type {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
   color: var(--text-secondary, #666);
   opacity: 0.7;
@@ -169,7 +169,7 @@ const handleClick = () => {
 }
 
 .quoted-message-preview__text {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color, #333);
   line-height: 1.5;
   word-break: break-word;
@@ -186,7 +186,7 @@ const handleClick = () => {
   border: none;
   background: transparent;
   color: var(--text-secondary, #666);
-  font-size: 16px;
+  font-size: var(--font-size-base);
   line-height: 1;
   cursor: pointer;
   border-radius: 50%;
@@ -210,16 +210,16 @@ const handleClick = () => {
 }
 
 .quoted-message-preview.is-compact .quoted-message-preview__sender {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 .quoted-message-preview.is-compact .quoted-message-preview__text {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   -webkit-line-clamp: 1;
 }
 
 .quoted-message-preview.is-compact .quoted-message-preview__type {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
 }
 
 /* 优雅紫色主题 */

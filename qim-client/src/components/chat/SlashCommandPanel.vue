@@ -141,7 +141,7 @@ defineExpose({ handleKeyDown })
 
 .slash-cmd-panel__header {
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, var(--color-gray-500, #909399));
   border-bottom: 1px solid var(--border-color, #e4e7ed);
 }
@@ -171,14 +171,14 @@ defineExpose({ handleKeyDown })
   padding: 20px 12px;
   text-align: center;
   color: var(--text-secondary, #909399);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .slash-cmd-panel__footer {
   padding: 8px 12px;
   border-top: 1px solid var(--border-color, #e4e7ed);
   color: var(--primary-color, #3385ff);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   display: flex;
   align-items: center;

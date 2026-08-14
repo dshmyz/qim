@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useUI } from '@/composables/useUI'
+import { useUI, activeMenuPosition } from '@/composables/useUI'
 
 const setWindowSize = (width: number, height: number) => {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
@@ -34,7 +34,8 @@ describe('useUI settings menu', () => {
       clientY: 742,
     } as unknown as MouseEvent)
 
-    expect(ui.settingsMenuPosition.value.y).toBeLessThan(560)
+    // 菜单位置写入模块级 activeMenuPosition（useUI 内部 openMenu 的产物）
+    expect(activeMenuPosition.value.y).toBeLessThan(560)
   })
 })
 
@@ -49,7 +50,7 @@ describe('useUI group context menu', () => {
       clientY: 750,
     } as unknown as MouseEvent, { id: 'group-1' })
 
-    expect(ui.groupContextMenuPosition.value.y).toBeLessThanOrEqual(590)
+    expect(activeMenuPosition.value.y).toBeLessThanOrEqual(590)
   })
 })
 

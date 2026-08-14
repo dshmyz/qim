@@ -130,24 +130,24 @@ const handleSaveFileAs = (url: string, name: string) => {
 }
 
 .sticky-note-preview .sticky-note-title {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: bold;
-  color: #333;
+  color: var(--text-color, #333);
   margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 1px dashed rgba(0, 0, 0, 0.2);
 }
 
 .sticky-note-preview .sticky-note-body {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   line-height: 1.5;
-  color: #333;
+  color: var(--text-color, #333);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .sticky-note-preview .share-preview-meta {
-  color: #666;
+  color: var(--text-secondary, #666);
   border-top: 1px dashed rgba(0, 0, 0, 0.2);
   padding-top: 8px;
   margin-top: 12px;
@@ -164,14 +164,14 @@ const handleSaveFileAs = (url: string, name: string) => {
 
 .share-preview-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
 }
 
 .share-preview-header .close-btn {
   background: rgba(255, 255, 255, 0.2);
   border: none;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   cursor: pointer;
   color: white;
   padding: 8px;
@@ -194,7 +194,7 @@ const handleSaveFileAs = (url: string, name: string) => {
 }
 
 .share-preview-title {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   margin-bottom: 16px;
   color: var(--text-color);
@@ -202,7 +202,7 @@ const handleSaveFileAs = (url: string, name: string) => {
 }
 
 .share-preview-content-text {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
   color: var(--text-color);
   margin-bottom: 24px;
@@ -217,7 +217,7 @@ const handleSaveFileAs = (url: string, name: string) => {
   padding-top: 16px;
   border-top: 1px solid var(--border-color);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .share-preview-type {
@@ -244,7 +244,7 @@ const handleSaveFileAs = (url: string, name: string) => {
   align-items: center;
   justify-content: center;
   margin-right: 16px;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   color: var(--primary-color);
   flex-shrink: 0;
 }
@@ -255,7 +255,7 @@ const handleSaveFileAs = (url: string, name: string) => {
 
 .share-file-size {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   margin-top: 4px;
 }
 
@@ -273,7 +273,7 @@ const handleSaveFileAs = (url: string, name: string) => {
   padding: 8px 20px;
   border: 1px solid var(--primary-color);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s;

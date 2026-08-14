@@ -113,7 +113,7 @@ const getConversationAvatarUrl = (conversation: any) => {
   right: 0;
   background: #1976d2;
   color: white;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 2px 4px;
   border-radius: 4px;
 }
@@ -123,11 +123,11 @@ const getConversationAvatarUrl = (conversation: any) => {
 }
 
 .conversation-type-tag {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 1px 6px;
   border-radius: 3px;
-  background: #f5f5f5;
-  color: #666;
+  background: var(--card-bg, #f5f5f5);
+  color: var(--text-secondary, #666);
   margin-left: 6px;
   font-weight: normal;
 }
@@ -147,7 +147,7 @@ const getConversationAvatarUrl = (conversation: any) => {
 }
 
 .member-count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-left: 6px;
   font-weight: normal;
@@ -157,7 +157,7 @@ const getConversationAvatarUrl = (conversation: any) => {
   display: inline-block;
   background: var(--error-color);
   color: white;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   min-width: 18px;
   height: 18px;
   line-height: 18px;
@@ -191,7 +191,7 @@ const getConversationAvatarUrl = (conversation: any) => {
 
 .empty-groups .placeholder-content p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary, #666);
 }
 </style>

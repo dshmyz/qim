@@ -284,7 +284,7 @@ const moreMenuItems = computed<ContextMenuItem[]>(() => [
 }
 
 .light-theme { background: #fff; border: 1px solid #ddd; }
-.elegant-dark-theme { background: #333; }
+.elegant-dark-theme { background: #3b82f6; }
 .ocean-blue-theme { background: #0078d4; }
 .elegant-purple-theme { background: #75629a; }
 .warm-amber-theme { background: #d4893a; }
@@ -292,5 +292,5 @@ const moreMenuItems = computed<ContextMenuItem[]>(() => [
 .emerald-green-theme { background: #2d8b4e; }
 .mediterranean-dream-theme { background: #4a8aad; }
 .monochrome-elegance-theme { background: #777; }
-.spring-blossom-theme { background: #f0a1b9; }
+.spring-blossom-theme { background: linear-gradient(135deg, #f8bbd0 0%, #ce93d8 100%); }
 </style>

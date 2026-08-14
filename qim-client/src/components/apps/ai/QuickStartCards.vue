@@ -32,13 +32,6 @@ const cards = [
     description: '打造专属AI伙伴',
     icon: 'fas fa-robot',
     action: 'create'
-  },
-  {
-    id: 'avatar',
-    title: '数字分身',
-    description: 'AI驱动的另一个你',
-    icon: 'fas fa-user-circle',
-    action: 'avatar'
   }
 ]
 </script>
@@ -46,7 +39,7 @@ const cards = [
 <style scoped>
 .quick-start {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   grid-auto-rows: 1fr;
   gap: 20px;
   margin-bottom: 32px;
@@ -90,10 +83,6 @@ const cards = [
   background: #26b361;
 }
 
-.quick-card.avatar::before {
-  background: #f7a826;
-}
-
 .quick-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
@@ -112,7 +101,7 @@ const cards = [
   align-items: center;
   justify-content: center;
   margin-bottom: 16px;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   line-height: 1;
 }
 
@@ -126,11 +115,6 @@ const cards = [
   color: #26b361;
 }
 
-.quick-card.avatar .quick-icon {
-  background: #fffdf6;
-  color: #f7a826;
-}
-
 .quick-icon i {
   font-family: 'Font Awesome 5 Free';
   font-weight: 900;
@@ -138,14 +122,14 @@ const cards = [
 }
 
 .quick-card h3 {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: #1f2937;
   margin-bottom: 8px;
 }
 
 .quick-card p {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #6b7280;
   margin: 0;
 }

@@ -409,7 +409,7 @@ defineExpose({
   align-items: center;
   gap: var(--spacing-2);
   margin: 0;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--text-color);
 }
@@ -458,7 +458,7 @@ defineExpose({
   background: var(--hover-color);
   color: var(--text-color);
   border-radius: 4px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -644,7 +644,7 @@ defineExpose({
   padding: var(--spacing-2) var(--spacing-4);
   border-top: 1px solid var(--border-color);
   background: var(--card-bg);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   text-align: center;
 }
@@ -684,7 +684,7 @@ defineExpose({
   padding: 8px 12px;
   background: var(--color-error-50);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--color-error-500);
 }
 

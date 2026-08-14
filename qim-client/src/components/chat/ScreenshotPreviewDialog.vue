@@ -86,7 +86,7 @@ const handleSend = () => {
 
 .screenshot-preview-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -132,7 +132,7 @@ const handleSend = () => {
   padding: 10px 24px;
   border: 1px solid transparent;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;

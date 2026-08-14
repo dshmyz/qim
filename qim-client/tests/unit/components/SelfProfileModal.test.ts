@@ -134,7 +134,7 @@ describe('SelfProfileModal', () => {
       const wrapper = mountModal()
       await wrapper.vm.$nextTick()
 
-      await wrapper.find('.btn-primary').trigger('click')
+      await wrapper.find('.action-btn.primary').trigger('click')
 
       const emitted = wrapper.emitted('save')
       expect(emitted).toBeTruthy()

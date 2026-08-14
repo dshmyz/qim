@@ -43,7 +43,7 @@
   border-radius: 6px;
   overflow-x: auto;
   font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.6;
   color: var(--text-color);
   margin: 8px 0;
@@ -63,7 +63,7 @@
   padding: 0;
   border-radius: 0;
   color: var(--text-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .markdown-content a {
@@ -120,7 +120,7 @@
 .markdown-content td {
   border: 1px solid var(--border-color);
   padding: 4px 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .markdown-content th {
@@ -132,4 +132,24 @@
 .markdown-content .hljs {
   background: transparent !important;
   padding: 0 !important;
+}
+
+/* 笔记内链 [[title]] */
+.markdown-content .note-link {
+  color: var(--primary-color);
+  text-decoration: none;
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+
+.markdown-content .note-link:hover {
+  background: var(--primary-light, rgba(51, 133, 255, 0.1));
+  text-decoration: underline;
+}
+
+.markdown-content .note-link i {
+  font-size: 0.85em;
+  margin-right: 1px;
 }

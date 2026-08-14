@@ -67,29 +67,98 @@ function stripBetweenBlockWhitespace(html: string): string {
   return html.replace(BETWEEN_BLOCK_RE, '$1')
 }
 
+// ---- 笔记内链 [[title]]：文本层提取，渲染管道完成后恢复 ----
+// 标题从原文提取后保持纯文本：marked/emoji/classic 变换都不会触碰它，
+// 最后转义拼入 HTML —— 从根上杜绝属性注入，也避免标题被表情转换污染。
+// 围栏 code 整体占位（渲染为 <pre><code> 时原样恢复），行内 code 提取期间保护。
+const FENCED_CODE_RE = /```[\s\S]*?```/g
+const INLINE_CODE_RE = /`{1,2}[^`\n]*`{1,2}/g
+const NOTE_LINK_TEXT_RE = /\[\[([^\]]+)\]\]/g
+
+/** HTML 属性安全转义（& < > " 全覆盖） */
+const escapeHtmlAttr = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+function extractNoteLinks(md: string): { text: string; titles: string[]; fences: string[] } {
+  const titles: string[] = []
+  const fences: string[] = []
+  const inlineCodes: string[] = []
+
+  // 1. 围栏代码块整体占位（围栏内 [[...]] 不会进入提取）
+  // 2. 行内 code 占位（提取后再还原）
+  // 3. 非 code 区域的 [[title]] → 占位符，标题原文存入 titles
+  let text = md
+    .replace(FENCED_CODE_RE, (m) => {
+      const inner = m.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '')
+      fences.push(inner)
+      return `${fences.length - 1}`
+    })
+    .replace(INLINE_CODE_RE, (m) => `${inlineCodes.push(m) - 1}`)
+    .replace(NOTE_LINK_TEXT_RE, (_, title: string) => {
+      titles.push(title.replace(/(\d+)/g, (_, n) => inlineCodes[Number(n)]))
+      return `${titles.length - 1}`
+    })
+    // 还原行内 code 占位（标题内已单独还原，正文占位还原后与原文本一致）
+    .replace(/(\d+)/g, (_, n) => inlineCodes[Number(n)])
+
+  return { text, titles, fences }
+}
+
 /** 纯函数：markdown → 消毒后的安全 HTML 字符串。参数化全局的渲染选项。 */
 export function renderMarkdown(md: string, opts: MarkdownRenderOpts = {}): string {
   if (!md) return ''
   let text = opts.decodeMention ? decodeToPlainText(md) : md
   text = opts.streaming ? normalizePartialMarkdown(text) : text
-  const result = marked(text)
+  const { text: safeText, titles, fences } = extractNoteLinks(text)
+  const result = marked(safeText)
   let html = typeof result === 'string' ? result : String(result)
   html = stripBetweenBlockWhitespace(html)
-  // 使用 DOMPurify 进行消毒，防止 XSS 攻击；需要时再把表情字符/经典标记替换为 <img>
+  // 使用 DOMPurify 进行消毒，防止 XSS 攻击
   const sanitized = sanitizeMarkdown(html)
-  return opts.withEmoji ? classicToHtml(emojiToHtml(sanitized)) : sanitized
+  // 需要时再把表情字符/经典标记替换为 <img>（占位符不受影响）
+  const emojiHtml = opts.withEmoji ? classicToHtml(emojiToHtml(sanitized)) : sanitized
+  if (titles.length === 0 && fences.length === 0) return emojiHtml
+
+  // 围栏 code 原样恢复为 <pre><code>（内容转义；marked 会把占位符包进 <p>，
+  // 连同包裹一并替换，避免留下空 <p> 的排版空隙）
+  let finalHtml = emojiHtml.replace(/<p>(\d+)<\/p>/g, (_, n: string) => {
+    const code = escapeHtmlAttr(fences[Number(n)])
+    return `<pre><code>${code}</code></pre>`
+  })
+  // 笔记内链 [[title]] → 可点击链接
+  if (titles.length > 0) {
+    finalHtml = finalHtml.replace(/(\d+)/g, (_, n: string) => {
+      const text = escapeHtmlAttr(titles[Number(n)])
+      return `<a class="note-link" href="#" data-note-title="${text}"><i class="fas fa-sticky-note"></i> ${text}</a>`
+    })
+  }
+  return finalHtml
 }
 
-/** 外链点击：Electron 环境用外部浏览器打开，其余环境放行默认行为。 */
+/**
+ * 外链点击：Electron 环境用外部浏览器打开，其余环境 window.open 新标签页。
+ * 笔记内链（.note-link）与页内锚点（href="#"）无外链目标，直接放行给宿主组件拦截；
+ * 只放行 http(s)/mailto 协议，避免 javascript: 等伪协议被打开。
+ */
 export function handleLinkClick(event: MouseEvent): void {
   const target = event.target as HTMLElement
   const link = target.closest('a')
-  if (link && window.electron?.shell?.openExternal) {
-    event.preventDefault()
-    const href = link.getAttribute('href')
-    if (href) {
-      window.electron.shell.openExternal(href)
+  if (!link) return
+  const href = link.getAttribute('href')
+  if (!href) return
+  if (href.startsWith('#') || link.classList.contains('note-link')) return
+  if (!/^(https?:|mailto:)/i.test(href)) return
+  event.preventDefault()
+  try {
+    if (window.electron?.shell?.openExternal) {
+      window.electron.shell.openExternal(href).catch((err: unknown) => {
+        console.warn('[markdown] 外链打开失败:', href, err)
+      })
+    } else {
+      window.open(href, '_blank', 'noopener,noreferrer')
     }
+  } catch (err) {
+    console.warn('[markdown] 外链打开失败:', href, err)
   }
 }
 

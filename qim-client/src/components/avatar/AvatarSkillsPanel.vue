@@ -133,12 +133,12 @@ onMounted(() => {
 
 .panel-header h4 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
 }
 
 .skill-count {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -150,7 +150,7 @@ onMounted(() => {
 
 .category h5 {
   margin: 0 0 12px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   font-weight: 500;
   display: flex;
@@ -195,7 +195,7 @@ onMounted(() => {
   background: var(--card-bg);
   border-radius: 10px;
   color: var(--text-secondary);
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   flex-shrink: 0;
 }
 
@@ -211,14 +211,14 @@ onMounted(() => {
 
 .skill-name {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
 }
 
 .skill-desc {
   display: block;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-top: 2px;
   white-space: nowrap;
@@ -262,7 +262,7 @@ onMounted(() => {
 }
 
 .empty-state i {
-  font-size: 40px;
+  font-size: var(--font-size-4xl);
   margin-bottom: 8px;
   display: block;
 }

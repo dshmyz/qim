@@ -46,7 +46,7 @@
 
 .panel-header h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -138,7 +138,7 @@
   height: 16px;
   border: none;
   border-radius: 50%;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -206,8 +206,8 @@
 }
 
 .elegant-purple-theme {
-  background: #75629a;
-  border: 1px solid #665486;
+  background: linear-gradient(135deg, #a78bda 0%, #8b6fc0 50%, #6b52a5 100%);
+  border: 1px solid #6b52a5;
 }
 
 .warm-amber-theme {
@@ -236,8 +236,8 @@
 }
 
 .spring-blossom-theme {
-  background: #ec4899;
-  border: 1px solid #db2777;
+  background: linear-gradient(135deg, #f8bbd0 0%, #ce93d8 100%);
+  border: 1px solid #f8bbd0;
 }
 
 .green-theme {
@@ -261,8 +261,8 @@
 }
 
 .elegant-purple-theme {
-  background: #75629a;
-  border: 1px solid #665486;
+  background: linear-gradient(135deg, #a78bda 0%, #8b6fc0 50%, #6b52a5 100%);
+  border: 1px solid #6b52a5;
 }
 
 .sacredyellow-theme {

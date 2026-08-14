@@ -6,7 +6,15 @@
       <p>从通讯录或群聊中发起对话吧</p>
     </div>
   </div>
-  <div v-else class="conversation-list conversation-list--scrollable" ref="listRef" @scroll="handleScroll">
+  <div
+    v-else
+    ref="listRef"
+    class="conversation-list conversation-list--scrollable"
+    :class="{ 'is-hovered': isHovered, 'is-scrolling': isScrolling }"
+    @scroll="handleScroll"
+    @mouseenter="isHovered = true"
+    @mouseleave="isHovered = false"
+  >
     <div
       v-for="conversation in conversations"
       :key="conversation.id"
@@ -125,12 +133,26 @@ const emit = defineEmits<{
 const listRef = ref<HTMLElement | null>(null)
 const hasTriggeredLoadMore = ref(false)
 
+// 滚动条显隐状态：Chromium 的滚动条伪元素不响应容器 :hover
+// （命中原生滚动条会取消元素 hover），且伪元素 :hover 在拖动滑块后会
+// 粘滞，故显隐完全由 class 驱动，CSS 侧不引用任何伪元素悬停态。
+const isHovered = ref(false)
+const isScrolling = ref(false)
+let scrollTimer: number | undefined
+
 const handleScroll = () => {
+  // 滚动条：滚动期间保持可见，停止 600ms 后淡出
+  isScrolling.value = true
+  if (scrollTimer) clearTimeout(scrollTimer)
+  scrollTimer = window.setTimeout(() => {
+    isScrolling.value = false
+  }, 600)
+
   if (!listRef.value || !props.hasMore || props.isLoading) return
-  
+
   const { scrollTop, scrollHeight, clientHeight } = listRef.value
   const distanceToBottom = scrollHeight - scrollTop - clientHeight
-  
+
   if (distanceToBottom < 200) {
     hasTriggeredLoadMore.value = true
     emit('loadMore')
@@ -192,6 +214,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('storage', handleStorageChange)
   window.removeEventListener(DRAFT_CHANGED_EVENT, handleDraftChanged)
+  if (scrollTimer) clearTimeout(scrollTimer)
 })
 
 watch(() => props.conversations, () => {
@@ -272,6 +295,27 @@ const getUnreadCount = (conversation: Conversation): number => {
   overflow-y: auto;
 }
 
+/* 滚动条：静止时隐藏，滚动中/指针进入列表时浮现（微信/飞书同款交互）。
+   滑块高度由浏览器按内容/视口比例计算，CSS 无法直接限制，此处仅控制显隐。
+   显隐只由 JS 切换的 .is-hovered / .is-scrolling class 驱动——不得使用
+   ::-webkit-scrollbar-thumb:hover：Chromium 的滚动条伪元素不响应容器
+   :hover（命中原生滚动条会取消元素 hover），且拖动滑块后伪元素的 :hover
+   会被浏览器粘滞保留（指针移开后仍视为悬停），会让滚动条拖完不消失。 */
+.conversation-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.conversation-list::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+  transition: background var(--transition-fast);
+}
+
+.conversation-list.is-hovered::-webkit-scrollbar-thumb,
+.conversation-list.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--color-gray-300);
+}
+
 .conversation-item {
   display: flex;
   align-items: center;
@@ -315,7 +359,7 @@ const getUnreadCount = (conversation: Conversation): number => {
 
 .empty-conversations .placeholder-content p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary, #666);
 }
 
@@ -337,7 +381,7 @@ const getUnreadCount = (conversation: Conversation): number => {
 }
 
 .conversation-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color, #333);
   white-space: nowrap;
@@ -346,13 +390,13 @@ const getUnreadCount = (conversation: Conversation): number => {
 }
 
 .member-count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
   font-weight: normal;
 }
 
 .conversation-preview {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #666);
   white-space: nowrap;
   overflow: hidden;
@@ -383,7 +427,7 @@ const getUnreadCount = (conversation: Conversation): number => {
 }
 
 .draft-icon {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   flex-shrink: 0;
 }
 
@@ -396,14 +440,14 @@ const getUnreadCount = (conversation: Conversation): number => {
 }
 
 .conversation-time {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #999);
 }
 
 .unread-badge {
   background: var(--primary-color, #1976d2);
   color: white;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   min-width: 18px;
   height: 18px;
   border-radius: 9px;
@@ -415,7 +459,7 @@ const getUnreadCount = (conversation: Conversation): number => {
 }
 
 .muted-icon {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
 }
 
@@ -426,11 +470,11 @@ const getUnreadCount = (conversation: Conversation): number => {
   justify-content: center;
   padding: 16px;
   color: var(--text-secondary, #999);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   gap: 8px;
 }
 
 .loading-more i {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 </style>

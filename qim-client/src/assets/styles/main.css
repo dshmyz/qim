@@ -19,14 +19,14 @@
 }
 
 .file-icon {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   margin-bottom: 8px;
   color: var(--text-secondary);
 }
 
 .file-name {
-  font-size: 12px;
-  text-align: center;
+  font-size: var(--font-size-xxs);
+  text-align: left;
   word-break: break-all;
   color: var(--text-color);
 }
@@ -57,12 +57,12 @@
 }
 
 .app-icon {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   margin-bottom: 8px;
 }
 
 .app-name {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   text-align: center;
   color: var(--text-color);
 }
@@ -83,12 +83,12 @@
 }
 
 .tree-node-icon {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--text-secondary);
 }
 
 .tree-node-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
 }
 
@@ -103,7 +103,7 @@
 
 .tab-item {
   padding: 8px 16px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;

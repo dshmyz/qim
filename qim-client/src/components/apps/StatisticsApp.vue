@@ -244,7 +244,7 @@ onMounted(async () => {
   background-color: var(--bg-color);
   color: var(--text-secondary);
   border-radius: 4px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.3s ease;
 }
@@ -335,7 +335,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   color: white;
   transition: all 0.3s ease;
 }
@@ -366,7 +366,7 @@ onMounted(async () => {
 }
 
 .stat-value {
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   font-weight: 700;
   color: var(--text-primary);
   margin-bottom: 4px;
@@ -374,7 +374,7 @@ onMounted(async () => {
 }
 
 .stat-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   transition: color 0.3s ease;
 }
@@ -393,7 +393,7 @@ onMounted(async () => {
 }
 
 .chart-container h3 {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 16px 0;
@@ -415,7 +415,7 @@ onMounted(async () => {
   justify-content: space-between;
   height: 100%;
   width: 40px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-tertiary);
   transition: color 0.3s ease;
 }
@@ -455,7 +455,7 @@ onMounted(async () => {
   bottom: -24px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   white-space: nowrap;
   transition: color 0.3s ease;
@@ -500,14 +500,14 @@ onMounted(async () => {
 }
 
 .pie-center-text {
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   font-weight: 700;
   color: var(--text-primary);
   transition: color 0.3s ease;
 }
 
 .pie-center-label {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   transition: color 0.3s ease;
 }
@@ -543,13 +543,13 @@ onMounted(async () => {
 
 .legend-label {
   flex: 1;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   transition: color 0.3s ease;
 }
 
 .legend-value {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   font-weight: 500;
   transition: color 0.3s ease;
@@ -578,7 +578,7 @@ onMounted(async () => {
 }
 
 .completion-value {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   font-weight: 700;
   color: var(--success-color);
   transition: all 0.3s ease;
@@ -601,14 +601,14 @@ onMounted(async () => {
 }
 
 .completion-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   margin-bottom: 8px;
   transition: color 0.3s ease;
 }
 
 .completion-count {
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   font-weight: 600;
   color: var(--text-primary);
   transition: color 0.3s ease;
@@ -691,7 +691,7 @@ onMounted(async () => {
   }
   
   .chart-container h3 {
-    font-size: 14px;
+    font-size: var(--font-size-sm);
   }
   
   .message-trend-chart {
@@ -703,7 +703,7 @@ onMounted(async () => {
   }
   
   .axis-label {
-    font-size: 10px;
+    font-size: var(--font-size-tiny);
   }
   
   .file-distribution-chart {
@@ -722,7 +722,7 @@ onMounted(async () => {
   }
   
   .pie-center-text {
-    font-size: 18px;
+    font-size: var(--font-size-lg);
   }
   
   .completion-chart {
@@ -736,7 +736,7 @@ onMounted(async () => {
   }
   
   .completion-value {
-    font-size: 24px;
+    font-size: var(--font-size-2xl);
   }
   
   .completion-details {

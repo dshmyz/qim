@@ -82,7 +82,7 @@ const getFileName = (content: string): string => {
 }
 
 .quoted-message-sender {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -90,7 +90,7 @@ const getFileName = (content: string): string => {
 .quoted-message-remove {
   background: none;
   border: none;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   cursor: pointer;
   color: var(--text-secondary);
   padding: 0;
@@ -109,7 +109,7 @@ const getFileName = (content: string): string => {
 }
 
 .quoted-message-content {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   line-height: 1.4;
   max-height: 40px;

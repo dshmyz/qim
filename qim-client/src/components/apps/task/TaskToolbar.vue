@@ -68,15 +68,15 @@ defineEmits<{
   background: var(--card-bg);
 }
 .toolbar-left { display: flex; align-items: center; gap: var(--spacing-2); }
-.toolbar-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-.toolbar-count { font-size: 11px; color: var(--text-secondary); }
+.toolbar-title { font-size: var(--font-size-xs); font-weight: 600; color: var(--text-primary); }
+.toolbar-count { font-size: var(--font-size-xxxs); color: var(--text-secondary); }
 .toolbar-right { display: flex; align-items: center; gap: var(--spacing-2); }
 .toolbar-search { position: relative; }
 .search-input {
   padding: 5px 28px 5px 10px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   width: 160px;
   color: var(--text-primary);
   background: var(--input-bg);
@@ -88,7 +88,7 @@ defineEmits<{
   right: 8px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary);
   pointer-events: none;
 }
@@ -98,7 +98,7 @@ defineEmits<{
   color: #fff;
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   cursor: pointer;
   display: flex;

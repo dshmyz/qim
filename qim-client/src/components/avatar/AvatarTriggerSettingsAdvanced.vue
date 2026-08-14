@@ -130,18 +130,18 @@ function removeKeyword(index: number) {
 }
 
 .mode-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
 .mode-value {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--primary-color);
 }
 
 .mode-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -152,14 +152,14 @@ function removeKeyword(index: number) {
 .setting-item > label {
   display: block;
   margin-bottom: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
 .setting-hint {
   display: block;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -171,7 +171,7 @@ function removeKeyword(index: number) {
   border-radius: 6px;
   background: var(--bg-color);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   box-sizing: border-box;
 }
 
@@ -201,7 +201,7 @@ function removeKeyword(index: number) {
   background: var(--primary-color-alpha, rgba(99, 102, 241, 0.1));
   color: var(--primary-color);
   border-radius: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .remove-tag {
@@ -209,7 +209,7 @@ function removeKeyword(index: number) {
   border: none;
   color: var(--primary-color);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   padding: 0;
   width: 16px;
   height: 16px;

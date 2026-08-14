@@ -34,6 +34,8 @@
           :selectable="isMessageSelectionEligible(message)"
           @contextmenu="(e: MouseEvent) => emit('message-contextmenu', e, message)"
           @show-user-profile="(user: any) => emit('show-user-profile', user)"
+          @quick-mention="(user: any, e: MouseEvent) => emit('quick-mention', user, e)"
+          @mention-user="(user: any) => emit('mention-user', user)"
           @scroll-to-quoted-message="(id: string) => emit('scroll-to-quoted-message', id)"
           @download-file="(data: string, id?: string) => emit('download-file', data, id)"
           @save-as="(data: string, id?: string) => emit('save-as', data, id)"
@@ -97,6 +99,8 @@ interface Props {
 interface Emits {
   'message-contextmenu': [event: MouseEvent, message: Message]
   'show-user-profile': [user: User]
+  'quick-mention': [user: any, event: MouseEvent]
+  'mention-user': [user: any]
   'scroll-to-quoted-message': [id: string]
   'download-file': [data: string, id?: string]
   'save-as': [data: string, id?: string]
@@ -400,7 +404,7 @@ watch(() => props.messages, () => {
 .time-divider-text {
   background-color: var(--color-gray-200);
   color: var(--color-gray-500);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   padding: 4px 12px;
   border-radius: 12px;
   text-align: center;
@@ -431,7 +435,7 @@ watch(() => props.messages, () => {
 
 .divider-text {
   color: var(--color-gray-400);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   white-space: nowrap;
   font-weight: 400;
 }
@@ -440,7 +444,7 @@ watch(() => props.messages, () => {
   text-align: center;
   padding: 10px 0;
   color: var(--color-gray-500);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .scroll-to-bottom-btn {

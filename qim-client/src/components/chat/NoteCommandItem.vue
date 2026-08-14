@@ -46,7 +46,7 @@ const timeLabel = computed(() => {
   width: 100%;
 }
 .note-cmd-item__icon {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--primary-color, #3385ff);
   flex-shrink: 0;
   display: inline-flex;
@@ -61,21 +61,21 @@ const timeLabel = computed(() => {
   gap: 2px;
 }
 .note-cmd-item__title {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color, #303133);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .note-cmd-item__summary {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #909399);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .note-cmd-item__time {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #909399);
   flex-shrink: 0;
   display: inline-flex;

@@ -3,7 +3,7 @@
     <div class="toolbar-row">
       <div class="toolbar-section">
         <button
-          :class="['tb-btn', 'labeled', 'save', { 'is-saved': saveStatusLabel === '已保存', 'is-error': saveStatusLabel === '保存失败' }]"
+          :class="['tb-btn', 'labeled', 'save', { 'is-synced': saveStatus === 'saved', 'is-draft': saveStatus === 'draft', 'is-error': saveStatus === 'error' }]"
           @click="$emit('save')"
           :disabled="saving"
           :title="saveStatusTitle"
@@ -24,49 +24,53 @@
       </div>
       <div class="toolbar-divider"></div>
       <div class="toolbar-section">
-        <button class="tb-btn labeled import" @click="$emit('import')" title="导入 Markdown">
+        <button class="tb-btn labeled import" @click="$emit('import')" title="导入文件 (MD / TXT / HTML / DOCX / PDF)">
           <i class="fas fa-file-import"></i><span>导入</span>
         </button>
         <button class="tb-btn labeled export" @click="$emit('export')" title="导出">
           <i class="fas fa-download"></i><span>导出</span>
         </button>
-        <button class="tb-btn" @click="$emit('analyze')" :disabled="analyzing" title="AI 分析">
-          <i class="fas fa-magic"></i>
+        <button class="tb-btn labeled" @click="$emit('analyze')" :disabled="analyzing" title="AI 分析 (生成摘要和标签)">
+          <i :class="analyzing ? 'fas fa-spinner fa-spin' : 'fas fa-magic'"></i><span>AI 分析</span>
         </button>
-        <button class="tb-btn" @click="$emit('share')" title="分享">
-          <i class="fas fa-share-alt"></i>
+        <button class="tb-btn labeled" @click="$emit('share')" title="分享笔记">
+          <i class="fas fa-share-alt"></i><span>分享</span>
         </button>
       </div>
       <div class="toolbar-divider"></div>
       <div class="toolbar-section">
         <button
-          :class="['tb-btn', { active: mode === 'edit' }]"
+          :class="['tb-btn', 'labeled', { active: mode === 'edit' }]"
           @click="$emit('update:mode', 'edit')"
           title="仅编辑"
         >
-          <i class="fas fa-edit"></i>
+          <i class="fas fa-edit"></i><span>编辑</span>
         </button>
         <button
-          :class="['tb-btn', { active: mode === 'split' }]"
+          :class="['tb-btn', 'labeled', { active: mode === 'split' }]"
           @click="$emit('update:mode', 'split')"
           title="分栏预览"
         >
-          <i class="fas fa-columns"></i>
+          <i class="fas fa-columns"></i><span>分栏</span>
         </button>
         <button
-          :class="['tb-btn', { active: mode === 'preview' }]"
+          :class="['tb-btn', 'labeled', { active: mode === 'preview' }]"
           @click="$emit('update:mode', 'preview')"
           title="仅预览"
         >
-          <i class="fas fa-eye"></i>
+          <i class="fas fa-eye"></i><span>预览</span>
         </button>
         <div class="toolbar-divider"></div>
         <button
-          :class="['tb-btn', { active: fullscreen }]"
+          :class="['tb-btn', 'labeled', { active: fullscreen }]"
           @click="$emit('toggle-fullscreen')"
           :title="fullscreen ? '退出全屏 (F11)' : '全屏 (F11)'"
         >
           <i :class="fullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
+        </button>
+        <div class="toolbar-divider"></div>
+        <button class="tb-btn" @click="$emit('show-shortcuts')" title="快捷键帮助 (?)">
+          <i class="fas fa-keyboard"></i>
         </button>
       </div>
     </div>
@@ -79,37 +83,37 @@
         <button class="tb-btn" @click="$emit('format', '*', '*')" title="斜体 (Ctrl+I)">
           <em>I</em>
         </button>
-        <button class="tb-btn" @click="$emit('format', '~~', '~~')" title="删除线">
+        <button class="tb-btn" @click="$emit('format', '~~', '~~')" title="删除线 (Ctrl+Shift+X)">
           <s>S</s>
         </button>
       </div>
       <div class="toolbar-divider"></div>
       <div class="toolbar-section">
-        <button class="tb-btn" @click="$emit('format', '# ', '')" title="一级标题">H1</button>
-        <button class="tb-btn" @click="$emit('format', '## ', '')" title="二级标题">H2</button>
-        <button class="tb-btn" @click="$emit('format', '### ', '')" title="三级标题">H3</button>
+        <button class="tb-btn" @click="$emit('format', '# ', '')" title="一级标题 (Ctrl+Shift+1)">H1</button>
+        <button class="tb-btn" @click="$emit('format', '## ', '')" title="二级标题 (Ctrl+Shift+2)">H2</button>
+        <button class="tb-btn" @click="$emit('format', '### ', '')" title="三级标题 (Ctrl+Shift+3)">H3</button>
       </div>
       <div class="toolbar-divider"></div>
       <div class="toolbar-section">
-        <button class="tb-btn" @click="$emit('format', '- ', '')" title="无序列表">
+        <button class="tb-btn" @click="$emit('format', '- ', '')" title="无序列表 (Ctrl+Shift+U)">
           <i class="fas fa-list-ul"></i>
         </button>
-        <button class="tb-btn" @click="$emit('format', '1. ', '')" title="有序列表">
+        <button class="tb-btn" @click="$emit('format', '1. ', '')" title="有序列表 (Ctrl+Shift+O)">
           <i class="fas fa-list-ol"></i>
         </button>
-        <button class="tb-btn" @click="$emit('format', '- [ ] ', '')" title="任务列表">
+        <button class="tb-btn" @click="$emit('format', '- [ ] ', '')" title="任务列表 (Ctrl+Shift+T)">
           <i class="fas fa-tasks"></i>
         </button>
       </div>
       <div class="toolbar-divider"></div>
       <div class="toolbar-section">
-        <button class="tb-btn" @click="$emit('format', '> ', '')" title="引用">
+        <button class="tb-btn" @click="$emit('format', '> ', '')" title="引用 (Ctrl+Shift+Q)">
           <i class="fas fa-quote-left"></i>
         </button>
-        <button class="tb-btn" @click="$emit('format', '`', '`')" title="行内代码">
+        <button class="tb-btn" @click="$emit('format', '`', '`')" title="行内代码 (Ctrl+Shift+C)">
           <i class="fas fa-code"></i>
         </button>
-        <button class="tb-btn" @click="$emit('format', '```\n', '\n```')" title="代码块">
+        <button class="tb-btn" @click="$emit('format', '```\n', '\n```')" title="代码块 (Ctrl+Shift+B)">
           <i class="fas fa-file-code"></i>
         </button>
         <button class="tb-btn" @click="$emit('insert-link')" title="链接 (Ctrl+K)">
@@ -117,6 +121,9 @@
         </button>
         <button class="tb-btn" @click="$emit('format', '---\n', '')" title="分割线">
           <i class="fas fa-minus"></i>
+        </button>
+        <button class="tb-btn" @click="$emit('insert-table')" title="插入表格">
+          <i class="fas fa-table"></i>
         </button>
       </div>
     </div>
@@ -148,16 +155,20 @@ defineEmits<{
   delete: []
   'toggle-fullscreen': []
   'update:ai-accessible': [value: boolean]
+  'show-shortcuts': []
+  'insert-table': []
 }>()
 
 const saveStatusLabel = computed(() => {
   switch (props.saveStatus) {
     case 'saving':
-      return '保存中…'
+      return '同步中…'
     case 'saved':
-      return '已保存'
+      return '已同步'
     case 'error':
-      return '保存失败'
+      return '同步失败'
+    case 'draft':
+      return '草稿已保存'
     default:
       return '保存'
   }
@@ -168,9 +179,11 @@ const saveStatusIcon = computed(() => {
     case 'saving':
       return 'fas fa-spinner fa-spin'
     case 'saved':
-      return 'fas fa-check'
+      return 'fas fa-cloud-upload-alt'
     case 'error':
       return 'fas fa-exclamation-circle'
+    case 'draft':
+      return 'fas fa-file-alt'
     default:
       return 'fas fa-save'
   }
@@ -179,11 +192,13 @@ const saveStatusIcon = computed(() => {
 const saveStatusTitle = computed(() => {
   switch (props.saveStatus) {
     case 'saving':
-      return '正在保存…'
+      return '正在同步到服务器…'
     case 'saved':
-      return '所有改动已保存'
+      return '已同步到服务器'
     case 'error':
-      return '自动保存失败，点击此处手动重试 (Ctrl+S)'
+      return '同步失败，点击手动重试 (Ctrl+S)'
+    case 'draft':
+      return '草稿已保存到本地，等待同步'
     default:
       return '保存 (Ctrl+S)'
   }
@@ -232,13 +247,38 @@ const saveStatusTitle = computed(() => {
   color: var(--text-secondary);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: var(--font-weight-medium);
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all var(--transition-fast);
   white-space: nowrap;
+  position: relative;
+}
+
+/* CSS tooltip：替代原生 title，hover 即出 */
+.tb-btn[title]::after {
+  content: attr(title);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  font-size: var(--font-size-xxxs);
+  font-weight: 400;
+  white-space: nowrap;
+  color: #fff;
+  background: #333;
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+
+.tb-btn[title]:hover::after {
+  opacity: 1;
 }
 
 .tb-btn:hover {
@@ -268,7 +308,7 @@ const saveStatusTitle = computed(() => {
 }
 
 .tb-btn.labeled span {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   line-height: 1;
 }
 
@@ -282,9 +322,15 @@ const saveStatusTitle = computed(() => {
   color: white;
 }
 
-.tb-btn.save.is-saved {
+.tb-btn.save.is-synced {
   color: var(--success-color);
   border-color: var(--success-color);
+}
+
+.tb-btn.save.is-draft {
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+  opacity: 0.85;
 }
 
 .tb-btn.save.is-error {

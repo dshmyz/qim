@@ -15,6 +15,7 @@ export interface Employee {
   position: string
   department: string
   status: string
+  ip?: string
 }
 
 export interface Department {
@@ -39,7 +40,8 @@ export function useOrganizationLogic() {
     mobile: emp.mobile || emp.phone || '',
     position: emp.position || '',
     department: deptName,
-    status: emp.status || 'offline'
+    status: emp.status || 'offline',
+    ip: emp.ip || ''
   })
 
   const loadOrganizationTree = async () => {

@@ -121,7 +121,7 @@ function selectNote(item: NoteVectorSearchResult) {
   padding: 10px 14px;
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   outline: none;
   transition: border-color 0.2s;
   color: var(--text-primary, #111827);
@@ -138,7 +138,7 @@ function selectNote(item: NoteVectorSearchResult) {
   border-radius: 8px;
   background: var(--primary-color, #3385ff);
   color: #fff;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   white-space: nowrap;
   transition: opacity 0.2s;
@@ -157,7 +157,7 @@ function selectNote(item: NoteVectorSearchResult) {
   text-align: center;
   padding: 40px 0;
   color: var(--text-secondary, #6b7280);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -185,7 +185,7 @@ function selectNote(item: NoteVectorSearchResult) {
 }
 
 .results-count {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #6b7280);
   margin-bottom: 4px;
 }
@@ -205,13 +205,13 @@ function selectNote(item: NoteVectorSearchResult) {
 
 .result-title {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary, #111827);
   margin-bottom: 4px;
 }
 
 .result-content {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #6b7280);
   line-height: 1.5;
   display: -webkit-box;
@@ -225,7 +225,7 @@ function selectNote(item: NoteVectorSearchResult) {
 }
 
 .result-score {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--primary-color, #3385ff);
 }
 
@@ -237,11 +237,11 @@ function selectNote(item: NoteVectorSearchResult) {
 
 .empty-result p {
   margin: 0 0 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .empty-result .hint {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   opacity: 0.7;
 }
 
@@ -249,6 +249,6 @@ function selectNote(item: NoteVectorSearchResult) {
   text-align: center;
   padding: 40px 0;
   color: var(--text-secondary, #6b7280);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 </style>

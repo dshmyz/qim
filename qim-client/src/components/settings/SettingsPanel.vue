@@ -212,7 +212,7 @@
               <label>显示 AI 悬浮球</label>
               <label class="switch"><input type="checkbox" v-model="showFloatingBall" /><span class="slider round"></span></label>
             </div>
-            <div class="settings-item-hint" style="font-size: 12px; color: var(--text-color-secondary, #999); margin-left: 0;">关闭后可通过快捷键 Ctrl+Shift+L 打开 AI 侧边栏</div>
+            <div class="settings-item-hint" style="font-size: var(--font-size-xxs); color: var(--text-secondary); margin-left: 0;">关闭后可通过快捷键 Ctrl+Shift+L 打开 AI 侧边栏</div>
           </div>
 
           <div v-if="localTab === 'data-storage'" class="settings-section">
@@ -451,7 +451,7 @@ const handleCacheCleared = () => {
 
 .settings-header h3 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -462,7 +462,7 @@ const handleCacheCleared = () => {
   border: none;
   border-radius: 8px;
   background: none;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   cursor: pointer;
   color: var(--text-secondary);
   display: flex;
@@ -498,7 +498,7 @@ const handleCacheCleared = () => {
   align-items: center;
   gap: 12px;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: all 0.2s;
   border-left: 3px solid transparent;
 }
@@ -537,7 +537,7 @@ const handleCacheCleared = () => {
 
 .settings-section-header h4 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -554,7 +554,7 @@ const handleCacheCleared = () => {
   min-width: 100px;
   flex-shrink: 0;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   padding-top: 10px;
   font-weight: 500;
 }
@@ -574,7 +574,7 @@ const handleCacheCleared = () => {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   flex: 1;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   background: var(--input-bg);
   color: var(--text-color);
   transition: border-color 0.2s;
@@ -607,7 +607,7 @@ const handleCacheCleared = () => {
 .settings-value {
   padding: 8px 0;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .setting-row {
@@ -638,7 +638,7 @@ const handleCacheCleared = () => {
   background: var(--primary-color);
   color: white;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   transition: transform 0.2s;
 }
 
@@ -734,7 +734,7 @@ input:checked + .slider:before {
 }
 
 .theme-option span {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-color);
 }
 
@@ -747,7 +747,7 @@ input:checked + .slider:before {
 .emerald-green-theme { background: #2d8b4e; }
 .mediterranean-dream-theme { background: #4a8aad; }
 .monochrome-elegance-theme { background: #777; }
-.spring-blossom-theme { background: #f0a1b9; }
+.spring-blossom-theme { background: linear-gradient(135deg, #f8bbd0 0%, #ce93d8 100%); }
 
 .font-size-slider {
   display: flex;
@@ -764,11 +764,11 @@ input:checked + .slider:before {
 .font-size-value {
   min-width: 50px;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .settings-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   width: 100%;
   margin-top: 6px;
@@ -782,7 +782,7 @@ input:checked + .slider:before {
   background: var(--btn-bg);
   cursor: pointer;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   transition: all 0.2s;
   display: inline-flex;
@@ -805,7 +805,7 @@ input:checked + .slider:before {
   background: var(--btn-bg);
   cursor: pointer;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   white-space: nowrap;
   transition: all 0.2s;
@@ -841,7 +841,7 @@ input:checked + .slider:before {
 
 .size-unit {
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -862,14 +862,14 @@ input:checked + .slider:before {
   background: var(--primary-color);
   color: white;
   border-radius: 12px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   margin-right: 12px;
 }
 
 .about-text {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .settings-footer {
@@ -887,7 +887,7 @@ input:checked + .slider:before {
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   transition: all 0.2s;
 }
@@ -925,7 +925,7 @@ input:checked + .slider:before {
   padding: 4px 10px;
   background: var(--hover-color);
   border-radius: 12px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-color);
 }
 
@@ -934,7 +934,7 @@ input:checked + .slider:before {
   background: none;
   cursor: pointer;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1;
   padding: 0;
 }

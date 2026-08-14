@@ -8,7 +8,7 @@ interface ElectronAPI {
     invoke: (channel: string, data?: any) => Promise<any>
   }
   shell: {
-    openExternal: (url: string) => void
+    openExternal: (url: string) => Promise<void>
   }
   screenshot: {
     take: () => void

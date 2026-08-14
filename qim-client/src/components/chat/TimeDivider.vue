@@ -32,7 +32,7 @@ defineProps<Props>()
 .divider-badge {
   flex-shrink: 0;
   padding: 4px 12px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   line-height: 1;
   color: var(--color-gray-500);
   background-color: var(--color-gray-200);

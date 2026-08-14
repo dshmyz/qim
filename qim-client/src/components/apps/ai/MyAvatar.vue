@@ -70,7 +70,7 @@
       </template>
     </div>
 
-    <AvatarSettingsPanel v-else-if="viewMode === 'settings'" />
+    <AvatarSettingsPanel v-else-if="viewMode === 'settings'" @back="viewMode = 'overview'" />
   </div>
 </template>
 
@@ -102,8 +102,14 @@ async function toggleAvatar(enabled: boolean) {
   if (!avatarConfig.value) return
   try {
     await avatar.toggleEnabled(enabled)
+    if (enabled) {
+      window.$QMessage.success('已提交启用申请，审批通过后生效')
+    } else {
+      window.$QMessage.success('分身已关闭')
+    }
   } catch (e) {
     console.error('切换分身失败:', e)
+    window.$QMessage.error(avatar.error.value || '切换分身失败')
   }
 }
 
@@ -144,7 +150,7 @@ onMounted(async () => {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: all 0.2s;
 }
 
@@ -193,7 +199,7 @@ onMounted(async () => {
   right: 0;
   background: var(--primary-color);
   color: white;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   text-align: center;
   padding: 2px;
 }
@@ -204,7 +210,7 @@ onMounted(async () => {
 
 .avatar-info h3 {
   margin: 0 0 8px 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .progress-bar {
@@ -222,7 +228,7 @@ onMounted(async () => {
 }
 
 .progress-text {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: #666;
 }
 
@@ -235,21 +241,21 @@ onMounted(async () => {
 
 .persona-preview h4 {
   margin: 0 0 8px 0;
-  font-size: 14px;
-  color: #333;
+  font-size: var(--font-size-sm);
+  color: var(--text-color, #333);
 }
 
 .persona-preview p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #666;
   line-height: 1.5;
 }
 
 .tools-section h4 {
   margin: 0 0 8px 0;
-  font-size: 14px;
-  color: #333;
+  font-size: var(--font-size-sm);
+  color: var(--text-color, #333);
 }
 
 .tools-grid {
@@ -287,7 +293,7 @@ onMounted(async () => {
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .btn-primary:hover {
@@ -313,12 +319,12 @@ onMounted(async () => {
 
 .empty-state h3 {
   margin: 0 0 8px 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .empty-state p {
   margin: 0 0 24px 0;
   color: var(--text-secondary, #666);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 </style>

@@ -14,12 +14,12 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
-	"gorm.io/gorm"
 	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/dshmyz/qim/qim-server/ws"
+	"gorm.io/gorm"
 )
 
 // SmartReplyEngine 智能回复引擎
@@ -169,7 +169,7 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 	log.Printf("[SmartReply] 会话类型: %s", conv.Type)
 
 	if e.avatarWorkerPool != nil {
-		e.checkAvatarTriggers(userID, &conv, content, mentionUserIDs)
+		e.checkAvatarTriggers(userID, &conv, content, msg.Type, mentionUserIDs)
 	}
 
 	if conv.Type == "bot" {
@@ -300,6 +300,7 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 	}
 
 	// 命中的知识来源（标题/相关度）随回复写入 Extra，刷新/回放后「知识来源」徽章仍可见。
+	// 已由注入前 reranker 过滤误召回，徽章展示通过的真实来源。
 	err = e.messageSender.SendAIMessage(conversationID, result.Reply, "AI助手", knowledgeSourcesExtra(input.KnowledgeSources))
 	if err != nil {
 		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
@@ -428,9 +429,9 @@ func (e *SmartReplyEngine) isAIMention(content string, assistantName string) boo
 type GroupAIReplyAction int
 
 const (
-	GroupAISkipReply   GroupAIReplyAction = iota // 不回复
-	GroupAIMentionReply                          // @AI 提及，直接回复
-	GroupAIAutoReply                             // 走意图检测自动回复
+	GroupAISkipReply    GroupAIReplyAction = iota // 不回复
+	GroupAIMentionReply                           // @AI 提及，直接回复
+	GroupAIAutoReply                              // 走意图检测自动回复
 )
 
 // DecideGroupAIReply 是群聊 AI 触发的纯决策入口。
@@ -579,8 +580,9 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	// 后台开启外部 MCP 群启用时，普通提问也走带外部工具的流式 ReAct：
 	// LLM 可在自然语言下自主调用外部工具，挂起期间向用户发"正在调用…"过程反馈。
 	// 关闭时（默认）保持下面原有纯流式路径，零行为变化。
+	// 注意：不再设 SkipKnowledge=true，否则群即使开了外部工具，@AI 普通提问也会失去
+	// 知识库/记忆上下文，导致无依据应答。知识注入由 prepareInput 按需独立判断（如引用图片时跳过）。
 	if e.smartReplyGraph.HasExternalTools() {
-		input.SkipKnowledge = true
 		e.handleAIMentionWithExternalTools(ctx, input, conversationID, assistantName, userID)
 		return
 	}
@@ -659,6 +661,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	}
 
 	// 命中的知识来源（标题/相关度）持久化到消息 Extra，刷新/REST 回放后「知识来源」徽章仍可见。
+	// 已由注入前 reranker 过滤误召回，徽章展示通过的真实来源。
 	e.persistAIMessageExtra(getMsg, nil, input.KnowledgeSources)
 
 	if finish() == nil {
@@ -1261,7 +1264,7 @@ func looksMemorable(content string) bool {
 }
 
 // checkAvatarTriggers 检查是否有用户的分身需要触发
-func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conversation, content string, mentionUserIDs []uint) {
+func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conversation, content string, triggerMsgType string, mentionUserIDs []uint) {
 	db := database.GetDB()
 
 	// 会话级覆盖：有 session 行=显式（AvatarEnabled=true→opt-in / false→opt-out），无行=跟随全局默认
@@ -1343,6 +1346,7 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 				UserID:         session.UserID,
 				ConversationID: conv.ID,
 				TriggerMessage: content,
+				TriggerMsgType: triggerMsgType,
 				TriggerUserID:  senderID,
 				IsGroupChat:    isGroupChat,
 				GroupName:      groupName,

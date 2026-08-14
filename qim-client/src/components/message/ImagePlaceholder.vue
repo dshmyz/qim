@@ -50,7 +50,7 @@ defineProps<{
 }
 
 .placeholder-text {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #64748b);
   user-select: none;
 }
@@ -81,10 +81,10 @@ defineProps<{
 }
 
 [data-theme="elegant-dark"] .placeholder-icon {
-  color: #666;
+  color: var(--text-secondary, #666);
 }
 
 [data-theme="elegant-dark"] .placeholder-text {
-  color: #666;
+  color: var(--text-secondary, #666);
 }
 </style>

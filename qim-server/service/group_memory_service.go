@@ -48,12 +48,14 @@ func (s *GroupMemoryService) SetThresholdService(t *AiThresholdService) {
 	s.thresholdSvc = t
 }
 
-// conflictThreshold 返回冲突检测分数门槛：未注入阈值服务时回退默认 0.7。
+// conflictThreshold 返回冲突检测分数门槛：未注入阈值服务时回退默认 0.3。
+// 混合加权分（语义 0.55 + 重要度 0.20 + 时效 0.10 + 词面 0.15）中，真实相关记忆
+// 典型得分在 0.3-0.5 之间。0.3 门槛确保"大致相关但可能矛盾"的记忆对也能触发冲突检测。
 func (s *GroupMemoryService) conflictThreshold() float64 {
 	if s.thresholdSvc != nil {
-		return s.thresholdSvc.GetFloat("ai.conflict_detection_threshold", 0.7)
+		return s.thresholdSvc.GetFloat("ai.conflict_detection_threshold", 0.3)
 	}
-	return 0.7
+	return 0.3
 }
 
 // memoryConflicts LLM 判定新旧记忆是否冲突；判定器未注入时用默认 LLM 实现。
@@ -281,7 +283,7 @@ func (s *GroupMemoryService) GetGroupMemories(groupID uint, limit int) ([]Memory
 
 // GetMemoryCount 返回本群记忆条目数。
 func (s *GroupMemoryService) GetMemoryCount(groupID uint) (int64, error) {
-	memories, err := s.GetGroupMemories(groupID, 10000)
+	memories, err := s.GetGroupMemories(groupID, 100000)
 	if err != nil {
 		return 0, err
 	}
@@ -295,7 +297,7 @@ func (s *GroupMemoryService) DeleteMemory(groupID uint, memoryDocID string) erro
 		return nil
 	}
 	// 先列出该群的全部记忆，确认 memoryDocID 在其中，防止跨群删除
-	memories, err := s.GetGroupMemories(groupID, 10000)
+	memories, err := s.GetGroupMemories(groupID, 100000)
 	if err != nil {
 		return err
 	}
@@ -319,7 +321,7 @@ func (s *GroupMemoryService) UpdateMemory(groupID uint, memoryDocID, newContent 
 	if s.db == nil {
 		return nil
 	}
-	memories, err := s.GetGroupMemories(groupID, 10000)
+	memories, err := s.GetGroupMemories(groupID, 100000)
 	if err != nil {
 		return err
 	}
@@ -344,7 +346,7 @@ func (s *GroupMemoryService) UpdateMemory(groupID uint, memoryDocID, newContent 
 
 // ForgetAll 清空本群全部群记忆（列出后逐条删除）。
 func (s *GroupMemoryService) ForgetAll(groupID uint) (int, error) {
-	memories, err := s.GetGroupMemories(groupID, 10000)
+	memories, err := s.GetGroupMemories(groupID, 100000)
 	if err != nil {
 		return 0, err
 	}

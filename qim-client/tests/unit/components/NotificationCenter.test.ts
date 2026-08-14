@@ -37,7 +37,7 @@ describe('NotificationCenter - 加群审批 API 路由修正', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.getItem = vi.fn(() => 'test-token')
-    ;(axios.get as any).mockResolvedValue({ data: { code: 0, data: [rawNotification] } })
+    ;(axios.get as any).mockResolvedValue({ data: { code: 0, data: { list: [rawNotification] } } })
     ;(axios.post as any).mockResolvedValue({ data: { code: 0 } })
     ;(axios.delete as any).mockResolvedValue({ data: { code: 0 } })
   })

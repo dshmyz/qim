@@ -215,7 +215,7 @@ const handleEnd = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .session-info {
@@ -230,7 +230,7 @@ const handleEnd = () => {
 }
 
 .session-initiator {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   opacity: 0.8;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -244,7 +244,7 @@ const handleEnd = () => {
   padding: 4px 10px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.15);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .status-dot {
@@ -298,7 +298,7 @@ const handleEnd = () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   opacity: 0.9;
   margin-bottom: 8px;
 }
@@ -316,7 +316,7 @@ const handleEnd = () => {
   padding: 4px 8px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .viewer-avatar {
@@ -334,7 +334,7 @@ const handleEnd = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
 }
 
 .viewer-name {
@@ -358,7 +358,7 @@ const handleEnd = () => {
   padding: 10px 16px;
   border: none;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;

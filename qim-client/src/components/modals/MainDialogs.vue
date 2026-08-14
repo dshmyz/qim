@@ -604,13 +604,13 @@ const onTargetChange = () => {
 .logout-dialog-header h3,
 .update-dialog-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--text-color, #333);
 }
 
 .update-dialog-header h3 {
   color: #0f172a;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   font-weight: 700;
   letter-spacing: 0;
 }
@@ -622,7 +622,7 @@ const onTargetChange = () => {
 .update-dialog-kicker {
   display: block;
   color: #2563eb;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 700;
   letter-spacing: 0;
 }
@@ -632,7 +632,7 @@ const onTargetChange = () => {
 .update-dialog-close {
   background: none;
   border: none;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   cursor: pointer;
   color: var(--text-secondary, #999);
 }
@@ -676,7 +676,7 @@ const onTargetChange = () => {
 .copyright,
 .description {
   margin: 4px 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary, #999);
 }
 
@@ -689,7 +689,7 @@ const onTargetChange = () => {
 
 .credit-item {
   margin: 6px 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color, #666);
   display: flex;
   align-items: center;
@@ -703,7 +703,7 @@ const onTargetChange = () => {
 
 .contact {
   margin: 8px 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #999);
   display: flex;
   align-items: center;
@@ -778,7 +778,7 @@ const onTargetChange = () => {
 .logout-dialog-message {
   margin: 0;
   text-align: center;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--text-color, #333);
 }
 
@@ -811,7 +811,7 @@ const onTargetChange = () => {
 }
 
 .installing-spinner i {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--primary-color, #409eff);
   animation: spin 1s linear infinite reverse;
 }
@@ -827,7 +827,7 @@ const onTargetChange = () => {
   margin: 10px auto 0;
   max-width: 360px;
   color: #64748b;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.7;
 }
 
@@ -857,7 +857,7 @@ const onTargetChange = () => {
 .download-text,
 .version-info {
   color: #64748b;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .download-title {
@@ -907,12 +907,12 @@ const onTargetChange = () => {
 }
 
 .update-version-label {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: #64748b;
 }
 
 .update-version-value {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 800;
   color: #0f172a;
   letter-spacing: 0;
@@ -935,7 +935,7 @@ const onTargetChange = () => {
   align-items: center;
   justify-content: center;
   color: #2563eb;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   border-radius: 999px;
   background: #dbeafe;
   flex-shrink: 0;
@@ -946,7 +946,7 @@ const onTargetChange = () => {
   justify-content: space-between;
   gap: 16px;
   margin: 8px 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: #64748b;
 }
 
@@ -967,7 +967,7 @@ const onTargetChange = () => {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 700;
   color: #0f172a;
 }
@@ -1000,8 +1000,8 @@ const onTargetChange = () => {
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   background: #ffffff;
-  color: #334155;
-  font-size: 13px;
+  color: var(--text-color, #334155);
+  font-size: var(--font-size-xs);
   line-height: 1.65;
 }
 
@@ -1018,7 +1018,7 @@ const onTargetChange = () => {
   border-radius: 999px;
   background: #eff6ff;
   color: #2563eb;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
@@ -1030,8 +1030,8 @@ const onTargetChange = () => {
   border-radius: 10px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  color: #334155;
-  font-size: 13px;
+  color: var(--text-color, #334155);
+  font-size: var(--font-size-xs);
   line-height: 1.75;
   white-space: pre-wrap;
 }
@@ -1057,7 +1057,7 @@ const onTargetChange = () => {
   border-left: 4px solid #f59e0b;
   border-radius: 10px;
   color: #92400e;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
   text-align: left;
 }
@@ -1071,7 +1071,7 @@ const onTargetChange = () => {
   border-radius: 16px;
   background: #eff6ff;
   color: #2563eb;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   margin-bottom: 8px;
 }
 
@@ -1095,14 +1095,14 @@ const onTargetChange = () => {
 
 .progress-text {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: #64748b;
   font-variant-numeric: tabular-nums;
 }
 
 .progress-size-text {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: #94a3b8;
   font-variant-numeric: tabular-nums;
 }
@@ -1116,7 +1116,7 @@ const onTargetChange = () => {
   border-radius: 16px;
   background: #ecfdf5;
   color: #16a34a;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   margin-bottom: 8px;
 }
 
@@ -1143,8 +1143,8 @@ const onTargetChange = () => {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #f8fafc;
-  color: #334155;
-  font-size: 14px;
+  color: var(--text-color, #334155);
+  font-size: var(--font-size-sm);
   font-weight: 650;
   transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
@@ -1201,14 +1201,14 @@ const onTargetChange = () => {
 
 .user-profile-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   color: var(--text-color, #333);
 }
 
 .close-btn {
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   cursor: pointer;
   color: var(--text-secondary, #999);
 }
@@ -1232,7 +1232,7 @@ const onTargetChange = () => {
 }
 
 .info-item label {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
 }
 
@@ -1249,7 +1249,7 @@ const onTargetChange = () => {
   padding: 8px 12px;
   border: 1px solid var(--border-color, #dcdfe6);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-family: inherit;
   background: var(--card-bg, #fff);
   color: var(--text-color, #333);
@@ -1304,7 +1304,7 @@ const onTargetChange = () => {
 
 .user-search-loading {
   padding: 6px 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
   text-align: center;
 }
@@ -1326,7 +1326,7 @@ const onTargetChange = () => {
 
 .user-search-empty {
   padding: 10px 14px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary, #999);
   text-align: center;
 }
@@ -1334,7 +1334,7 @@ const onTargetChange = () => {
 .user-search-item {
   padding: 8px 14px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color, #333);
   transition: background 0.15s;
 }
@@ -1364,7 +1364,7 @@ const onTargetChange = () => {
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   background: var(--primary-color, #409eff);
   color: #fff;
   border-radius: 4px;
@@ -1373,7 +1373,7 @@ const onTargetChange = () => {
 
 .selected-tag i {
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   opacity: 0.75;
   transition: opacity 0.15s;
 }

@@ -138,6 +138,7 @@
     "fs-extra": "^11.3.5",
     "highlight.js": "^11.11.1",
     "lunar-javascript": "^1.7.7",
+    "mammoth": "^1.12.1",
     "marked": "^18.0.2",
     "pdfjs-dist": "^5.7.284",
     "pinia": "^3.0.4",

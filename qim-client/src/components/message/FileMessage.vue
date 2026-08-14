@@ -26,10 +26,10 @@
             </button>
           </template>
           <template v-else>
-            <button class="attachment-card__btn" @click.stop="downloadFile" title="下载文件">
+            <button class="attachment-card__btn" @click.stop="downloadFile" title="下载文件" :disabled="isDownloading">
               <i class="fas fa-download"></i>
             </button>
-            <button class="attachment-card__btn" @click.stop="saveFileAs" title="另存为">
+            <button class="attachment-card__btn" @click.stop="saveFileAs" title="另存为" :disabled="isDownloading">
               <i class="fas fa-save"></i>
             </button>
           </template>
@@ -37,17 +37,17 @@
       </div>
     </template>
     <template v-if="isDownloading" #below>
-      <div class="file-progress">
+      <div class="file-progress" :class="{ 'file-progress--indeterminate': isIndeterminate }">
         <div class="file-progress__bar" :style="{ width: progressPercent + '%' }"></div>
       </div>
+      <div class="file-progress-text">{{ isIndeterminate ? '正在下载…' : `正在下载 ${progressPercent}%` }}</div>
     </template>
   </AttachmentCard>
 </template>
 
 <script setup lang="ts">
 import { computed, inject, type Ref } from 'vue'
-import { getFileIcon, getFileTypeLabel } from '../../utils/fileType'
-import { getFileExtension } from '../../utils/fileType'
+import { getFileIcon, getFileTypeLabel, formatFileSize, getFileExtension } from '../../utils/fileType'
 import Tooltip from '../shared/Tooltip.vue'
 import AttachmentCard from './AttachmentCard.vue'
 
@@ -65,11 +65,15 @@ const emit = defineEmits<{
 
 // 下载进度（由 ChatWindow provide，key = 消息 id）
 const downloadProgress = inject<Ref<Record<string, number>>>('downloadProgress')
+const downloadIndeterminate = inject<Ref<Record<string, boolean>>>('downloadIndeterminate')
 const isDownloading = computed(() => {
   if (!props.messageId || !downloadProgress?.value) return false
   const percent = downloadProgress.value[props.messageId]
   return percent !== undefined && percent >= 0 && percent < 100
 })
+const isIndeterminate = computed(() =>
+  !!props.messageId && !!downloadIndeterminate?.value?.[props.messageId]
+)
 const progressPercent = computed(() =>
   props.messageId ? (downloadProgress?.value?.[props.messageId] ?? 0) : 0
 )
@@ -304,18 +308,6 @@ const getLabelByExtension = (ext: string): string => {
   }
 }
 
-const formatFileSize = (size: number): string => {
-  if (size < 1024) {
-    return `${size} B`
-  } else if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`
-  } else if (size < 1024 * 1024 * 1024) {
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`
-  } else {
-    return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`
-  }
-}
-
 const downloadFile = () => {
   emit('download', props.content, props.messageId)
 }
@@ -329,11 +321,11 @@ const saveFileAs = () => {
 .file-message :deep(.attachment-card__icon) {
   color: #ffffff;
   background: var(--ac-icon-bg);
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .file-title {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   line-height: 1.35;
   color: var(--text-color);
@@ -354,7 +346,7 @@ const saveFileAs = () => {
 
 .file-meta {
   min-height: 16px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   line-height: 1.35;
   color: var(--text-secondary);
   overflow: hidden;
@@ -381,5 +373,30 @@ const saveFileAs = () => {
   border-radius: 2px;
   background: var(--primary-color);
   transition: width 0.15s ease;
+}
+
+.attachment-card__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.file-progress-text {
+  margin-top: 4px;
+  font-size: var(--font-size-xxs);
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+
+/* 未知总量(total=0)时的不确定进度动画：流动条代替静止百分比 */
+.file-progress--indeterminate {
+  overflow: hidden;
+}
+.file-progress--indeterminate .file-progress__bar {
+  width: 30% !important;
+  animation: file-progress-slide 1.2s ease-in-out infinite;
+}
+@keyframes file-progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(360%); }
 }
 </style>

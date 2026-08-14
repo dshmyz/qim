@@ -184,7 +184,7 @@ onMounted(() => {
 
 .settings-section-header h4 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -201,7 +201,7 @@ onMounted(() => {
   min-width: 100px;
   flex-shrink: 0;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   padding-top: 10px;
   font-weight: 500;
 }
@@ -219,7 +219,7 @@ onMounted(() => {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   flex: 1;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   background: var(--input-bg);
   color: var(--text-color);
   transition: border-color 0.2s;
@@ -235,7 +235,7 @@ onMounted(() => {
 }
 
 .settings-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   width: 100%;
   margin-top: 6px;
@@ -249,7 +249,7 @@ onMounted(() => {
   background: var(--btn-bg);
   cursor: pointer;
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   white-space: nowrap;
   transition: all 0.2s;
@@ -277,13 +277,13 @@ onMounted(() => {
 }
 
 .cache-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   font-weight: 500;
 }
 
 .cache-size {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
@@ -300,7 +300,7 @@ onMounted(() => {
   background: var(--btn-bg);
   cursor: pointer;
   color: var(--text-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   transition: all 0.2s;
   display: inline-flex;

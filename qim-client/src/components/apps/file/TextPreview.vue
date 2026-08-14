@@ -168,7 +168,7 @@ onMounted(() => {
 }
 
 .text-error p {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--text-secondary);
   margin: 0;
 }
@@ -182,7 +182,7 @@ onMounted(() => {
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -219,12 +219,12 @@ onMounted(() => {
   background: var(--primary-color);
   color: white;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
 }
 
 .line-count {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -256,7 +256,7 @@ onMounted(() => {
 
 .text-display {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.6;
   color: var(--text-color);
   margin: 0;

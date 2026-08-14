@@ -98,7 +98,7 @@ const handleConfirm = () => {
 
 .confirm-message {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.65;
   color: var(--text-secondary, #666);
 }
@@ -106,7 +106,7 @@ const handleConfirm = () => {
 .q-btn {
   padding: 8px 22px;
   border-radius: var(--radius-md, 8px);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-fast, 0.15s);

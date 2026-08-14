@@ -101,16 +101,15 @@ defineEmits<{
 }>()
 
 const messageCount = computed(() => {
-  return props.channel.messages?.length || 0
+  return props.channel.message_count ?? props.channel.messages?.length ?? 0
 })
 
 const latestMessage = computed(() => {
-  if (!props.channel.messages || props.channel.messages.length === 0) return ''
-  const sorted = [...props.channel.messages].sort((a, b) => b.created_at - a.created_at)
-  const msg = sorted[0]
+  // 优先用 API 返回的 last_message，回退到 messages 数组
+  const msg = props.channel.last_message || (props.channel.messages?.length ? [...props.channel.messages].sort((a, b) => b.created_at - a.created_at)[0] : null)
+  if (!msg) return ''
   const rawContent = decodeToPlainText(msg.content)
-  const content = rawContent.length > 40 ? rawContent.slice(0, 40) + '...' : rawContent
-  return content
+  return rawContent.length > 40 ? rawContent.slice(0, 40) + '...' : rawContent
 })
 
 const formatSubscriberCount = (count: number): string => {
@@ -176,7 +175,7 @@ const formatRelativeTime = (timestamp: number): string => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   padding: 3px var(--spacing-2);
   border-radius: var(--radius-sm);
   font-weight: var(--font-weight-medium);
@@ -193,7 +192,7 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .channel-type-tag i {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
 }
 
 .card-subscribe-btn {
@@ -203,7 +202,7 @@ const formatRelativeTime = (timestamp: number): string => {
   color: var(--primary-color);
   border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: var(--font-weight-medium);
   display: flex;
   align-items: center;
@@ -234,7 +233,7 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .card-title {
   margin: 0 0 var(--spacing-1) 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--text-color);
   overflow: hidden;
@@ -244,7 +243,7 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .card-description {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   line-height: 1.4;
   overflow: hidden;
@@ -262,12 +261,12 @@ const formatRelativeTime = (timestamp: number): string => {
   padding: var(--spacing-1) var(--spacing-2);
   background: var(--hover-color);
   border-radius: var(--radius-sm);
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
 }
 
 .card-latest i {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--primary-color);
   flex-shrink: 0;
 }
@@ -279,7 +278,7 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .card-footer {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   border-top: 1px solid var(--border-color);
   padding-top: var(--spacing-2);
@@ -302,7 +301,7 @@ const formatRelativeTime = (timestamp: number): string => {
 .card-messages i,
 .card-subscribers i,
 .card-activity i {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
 }
 
 .card-messages {

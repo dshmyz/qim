@@ -90,7 +90,7 @@
   border: none;
   color: var(--error-color);
   cursor: pointer;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   padding: var(--spacing-1);
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);

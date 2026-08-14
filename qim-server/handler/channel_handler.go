@@ -171,17 +171,72 @@ func GetChannels(c *gin.Context) {
 		}
 	}
 
+	// 批量查询消息数和最新消息，避免 N+1
+	channelIDs := make([]uint, len(channels))
+	for i, ch := range channels {
+		channelIDs[i] = ch.ID
+	}
+
+	// 批量消息数
+	type channelMsgCount struct {
+		ChannelID uint
+		Count     int
+	}
+	var counts []channelMsgCount
+	db.Model(&model.ChannelMessage{}).
+		Where("channel_id IN ?", channelIDs).
+		Select("channel_id, COUNT(*) as count").
+		Group("channel_id").
+		Scan(&counts)
+	countMap := make(map[uint]int, len(counts))
+	for _, c := range counts {
+		countMap[c.ChannelID] = c.Count
+	}
+
+	// 批量最新消息：子查询取每个频道最新消息 id，再 JOIN 取完整记录
+	type latestID struct {
+		ChannelID uint
+		MaxID     uint
+	}
+	var latestIDs []latestID
+	db.Model(&model.ChannelMessage{}).
+		Where("channel_id IN ?", channelIDs).
+		Select("channel_id, MAX(id) as max_id").
+		Group("channel_id").
+		Scan(&latestIDs)
+
+	msgIDSet := make([]uint, 0, len(latestIDs))
+	for _, l := range latestIDs {
+		msgIDSet = append(msgIDSet, l.MaxID)
+	}
+
+	var lastMessages []model.ChannelMessage
+	if len(msgIDSet) > 0 {
+		db.Preload("Sender").Where("id IN ?", msgIDSet).Find(&lastMessages)
+	}
+	lastMsgMap := make(map[uint]*model.ChannelMessage, len(lastMessages))
+	for i, msg := range lastMessages {
+		lastMsgMap[msg.ChannelID] = &lastMessages[i]
+	}
+
 	type ChannelWithSubscription struct {
 		model.Channel
-		IsSubscribed bool `json:"is_subscribed"`
+		IsSubscribed bool                  `json:"is_subscribed"`
+		MessageCount int                   `json:"message_count"`
+		LastMessage  *model.ChannelMessage `json:"last_message,omitempty"`
 	}
 
 	var channelsWithSubscription []ChannelWithSubscription
 	for _, channel := range channels {
-		channelsWithSubscription = append(channelsWithSubscription, ChannelWithSubscription{
+		entry := ChannelWithSubscription{
 			Channel:      channel,
 			IsSubscribed: subscribedMap[channel.ID],
-		})
+			MessageCount: countMap[channel.ID],
+		}
+		if msg, ok := lastMsgMap[channel.ID]; ok {
+			entry.LastMessage = msg
+		}
+		channelsWithSubscription = append(channelsWithSubscription, entry)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -343,6 +398,10 @@ func CreateChannelMessage(c *gin.Context) {
 	db.Where("channel_id = ?", uint(channelID)).Find(&subscribers)
 
 	for _, subscriber := range subscribers {
+		// 发送者已在当前会话看到自己发出的消息，跳过通知避免自增未读
+		if subscriber.UserID == userID.(uint) {
+			continue
+		}
 		payload, _ := json.Marshal(map[string]interface{}{
 			"channel_id":   channel.ID,
 			"channel_name": channel.Name,

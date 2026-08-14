@@ -160,7 +160,7 @@ fetchCollections()
 
 .app-header h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   color: var(--text-primary);
 }
 
@@ -171,7 +171,7 @@ fetchCollections()
   background: var(--card-bg);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -232,7 +232,7 @@ fetchCollections()
 .collections-panel h3 {
   margin: 0;
   padding: 14px 16px 10px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -263,14 +263,14 @@ fetchCollections()
 }
 
 .col-name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .col-count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   background: var(--border-color);
   color: var(--text-secondary);
   padding: 1px 8px;
@@ -298,7 +298,7 @@ fetchCollections()
 }
 
 .entry-count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   font-weight: normal;
 }
@@ -329,7 +329,7 @@ fetchCollections()
 }
 
 .entry-index {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   background: var(--hover-color);
   padding: 1px 8px;
@@ -337,13 +337,13 @@ fetchCollections()
 }
 
 .entry-doc-id {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   font-family: monospace;
 }
 
 .entry-content {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
   color: var(--text-primary);
   word-break: break-word;
@@ -357,7 +357,7 @@ fetchCollections()
 }
 
 .meta-tag {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   background: var(--hover-color);
   color: var(--text-secondary);
   padding: 2px 8px;
@@ -374,7 +374,7 @@ fetchCollections()
   justify-content: center;
   height: 200px;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .error-banner {
@@ -386,7 +386,7 @@ fetchCollections()
   color: #fff;
   padding: 10px 24px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   z-index: 3000;
 }
 </style>

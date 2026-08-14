@@ -3,19 +3,10 @@
     class="note-card"
     :class="{ active: isActive }"
     @click="$emit('select')"
-    @mouseenter="showActions = true"
-    @mouseleave="showActions = false"
   >
     <div class="note-card-header">
       <h3 class="note-title">{{ note.title }}</h3>
-      <div class="note-actions" v-show="showActions">
-        <button
-          class="note-action-btn"
-          @click.stop="$emit('toggle-ai-access')"
-          :title="note.ai_accessible === false ? '分身不可见，点击改为可见' : '分身可见，点击改为不可见'"
-        >
-          <i :class="note.ai_accessible === false ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
-        </button>
+      <div class="note-actions">
         <button class="note-action-btn" @click.stop="$emit('edit')" title="编辑">
           <i class="fas fa-edit"></i>
         </button>
@@ -49,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import type { Note } from '../../../types/note'
 
 const props = defineProps<{
@@ -64,8 +55,6 @@ defineEmits<{
   'filter-tag': [tag: string]
   'toggle-ai-access': []
 }>()
-
-const showActions = ref(false)
 
 const displaySummary = computed(() => {
   if (props.note.summary) {
@@ -101,7 +90,6 @@ const formatDate = (dateStr: string) => {
 .note-card:hover {
   background: var(--hover-color);
   border-color: var(--primary-color);
-  transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
 }
 
@@ -119,7 +107,7 @@ const formatDate = (dateStr: string) => {
 }
 
 .note-title {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   color: var(--text-color);
   margin: 0;
@@ -133,11 +121,13 @@ const formatDate = (dateStr: string) => {
   display: flex;
   gap: 2px;
   opacity: 0;
-  transition: opacity var(--transition-fast);
+  visibility: hidden;
+  transition: opacity var(--transition-fast), visibility var(--transition-fast);
 }
 
 .note-card:hover .note-actions {
   opacity: 1;
+  visibility: visible;
 }
 
 .note-action-btn {
@@ -151,7 +141,7 @@ const formatDate = (dateStr: string) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   transition: all var(--transition-fast);
 }
 
@@ -166,7 +156,7 @@ const formatDate = (dateStr: string) => {
 }
 
 .note-summary {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin: 0 0 var(--spacing-1) 0;
   line-height: var(--line-height-normal);
@@ -185,7 +175,7 @@ const formatDate = (dateStr: string) => {
 }
 
 .note-tag {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 1px 6px;
   background: var(--primary-light);
   color: var(--primary-color);
@@ -198,7 +188,6 @@ const formatDate = (dateStr: string) => {
 .note-tag:hover {
   background: var(--primary-color);
   color: white;
-  transform: scale(1.05);
 }
 
 .note-footer {
@@ -212,7 +201,7 @@ const formatDate = (dateStr: string) => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary);
   background: var(--bg-color);
   border: 1px solid var(--border-color);
@@ -221,7 +210,7 @@ const formatDate = (dateStr: string) => {
 }
 
 .note-date {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--text-secondary);
   margin-left: auto;
 }

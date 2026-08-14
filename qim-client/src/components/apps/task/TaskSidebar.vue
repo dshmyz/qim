@@ -120,7 +120,7 @@ defineEmits<{
   padding: 0 14px;
   border: none;
   background: none;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   cursor: pointer;
   position: relative;
@@ -163,7 +163,7 @@ defineEmits<{
   border: 1px solid var(--border-color);
   background: none;
   border-radius: 100px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--animation-fast) ease;
@@ -199,14 +199,14 @@ defineEmits<{
   border-color: #8b5cf6;
 }
 .search-box i {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   flex-shrink: 0;
 }
 .search-input {
   width: 100px;
   border: none;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-primary);
   background: transparent;
   outline: none;
@@ -228,7 +228,7 @@ defineEmits<{
   color: #fff;
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   cursor: pointer;
   transition: background var(--animation-fast) ease;

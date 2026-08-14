@@ -34,7 +34,7 @@
         <span v-if="channel.last_active_at" class="channel-meta-item">
           <i class="fas fa-clock"></i> {{ formatRelativeTime(channel.last_active_at) }}
         </span>
-        <span v-else-if="channel.messages && channel.messages.length > 0" class="channel-meta-item">
+        <span v-else-if="channel.last_message || (channel.messages && channel.messages.length > 0)" class="channel-meta-item">
           <i class="fas fa-clock"></i> {{ formatRelativeTime(getLatestMessageTime()) }}
         </span>
       </div>
@@ -92,13 +92,12 @@ defineEmits<{
 }>()
 
 const messageCount = computed(() => {
-  return props.channel.messages?.length || 0
+  return props.channel.message_count ?? props.channel.messages?.length ?? 0
 })
 
 const latestMessage = computed(() => {
-  if (!props.channel.messages || props.channel.messages.length === 0) return ''
-  const sorted = [...props.channel.messages].sort((a, b) => b.created_at - a.created_at)
-  const msg = sorted[0]
+  const msg = props.channel.last_message || (props.channel.messages?.length ? [...props.channel.messages].sort((a, b) => b.created_at - a.created_at)[0] : null)
+  if (!msg) return ''
   const senderName = getDisplayName(msg.sender)
   const rawContent = decodeToPlainText(msg.content)
   const content = rawContent.length > 30 ? rawContent.slice(0, 30) + '...' : rawContent
@@ -106,9 +105,8 @@ const latestMessage = computed(() => {
 })
 
 const getLatestMessageTime = (): number => {
-  if (!props.channel.messages || props.channel.messages.length === 0) return 0
-  const sorted = [...props.channel.messages].sort((a, b) => b.created_at - a.created_at)
-  return sorted[0].created_at
+  const msg = props.channel.last_message || (props.channel.messages?.length ? [...props.channel.messages].sort((a, b) => b.created_at - a.created_at)[0] : null)
+  return msg ? msg.created_at : 0
 }
 
 const formatSubscriberCount = (count: number): string => {
@@ -145,11 +143,11 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .channel-list-item:hover {
-  background: var(--color-gray-100);
+  background: var(--hover-color);
 }
 
 .channel-list-item.active {
-  background: var(--color-gray-100);
+  background: var(--hover-color);
   border-color: var(--primary-color);
 }
 
@@ -174,7 +172,7 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .channel-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   color: var(--text-color);
   overflow: hidden;
@@ -187,7 +185,7 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .message-count-tag {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 1px 6px;
   background: var(--hover-color);
   color: var(--text-secondary);
@@ -196,7 +194,7 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .channel-desc {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -209,13 +207,13 @@ const formatRelativeTime = (timestamp: number): string => {
   align-items: center;
   gap: 4px;
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   opacity: 0.8;
 }
 
 .channel-latest i {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   color: var(--primary-color);
   flex-shrink: 0;
 }
@@ -237,13 +235,13 @@ const formatRelativeTime = (timestamp: number): string => {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   opacity: 0.7;
 }
 
 .channel-meta-item i {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
 }
 
 .channel-actions {
@@ -260,7 +258,7 @@ const formatRelativeTime = (timestamp: number): string => {
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   font-weight: var(--font-weight-semibold);
   color: white;
   background: var(--danger-color);

@@ -49,7 +49,7 @@ const isOverdue = computed(() => {
   width: 100%;
 }
 .task-cmd-item__icon {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -61,7 +61,7 @@ const isOverdue = computed(() => {
 
 .task-cmd-item__title {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color, #303133);
   white-space: nowrap;
   overflow: hidden;
@@ -69,7 +69,7 @@ const isOverdue = computed(() => {
 }
 
 .task-cmd-item__due {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #909399);
   flex-shrink: 0;
   display: inline-flex;

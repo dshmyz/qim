@@ -32,6 +32,8 @@ const MARKDOWN_CONFIG = {
     'span', 'div', 'del', 'ins', 'sub', 'sup',
   ],
   ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'title', 'class'],
+  // 笔记内链 data-note-title 由 useMarkdownRender 在消毒【之后】文本层提取生成
+  // （标题已转义），此处无需白名单，避免给所有标签附加空属性
   ADD_ATTR: ['target'],
   ALLOW_DATA_ATTR: false,
 }

@@ -79,3 +79,43 @@ func TestGetCompletionWithProviderConfigHonorsUserParams(t *testing.T) {
 		t.Fatal("ExtraParams 不应为 nil")
 	}
 }
+
+// TestOpenAIProviderPropagatesEmbeddingBaseURL 验证 OpenAI 兼容 provider 的搭建路径都透传
+// EmbeddingBaseURL（embedding 语义检索需要独立的 embedding 端点，否则会打到 chat baseURL 失败）。
+// createGenericOpenAIProvider 是真实路径（CreateProviderByName 实际消费）；createOpenAIProvider
+// 为遗留入口，两处必须一致，避免未来误用导致 embedding 失效。
+func TestOpenAIProviderPropagatesEmbeddingBaseURL(t *testing.T) {
+	f := NewProviderFactory()
+	want := "https://embed.example.com/v3"
+
+	// 真实路径：CreateProviderByName 的 openai 分支走 createGenericOpenAIProvider
+	p, err := f.CreateProviderByName("openai", ProviderConfig{
+		APIKey:           "sk-a",
+		Model:            "gpt-4",
+		BaseURL:          "https://api.example.com/v1",
+		EmbeddingBaseURL: want,
+	})
+	if err != nil {
+		t.Fatalf("CreateProviderByName err: %v", err)
+	}
+	op, ok := p.(*OpenAIProvider)
+	if !ok {
+		t.Fatalf("应为 *OpenAIProvider，实际 %T", p)
+	}
+	if op.config.EmbeddingBaseURL != want {
+		t.Fatalf("createGenericOpenAIProvider 未透传 EmbeddingBaseURL: 期望 %q 实际 %q", want, op.config.EmbeddingBaseURL)
+	}
+
+	// 遗留入口 createOpenAIProvider 必须同样透传（当前漏传，本测试驱动其补上）
+	legacy := f.createOpenAIProvider(&AIConfig{
+		OpenAI: OpenAIConfig{APIKey: "sk-a", Model: "gpt-4", BaseURL: "https://api.example.com/v1", EmbeddingBaseURL: want},
+	})
+	lop, ok := legacy.(*OpenAIProvider)
+	if !ok {
+		t.Fatalf("createOpenAIProvider 应为 *OpenAIProvider，实际 %T", legacy)
+	}
+	if lop.config.EmbeddingBaseURL != want {
+		t.Fatalf("createOpenAIProvider 未透传 EmbeddingBaseURL: 期望 %q 实际 %q", want, lop.config.EmbeddingBaseURL)
+	}
+}
+

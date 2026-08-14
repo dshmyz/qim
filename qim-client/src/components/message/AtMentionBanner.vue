@@ -36,7 +36,7 @@ defineEmits<{
 
 .banner-text {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -45,7 +45,7 @@ defineEmits<{
 }
 
 .banner-action {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--primary-color, #2563eb);
   opacity: 0.8;
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -32,7 +34,7 @@ type MCPConnConfig struct {
 	URL          string   `json:"url"`       // streamable-http 时的端点
 	Token        string   `json:"token"`     // 可选，Authorization: Bearer
 	Enabled      bool     `json:"enabled"`
-	AllowedTools []string `json:"allowed_tools"` // 空 = 全部开放；非空 = 仅注册列表内的工具
+	AllowedTools []string `json:"allowed_tools"` // nil=未配置=全部开放；[]（空数组）=全不选=不开放任何工具
 }
 
 // MCPClientGateway 是 QIM 进程内的 MCP Client 网关：读取后台配置，惰性连接
@@ -61,6 +63,10 @@ type MCPClientGateway struct {
 	connClients map[string]*mcp.Client
 	// sessions 按连接名追踪活跃 session，re-sync 时关闭旧 session 防泄漏
 	sessions map[string]*mcp.ClientSession
+	// groupEnabled 运行时是否把外部 MCP 工具放行给群 @AI。
+	groupEnabled bool
+	// skipSSRFCheck 测试用：跳过运行时 URL 校验（仅测试环境由调用方设 true）。
+	skipSSRFCheck bool
 }
 
 // NewMCPClientGateway 构造网关。配置经 configSvc 读取、工具注册到 registry。
@@ -230,7 +236,9 @@ func (g *MCPClientGateway) syncConn(conn *MCPConnConfig) {
 	for _, name := range conn.AllowedTools {
 		allowedSet[name] = true
 	}
-	filtered := len(allowedSet) > 0
+	// 区分 nil（未配置=全部开放）与 []（用户明确全不选=不开放任何工具）。
+	// 只有 conn.AllowedTools != nil 时才启用过滤；nil 时所有工具通过（向后兼容默认行为）。
+	filtered := conn.AllowedTools != nil
 	for _, tool := range result.Tools {
 		// 过滤：配置了 allowed_tools 时只注册名单内的工具
 		if filtered && !allowedSet[tool.Name] {
@@ -282,12 +290,51 @@ func (g *MCPClientGateway) syncConn(conn *MCPConnConfig) {
 // 若连接配置了 token，通过自定义 RoundTripper 为每次请求注入
 // Authorization: Bearer <token>（go-sdk 的 StreamableClientTransport 无
 // 顶层 header 字段，需经 HTTPClient 挂 RoundTripper）。
+// ValidateExternalURL 校验 URL 仅允许 http/https 且禁止访问内网地址（SSRF 防护）。
+// 预览路径与运行时连接路径共用本函数。
+func ValidateExternalURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("URL 格式错误: %v", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("仅支持 http/https 协议，不支持 %s", u.Scheme)
+	}
+
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("URL 缺少主机名")
+	}
+
+	// 禁止 localhost 和常见本地地址（含边界形式：0/0.0/0.0.0 等 net.ParseIP 不处理的主机名形式）
+	localhostNames := map[string]bool{
+		"localhost": true, "127.0.0.1": true, "::1": true,
+		"0.0.0.0": true, "0": true, "0.0": true, "0.0.0": true,
+	}
+	if localhostNames[host] {
+		return fmt.Errorf("不允许访问本机地址")
+	}
+
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("不允许访问内网/私有地址")
+		}
+	}
+
+	return nil
+}
+
 func (g *MCPClientGateway) connect(ctx context.Context, conn *MCPConnConfig) (*mcp.ClientSession, error) {
 	var transport mcp.Transport
 	switch conn.Transport {
 	case "streamable-http", "", "http":
 		if conn.URL == "" {
 			return nil, fmt.Errorf("streamable-http 连接缺少 url")
+		}
+		if !g.skipSSRFCheck {
+			if err := ValidateExternalURL(conn.URL); err != nil {
+				return nil, fmt.Errorf("SSRF 防护拒绝: %w", err)
+			}
 		}
 		streaming := &mcp.StreamableClientTransport{Endpoint: conn.URL}
 		if conn.Token != "" {

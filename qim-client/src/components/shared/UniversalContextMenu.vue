@@ -135,7 +135,7 @@ onUnmounted(() => {
   padding: 8px 10px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: var(--font-size-xxs);
   color: var(--text-color, #333);
   transition: background 0.15s, color 0.15s;
 }
@@ -155,7 +155,7 @@ onUnmounted(() => {
   width: 18px;
   text-align: center;
   flex-shrink: 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--primary-color);
 }
 .ucm-label {

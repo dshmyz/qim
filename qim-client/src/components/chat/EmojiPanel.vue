@@ -116,13 +116,13 @@ const selectClassic = (name: string) => {
 }
 
 .emoji-header-title {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-color);
 }
 
 .emoji-count-text {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-color);
   opacity: 0.4;
 }
@@ -182,7 +182,7 @@ const selectClassic = (name: string) => {
   border-radius: 8px;
   background: transparent;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
   line-height: 1;
   transition: background 0.15s ease;

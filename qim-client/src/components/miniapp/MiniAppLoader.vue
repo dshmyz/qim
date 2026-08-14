@@ -121,7 +121,7 @@ const {
   align-items: center;
   gap: 12px;
   color: var(--text-color, #fff);
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
 }
 
@@ -134,7 +134,7 @@ const {
 .miniapp-close-btn {
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   color: var(--text-secondary, #888);
   cursor: pointer;
   padding: 4px 8px;
@@ -205,13 +205,13 @@ const {
 }
 
 .error-title {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   margin: 0;
 }
 
 .error-message {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary, #888);
   margin: 0;
   max-width: 300px;
@@ -224,7 +224,7 @@ const {
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: opacity 0.2s ease;
 }

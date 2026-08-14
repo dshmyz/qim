@@ -185,7 +185,7 @@ function eventTextColor(event: CalendarEvent) {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   cursor: pointer;
   border: 1px solid var(--border-color);
@@ -207,7 +207,7 @@ function eventTextColor(event: CalendarEvent) {
 
 .week-day {
   text-align: center;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   color: var(--text-secondary);
   padding: 5px 0;
@@ -253,7 +253,7 @@ function eventTextColor(event: CalendarEvent) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 600;
 }
 
@@ -293,7 +293,7 @@ function eventTextColor(event: CalendarEvent) {
 }
 
 .cell-date {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   color: var(--text-color);
   line-height: 1;

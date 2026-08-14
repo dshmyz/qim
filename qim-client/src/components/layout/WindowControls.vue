@@ -71,7 +71,7 @@ const closeWindow = () => {
   height: 16px;
   border: none;
   border-radius: 50%;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   cursor: pointer;
   display: flex;
   align-items: center;

@@ -132,6 +132,7 @@ export function useAvatar() {
         loading.value = false
       }
     }
+    return config.value
   }
 
   async function fetchSessions(force = false) {

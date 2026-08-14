@@ -48,7 +48,7 @@
 }
 
 .group-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
   white-space: nowrap;
@@ -57,7 +57,7 @@
 }
 
 .group-preview {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -74,14 +74,14 @@
 }
 
 .group-time {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
 }
 
 .group-unread-badge {
   background: var(--primary-color);
   color: white;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   min-width: 18px;
   height: 18px;
   border-radius: 9px;
@@ -108,7 +108,7 @@
 
 .group-detail-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-color);
 }
@@ -157,12 +157,12 @@
 }
 
 .member-name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
 }
 
 .member-role {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
 }
 
@@ -172,14 +172,14 @@
 }
 
 .announcement-title {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-color);
   margin-bottom: 8px;
 }
 
 .announcement-content {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   line-height: 1.5;
 }
@@ -191,7 +191,7 @@
 
 .group-info-edit label {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
   margin-bottom: 8px;
@@ -203,7 +203,7 @@
   padding: 8px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   background: var(--context-menu-bg);
   transition: all 0.2s ease;
@@ -227,7 +227,7 @@
 
 .group-create-form .form-group label {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
   margin-bottom: 8px;
@@ -239,7 +239,7 @@
   padding: 8px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   background: var(--context-menu-bg);
 }
@@ -277,7 +277,7 @@
   padding: 10px 16px;
   cursor: pointer;
   transition: background 0.2s;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
 }
 
@@ -287,7 +287,7 @@
 
 .group-context-menu-icon {
   margin-right: 10px;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   width: 20px;
   text-align: center;
   color: var(--primary-color);

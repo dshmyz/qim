@@ -2,11 +2,6 @@
   <div class="file-management-app">
     <!-- 顶部导航栏 -->
     <AppHeader title="文件箱" icon="fas fa-folder-open" @back="$emit('back')">
-      <template #extra-buttons>
-        <button class="icon-btn" @click="$emit('toggleSidebar')" title="切换侧边栏">
-          <i class="fas fa-compress"></i>
-        </button>
-      </template>
       <template #actions>
         <button class="action-btn" @click="showCreateFolderModal = true" title="新建文件夹">
           <i class="fas fa-folder-plus"></i>
@@ -199,7 +194,7 @@ import QMessage from '../../utils/qmessage'
 import QMessageBox from '../../utils/qmessagebox'
 import { openMenu, closeMenu } from '../../composables/useUI'
 
-const emit = defineEmits(['back', 'toggleSidebar'])
+const emit = defineEmits(['back'])
 
 const {
   files,
@@ -495,7 +490,7 @@ onBeforeUnmount(() => {
 /* 内联搜索 */
 .search-icon-inline {
   color: var(--text-secondary, #8c95a6);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   flex-shrink: 0;
 }
 
@@ -503,7 +498,7 @@ onBeforeUnmount(() => {
   border: none;
   background: transparent;
   color: var(--text-color, #4a5568);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   outline: none;
   width: 120px;
   min-width: 60px;
@@ -558,7 +553,7 @@ onBeforeUnmount(() => {
 }
 
 .file-count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary, #8c95a6);
   font-weight: 500;
   margin-left: auto;
@@ -585,7 +580,7 @@ onBeforeUnmount(() => {
 
 .filter-icon {
   color: var(--text-secondary, #8c95a6);
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   flex-shrink: 0;
 }
 
@@ -593,7 +588,7 @@ onBeforeUnmount(() => {
   border: none;
   background: transparent;
   color: var(--text-color, #4a5568);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: 500;
   cursor: pointer;
   outline: none;
@@ -629,7 +624,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   transition: all 0.15s ease;
 }
 
@@ -681,12 +676,12 @@ onBeforeUnmount(() => {
   }
 
   .filter-select {
-    font-size: 11px;
+    font-size: var(--font-size-xxxs);
     padding-right: 10px;
   }
 
   .filter-icon {
-    font-size: 10px;
+    font-size: var(--font-size-tiny);
   }
 
   .select-arrow {
@@ -700,7 +695,7 @@ onBeforeUnmount(() => {
   .toggle-btn {
     width: 24px;
     height: 24px;
-    font-size: 10px;
+    font-size: var(--font-size-tiny);
   }
 }
 

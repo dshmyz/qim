@@ -95,15 +95,20 @@ func einoMessagesToAIMessages(messages []*schema.Message) []ai.Message {
 	result := make([]ai.Message, len(messages))
 	for i, msg := range messages {
 		role := string(msg.Role)
-		result[i] = ai.Message{
+		aiMsg := ai.Message{
 			Role:    role,
 			Content: msg.Content,
 		}
-		// 多模态：从 MultiContent 提取图片 URL（群 AI 被引用图片以 data URL 注入），
-		// 落到 ai.Message.ImageURL 后由 MarshalJSON 转成 OpenAI image_url 数组格式。
-		if imgURL := imageURLFromMessage(msg); imgURL != "" {
-			result[i].ImageURL = imgURL
+		// 多模态：从 MultiContent 提取图片 URL（群 AI / 分身被引用图片以 data URL 注入）：
+		// 单图落到 ai.Message.ImageURL（沿用既有单图序列化），多图落到 ImageURLs
+		// （分身批量多模态合并路径），由 MarshalJSON 转成 OpenAI image_url 数组格式。
+		if urls := imageURLsFromMessage(msg); len(urls) > 0 {
+			aiMsg.ImageURL = urls[0]
+			if len(urls) > 1 {
+				aiMsg.ImageURLs = urls
+			}
 		}
+		result[i] = aiMsg
 	}
 	return result
 }
@@ -111,12 +116,22 @@ func einoMessagesToAIMessages(messages []*schema.Message) []ai.Message {
 // imageURLFromMessage 从 eino schema.Message 的 MultiContent 提取首个 image_url 部分的数据 URL；
 // 无图片部分返回空串。
 func imageURLFromMessage(msg *schema.Message) string {
-	for _, part := range msg.MultiContent {
-		if part.Type == schema.ChatMessagePartTypeImageURL && part.ImageURL != nil && part.ImageURL.URL != "" {
-			return part.ImageURL.URL
-		}
+	urls := imageURLsFromMessage(msg)
+	if len(urls) > 0 {
+		return urls[0]
 	}
 	return ""
+}
+
+// imageURLsFromMessage 从 eino schema.Message 的 MultiContent 提取所有 image_url 部分的数据 URL。
+func imageURLsFromMessage(msg *schema.Message) []string {
+	var urls []string
+	for _, part := range msg.MultiContent {
+		if part.Type == schema.ChatMessagePartTypeImageURL && part.ImageURL != nil && part.ImageURL.URL != "" {
+			urls = append(urls, part.ImageURL.URL)
+		}
+	}
+	return urls
 }
 
 var _ model.ToolCallingChatModel = (*EinoChatModel)(nil)

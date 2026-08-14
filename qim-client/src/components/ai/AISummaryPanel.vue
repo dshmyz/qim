@@ -302,7 +302,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 
 .panel-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .close-btn {
@@ -310,7 +310,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   height: 32px;
   border: none;
   background: transparent;
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   cursor: pointer;
   color: var(--text-secondary);
   border-radius: 6px;
@@ -341,7 +341,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   border-radius: 6px;
   background: var(--card-bg);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -404,7 +404,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   padding: 28px 32px;
   overflow-y: auto;
   line-height: 1.7;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .summary-content :deep(p) {
@@ -412,11 +412,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 }
 
 .summary-content :deep(h1) {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .summary-content :deep(h2) {
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .summary-content :deep(h3) {
@@ -452,7 +452,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 16px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -487,7 +487,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 }
 
 .empty-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   margin-top: 8px;
   opacity: 0.7;
 }

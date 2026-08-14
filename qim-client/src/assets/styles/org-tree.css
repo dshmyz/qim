@@ -39,7 +39,7 @@
 
 .org-node-toggle {
   width: 16px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   transition: transform 0.2s ease;
 }
@@ -49,13 +49,13 @@
 }
 
 .org-node-icon {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   color: var(--primary-color);
 }
 
 .org-node-label {
   flex: 1;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
 }
@@ -97,13 +97,13 @@
 }
 
 .org-employee-name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-color);
 }
 
 .org-employee-title {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
 }
 
@@ -132,7 +132,7 @@
   padding: 8px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
   background: var(--context-menu-bg);
 }

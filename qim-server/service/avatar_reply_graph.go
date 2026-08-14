@@ -266,6 +266,184 @@ func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, 
 	return reply, input.Sources, nil
 }
 
+// ExecuteWithImageSources 供分身识别图片触发消息：读图成功后调用此方法生成回复。
+// 差异点：1) 不走编译图（其模板 User 消息为纯文本，无法携带图片），复用 buildTemplateVars +
+// template.Format 图外渲染；2) 把最后一条 user 消息替换为携带图片的 MultiContent 多模态消息
+// （text + base64 data URL，经 einoMessagesToAIMessages 提取为 ai.Message.ImageURL），
+// 由 GetCompletion 以 OpenAI image_url 数组格式交给视觉模型识别；3) 忽略 SkipReply（图片消息
+// 走视觉识别，不因"知识范围外"而静默，与"尽力而为失败则跳过"的降级语义配合——能看图就回，
+// 看不了/模型不支持则由 worker 跳过）。返回与 ExecuteWithSources 同构：回复 + 命中的知识来源。
+func (g *AvatarReplyGraph) ExecuteWithImageSources(ctx context.Context, userID uint, conversationID uint, message string, imageURL string, imageName string, preloaded *model.AvatarConfig) (string, []KnowledgeSource, error) {
+	if g.template == nil {
+		return "", nil, fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
+	}
+
+	input := &AvatarReplyContext{
+		Message:        message,
+		ConversationID: conversationID,
+		UserID:         userID,
+	}
+
+	// 复用上下文组装（笔记/群知识/记忆/任务/历史/范围外判定），与 Execute 一致
+	if err := g.prepare(ctx, input, preloaded); err != nil {
+		return "", nil, err
+	}
+
+	vars := g.buildTemplateVars(input)
+	messageList, err := g.template.Format(ctx, vars)
+	if err != nil {
+		return "", nil, fmt.Errorf("渲染分身 prompt 失败: %w", err)
+	}
+
+	// 替换最后一条 user 消息为携带图片的 MultiContent 多模态消息：
+	// 原文本保留（包含对话上下文与"对方说"），追加图片识别指令，并携带 base64 data URL。
+	aiMessages := make([]ai.Message, 0, len(messageList))
+	for _, m := range messageList {
+		role := string(m.Role)
+		if role == "user" {
+			imgText := fmt.Sprintf("\n\n📷 用户发送了一张图片「%s」，请识别图片内容并结合以上对话与图片回复。", imageName)
+			userMsg := &schema.Message{
+				Role:    schema.User,
+				Content: m.Content + imgText,
+				MultiContent: []schema.ChatMessagePart{
+					{Type: schema.ChatMessagePartTypeText, Text: m.Content + imgText},
+					{
+						Type: schema.ChatMessagePartTypeImageURL,
+						ImageURL: &schema.ChatMessageImageURL{
+							URL: imageURL,
+						},
+					},
+				},
+			}
+			aiMessages = append(aiMessages, einoMessageToAIMessage(userMsg))
+			continue
+		}
+		aiMessages = append(aiMessages, einoMessageToAIMessage(m))
+	}
+
+	var reply string
+	if input.CustomProvider != nil {
+		// 自选模型：同样支持多模态，与 generateWithCustomProvider 一致的 provider 分支
+		reply, err = g.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, aiMessages, input.CustomProvider.ProviderName, input.CustomProvider.Config)
+	} else {
+		reply, err = g.aiService.GetCompletion(ai.TaskTypeChat, aiMessages)
+	}
+	if err != nil {
+		return "", input.Sources, err
+	}
+
+	if maxRunes := avatarMaxReplyChars(input.ReplyStrategy.MaxReplyLength); maxRunes > 0 {
+		runes := []rune(reply)
+		if len(runes) > maxRunes {
+			reply = strings.TrimSpace(string(runes[:maxRunes])) + "…"
+		}
+	}
+
+	return reply, input.Sources, nil
+}
+
+// ExecuteBatchWithImagesSources 供分身对「合并窗口内连发的一批消息」生成一条合并回复。
+// 批内既可有纯文本消息，也可有图片消息（多模态）：所有文本按序拼进 user 消息提示分身
+// 这是对方连发的一批、请整体理解回复；批内每张图片逐张已由调用方读成 base64 data URL，
+// 全部注入最后一条 user 消息的 MultiContent（多个 image_url part）。与 ExecuteWithImageSources
+// 同走图外渲染 + GetCompletion，忽略 SkipReply（能看图就回，看不了由 worker 按尽力而为跳过）。
+//
+// 入参 videoURLs 为批内每张图片的 data URL（顺序与 orderTexts 对应，两个 slice 长度一致），
+// 由 AvatarService 在调用本方法前用 groupDocSvc.ImageURLForContext 逐图读取；读图在调用方
+// 完成并返回错误时 worker 整批跳过。返回回复 + 命中的知识来源。
+func (g *AvatarReplyGraph) ExecuteBatchWithImagesSources(ctx context.Context, userID uint, conversationID uint, orderTexts []string, imageURLs []string, imageNames []string, preloaded *model.AvatarConfig) (string, []KnowledgeSource, error) {
+	if g.template == nil {
+		return "", nil, fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
+	}
+
+	// 把批内文本拼成一条合并 prompt：带序号并提示这是对方连发的一组消息
+	lines := make([]string, 0, len(orderTexts))
+	seq := 1
+	for _, txt := range orderTexts {
+		lines = append(lines, fmt.Sprintf("%d.%s", seq, txt))
+		seq++
+	}
+	merged := strings.Join(lines, "\n")
+
+	input := &AvatarReplyContext{
+		Message:        merged,
+		ConversationID: conversationID,
+		UserID:         userID,
+	}
+	// 复用上下文组装（笔记/群知识/记忆/任务/历史/范围外判定），与单条图文路径一致
+	if err := g.prepare(ctx, input, preloaded); err != nil {
+		return "", nil, err
+	}
+
+	vars := g.buildTemplateVars(input)
+	messageList, err := g.template.Format(ctx, vars)
+	if err != nil {
+		return "", nil, fmt.Errorf("渲染分身 prompt 失败: %w", err)
+	}
+
+	// 替换最后一条 user 消息为携带批内全部图片的 MultiContent 多模态消息
+	aiMessages := make([]ai.Message, 0, len(messageList))
+	for _, m := range messageList {
+		role := string(m.Role)
+		if role == "user" {
+			imgText := "\n\n📷 对方连发了一组消息（含图片），请整体理解这些内容并结合对话回复。"
+			parts := []schema.ChatMessagePart{
+				{Type: schema.ChatMessagePartTypeText, Text: m.Content + imgText},
+			}
+			for _, url := range imageURLs {
+				parts = append(parts, schema.ChatMessagePart{
+					Type: schema.ChatMessagePartTypeImageURL,
+					ImageURL: &schema.ChatMessageImageURL{
+						URL: url,
+					},
+				})
+			}
+			userMsg := &schema.Message{
+				Role:         schema.User,
+				Content:      m.Content + imgText,
+				MultiContent: parts,
+			}
+			aiMessages = append(aiMessages, einoMessageToAIMessage(userMsg))
+			continue
+		}
+		aiMessages = append(aiMessages, einoMessageToAIMessage(m))
+	}
+
+	var reply string
+	if input.CustomProvider != nil {
+		reply, err = g.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, aiMessages, input.CustomProvider.ProviderName, input.CustomProvider.Config)
+	} else {
+		reply, err = g.aiService.GetCompletion(ai.TaskTypeChat, aiMessages)
+	}
+	if err != nil {
+		return "", input.Sources, err
+	}
+
+	if maxRunes := avatarMaxReplyChars(input.ReplyStrategy.MaxReplyLength); maxRunes > 0 {
+		runes := []rune(reply)
+		if len(runes) > maxRunes {
+			reply = strings.TrimSpace(string(runes[:maxRunes])) + "…"
+		}
+	}
+
+	return reply, input.Sources, nil
+}
+
+// einoMessageToAIMessage 把单个 eino schema.Message 转为 ai.Message，并从 MultiContent
+// 提取图片 URL：单图落到 ai.Message.ImageURL（向后兼容单图序列化），多图落到 ImageURLs
+// （分身批量多模态合并路径）。与 eino_chat_model.go 的 einoMessagesToAIMessages 同逻辑，
+// 供图外渲染的多模态路径复用。
+func einoMessageToAIMessage(msg *schema.Message) ai.Message {
+	out := ai.Message{Role: string(msg.Role), Content: msg.Content}
+	if urls := imageURLsFromMessage(msg); len(urls) > 0 {
+		out.ImageURL = urls[0]
+		if len(urls) > 1 {
+			out.ImageURLs = urls
+		}
+	}
+	return out
+}
+
 // generateWithCustomProvider 用分身「自选模型」生成回复（非流式）。
 // 复用 buildTemplateVars + template.Format 渲染 prompt，再用用户自选 provider 完成一次对话。
 func (g *AvatarReplyGraph) generateWithCustomProvider(ctx context.Context, input *AvatarReplyContext) (string, error) {

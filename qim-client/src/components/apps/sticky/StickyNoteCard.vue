@@ -344,7 +344,7 @@ const formattedDate = computed(() => {
 
 .sticky-note-reminder {
   color: #ff9800;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   animation: pulse 2s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -374,7 +374,7 @@ const formattedDate = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   opacity: 0;
   transform: scale(0.8);
 }
@@ -399,7 +399,7 @@ const formattedDate = computed(() => {
 
 /* 标题 */
 .sticky-note-title {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   margin: 0;
   word-break: break-word;
@@ -408,7 +408,7 @@ const formattedDate = computed(() => {
 
 /* 内容 */
 .sticky-note-content {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   line-height: 1.55;
   margin-bottom: 10px;
   flex: 1;
@@ -426,7 +426,7 @@ const formattedDate = computed(() => {
 }
 
 .sticky-note-tag {
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   padding: 2px 8px;
   border-radius: 10px;
   font-weight: 500;
@@ -442,7 +442,7 @@ const formattedDate = computed(() => {
 /* 底部 */
 .sticky-note-footer {
   margin-top: auto;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   opacity: 0.6;
   transition: opacity 0.2s ease;
 }

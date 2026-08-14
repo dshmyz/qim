@@ -19,7 +19,9 @@
         :badge="senderBadge"
         size="md"
         class="message-avatar"
-        @click="$emit('showUserProfile', message.sender)"
+        @click="handleAvatarClick"
+        @dblclick="handleAvatarDblclick($event)"
+        @contextmenu="handleAvatarContextMenu($event)"
       />
       <div class="message-content">
         <div v-if="(conversationType === 'group' || conversationType === 'discussion') && !isSelf && !isAIMessage" class="message-sender">
@@ -193,7 +195,7 @@ import CardMessage from './CardMessage.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
-import { computed } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
 import { escapeHTML } from '../../utils/sanitize'
 import { useMessageReminder } from '../../composables/useMessageReminder'
 import { useSystemConfigStore } from '../../stores/systemConfig'
@@ -269,6 +271,8 @@ const newsData = computed(() => messageDisplay.value.kind === 'news'
 const emit = defineEmits<{
   contextmenu: [event: MouseEvent, message: any]
   showUserProfile: [user: any]
+  quickMention: [user: any, event: MouseEvent]
+  mentionUser: [user: any]
   scrollToQuotedMessage: [messageId: string]
   downloadFile: [url: string, messageId?: string]
   saveAs: [url: string, messageId?: string]
@@ -285,6 +289,44 @@ const emit = defineEmits<{
 const handleContextMenu = (event: MouseEvent) => {
   emit('contextmenu', event, props.message)
 }
+
+// 头像单击/双击区分：单击查看资料（延迟 250ms），双击 @ TA
+let avatarClickTimer: ReturnType<typeof setTimeout> | null = null
+const handleAvatarClick = () => {
+  if (avatarClickTimer) clearTimeout(avatarClickTimer)
+  avatarClickTimer = setTimeout(() => {
+    avatarClickTimer = null
+    emit('showUserProfile', props.message.sender)
+  }, 250)
+}
+// 仅群聊/讨论组且非自己消息才拦截双击与右键（.prevent.stop 放这里做条件化，
+// 避免单聊/自己消息的头像交互也被无谓地吞掉）
+const isAvatarMentionable = () =>
+  (props.conversationType === 'group' || props.conversationType === 'discussion') && !props.isSelf
+
+const handleAvatarDblclick = (event: MouseEvent) => {
+  if (!isAvatarMentionable()) return
+  if (avatarClickTimer) {
+    clearTimeout(avatarClickTimer)
+    avatarClickTimer = null
+  }
+  event.preventDefault()
+  event.stopPropagation()
+  emit('mentionUser', props.message.sender)
+}
+const handleAvatarContextMenu = (event: MouseEvent) => {
+  if (!isAvatarMentionable()) return
+  event.preventDefault()
+  event.stopPropagation()
+  emit('quickMention', props.message.sender, event)
+}
+
+onBeforeUnmount(() => {
+  if (avatarClickTimer) {
+    clearTimeout(avatarClickTimer)
+    avatarClickTimer = null
+  }
+})
 
 // 多选模式下，点击整条消息即选中/取消。
 // 用 capture 阶段终止事件传播：可被选中的消息进入多选后，头像/图片/引用/小程序等
@@ -434,7 +476,7 @@ const convertUrlsToLinks = (text: string): string => {
 }
 
 .message-sender {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-bottom: 4px;
   margin-left: 4px;
@@ -452,7 +494,7 @@ const convertUrlsToLinks = (text: string): string => {
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.6;
 }
 
@@ -465,7 +507,7 @@ const convertUrlsToLinks = (text: string): string => {
   font-weight: 600;
   color: var(--text-color);
   margin-bottom: 5px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -477,7 +519,7 @@ const convertUrlsToLinks = (text: string): string => {
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   padding-left: 12px;
   position: relative;
   max-height: 60px;
@@ -499,7 +541,7 @@ const convertUrlsToLinks = (text: string): string => {
 .recalled-message {
   background: rgba(0, 0, 0, 0.06);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   padding: 8px 12px;
   border-radius: 16px;
   display: flex;
@@ -511,7 +553,7 @@ const convertUrlsToLinks = (text: string): string => {
   background: none;
   border: none;
   color: var(--primary-color, #3b82f6);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   padding: 2px 6px;
   border-radius: 4px;
   cursor: pointer;
@@ -526,7 +568,7 @@ const convertUrlsToLinks = (text: string): string => {
 }
 
 .recall-edit-btn i {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 .message-meta {
@@ -535,7 +577,7 @@ const convertUrlsToLinks = (text: string): string => {
   justify-content: flex-start;
   gap: 8px;
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   padding-left: 10px;
   color: var(--text-secondary);
 }
@@ -557,7 +599,7 @@ const convertUrlsToLinks = (text: string): string => {
 }
 
 .message-time {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-color);
   opacity: 0;
   transition: opacity 0.3s ease;
@@ -569,8 +611,8 @@ const convertUrlsToLinks = (text: string): string => {
 }
 
 .message-read-status {
-  font-size: 10px;
-  color: #999;
+  font-size: var(--font-size-tiny);
+  color: var(--text-secondary, #999);
   opacity: 0.8;
 }
 
@@ -578,7 +620,7 @@ const convertUrlsToLinks = (text: string): string => {
 .reminder-hint {
   margin-right: 4px;
   color: var(--color-warning-500, #f59e0b);
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   animation: reminder-pulse 2s ease-in-out infinite;
 }
 
@@ -634,7 +676,7 @@ const convertUrlsToLinks = (text: string): string => {
   border-radius: 12px;
   background: var(--message-bubble-bg);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;
@@ -759,26 +801,26 @@ const convertUrlsToLinks = (text: string): string => {
 /* 撤回消息样式 */
 .message-item.recalled .message-bubble {
   background: var(--sidebar-bg);
-  color: #999;
+  color: var(--text-secondary, #999);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   padding: 8px 16px;
 }
 
 .message-item.self.recalled .message-bubble {
   background: var(--sidebar-bg);
-  color: #999;
+  color: var(--text-secondary, #999);
 }
 
 :global(.message-item.self .message-link) {
-  color: #0f3e91 !important;
+  color: var(--primary-color, #0f3e91) !important;
   text-decoration: none !important;
 }
 
 :global(.message-item.self .message-link:hover) {
-  color: #0f3e91 !important;
+  color: var(--primary-color, #0f3e91) !important;
   text-decoration: none !important;
 }
 
@@ -904,8 +946,8 @@ const convertUrlsToLinks = (text: string): string => {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  font-size: 13px;
-  color: var(--text-color-secondary, #6b7280);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
   background: var(--bg-color-page, #f5f5f5);
   border-radius: 12px;
   border: 1px solid var(--border-color-light, #e5e7eb);
@@ -913,6 +955,6 @@ const convertUrlsToLinks = (text: string): string => {
 }
 .card-action-record i {
   color: var(--success-color, #10b981);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 </style>

@@ -1,6 +1,6 @@
 import { ref, type Ref } from 'vue'
 
-export type AutoSaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+export type AutoSaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'draft' | 'error'
 
 export type FlushResult = 'saved' | 'error' | 'noop'
 

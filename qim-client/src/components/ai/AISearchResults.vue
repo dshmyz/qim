@@ -61,14 +61,14 @@ defineEmits<{
   align-items: center;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
 .close-btn {
   border: none;
   background: transparent;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   cursor: pointer;
   color: var(--text-secondary);
 }
@@ -98,25 +98,25 @@ defineEmits<{
 
 .result-sender {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-primary);
   margin-bottom: 4px;
 }
 
 .result-time {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary);
   margin-bottom: 6px;
 }
 
 .result-content {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   line-height: 1.4;
 }
 
 .result-score {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--primary-color);
   margin-top: 4px;
 }

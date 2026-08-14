@@ -223,6 +223,79 @@ func (s *AvatarService) GenerateReplyWithSources(userID uint, conversationID uin
 	return graph.ExecuteWithSources(ctx, userID, conversationID, triggerMessage, config)
 }
 
+// GenerateReplyWithImageSources 供分身识别图片触发消息：按 fileID 读图（base64 data URL）后走
+// 多模态生成路径（ExecuteWithImageSources）。返回回复 + 命中的知识来源。
+// 读图失败（存储不可用/图片过大/读取错误）时返回错误，由调用方按"尽力而为失败则跳过"跳过本次回复；
+// 模型不支持视觉导致生成报错同样以 error 返回，调用方跳过。
+func (s *AvatarService) GenerateReplyWithImageSources(userID uint, conversationID uint, triggerMessage string, imageName string, fileID uint, config *model.AvatarConfig) (string, []KnowledgeSource, error) {
+	graph := s.replyGraph.Load()
+	if graph == nil {
+		return "", nil, fmt.Errorf("回复 Graph 未初始化")
+	}
+	if s.groupDocSvc == nil {
+		return "", nil, fmt.Errorf("分身服务未接入群文档服务，无法读取图片")
+	}
+	name, dataURL, err := s.groupDocSvc.ImageURLForContext(fileID)
+	if err != nil {
+		return "", nil, fmt.Errorf("读取分身图片失败: %w", err)
+	}
+	if dataURL == "" {
+		return "", nil, fmt.Errorf("分身图片内容为空")
+	}
+	if imageName == "" {
+		imageName = name
+	}
+	ctx := context.Background()
+	return graph.ExecuteWithImageSources(ctx, userID, conversationID, triggerMessage, dataURL, imageName, config)
+}
+
+// GenerateReplyBatchWithImageSources 供分身对「合并窗口内连发的一批消息」生成一条合并回复。
+// 批内可含纯文本（照常拼入 prompt）与图片消息（逐张读图转 base64 data URL 注入多模态）。
+// 任一图片读图失败（存储不可用/图片过大/读取错误）即返回错误，由调用方按"尽力而为失败
+// 则跳过"跳过整批，避免部分看图的不一致回复。
+func (s *AvatarService) GenerateReplyBatchWithImageSources(userID uint, conversationID uint, batch []AvatarBatchItem, config *model.AvatarConfig) (string, []KnowledgeSource, error) {
+	graph := s.replyGraph.Load()
+	if graph == nil {
+		return "", nil, fmt.Errorf("回复 Graph 未初始化")
+	}
+
+	var orderTexts []string
+	var imageURLs []string
+	var imageNames []string
+	for _, item := range batch {
+		if item.MsgType == "image" {
+			if s.groupDocSvc == nil {
+				return "", nil, fmt.Errorf("分身服务未接入群文档服务，无法读取图片")
+			}
+			if item.FileID == 0 {
+				return "", nil, fmt.Errorf("分身批量图片消息缺少文件 id")
+			}
+			name, dataURL, err := s.groupDocSvc.ImageURLForContext(item.FileID)
+			if err != nil {
+				return "", nil, fmt.Errorf("读取分身批量图片失败: %w", err)
+			}
+			if dataURL == "" {
+				return "", nil, fmt.Errorf("分身批量图片内容为空")
+			}
+			if item.Name == "" {
+				item.Name = name
+			}
+			imageURLs = append(imageURLs, dataURL)
+			imageNames = append(imageNames, item.Name)
+		} else {
+			orderTexts = append(orderTexts, item.Msg)
+		}
+	}
+
+	// 批内全是图片（无文本）时，给模型一个占位文本提示；否则照常拼批内文本
+	if len(orderTexts) == 0 {
+		orderTexts = []string{"对方发来了一张/多张图片，请识别其内容并结合对话回复。"}
+	}
+
+	ctx := context.Background()
+	return graph.ExecuteBatchWithImagesSources(ctx, userID, conversationID, orderTexts, imageURLs, imageNames, config)
+}
+
 // PreviewReply 预览回复
 func (s *AvatarService) PreviewReply(userID uint, message string) (string, error) {
 	return s.GenerateReply(userID, 0, message, nil)

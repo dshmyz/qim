@@ -118,7 +118,7 @@ const emit = defineEmits<{
 }
 .cal-nav-btn:hover { background: var(--hover-bg); }
 .cal-nav-title {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
   min-width: 100px;
@@ -137,7 +137,7 @@ const emit = defineEmits<{
 .cal-header-cell {
   padding: var(--spacing-2);
   text-align: center;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 600;
   color: var(--text-secondary);
   background: var(--card-bg);
@@ -151,7 +151,7 @@ const emit = defineEmits<{
 .cal-cell.is-today { background: #faf5ff; }
 .cal-cell.is-other-month { opacity: 0.4; }
 .cal-date {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
   color: var(--text-primary);
   margin-bottom: 2px;

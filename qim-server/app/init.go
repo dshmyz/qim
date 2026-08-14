@@ -481,6 +481,7 @@ func MigrateDB(db *gorm.DB) error {
 
 	addIndexes(db)
 	seedBuiltInApps(db)
+	seedAvatarBuiltInApp(db)
 	seedFileUploadConfig(db)
 	seedApprovalConfigs(db)
 	seedMessageRemindWebhook(db)
@@ -933,6 +934,38 @@ func seedBuiltInApps(db *gorm.DB) {
 
 	logger.WithModule("Migrate").Info("内置应用种子数据初始化完成", "count", len(defaultApps))
 	markMigrationCompleted(db, "seed_built_in_apps")
+}
+
+// seedAvatarBuiltInApp 为已有部署补充"数字分身"内置应用
+// 独立迁移：seed_built_in_apps 已标记完成，追加到 defaultApps 不会生效
+func seedAvatarBuiltInApp(db *gorm.DB) {
+	if isMigrationCompleted(db, "seed_avatar_built_in_app") {
+		return
+	}
+	if !tableExists(db, "apps") {
+		return
+	}
+
+	var count int64
+	db.Model(&model.App{}).Where("code = ? AND is_global = ?", "avatar", true).Count(&count)
+	if count > 0 {
+		markMigrationCompleted(db, "seed_avatar_built_in_app")
+		return
+	}
+
+	now := time.Now()
+	app := model.App{
+		UserID: 1, Name: "数字分身", Code: "avatar", Icon: "fas fa-user-circle",
+		Category: "main", Status: "active", IsGlobal: true, OpenType: "in-app",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := db.Create(&app).Error; err != nil {
+		logger.WithModule("Migrate").Error("创建内置应用失败", "name", app.Name, "error", err)
+		return
+	}
+
+	logger.WithModule("Migrate").Info("数字分身内置应用初始化完成")
+	markMigrationCompleted(db, "seed_avatar_built_in_app")
 }
 
 // seedFileUploadConfig 初始化文件上传配置（大小限制、允许的文件类型）

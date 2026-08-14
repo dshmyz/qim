@@ -211,7 +211,7 @@ if (!window.$QMessage) {
 .q-message__content {
   flex: 1;
   color: #1f2937;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   line-height: 1.5;
 }

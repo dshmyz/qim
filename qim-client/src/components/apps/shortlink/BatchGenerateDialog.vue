@@ -224,7 +224,7 @@ const handleClose = () => {
 }
 
 .form-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
 }
@@ -234,7 +234,7 @@ const handleClose = () => {
   padding: 12px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-family: inherit;
   resize: vertical;
   background: var(--input-bg, var(--right-content-bg));
@@ -248,7 +248,7 @@ const handleClose = () => {
 }
 
 .url-count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -268,13 +268,13 @@ const handleClose = () => {
 }
 
 .results-title {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
 }
 
 .results-stats {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -286,7 +286,7 @@ const handleClose = () => {
 .result-item {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .result-item:last-child {
@@ -329,7 +329,7 @@ const handleClose = () => {
   border-radius: var(--radius-sm);
   color: var(--primary-color);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   transition: all var(--transition-fast);
 }
 
@@ -347,7 +347,7 @@ const handleClose = () => {
 .q-btn {
   padding: 8px 20px;
   border-radius: var(--radius-md);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: all var(--transition-fast);

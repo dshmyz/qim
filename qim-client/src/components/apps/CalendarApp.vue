@@ -1,11 +1,6 @@
 <template>
   <div class="calendar-app">
     <AppHeader title="日历" @back="$emit('back')">
-      <template #extra-buttons>
-        <button class="icon-btn" @click="$emit('toggleSidebar')">
-          <i class="fas fa-compress"></i>
-        </button>
-      </template>
       <template #subtitle>
         <div class="current-date">{{ headerDateLabel }}</div>
       </template>
@@ -106,7 +101,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   back: []
-  toggleSidebar: []
   openTaskApp: []
   /** focusEventId 消费后通知父组件清空，避免下次手动进入日历误弹 */
   consumedFocus: []
@@ -448,7 +442,7 @@ onUnmounted(() => {
 }
 
 .current-date {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-top: 1px;
 }
@@ -474,7 +468,7 @@ onUnmounted(() => {
 
 .calendar-form-group label {
   display: block;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
   margin-bottom: 6px;
@@ -487,7 +481,7 @@ onUnmounted(() => {
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   background-color: var(--input-bg);
   transition: all 0.15s;
@@ -528,7 +522,7 @@ onUnmounted(() => {
   padding: 8px 24px;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;

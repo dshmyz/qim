@@ -477,6 +477,6 @@ describe('MessageItem mention emphasis', () => {
     const source = readFileSync(resolve(__dirname, '../../../src/components/message/MessageItem.vue'), 'utf8')
 
     expect(source).toContain(':global(.message-item.self .message-link)')
-    expect(source).toContain('color: #0f3e91 !important;')
+    expect(source).toContain('color: var(--primary-color, #0f3e91) !important;')
   })
 })

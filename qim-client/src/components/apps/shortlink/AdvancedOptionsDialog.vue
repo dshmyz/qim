@@ -288,7 +288,7 @@ const handleClose = () => {
 }
 
 .form-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
   display: flex;
@@ -297,7 +297,7 @@ const handleClose = () => {
 }
 
 .optional-tag {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: normal;
   color: var(--text-secondary);
   background: var(--color-gray-100, #f3f4f6);
@@ -310,7 +310,7 @@ const handleClose = () => {
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   background: var(--input-bg, var(--right-content-bg));
   color: var(--text-color);
   transition: border-color var(--transition-fast);
@@ -322,7 +322,7 @@ const handleClose = () => {
 }
 
 .form-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -337,7 +337,7 @@ const handleClose = () => {
   border: 1px solid var(--border-color);
   border-right: none;
   border-radius: var(--radius-md) 0 0 var(--radius-md);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   display: flex;
   align-items: center;
@@ -366,7 +366,7 @@ const handleClose = () => {
 }
 
 .radio-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
 }
 
@@ -398,7 +398,7 @@ const handleClose = () => {
 .q-btn {
   padding: 8px 20px;
   border-radius: var(--radius-md);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: all var(--transition-fast);

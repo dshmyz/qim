@@ -788,7 +788,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
   border-radius: var(--radius-full, 50%);
   background: transparent;
   color: var(--text-secondary, #6b7280);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all var(--transition-fast, 150ms ease);
   flex-shrink: 0;
@@ -830,7 +830,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
 
 .gfp-search i {
   color: var(--text-secondary, #a0a0a0);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .gfp-search input {
@@ -932,7 +932,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
 
 .gfp-btn--sm {
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
 }
 
 .gfp-btn:has(input[type="file"]) input {
@@ -1009,7 +1009,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
 }
 
 .gfp-dropzone__inner i {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
 }
 
 /* --- File List --- */
@@ -1081,7 +1081,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
 }
 
 .gfp-empty-icon i {
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   color: var(--color-gray-400, #c0c0c0);
 }
 
@@ -1115,7 +1115,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
   padding: 8px 10px;
   text-align: left;
   font-weight: 500;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #a0a0a0);
   text-transform: uppercase;
   letter-spacing: .3px;
@@ -1214,7 +1214,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
   justify-content: center;
   border-radius: var(--radius-md, 8px);
   flex-shrink: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .gfp-file-name {
@@ -1262,7 +1262,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
   border-radius: var(--radius-sm, 4px);
   background: transparent;
   color: var(--text-secondary, #6b7280);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: all var(--transition-fast, 150ms ease);
 }
@@ -1298,7 +1298,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
   border-radius: var(--radius-md, 8px);
   background: transparent;
   color: var(--text-color, #222);
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   cursor: pointer;
   transition: all var(--transition-fast, 150ms ease);
 }
@@ -1344,7 +1344,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
 
 .gfp-dialog__title {
   margin: 0 0 var(--spacing-4, 16px);
-  font-size: var(--font-size-base, 14px);
+  font-size: var(--font-size-sm, 14px);
   font-weight: var(--font-weight-semibold, 600);
   display: flex;
   align-items: center;
@@ -1472,7 +1472,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
 }
 
 .gfp-back-btn i {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 /* --- Subfolder cards (inline in file list) --- */
@@ -1514,7 +1514,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
 
 .gfp-subfolder-card__icon {
   color: var(--color-warning-500, #f7a826);
-  font-size: 16px;
+  font-size: var(--font-size-base);
   flex-shrink: 0;
   transition: color var(--transition-fast, 150ms ease);
 }
@@ -1530,7 +1530,7 @@ onUnmounted(() => document.body.classList.remove('gfp-modal-open'))
 
 .gfp-subfolder-card__arrow {
   color: var(--text-secondary, #a0a0a0);
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   opacity: 0;
   transition: all var(--transition-fast, 150ms ease);
   flex-shrink: 0;

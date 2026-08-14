@@ -105,79 +105,10 @@
       </div>
     </section>
 
-    <section class="asset-section avatar-section">
-      <div class="asset-header">
-        <h3>
-          <i class="fas fa-user"></i>
-          数字分身
-        </h3>
-        <button class="settings-link" @click="$emit('open-avatar')">
-          设置 <i class="fas fa-chevron-right"></i>
-        </button>
-      </div>
-
-      <div class="avatar-overview">
-        <div class="avatar-img">
-          <i class="fas fa-user"></i>
-        </div>
-        <div class="avatar-info">
-          <h4>你的数字分身</h4>
-          <template v-if="hasAvatarConfig">
-            <div class="progress-bar">
-              <div class="progress-fill" :style="{ width: learningProgress + '%' }"></div>
-            </div>
-            <span class="progress-text">
-              学习进度: {{ learningProgress }}%
-              <template v-if="learningStatus === 'learning'"> · 学习中...</template>
-            </span>
-          </template>
-          <span v-else class="progress-text">点击创建你的 AI 分身</span>
-        </div>
-        <!-- 未创建：引导创建 -->
-        <button
-          v-if="!hasAvatarConfig"
-          class="toggle-btn"
-          @click="$emit('open-avatar')"
-        >
-          <i class="fas fa-plus"></i>
-          创建
-        </button>
-        <!-- 审批通过：可自由开关 -->
-        <button
-          v-else-if="avatarApprovalStatus === 'approved'"
-          :class="['toggle-btn', { active: avatarEnabled }]"
-          @click="$emit('toggle-avatar')"
-        >
-          <i class="fas fa-power-off"></i>
-          {{ avatarEnabled ? '关闭' : '开启' }}
-        </button>
-        <!-- 审批中 -->
-        <span v-else-if="avatarApprovalStatus === 'pending'" class="status-badge pending">
-          审批中
-        </span>
-        <!-- 被拒绝 -->
-        <button
-          v-else-if="avatarApprovalStatus === 'rejected'"
-          class="toggle-btn rejected"
-          @click="$emit('toggle-avatar')"
-        >
-          重新申请
-        </button>
-        <!-- 无审批记录（审批被取消等异常情况）：申请启用 -->
-        <button
-          v-else
-          class="toggle-btn"
-          @click="$emit('toggle-avatar')"
-        >
-          申请启用
-        </button>
-      </div>
-    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import Avatar from '../../shared/Avatar.vue'
 
 interface Bot {
@@ -197,11 +128,6 @@ interface Config {
 const props = defineProps<{
   bots: Bot[]
   configs: Config[]
-  hasAvatarConfig: boolean
-  avatarEnabled: boolean
-  avatarApprovalStatus: string
-  learningProgress: number
-  learningStatus: string
 }>()
 
 defineEmits([
@@ -212,8 +138,6 @@ defineEmits([
   'edit-config',
   'test-config',
   'delete-config',
-  'open-avatar',
-  'toggle-avatar',
   'delete-bot'
 ])
 </script>
@@ -251,11 +175,11 @@ defineEmits([
 
 .asset-header h3 i {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .asset-header .count {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   font-weight: normal;
   color: var(--text-secondary);
   background: var(--hover-color);
@@ -269,7 +193,7 @@ defineEmits([
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--primary-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -290,7 +214,7 @@ defineEmits([
 }
 
 .empty-state i {
-  font-size: 40px;
+  font-size: var(--font-size-4xl);
   margin-bottom: 12px;
   color: var(--text-tertiary);
 }
@@ -305,7 +229,7 @@ defineEmits([
 
 .empty-state p {
   margin-bottom: 16px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .create-first-btn {
@@ -314,7 +238,7 @@ defineEmits([
   border-radius: var(--radius-sm);
   background: var(--primary-color);
   color: white;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -358,7 +282,7 @@ defineEmits([
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   margin-bottom: 12px;
   overflow: hidden;
 }
@@ -370,7 +294,7 @@ defineEmits([
 }
 
 .bot-card h4 {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 4px;
@@ -386,7 +310,7 @@ defineEmits([
 }
 
 .bot-card p {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-bottom: 4px;
   overflow: hidden;
@@ -399,7 +323,7 @@ defineEmits([
   display: inline-block;
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
 }
 .status-tag.pending { background: #fff7e6; color: #d46b08; border: 1px solid #ffd591; }
@@ -413,7 +337,7 @@ defineEmits([
   border-radius: var(--radius-sm);
   background: var(--primary-color);
   color: white;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   display: flex;
@@ -449,7 +373,7 @@ defineEmits([
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   transition: all 0.2s;
 }
 
@@ -503,13 +427,13 @@ defineEmits([
 }
 
 .config-name {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
 }
 
 .config-status {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   display: flex;
   align-items: center;
@@ -550,116 +474,5 @@ defineEmits([
 .icon-btn:hover {
   background: var(--hover-color);
   color: var(--primary-color);
-}
-
-.settings-link {
-  background: none;
-  border: none;
-  color: var(--primary-color);
-  font-size: 13px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.settings-link:hover {
-  text-decoration: underline;
-}
-
-.avatar-overview {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 20px;
-  background: var(--hover-color);
-}
-
-.avatar-img {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-warning-500, #f7a826) 0%, var(--color-warning-600, #c6861a) 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 28px;
-  flex-shrink: 0;
-}
-
-.avatar-info {
-  flex: 1;
-}
-
-.avatar-info h4 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-
-.progress-bar {
-  height: 6px;
-  background: var(--border-color);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: 6px;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--color-warning-500, #f7a826) 0%, var(--color-success-500, #26b361) 100%);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
-.progress-text {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.toggle-btn {
-  padding: 10px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--card-bg);
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.toggle-btn.active {
-  background: var(--color-success-500, #26b361);
-  border-color: var(--color-success-500, #26b361);
-  color: white;
-}
-
-.toggle-btn:hover {
-  opacity: 0.9;
-}
-
-.toggle-btn.rejected {
-  border-color: var(--color-danger-500, #EF4444);
-  color: var(--color-danger-500, #EF4444);
-}
-
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.status-badge.pending {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3B82F6;
 }
 </style>

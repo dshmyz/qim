@@ -55,7 +55,7 @@ defineEmits<{
 }
 
 .notice-text {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -63,7 +63,7 @@ defineEmits<{
 }
 
 .notice-action {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: #3b82f6;
   white-space: nowrap;
   flex-shrink: 0;

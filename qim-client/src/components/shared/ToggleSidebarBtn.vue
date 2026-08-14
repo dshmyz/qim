@@ -40,7 +40,7 @@ defineEmits<{
   border-radius: 6px;
   cursor: pointer;
   color: var(--primary-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: all 0.2s ease;
   flex-shrink: 0;
 }

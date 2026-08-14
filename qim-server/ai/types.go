@@ -19,29 +19,39 @@ type Message struct {
 	Role       string     `json:"role"`
 	Content    string     `json:"content"`
 	ImageURL   string     `json:"image_url,omitempty"`
+	ImageURLs  []string   `json:"-"` // 多图：分身批量多模态用。多个 base64 data URL，序列化见 MarshalJSON
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	Name       string     `json:"name,omitempty"`
 }
 
+// Alias 是 Message 的字段镜像类型（不带 MarshalJSON 方法），供 MarshalJSON 在匿名结构里
+// 嵌入以复用除 Content 外的全部字段序列化，同时避免因方法重入导致的无限递归。
+type Alias Message
+
 func (m Message) MarshalJSON() ([]byte, error) {
-	type Alias Message
-	if m.ImageURL != "" {
-		// 多模态消息：content 为数组格式
+	// 多图优先（ImageURLs），其次单图（ImageURL，向后兼容），均输出 OpenAI content 数组格式。
+	images := m.ImageURLs
+	if len(images) == 0 && m.ImageURL != "" {
+		images = []string{m.ImageURL}
+	}
+	if len(images) > 0 {
+		content := make([]interface{}, 0, len(images)+1)
+		content = append(content, map[string]string{"type": "text", "text": m.Content})
+		for _, url := range images {
+			content = append(content, map[string]interface{}{
+				"type": "image_url",
+				"image_url": map[string]interface{}{
+					"url": url,
+				},
+			})
+		}
 		aux := struct {
 			Role    string        `json:"role"`
 			Content []interface{} `json:"content"`
 		}{
-			Role: m.Role,
-			Content: []interface{}{
-				map[string]string{"type": "text", "text": m.Content},
-				map[string]interface{}{
-					"type": "image_url",
-					"image_url": map[string]interface{}{
-						"url": m.ImageURL,
-					},
-				},
-			},
+			Role:    m.Role,
+			Content: content,
 		}
 		return json.Marshal(aux)
 	}
@@ -146,10 +156,11 @@ type AIConfig struct {
 }
 
 type OpenAIConfig struct {
-	APIKey          string `yaml:"api_key"`
-	Model           string `yaml:"model"`
-	BaseURL         string `yaml:"base_url"`
+	APIKey           string `yaml:"api_key"`
+	Model            string `yaml:"model"`
+	BaseURL          string `yaml:"base_url"`
 	EmbeddingBaseURL string `yaml:"embedding_base_url"`
+	EmbeddingModel   string `yaml:"embedding_model"`
 }
 
 type BaiduConfig struct {

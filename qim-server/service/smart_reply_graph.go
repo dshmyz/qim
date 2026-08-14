@@ -13,8 +13,8 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
-	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
 
 	"github.com/cloudwego/eino/compose"
@@ -209,12 +209,15 @@ func (g *SmartReplyGraph) SetThresholdService(t *AiThresholdService) {
 	g.thresholdSvc = t
 }
 
-// knowledgeScoreThreshold 返回知识来源分数门槛：未注入阈值服务时回退默认 0.6。
-func (g *SmartReplyGraph) knowledgeScoreThreshold() float64 {
+// memorySourceThreshold 返回群记忆来源进徽章的分数门槛（默认 0.6）。
+// 有别于知识库的硬下限（ai.knowledge_score_threshold 已降为 0.3 以保住"唯一命中但词面
+// 相关度低"的文档）：记忆来源若降到 0.3 会让语义较泛的记忆也进徽章，造成噪音，故独立
+// 用较高默认值。非 memory 的“依据”不受此影响。
+func (g *SmartReplyGraph) memorySourceThreshold() float64 {
 	if g.thresholdSvc != nil {
-		return g.thresholdSvc.GetFloat("ai.knowledge_score_threshold", 0.6)
+		return g.thresholdSvc.GetFloat("ai.memory_source_threshold", 0.3)
 	}
-	return 0.6
+	return 0.3
 }
 
 // groupAssistantAllowedTools 计算群 @AI 实际可用的工具白名单：内置群管理工具
@@ -507,7 +510,7 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 				}
 				memoryCtx = "💡 群聊记忆：\n" + strings.Join(parts, "\n")
 				// 群记忆分数透出到「知识来源」徽章，供用户看到 AI 为什么记住了这条
-				input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults, g.knowledgeScoreThreshold())...)
+				input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults, g.memorySourceThreshold())...)
 			}
 		}
 	} // end !skipKnowledge
@@ -965,7 +968,17 @@ func (g *SmartReplyGraph) recallGroupMemory(input *SmartReplyContext) string {
 		parts = append(parts, r.Content)
 	}
 	// 群记忆分数透出到「知识来源」徽章
-	input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults, g.knowledgeScoreThreshold())...)
+	input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults, g.memorySourceThreshold())...)
+	// 诊断：区分"群记忆注入但分数低于门槛未进徽章"。scores 为召回原始分，th 为门槛。
+	_scores := make([]float64, 0, len(memoryResults))
+	for _, r := range memoryResults {
+		_scores = append(_scores, r.Score)
+	}
+	beforeMem := len(memoryResults)
+	afterMem := len(memoryResultsToSources(memoryResults, g.memorySourceThreshold()))
+	logger.WithModule("SmartReplyGraph").Info("群记忆召回与徽章产出",
+		"query", input.Message, "scores", _scores, "threshold", g.memorySourceThreshold(),
+		"recalled", beforeMem, "badge_sources", afterMem)
 	return "💡 群聊记忆：\n" + strings.Join(parts, "\n")
 }
 

@@ -332,7 +332,7 @@ const submitFeedback = async () => {
 .feedback-label {
   display: block;
   margin-bottom: 12px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color);
 }
@@ -355,7 +355,7 @@ const submitFeedback = async () => {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   transition: all 0.2s;
 }
 
@@ -370,7 +370,7 @@ const submitFeedback = async () => {
 }
 
 .feedback-type-btn i {
-  font-size: 20px;
+  font-size: var(--font-size-xl);
 }
 
 .feedback-textarea {
@@ -380,7 +380,7 @@ const submitFeedback = async () => {
   border-radius: 8px;
   background: var(--input-bg);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-family: inherit;
   resize: none;
   box-sizing: border-box;
@@ -398,7 +398,7 @@ const submitFeedback = async () => {
 
 .feedback-hint {
   margin-top: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
@@ -418,7 +418,7 @@ const submitFeedback = async () => {
 }
 
 .feedback-screenshot-upload i {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   margin-bottom: 8px;
   display: block;
 }
@@ -453,7 +453,7 @@ const submitFeedback = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   transition: background 0.2s;
 }
 
@@ -481,7 +481,7 @@ const submitFeedback = async () => {
 
 .feedback-list-loading i,
 .feedback-list-empty i {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   opacity: 0.5;
 }
 
@@ -517,17 +517,17 @@ const submitFeedback = async () => {
 }
 
 .feedback-item-type-icon {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
 .feedback-item-time {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
 .feedback-status-tag {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   padding: 2px 8px;
   border-radius: 10px;
   font-weight: 500;
@@ -554,7 +554,7 @@ const submitFeedback = async () => {
 }
 
 .feedback-item-arrow {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   transition: transform 0.2s;
 }
@@ -565,7 +565,7 @@ const submitFeedback = async () => {
 
 .feedback-item-content {
   margin-top: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   line-height: 1.5;
   display: -webkit-box;
@@ -603,7 +603,7 @@ const submitFeedback = async () => {
 }
 
 .feedback-reply-label {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-bottom: 6px;
   display: flex;
@@ -612,14 +612,14 @@ const submitFeedback = async () => {
 }
 
 .feedback-reply-content {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-color);
   line-height: 1.6;
   white-space: pre-wrap;
 }
 
 .feedback-item-no-reply {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   text-align: center;
   padding: 8px;
@@ -631,7 +631,7 @@ const submitFeedback = async () => {
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   transition: all 0.2s;
 }

@@ -256,7 +256,7 @@ onMounted(() => {
   padding: 8px 28px 8px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   background: var(--panel-bg);
   color: var(--text-color);
   outline: none;
@@ -283,7 +283,7 @@ onMounted(() => {
   color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   display: flex;
   align-items: center;
 }
@@ -308,7 +308,7 @@ onMounted(() => {
   border: 1px solid transparent;
   background: transparent;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   cursor: pointer;
 }
@@ -325,8 +325,8 @@ onMounted(() => {
 }
 
 .view-btn:focus {
-  /* outline: 2px solid var(--primary-color); */
-  /* outline-offset: 2px; */
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .channel-tabs-toggle {
@@ -341,7 +341,7 @@ onMounted(() => {
   border: none;
   background: transparent;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
@@ -373,7 +373,7 @@ onMounted(() => {
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   font-weight: 600;
   color: white;
   background: var(--danger-color);

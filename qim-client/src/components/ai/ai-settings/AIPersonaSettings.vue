@@ -80,21 +80,21 @@ const personas = [
 .ai-persona-settings { padding: 16px; }
 .setting-section { margin-bottom: 24px; }
 .setting-section:last-child { margin-bottom: 0; }
-.section-label { display: block; margin-bottom: 10px; font-size: 14px; font-weight: 500; color: var(--text-color); }
+.section-label { display: block; margin-bottom: 10px; font-size: var(--font-size-sm); font-weight: 500; color: var(--text-color); }
 .persona-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .persona-card { padding: 14px; border: 2px solid var(--border-color); border-radius: 10px; cursor: pointer; text-align: center; transition: all 0.2s; }
 .persona-card:hover { border-color: var(--primary-color); }
 .persona-card.active { border-color: var(--primary-color); background: var(--primary-color-alpha, rgba(99, 102, 241, 0.1)); }
-.persona-icon { font-size: 24px; margin-bottom: 8px; color: var(--text-secondary); }
+.persona-icon { font-size: var(--font-size-2xl); margin-bottom: 8px; color: var(--text-secondary); }
 .persona-card.active .persona-icon { color: var(--primary-color); }
-.persona-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text-color); }
-.persona-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
-.form-textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-color); color: var(--text-color); font-size: 14px; resize: vertical; box-sizing: border-box; font-family: inherit; line-height: 1.6; transition: border-color 0.2s, box-shadow 0.2s; }
+.persona-name { font-size: var(--font-size-sm); font-weight: 600; margin-bottom: 4px; color: var(--text-color); }
+.persona-desc { font-size: var(--font-size-xxs); color: var(--text-secondary); line-height: 1.4; }
+.form-textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-color); color: var(--text-color); font-size: var(--font-size-sm); resize: vertical; box-sizing: border-box; font-family: inherit; line-height: 1.6; transition: border-color 0.2s, box-shadow 0.2s; }
 .form-textarea:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1); }
 .form-textarea::placeholder { color: var(--text-secondary); opacity: 0.6; }
-.setting-hint { display: block; margin-top: 6px; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.setting-hint { display: block; margin-top: 6px; font-size: var(--font-size-xs); color: var(--text-secondary); line-height: 1.5; }
 .setting-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.setting-item label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; color: var(--text-color); }
-.form-select { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-color); color: var(--text-color); font-size: 14px; box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s; }
+.setting-item label { display: block; margin-bottom: 6px; font-size: var(--font-size-sm); font-weight: 500; color: var(--text-color); }
+.form-select { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-color); color: var(--text-color); font-size: var(--font-size-sm); box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s; }
 .form-select:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1); }
 </style>

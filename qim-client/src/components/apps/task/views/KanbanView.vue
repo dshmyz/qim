@@ -93,7 +93,7 @@ async function onColumnDrop(taskId: string, status: TaskStatus, index: number) {
   gap: var(--spacing-2);
   color: var(--text-secondary);
 }
-.kanban-empty i { font-size: 32px; opacity: 0.4; }
-.kanban-empty p { font-size: 14px; margin: 0; color: var(--text-primary); }
-.kanban-empty span { font-size: 12px; }
+.kanban-empty i { font-size: var(--font-size-3xl); opacity: 0.4; }
+.kanban-empty p { font-size: var(--font-size-sm); margin: 0; color: var(--text-primary); }
+.kanban-empty span { font-size: var(--font-size-xxs); }
 </style>

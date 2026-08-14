@@ -206,7 +206,7 @@ const discoverTools = async (index: number) => {
   conn._loadingTools = true
   conn._toolsError = undefined
   try {
-    const res = await request.post('/api/v1/admin/external-mcp/tools', {
+    const res = await request.post('/v1/admin/external-mcp/tools', {
       name: conn.name,
       transport: conn.transport,
       url: conn.url,
@@ -270,12 +270,10 @@ const handleSave = async () => {
           token: c.token.trim(),
           enabled: Boolean(c.enabled),
         }
-        // 只保存非空的 allowed_tools（空 = 全部开放）
-        if (c.allowed_tools && c.allowed_tools.length > 0 && c._tools) {
-          // 若已选数 = 总数，不保存 allowed_tools（等同全部开放）
-          if (c.allowed_tools.length < c._tools.length) {
-            conn.allowed_tools = c.allowed_tools
-          }
+        // 始终保存 allowed_tools（含空数组 = 全部开放），不再依赖 _tools 是否已加载：
+        // 旧逻辑要求 c._tools 已定义才保存，导致未点「发现工具」时白名单被静默清空。
+        if (c.allowed_tools) {
+          conn.allowed_tools = c.allowed_tools
         }
         return conn
       })

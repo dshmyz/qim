@@ -326,7 +326,7 @@ async function handleSubmit() {
 
 .wizard-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .back-btn {
@@ -370,19 +370,19 @@ async function handleSubmit() {
 }
 
 .method-option i {
-  font-size: 32px;
+  font-size: var(--font-size-3xl);
   color: var(--primary-color);
   margin-bottom: 12px;
 }
 
 .method-option h4 {
   margin: 0 0 8px;
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 .method-option p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -458,7 +458,7 @@ async function handleSubmit() {
 }
 
 .template-avatar i {
-  font-size: 24px;
+  font-size: var(--font-size-2xl);
   color: var(--primary-color);
 }
 
@@ -469,7 +469,7 @@ async function handleSubmit() {
 
 .template-info p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -484,7 +484,7 @@ async function handleSubmit() {
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -514,7 +514,7 @@ async function handleSubmit() {
 
 .hint {
   margin-top: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -526,7 +526,7 @@ async function handleSubmit() {
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .submit-btn:hover:not(:disabled) {
@@ -548,19 +548,19 @@ async function handleSubmit() {
 }
 
 .connect-header > i {
-  font-size: 40px;
+  font-size: var(--font-size-4xl);
   color: #52c41a;
   margin-bottom: 8px;
 }
 
 .connect-header h3 {
   margin: 0 0 8px;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
 }
 
 .approval-hint {
   color: #faad14;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   margin: 0;
   display: flex;
   align-items: center;
@@ -570,7 +570,7 @@ async function handleSubmit() {
 
 .ready-hint {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   margin: 0;
 }
 
@@ -580,7 +580,7 @@ async function handleSubmit() {
 
 .connect-section h4 {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -590,7 +590,7 @@ async function handleSubmit() {
 
 .connect-section h4 i {
   color: var(--primary-color);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .code-block {
@@ -599,7 +599,7 @@ async function handleSubmit() {
   border-radius: 6px;
   padding: 12px 14px;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12.5px;
+  font-size: var(--font-size-xxs);
   line-height: 1.5;
   cursor: pointer;
   position: relative;
@@ -625,7 +625,7 @@ async function handleSubmit() {
   position: absolute;
   top: 8px;
   right: 10px;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-tertiary);
   font-family: inherit;
 }
@@ -643,7 +643,7 @@ async function handleSubmit() {
   background: var(--bg-color);
   color: var(--text-primary);
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .token-input:focus {
@@ -652,13 +652,13 @@ async function handleSubmit() {
 }
 
 .section-desc {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
   margin: 0 0 10px;
 }
 
 .section-hint {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-tertiary);
   margin: 6px 0 0;
 }

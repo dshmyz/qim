@@ -140,7 +140,7 @@ watch(() => props.content, () => {
 }
 
 .card-title {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   line-height: 1.4;
   color: var(--text-color);
@@ -148,7 +148,7 @@ watch(() => props.content, () => {
 }
 
 .card-text {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   line-height: 1.6;
   color: var(--text-secondary);
   white-space: pre-wrap;
@@ -182,7 +182,7 @@ watch(() => props.content, () => {
   gap: 6px;
   padding: 7px 14px;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   line-height: 1.2;
   cursor: pointer;
@@ -252,7 +252,7 @@ watch(() => props.content, () => {
 }
 
 .card-empty {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 

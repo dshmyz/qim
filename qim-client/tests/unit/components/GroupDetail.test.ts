@@ -77,7 +77,7 @@ describe('GroupDetail - API 路由修正', () => {
       global: { stubs: ['Avatar'] },
     })
 
-    const groupFilesButton = wrapper.findAll('.action-btn').find(button => button.text().includes('群资料'))
+    const groupFilesButton = wrapper.findAll('.action-btn').find(button => button.text().includes('群文件'))
     expect(groupFilesButton).toBeDefined()
     await groupFilesButton!.trigger('click')
 
@@ -90,7 +90,7 @@ describe('GroupDetail - API 路由修正', () => {
       global: { stubs: ['Avatar'] },
     })
 
-    const groupFilesButton = wrapper.findAll('.action-btn').find(button => button.text().includes('群资料'))
+    const groupFilesButton = wrapper.findAll('.action-btn').find(button => button.text().includes('群文件'))
     expect(groupFilesButton).toBeDefined()
     expect(groupFilesButton!.classes()).toContain('secondary')
     expect(groupFilesButton!.classes()).not.toContain('primary')

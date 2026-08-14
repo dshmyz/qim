@@ -376,13 +376,13 @@ function handleClearCompleted() {
 }
 
 .progress-title {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-color, #1a1a2e);
 }
 
 .progress-percentage {
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   font-weight: 700;
   color: var(--primary-color, #3385ff);
   line-height: 1;
@@ -553,7 +553,7 @@ function handleClearCompleted() {
 .task-status {
   padding: 2px 6px;
   border-radius: var(--radius-sm, 4px);
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: var(--font-weight-medium, 500);
 }
 
@@ -694,7 +694,7 @@ function handleClearCompleted() {
   }
 
   .progress-percentage {
-    font-size: 11px;
+    font-size: var(--font-size-xxxs);
   }
 
   .task-item {
@@ -717,7 +717,7 @@ function handleClearCompleted() {
   }
 
   .task-meta {
-    font-size: 11px;
+    font-size: var(--font-size-xxxs);
   }
 }
 

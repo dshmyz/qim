@@ -177,7 +177,7 @@ async function onSubTaskAdd(title: string) {
   color: var(--text-secondary);
   padding: var(--spacing-2);
   border-radius: var(--radius-sm);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   margin-left: var(--spacing-2);
 }
 .detail-close:hover { background: var(--hover-bg); }
@@ -189,7 +189,7 @@ async function onSubTaskAdd(title: string) {
 .detail-field { margin-bottom: var(--spacing-4); }
 .detail-field label {
   display: block;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 500;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -197,7 +197,7 @@ async function onSubTaskAdd(title: string) {
   margin-bottom: var(--spacing-1);
 }
 .detail-description {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-primary);
   line-height: 1.6;
   margin: 0;
@@ -210,7 +210,7 @@ async function onSubTaskAdd(title: string) {
   padding: var(--spacing-2) var(--spacing-3);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-primary);
   background: var(--input-bg);
 }

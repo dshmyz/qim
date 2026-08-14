@@ -51,6 +51,7 @@ func TestMCPClientGateway_SyncRegistersExternalTools(t *testing.T) {
 	setGatewayConfig(t, db, externalMCPConfigKey, string(b))
 
 	gw := NewMCPClientGateway(configSvc, registry)
+	gw.skipSSRFCheck = true
 	gw.Sync()
 
 	// 未开 group_enabled，组助手白名单不应放行
@@ -70,6 +71,7 @@ func TestMCPClientGateway_GroupEnabledGate(t *testing.T) {
 	db := setupGatewayTestDB(t)
 	configSvc := NewSystemConfigService(db)
 	gw := NewMCPClientGateway(configSvc, ai.NewToolRegistry(nil))
+	gw.skipSSRFCheck = true
 
 	assert.False(t, gw.GroupEnabled())
 	setGatewayConfig(t, db, externalMCPGroupEnabledKey, "true")
@@ -91,6 +93,7 @@ func TestMCPClientGateway_DisabledConnNotSynced(t *testing.T) {
 	setGatewayConfig(t, db, externalMCPConfigKey, string(b))
 
 	gw := NewMCPClientGateway(configSvc, registry)
+	gw.skipSSRFCheck = true
 	gw.Sync()
 
 	assert.Empty(t, gw.ListExternalToolNames(), "禁用的连接不应注册外部工具")
@@ -112,9 +115,34 @@ func TestMCPClientGateway_UnreachableServerDegrades(t *testing.T) {
 	setGatewayConfig(t, db, externalMCPConfigKey, string(b))
 
 	gw := NewMCPClientGateway(configSvc, registry)
+	gw.skipSSRFCheck = true
 	gw.Sync() // 不应 panic / 阻塞
 
 	assert.Empty(t, gw.ListExternalToolNames(), "不可达 server 的工具应降级为不可用")
+}
+
+// TestMCPClientGateway_EmptyAllowedToolsBlocksAll
+// 全不选时 AllowedTools=[]string{}（非 nil），应不注册任何工具。
+func TestMCPClientGateway_EmptyAllowedToolsBlocksAll(t *testing.T) {
+	db := setupGatewayTestDB(t)
+	configSvc := NewSystemConfigService(db)
+	registry := ai.NewToolRegistry(nil)
+
+	ts := startTestMCPServer(t)
+	conns := []MCPConnConfig{
+		{Name: "demo", Transport: "streamable-http", URL: ts.URL, Enabled: true,
+			AllowedTools: []string{}}, // 显式空数组 = 全不选
+	}
+	b, err := json.Marshal(conns)
+	require.NoError(t, err)
+	setGatewayConfig(t, db, externalMCPConfigKey, string(b))
+
+	gw := NewMCPClientGateway(configSvc, registry)
+	gw.skipSSRFCheck = true
+	gw.Sync()
+
+	assert.Empty(t, gw.ListExternalToolNames(), "全不选时不应注册任何工具")
+	assert.False(t, gw.GroupEnabled(), "全不选后 GroupEnabled 应仍为 false")
 }
 
 // recordingTransport 记录它转发的最后一个请求，把请求交给 inner 处理。

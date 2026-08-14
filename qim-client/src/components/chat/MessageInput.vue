@@ -631,7 +631,7 @@ defineExpose({ messageInputRef })
   background: transparent;
   color: var(--text-color);
   cursor: pointer;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -731,7 +731,7 @@ defineExpose({ messageInputRef })
 }
 
 .emoji-category-title {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   font-weight: 600;
   color: var(--text-color);
   opacity: 0.7;
@@ -747,7 +747,7 @@ defineExpose({ messageInputRef })
 }
 
 .emoji-item {
-  font-size: 20px;
+  font-size: var(--font-size-xl);
   text-align: center;
   cursor: pointer;
   padding: 2px;
@@ -768,7 +768,7 @@ defineExpose({ messageInputRef })
   width: 100%;
   padding: 10px 12px;
   border: none;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   resize: none;
   outline: none;
   font-family: var(--font-family-base);
@@ -818,7 +818,7 @@ defineExpose({ messageInputRef })
 }
 
 .input-tip {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-color);
   opacity: 0.6;
 }
@@ -857,7 +857,7 @@ defineExpose({ messageInputRef })
   border-radius: 6px;
   background: transparent;
   color: var(--primary-color);
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -872,7 +872,7 @@ defineExpose({ messageInputRef })
   color: #fff;
   border: none;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -937,7 +937,7 @@ defineExpose({ messageInputRef })
 
 .at-members-header h4 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-color);
 }
@@ -971,7 +971,7 @@ defineExpose({ messageInputRef })
 }
 
 .at-member-name {
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   color: var(--text-color);
 }
 
@@ -985,11 +985,11 @@ defineExpose({ messageInputRef })
 
 .at-member-username {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
 }
 
 .at-member-bot-icon {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--primary-color);
   opacity: 0.9;
 }
@@ -998,7 +998,7 @@ defineExpose({ messageInputRef })
   padding: 20px;
   text-align: center;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 

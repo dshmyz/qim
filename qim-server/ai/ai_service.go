@@ -220,14 +220,11 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 	tools := toolRegistry.ListTools()
 	// allowed 非空时只注入白名单内的工具（群聊助手过滤掉运维工具）
 	// 白名单 key 统一小写，匹配时 ToLower，兼容 LLM 改写大小写
-	allowedSet := make(map[string]bool, len(allowed))
-	for _, a := range allowed {
-		allowedSet[strings.ToLower(a)] = true
-	}
+	allowedSet := buildAllowedToolSet(allowed)
 	toolDefs := make([]ToolDef, 0, len(tools))
 	for _, tool := range tools {
 		name := tool["name"].(string)
-		if len(allowedSet) > 0 && !allowedSet[strings.ToLower(name)] {
+		if !isToolAllowed(name, allowedSet) {
 			continue
 		}
 		desc := tool["description"].(string)
@@ -341,14 +338,11 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 
 	// 构建工具定义
 	tools := toolRegistry.ListTools()
-	allowedSet := make(map[string]bool, len(allowed))
-	for _, a := range allowed {
-		allowedSet[strings.ToLower(a)] = true
-	}
+	allowedSet := buildAllowedToolSet(allowed)
 	toolDefs := make([]ToolDef, 0, len(tools))
 	for _, tool := range tools {
 		name := tool["name"].(string)
-		if len(allowedSet) > 0 && !allowedSet[strings.ToLower(name)] {
+		if !isToolAllowed(name, allowedSet) {
 			continue
 		}
 		desc := tool["description"].(string)
@@ -366,8 +360,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 
 	// 熔断器：跟踪每个工具的连续失败次数，超过阈值时跳过执行。
 	// 目的：防止同一工具反复失败产生大量错误上下文，导致模型输出崩溃（如重复 "Go Go Go..."）。
-	const toolFailureThreshold = 2 // 同一工具连续失败 N 次后熔断
-	toolFailures := make(map[string]int)
+	cb := newToolCircuitBreaker(2)
 
 	callProvider := func(msgs []Message) (*ChatResponse, error) {
 		if modelName != "" {
@@ -424,16 +417,14 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 				continue
 			}
 			// 熔断检查：同一工具连续失败超过阈值时跳过，避免反复执行失败工具污染上下文
-			if toolFailures[tc.Name] >= toolFailureThreshold {
-				aiLog.Warn("react tool circuit breaker tripped", "name", tc.Name, "failures", toolFailures[tc.Name])
-				circuitMsg := fmt.Sprintf(`{"error":"工具 %s 暂时不可用，请直接用通用知识回答用户问题"}`, tc.Name)
+			if cb.isTripped(tc.Name) {
+				aiLog.Warn("react tool circuit breaker tripped", "name", tc.Name, "failures", cb.failures[tc.Name])
 				workMsgs = append(workMsgs, Message{
 					Role:       "tool",
-					Content:    circuitMsg,
+					Content:    cb.circuitMessage(tc.Name),
 					ToolCallID: tc.ID,
 				})
-				// 递增失败计数器，避免重复触发熔断器浪费 LLM 调用
-				toolFailures[tc.Name]++
+				cb.recordFailure(tc.Name)
 				continue
 			}
 			if onStep != nil {
@@ -444,8 +435,8 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 				onStep(step, callID, "end", tc.Name, tc.Arguments, result, execErr)
 			}
 			if execErr != nil {
-				toolFailures[tc.Name]++
-				aiLog.Warn("react tool execution failed", "name", tc.Name, "error", execErr, "failures", toolFailures[tc.Name])
+				cb.recordFailure(tc.Name)
+				aiLog.Warn("react tool execution failed", "name", tc.Name, "error", execErr, "failures", cb.failures[tc.Name])
 				// 将错误作为 tool 结果返回给 LLM，让它决定如何处理（而非直接中断）
 				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				workMsgs = append(workMsgs, Message{
@@ -455,7 +446,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 				})
 				continue
 			}
-			toolFailures[tc.Name] = 0 // 成功则重置计数
+			cb.recordSuccess(tc.Name)
 			resultJSON, _ := json.Marshal(result)
 			workMsgs = append(workMsgs, Message{
 				Role:       "tool",
@@ -510,14 +501,11 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 	}
 
 	tools := toolRegistry.ListTools()
-	allowedSet := make(map[string]bool, len(allowed))
-	for _, a := range allowed {
-		allowedSet[strings.ToLower(a)] = true
-	}
+	allowedSet := buildAllowedToolSet(allowed)
 	toolDefs := make([]ToolDef, 0, len(tools))
 	for _, tool := range tools {
 		name := tool["name"].(string)
-		if len(allowedSet) > 0 && !allowedSet[strings.ToLower(name)] {
+		if !isToolAllowed(name, allowedSet) {
 			continue
 		}
 		desc := tool["description"].(string)
@@ -533,8 +521,7 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 	copy(workMsgs, messages)
 
 	// 熔断器：跟踪每个工具的连续失败次数，超过阈值时跳过执行。
-	const toolFailureThreshold = 2
-	toolFailures := make(map[string]int)
+	cb2 := newToolCircuitBreaker(2)
 
 	// callProviderStream 执行本轮流式调用，onChunk 侧实时累积内容与工具增量。
 	callProviderStream := func(msgs []Message, onChunk func(chunk StreamChunk) error) error {
@@ -633,12 +620,10 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 				continue
 			}
 			// 熔断检查：同一工具连续失败超过阈值时跳过
-			if toolFailures[tc.Name] >= toolFailureThreshold {
-				aiLog.Warn("react(stream) tool circuit breaker tripped", "name", tc.Name, "failures", toolFailures[tc.Name])
-				circuitMsg := fmt.Sprintf(`{"error":"工具 %s 暂时不可用，请直接用通用知识回答用户问题"}`, tc.Name)
-				workMsgs = append(workMsgs, Message{Role: "tool", Content: circuitMsg, ToolCallID: tc.ID})
-				// 递增失败计数器，避免重复触发熔断器浪费 LLM 调用
-				toolFailures[tc.Name]++
+			if cb2.isTripped(tc.Name) {
+				aiLog.Warn("react(stream) tool circuit breaker tripped", "name", tc.Name, "failures", cb2.failures[tc.Name])
+				workMsgs = append(workMsgs, Message{Role: "tool", Content: cb2.circuitMessage(tc.Name), ToolCallID: tc.ID})
+				cb2.recordFailure(tc.Name)
 				continue
 			}
 			if onStep != nil {
@@ -649,13 +634,13 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 				onStep(step, tc.ID, "end", tc.Name, tc.Arguments, result, execErr)
 			}
 			if execErr != nil {
-				toolFailures[tc.Name]++
-				aiLog.Warn("react(stream) tool execution failed", "name", tc.Name, "error", execErr, "failures", toolFailures[tc.Name])
+				cb2.recordFailure(tc.Name)
+				aiLog.Warn("react(stream) tool execution failed", "name", tc.Name, "error", execErr, "failures", cb2.failures[tc.Name])
 				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				workMsgs = append(workMsgs, Message{Role: "tool", Content: string(errJSON), ToolCallID: tc.ID})
 				continue
 			}
-			toolFailures[tc.Name] = 0
+			cb2.recordSuccess(tc.Name)
 			resultJSON, _ := json.Marshal(result)
 			workMsgs = append(workMsgs, Message{Role: "tool", Content: string(resultJSON), ToolCallID: tc.ID})
 		}
@@ -676,14 +661,11 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, m
 	}
 
 	tools := toolRegistry.ListTools()
-	allowedSet := make(map[string]bool, len(allowed))
-	for _, a := range allowed {
-		allowedSet[strings.ToLower(a)] = true
-	}
+	allowedSet := buildAllowedToolSet(allowed)
 	filteredTools := make([]map[string]interface{}, 0, len(tools))
 	for _, tool := range tools {
 		name := tool["name"].(string)
-		if len(allowedSet) > 0 && !allowedSet[strings.ToLower(name)] {
+		if !isToolAllowed(name, allowedSet) {
 			continue
 		}
 		filteredTools = append(filteredTools, tool)
@@ -738,7 +720,7 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, m
 	}
 
 	aiLog.Info("tool prompt - tool call detected", "name", toolCall.Name, "args", toolCall.Arguments)
-	if len(allowedSet) > 0 && !allowedSet[toolCall.Name] {
+	if !isToolAllowed(toolCall.Name, allowedSet) {
 		return "", fmt.Errorf("tool %s is not allowed", toolCall.Name)
 	}
 	result, err := toolRegistry.ExecuteTool(toolCall.Name, toolCall.Arguments, callerCtx)
@@ -889,6 +871,7 @@ func (s *AIService) filterMessages(messages []Message) []Message {
 			Role:       msg.Role,
 			Content:    s.filterContent(msg.Content),
 			ImageURL:   msg.ImageURL,
+			ImageURLs:  msg.ImageURLs, // 多图（分身批量多模态合并路径）须与单图一样透传
 			ToolCalls:  msg.ToolCalls,
 			ToolCallID: msg.ToolCallID,
 		}
@@ -915,6 +898,48 @@ func (s *AIService) filterContent(content string) string {
 		}
 	}
 	return string(runes[:cutAt]) + "\n...(内容已截断)"
+}
+
+// buildAllowedToolSet 构建工具白名单集合（key 统一小写）。
+// 空 allowed 时返回空 map，调用方检查 len(set) > 0 再做过滤。
+func buildAllowedToolSet(allowed []string) map[string]bool {
+	set := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		set[strings.ToLower(a)] = true
+	}
+	return set
+}
+
+// isToolAllowed 检查工具名是否在白名单内（allowedSet 为空时视为全部允许）。
+func isToolAllowed(name string, allowedSet map[string]bool) bool {
+	return len(allowedSet) == 0 || allowedSet[strings.ToLower(name)]
+}
+
+// toolCircuitBreaker 工具调用熔断器：同一工具连续失败 N 次后拒绝调用，成功则重置计数。
+// 供 ReAct 多步（非流式+流式）两条路径共用，消除重复的 threshold/failures/tripped 逻辑。
+type toolCircuitBreaker struct {
+	failures  map[string]int
+	threshold int
+}
+
+func newToolCircuitBreaker(threshold int) *toolCircuitBreaker {
+	return &toolCircuitBreaker{failures: make(map[string]int), threshold: threshold}
+}
+
+func (cb *toolCircuitBreaker) isTripped(name string) bool {
+	return cb.failures[name] >= cb.threshold
+}
+
+func (cb *toolCircuitBreaker) recordFailure(name string) {
+	cb.failures[name]++
+}
+
+func (cb *toolCircuitBreaker) recordSuccess(name string) {
+	cb.failures[name] = 0
+}
+
+func (cb *toolCircuitBreaker) circuitMessage(name string) string {
+	return fmt.Sprintf(`{"error":"工具 %s 暂时不可用，请直接用通用知识回答用户问题"}`, name)
 }
 
 func (s *AIService) IsConfigured() bool {

@@ -244,7 +244,7 @@ watch(() => props.isStreaming, () => {
 }
 
 .bot-name {
-  font-size: 16px;
+  font-size: var(--font-size-base);
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -275,7 +275,7 @@ watch(() => props.isStreaming, () => {
 }
 
 .loading-badge {
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   background: var(--hover-color);
   padding: 4px 8px;
@@ -341,14 +341,14 @@ watch(() => props.isStreaming, () => {
 }
 
 .time {
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   opacity: 0.6;
   margin-top: 4px;
   text-align: right;
 }
 
 .content {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
   word-break: break-word;
 }
@@ -368,7 +368,7 @@ watch(() => props.isStreaming, () => {
   background: #ffebee;
   padding: 10px 14px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 
 .input-area {
@@ -385,7 +385,7 @@ watch(() => props.isStreaming, () => {
   border-radius: 20px;
   background: var(--bg-color);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   outline: none;
   transition: border-color 0.2s;
 }

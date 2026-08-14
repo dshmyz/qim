@@ -501,33 +501,33 @@ onUnmounted(() => {
 .approval-notice { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
 .approval-notice.pending { background-color: #fff3cd; border: 1px solid #ffc107; color: #856404; }
 .approval-notice.rejected { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
-.approval-notice i { font-size: 16px; }
+.approval-notice i { font-size: var(--font-size-base); }
 .tab-bar { display: flex; }
-.tab-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 8px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--text-secondary); border-bottom: 2px solid transparent; transition: all 0.2s; }
+.tab-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 8px; border: none; background: none; cursor: pointer; font-size: var(--font-size-xs); color: var(--text-secondary); border-bottom: 2px solid transparent; transition: all 0.2s; }
 .tab-btn:hover { color: var(--text-color); background: var(--hover-color); }
 .tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); background: var(--primary-color-alpha, rgba(99, 102, 241, 0.05)); }
 .tab-content { min-height: 200px; }
 .tab-footer { padding: 12px 20px; display: flex; justify-content: flex-end; }
-.btn { padding: 8px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; border: none; font-weight: 500; }
+.btn { padding: 8px 20px; border-radius: 6px; font-size: var(--font-size-sm); cursor: pointer; border: none; font-weight: 500; }
 .btn-primary { background: var(--primary-color); color: white; }
 .btn-primary:hover { opacity: 0.9; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-sm { padding: 4px 12px; font-size: 13px; background: var(--card-bg, #f5f5f5); color: var(--text-color, #333); border: 1px solid var(--border-color, #ddd); }
+.btn-sm { padding: 4px 12px; font-size: var(--font-size-xs); background: var(--card-bg, #f5f5f5); color: var(--text-color, #333); border: 1px solid var(--border-color, #ddd); }
 .btn-sm:hover { background: var(--primary-color-alpha, rgba(99, 102, 241, 0.08)); }
 .btn-danger { color: #e5484d; border-color: #e5484d; background: transparent; }
 .btn-danger:hover { background: rgba(229, 72, 77, 0.08); }
 .memory-tab { padding: 16px 20px; }
 .memory-toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-.memory-search-input { flex: 1; min-width: 200px; padding: 6px 12px; border: 1px solid var(--border-color, #ddd); border-radius: 6px; font-size: 14px; }
-.memory-empty { color: var(--text-secondary, #999); padding: 24px 0; text-align: center; font-size: 14px; }
+.memory-search-input { flex: 1; min-width: 200px; padding: 6px 12px; border: 1px solid var(--border-color, #ddd); border-radius: 6px; font-size: var(--font-size-sm); }
+.memory-empty { color: var(--text-secondary, #999); padding: 24px 0; text-align: center; font-size: var(--font-size-sm); }
 .memory-list { display: flex; flex-direction: column; gap: 10px; }
 .memory-item { padding: 12px; border: 1px solid var(--border-color, #eee); border-radius: 8px; background: var(--card-bg, #fafafa); }
-.memory-content { font-size: 14px; line-height: 1.6; color: var(--text-color, #333); white-space: pre-wrap; word-break: break-word; }
-.memory-meta { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 12px; color: var(--text-secondary, #999); }
-.memory-edit-input { width: 100%; padding: 8px; border: 1px solid var(--border-color, #ddd); border-radius: 6px; background: var(--bg-color, #fff); color: var(--text-color, #333); font-size: 14px; font-family: inherit; line-height: 1.5; resize: vertical; }
+.memory-content { font-size: var(--font-size-sm); line-height: 1.6; color: var(--text-color, #333); white-space: pre-wrap; word-break: break-word; }
+.memory-meta { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: var(--font-size-xxs); color: var(--text-secondary, #999); }
+.memory-edit-input { width: 100%; padding: 8px; border: 1px solid var(--border-color, #ddd); border-radius: 6px; background: var(--bg-color, #fff); color: var(--text-color, #333); font-size: var(--font-size-sm); font-family: inherit; line-height: 1.5; resize: vertical; }
 .memory-edit-input:focus { outline: none; border-color: var(--primary-color, #4f7cff); }
 .save-btn { color: #16a34a; }
-.memory-importance { color: #f5a623; letter-spacing: 1px; font-size: 11px; }
-.btn-link { background: none; border: none; color: #e5484d; cursor: pointer; font-size: 12px; padding: 0; }
+.memory-importance { color: #f5a623; letter-spacing: 1px; font-size: var(--font-size-xxxs); }
+.btn-link { background: none; border: none; color: #e5484d; cursor: pointer; font-size: var(--font-size-xxs); padding: 0; }
 .btn-link:hover { text-decoration: underline; }
 </style>
