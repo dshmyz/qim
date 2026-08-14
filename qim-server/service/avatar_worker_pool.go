@@ -173,7 +173,11 @@ func (p *AvatarWorkerPool) enqueueToBucket(task AvatarTask, item AvatarBatchItem
 		p.buckets[key] = b
 	}
 	b.items = append(b.items, item)
-	// 批上限：达到上限立即合并提交（不等待窗口），并开新批等待后续消息
+	// 批上限：达到上限立即合并提交（不等待窗口），并把当前桶从 map 删除。
+	// 绝不能在 flush 后预置一个空桶 + 计时器：空桶到期被 fireBucket/flushBucket 处理时
+	// 会读 b.items[0]（任务标识以批首为准），空切片越界触发 panic，且发生在
+	// time.AfterFunc 的 goroutine 里，HTTP recover 拦不住，会崩掉整个服务。
+	// 需要继续聚合时，下一条消息进来走开头 b==nil 分支按需新建新批即可。
 	if len(b.items) >= avatarBatchMaxSize {
 		if b.timer != nil {
 			b.timer.Stop()
@@ -182,13 +186,6 @@ func (p *AvatarWorkerPool) enqueueToBucket(task AvatarTask, item AvatarBatchItem
 		b.timer = nil
 		p.coalesceMu.Unlock()
 		p.flushBucket(b)
-		p.coalesceMu.Lock()
-		if !p.coalesceClose {
-			newB := &avatarBatch{base: task}
-			p.buckets[key] = newB
-			newB.timer = time.AfterFunc(avatarBatchWindow, func() { p.fireBucket(key) })
-		}
-		p.coalesceMu.Unlock()
 		return nil
 	}
 	// trailing-edge：新消息到来先停旧计时器再重置窗口

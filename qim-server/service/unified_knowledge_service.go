@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
+
+// rerankJudgeTimeout 知识检索 LLM 相关性校验阶段的总超时上限。判定串行逐条进行，
+// 用该预算兜底模型逐步挂起/网络变慢，避免多条累加拖死整条回复；超时后保留未判片段。
+const rerankJudgeTimeout = 15 * time.Second
 
 type UnifiedKnowledgeService struct {
 	groupDocSvc    *GroupDocumentService
@@ -270,11 +275,23 @@ func (s *UnifiedKnowledgeService) filterByReranker(query string, snippets []Know
 		logger.WithModule("UnifiedKnowledge").Info("知识检索：LLM 校验已关闭，走纯阈值模式", "query", query, "count", len(snippets))
 		return snippets
 	}
-	ctx := context.Background()
+
+	// 校验阶段整体加超时上限。LLM 判定是串行的（每条一次调用，最多 limit*3 条），
+	// 单次调用虽受 provider 的 HTTP 超时兜底（~120s），多条累加会拖住整条回复。预算耗尽即
+	// 停止发起新判定并保留剩余未判片段（宁可多留不可阻塞），GetCompletion 非流式暂未透传 ctx，
+	// 故在逐条间的 ctx.Err() 检查处提前退出。
+	judgeCtx, cancel := context.WithTimeout(context.Background(), rerankJudgeTimeout)
+	defer cancel()
 
 	filtered := make([]KnowledgeSnippet, 0, len(snippets))
-	for _, snip := range snippets {
-		relevant, confident, err := s.reranker.Relevant(ctx, query, snip)
+	for i, snip := range snippets {
+		if judgeCtx.Err() != nil {
+			logger.WithModule("UnifiedKnowledge").Warn("知识检索：LLM 校验超时，停止判定并保留剩余片段",
+				"query", query, "judged", i, "count", len(snippets))
+			filtered = append(filtered, snippets[i:]...)
+			break
+		}
+		relevant, confident, err := s.reranker.Relevant(judgeCtx, query, snip)
 		if err != nil || !confident {
 			// 判定失败或拿不准 → 保留，避免误杀相关文档
 			filtered = append(filtered, snip)

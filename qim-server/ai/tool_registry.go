@@ -2,6 +2,7 @@ package ai
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
@@ -63,15 +64,40 @@ func (r *ToolRegistry) RegisterTool(tool Tool) {
 func (r *ToolRegistry) RemoveTool(name string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.tools, name)
-	delete(r.enabledTools, name)
+	key := r.canonicalKey(name)
+	if key != "" {
+		delete(r.tools, key)
+		delete(r.enabledTools, key)
+	}
 }
 
-// GetTool 获取工具
+// canonicalKey 返回与 name 大小写不敏感匹配的实际注册键；未命中返回 ""。
+// 工具名可能被 LLM 改写大小写（如 send_message → Send_Message）。白名单匹配已统一 ToLower
+// （见 ai_service.isToolAllowed），执行路径也必须大小写不敏感，否则出现"白名单放行、
+// 执行仍报 tool not found"的不一致。注意保留注册时的原始大小写（外部 MCP 工具名可能含大写），
+// 不强制改小写。锁由调用方持有。
+func (r *ToolRegistry) canonicalKey(name string) string {
+	if _, ok := r.tools[name]; ok {
+		return name
+	}
+	lower := strings.ToLower(name)
+	for key := range r.tools {
+		if strings.ToLower(key) == lower {
+			return key
+		}
+	}
+	return ""
+}
+
+// GetTool 获取工具（大小写不敏感）
 func (r *ToolRegistry) GetTool(name string) (Tool, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	tool, ok := r.tools[name]
+	key := r.canonicalKey(name)
+	if key == "" {
+		return nil, false
+	}
+	tool, ok := r.tools[key]
 	return tool, ok
 }
 
@@ -97,33 +123,39 @@ func (r *ToolRegistry) ListTools() []map[string]interface{} {
 	return tools
 }
 
-// EnableTool 启用工具
+// EnableTool 启用工具（大小写不敏感）
 func (r *ToolRegistry) EnableTool(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.tools[name]; !ok {
+	key := r.canonicalKey(name)
+	if key == "" {
 		return fmt.Errorf("tool not found: %s", name)
 	}
-	r.enabledTools[name] = true
+	r.enabledTools[key] = true
 	return nil
 }
 
-// DisableTool 禁用工具
+// DisableTool 禁用工具（大小写不敏感）
 func (r *ToolRegistry) DisableTool(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.tools[name]; !ok {
+	key := r.canonicalKey(name)
+	if key == "" {
 		return fmt.Errorf("tool not found: %s", name)
 	}
-	r.enabledTools[name] = false
+	r.enabledTools[key] = false
 	return nil
 }
 
-// IsToolEnabled 检查工具是否启用
+// IsToolEnabled 检查工具是否启用（大小写不敏感）
 func (r *ToolRegistry) IsToolEnabled(name string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if e, ok := r.enabledTools[name]; ok {
+	key := r.canonicalKey(name)
+	if key == "" {
+		return true // 默认启用
+	}
+	if e, ok := r.enabledTools[key]; ok {
 		return e
 	}
 	return true // 默认启用
@@ -134,11 +166,9 @@ func (r *ToolRegistry) ExecuteTool(name string, params map[string]interface{}, c
 	if !r.IsToolEnabled(name) {
 		return nil, fmt.Errorf("tool disabled: %s", name)
 	}
-
 	tool, ok := r.GetTool(name)
 	if !ok {
 		return nil, fmt.Errorf("tool not found: %s", name)
 	}
-
 	return tool.Execute(params, ctx)
 }

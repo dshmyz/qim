@@ -45,6 +45,7 @@ func GetAIThresholdSchema(c *gin.Context) {
 		Default     float64 `json:"default"`
 		Min         float64 `json:"min"`
 		Max         float64 `json:"max"`
+		IsBool      bool    `json:"is_bool"` // true=0/1 开关，false=连续/整数取值
 	}
 	result := make([]schema, 0, len(config.Thresholds))
 	for _, t := range config.Thresholds {
@@ -55,6 +56,7 @@ func GetAIThresholdSchema(c *gin.Context) {
 			Default:     t.Default,
 			Min:         t.Min,
 			Max:         t.Max,
+			IsBool:      t.IsBool,
 		})
 	}
 	response.Success(c, result)

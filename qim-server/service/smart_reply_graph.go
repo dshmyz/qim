@@ -204,15 +204,15 @@ func (g *SmartReplyGraph) MCPToolTitles() map[string]string {
 	return g.mcpGateway.ToolTitles()
 }
 
-// SetThresholdService 注入阈值读取服务；nil 时知识来源门槛用默认 0.6。
+// SetThresholdService 注入阈值读取服务；nil 时知识来源门槛用默认 0.3。
 func (g *SmartReplyGraph) SetThresholdService(t *AiThresholdService) {
 	g.thresholdSvc = t
 }
 
-// memorySourceThreshold 返回群记忆来源进徽章的分数门槛（默认 0.6）。
-// 有别于知识库的硬下限（ai.knowledge_score_threshold 已降为 0.3 以保住"唯一命中但词面
-// 相关度低"的文档）：记忆来源若降到 0.3 会让语义较泛的记忆也进徽章，造成噪音，故独立
-// 用较高默认值。非 memory 的“依据”不受此影响。
+// memorySourceThreshold 返回群记忆来源进徽章的分数门槛（默认 0.3，与 ai.knowledge_score_threshold
+// 硬下限一致）。注：早期注释曾设想记忆门槛用更高默认值（0.6）以压掉语义较泛的记忆，
+// 但实际配置与回退值始终为 0.3——若确需区分，应把 ai.memory_source_threshold 默认值单独调高，
+// 而非依赖本函数。非 memory 的“依据”不受此影响。
 func (g *SmartReplyGraph) memorySourceThreshold() float64 {
 	if g.thresholdSvc != nil {
 		return g.thresholdSvc.GetFloat("ai.memory_source_threshold", 0.3)
