@@ -309,10 +309,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   color: var(--primary-color);
 }
 
-.merged-forward-record-content :deep(.text-message){
-  padding: 5px 0px;
-}
-
 .merged-forward-record-content :deep(.message-bubble),
 .merged-forward-record-content :deep(.markdown-message),
 .merged-forward-record-content :deep(.message-content-image) {
