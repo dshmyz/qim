@@ -19,11 +19,11 @@ import (
 // 工具调用基建，而无需 import handler（避免循环依赖）。handler 包通过 type 别名
 // `type ToolCallRecord = service.ToolCallRecord` 保持零改动引用同一类型。
 type ToolCallRecord struct {
-	ID       string                 `json:"id,omitempty"`
-	ToolName string                 `json:"tool_name,omitempty"` // 原始工具名（如 mcp_server_search），供前端 fallback 展示
-	ToolLabel string                `json:"tool_label"`
-	Args     map[string]interface{} `json:"args,omitempty"`
-	Status   string                 `json:"status,omitempty"` // "running" | "ok" | "error"
+	ID        string                 `json:"id,omitempty"`
+	ToolName  string                 `json:"tool_name,omitempty"` // 原始工具名（如 mcp_server_search），供前端 fallback 展示
+	ToolLabel string                 `json:"tool_label"`
+	Args      map[string]interface{} `json:"args,omitempty"`
+	Status    string                 `json:"status,omitempty"` // "running" | "ok" | "error"
 }
 
 // StreamingAISender 抽象 handler 层的流式 AI 消息发送 + 工具调用事件推送能力，

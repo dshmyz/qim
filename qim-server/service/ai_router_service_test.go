@@ -28,7 +28,7 @@ func defaultRouterForTest() *ai.RouterConfig {
 	return &ai.RouterConfig{
 		DefaultTask: ai.TaskTypeChat,
 		Routes: map[ai.TaskType]ai.Route{
-			ai.TaskTypeChat:  {Provider: "openai", Model: "gpt-4o"},
+			ai.TaskTypeChat:   {Provider: "openai", Model: "gpt-4o"},
 			ai.TaskTypeDigest: {Provider: "openai", Model: "gpt-4o-mini"},
 		},
 	}

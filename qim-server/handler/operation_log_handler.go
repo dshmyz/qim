@@ -130,10 +130,10 @@ func GetOperationLogStats(c *gin.Context) {
 	}
 
 	result := gin.H{
-		"total":        total,
-		"success":      successCount,
-		"failed":       failedCount,
-		"avgDuration":  int(avgDuration),
+		"total":       total,
+		"success":     successCount,
+		"failed":      failedCount,
+		"avgDuration": int(avgDuration),
 	}
 
 	if trend {

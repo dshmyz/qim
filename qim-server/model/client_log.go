@@ -34,9 +34,9 @@ type UserFeedback struct {
 	DeletedAt  gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// 非持久化字段：由 handler 层填充，便于前端直接展示
-	Username     string `json:"username" gorm:"-"`
-	Nickname     string `json:"nickname" gorm:"-"`
-	HandlerName  string `json:"handlerName" gorm:"-"`
+	Username    string `json:"username" gorm:"-"`
+	Nickname    string `json:"nickname" gorm:"-"`
+	HandlerName string `json:"handlerName" gorm:"-"`
 }
 
 func (CrashLog) TableName() string {

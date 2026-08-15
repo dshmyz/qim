@@ -21,7 +21,7 @@ func (m *mockStorageAccessor) Put(_ context.Context, _ string, _ io.Reader, _ in
 	return "", nil
 }
 func (m *mockStorageAccessor) DeleteByPath(_ context.Context, _ string) error { return nil }
-func (m *mockStorageAccessor) Kind() string                                    { return "mock" }
+func (m *mockStorageAccessor) Kind() string                                   { return "mock" }
 
 // TestSendBotTextReply_SendsDirectMessage 验证 sendBotTextReply 直接发送 bot 消息，
 // 不经过 AI 流式/legacy 管道。错误提示（如"文件过大"）必须原样送达用户。

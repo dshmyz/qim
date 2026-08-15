@@ -163,9 +163,9 @@ func TestShouldForceDownload(t *testing.T) {
 
 func TestIsUploadEnabled(t *testing.T) {
 	tests := []struct {
-		name      string
+		name       string
 		enableFunc func() (string, error)
-		want      bool
+		want       bool
 	}{
 		{"nil函数默认允许", nil, true},
 		{"返回true", func() (string, error) { return "true", nil }, true},

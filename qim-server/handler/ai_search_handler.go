@@ -2,7 +2,6 @@ package handler
 
 import (
 	"fmt"
-	"net/http"
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
@@ -10,6 +9,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"

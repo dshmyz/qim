@@ -128,8 +128,8 @@ func (s *GroupDocumentService) GetDocumentsWithStatus(groupID uint) ([]map[strin
 			// failed，让用户能重试，而不是永远卡在"处理中"。
 			if status.Status == "processing" && time.Since(status.UpdatedAt) > staleProcessingAfter {
 				s.db.Model(&status).Updates(map[string]interface{}{
-					"status":  "failed",
-					"error":   "处理超过 5 分钟仍未完成，已重置，请点击重试",
+					"status": "failed",
+					"error":  "处理超过 5 分钟仍未完成，已重置，请点击重试",
 				})
 				result["process_status"] = "failed"
 				result["process_error"] = "处理超过 5 分钟仍未完成，已重置，请点击重试"
@@ -411,8 +411,8 @@ func (s *GroupDocumentService) buildDocumentGraph(groupID, docID uint, title, te
 
 	docNodeID := fmt.Sprintf("doc:%d", docID)
 	docNode := &graph.GraphNode{
-		ID:   docNodeID,
-		Type: "document",
+		ID:     docNodeID,
+		Type:   "document",
 		Labels: []string{"group_document"},
 		Properties: map[string]string{
 			"group_id": fmt.Sprintf("%d", groupID),
@@ -435,8 +435,8 @@ func (s *GroupDocumentService) buildDocumentGraph(groupID, docID uint, title, te
 		// 实体节点
 		entityID := "entity:" + e
 		if err := g.UpsertNode(&graph.GraphNode{
-			ID:   entityID,
-			Type: "entity",
+			ID:     entityID,
+			Type:   "entity",
 			Labels: []string{"extracted"},
 			Properties: map[string]string{
 				"name":   e,

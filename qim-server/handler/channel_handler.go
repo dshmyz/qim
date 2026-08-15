@@ -408,12 +408,12 @@ func CreateChannelMessage(c *gin.Context) {
 			"message_id":   channelMessage.ID,
 		})
 		notification := model.Notification{
-			UserID:         subscriber.UserID,
-			Type:           "channel_message",
-			Title:          fmt.Sprintf("频道消息: %s", channel.Name),
-			Content:        req.Content,
-			ActionType:     "channel_message",
-			ActionPayload:  string(payload),
+			UserID:        subscriber.UserID,
+			Type:          "channel_message",
+			Title:         fmt.Sprintf("频道消息: %s", channel.Name),
+			Content:       req.Content,
+			ActionType:    "channel_message",
+			ActionPayload: string(payload),
 		}
 		db.Create(&notification)
 
@@ -718,12 +718,12 @@ func UpdateMyChannel(c *gin.Context) {
 			First(&approval).Error; err == nil {
 			// 更新审批记录的快照字段
 			db.Model(&approval).Updates(map[string]interface{}{
-				"status":            model.ApprovalStatusPending,
-				"target_name":       updates["name"],
+				"status":             model.ApprovalStatusPending,
+				"target_name":        updates["name"],
 				"target_description": updates["description"],
-				"reject_reason":     "",
-				"approved_at":       nil,
-				"approved_by":       nil,
+				"reject_reason":      "",
+				"approved_at":        nil,
+				"approved_by":        nil,
 			})
 		}
 	}

@@ -37,7 +37,7 @@ type AiThresholdConfig struct {
 	Default     float64
 	Min         float64
 	Max         float64
-	IsBool      bool // true = 仅 0/1 的开关（前端渲染为 switch）；false = 连续/整数取值（渲染为数字输入）
+	IsBool      bool   // true = 仅 0/1 的开关（前端渲染为 switch）；false = 连续/整数取值（渲染为数字输入）
 	Label       string // 前端展示用的中文标签
 	Description string // 前端展示用的说明
 }

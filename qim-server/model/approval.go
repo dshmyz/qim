@@ -28,24 +28,24 @@ const (
 )
 
 type Approval struct {
-	ID          uint           `json:"id" gorm:"primarykey"`
-	TargetType  string         `json:"target_type" gorm:"size:30;not null"`     // 审批类型
-	TargetID    uint           `json:"target_id" gorm:"not null"`               // 目标记录ID
-	Status      string         `json:"status" gorm:"size:20;default:'pending'"` // 状态
-	AppliedAt   time.Time      `json:"applied_at" gorm:"not null"`              // 申请时间
-	AppliedBy   uint           `json:"applied_by" gorm:"not null"`              // 申请人ID
-	ApprovedAt  *time.Time     `json:"approved_at"`                             // 审批时间
-	ApprovedBy  *uint          `json:"approved_by"`                             // 审批人ID
-	RejectReason string        `json:"reject_reason" gorm:"type:text"`          // 拒绝原因
+	ID           uint       `json:"id" gorm:"primarykey"`
+	TargetType   string     `json:"target_type" gorm:"size:30;not null"`     // 审批类型
+	TargetID     uint       `json:"target_id" gorm:"not null"`               // 目标记录ID
+	Status       string     `json:"status" gorm:"size:20;default:'pending'"` // 状态
+	AppliedAt    time.Time  `json:"applied_at" gorm:"not null"`              // 申请时间
+	AppliedBy    uint       `json:"applied_by" gorm:"not null"`              // 申请人ID
+	ApprovedAt   *time.Time `json:"approved_at"`                             // 审批时间
+	ApprovedBy   *uint      `json:"approved_by"`                             // 审批人ID
+	RejectReason string     `json:"reject_reason" gorm:"type:text"`          // 拒绝原因
 	// 快照字段：审批创建时写入，列表查询无需回查源表
-	TargetName        string `json:"target_name" gorm:"size:200"`         // 审批目标名称快照
-	TargetDescription string `json:"target_description" gorm:"type:text"` // 描述快照
-	CreatorName       string `json:"creator_name" gorm:"size:100"`        // 申请人昵称快照
-	CreatorAvatar     string `json:"creator_avatar" gorm:"size:500"`      // 申请人头像快照
-	ExtraJSON         string `json:"extra_json" gorm:"type:text"`         // 各类型额外信息（JSON 字符串）
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+	TargetName        string         `json:"target_name" gorm:"size:200"`         // 审批目标名称快照
+	TargetDescription string         `json:"target_description" gorm:"type:text"` // 描述快照
+	CreatorName       string         `json:"creator_name" gorm:"size:100"`        // 申请人昵称快照
+	CreatorAvatar     string         `json:"creator_avatar" gorm:"size:500"`      // 申请人头像快照
+	ExtraJSON         string         `json:"extra_json" gorm:"type:text"`         // 各类型额外信息（JSON 字符串）
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	DeletedAt         gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (Approval) TableName() string {

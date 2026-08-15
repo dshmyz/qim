@@ -9,8 +9,8 @@ import (
 
 // fakeAnydocBackend 测试用的 anydoc 增强后端：可控制可用性、输出与错误。
 type fakeAnydocBackend struct {
-	avail   bool
-	output  string
+	avail      bool
+	output     string
 	convertErr error
 	// 记录最后一次调用的文件路径，便于断言走了 anydoc 分支
 	lastCalls []string
@@ -295,4 +295,3 @@ func writeMinimalDocx(t *testing.T, path string) {
 		t.Fatalf("zip close: %v", err)
 	}
 }
-

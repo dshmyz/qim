@@ -64,8 +64,8 @@ func TestExternalMCPTool_ExecuteProxiesRemoteCall(t *testing.T) {
 	session := connectTestSession(t, ts.URL)
 
 	tool := NewExternalMCPTool(ExternalMCPSendMeta{
-		ConnName:    "demo",
-		ToolName:    "calculator",
+		ConnName: "demo",
+		ToolName: "calculator",
 		Schema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

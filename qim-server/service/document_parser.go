@@ -130,8 +130,10 @@ func (p *DocumentParser) Parse(filePath string) (string, error) {
 
 // parsePathRegexp 匹配错误信息中内嵌的文件路径 token。
 // 各解析错误会把待解析文件的（临时）绝对路径拼进文案，形如
-//   "PDF /var/folders/zl/xxx/T/qim-doc-123.pdf 无法提取文本内容：..."、
-//   "打开 PDF /tmp/qim-456.pdf 失败: ..."
+//
+//	"PDF /var/folders/zl/xxx/T/qim-doc-123.pdf 无法提取文本内容：..."、
+//	"打开 PDF /tmp/qim-456.pdf 失败: ..."
+//
 // 这类路径无空格、含扩展名；`/\S+\.\w{1,4}` 可整段命中。
 var parsePathRegexp = regexp.MustCompile(`/\S+\.\w{1,4}`)
 
@@ -344,7 +346,7 @@ func regexExtractDocxText(data []byte) string {
 		if closeTag == -1 {
 			break
 		}
-		text := strings.TrimSpace(content[textStart:textStart+closeTag])
+		text := strings.TrimSpace(content[textStart : textStart+closeTag])
 		if text != "" {
 			texts = append(texts, text)
 		}
@@ -510,8 +512,8 @@ type xlsxSST struct {
 }
 
 type xlsxSI struct {
-	Text string    `xml:"t"`      // 简单文本
-	Runs []xlsxRun `xml:"r"`      // 富文本片段
+	Text string    `xml:"t"` // 简单文本
+	Runs []xlsxRun `xml:"r"` // 富文本片段
 }
 
 type xlsxRun struct {
@@ -582,10 +584,10 @@ type xlsxRow struct {
 }
 
 type xlsxCell struct {
-	Ref       string           `xml:"r,attr"`        // 单元格引用如 "A1"
-	Type      string           `xml:"t,attr"`        // "s"=共享字符串, "n"/""=数字, "inlineStr"=内联
-	Value     string           `xml:"v"`             // 值
-	InlineStr xlsxInlineString `xml:"is"`            // 内联字符串
+	Ref       string           `xml:"r,attr"` // 单元格引用如 "A1"
+	Type      string           `xml:"t,attr"` // "s"=共享字符串, "n"/""=数字, "inlineStr"=内联
+	Value     string           `xml:"v"`      // 值
+	InlineStr xlsxInlineString `xml:"is"`     // 内联字符串
 }
 
 type xlsxInlineString struct {

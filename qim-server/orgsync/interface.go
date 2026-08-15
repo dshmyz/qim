@@ -5,22 +5,22 @@ import (
 )
 
 type OrgData struct {
-	Users         []UserInfo
-	Departments   []DepartmentInfo
-	Groups        []GroupInfo
-	UserDeptRelations []UserDeptRelation
+	Users              []UserInfo
+	Departments        []DepartmentInfo
+	Groups             []GroupInfo
+	UserDeptRelations  []UserDeptRelation
 	UserGroupRelations []UserGroupRelation
 }
 
 type UserInfo struct {
-	ID          string
-	Username    string
-	Nickname    string
-	Email       string
-	Phone       string
-	Avatar      string
+	ID           string
+	Username     string
+	Nickname     string
+	Email        string
+	Phone        string
+	Avatar       string
 	DepartmentID string
-	Position    string
+	Position     string
 }
 
 type DepartmentInfo struct {

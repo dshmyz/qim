@@ -39,7 +39,7 @@ func (r *notificationRepository) MarkAsRead(ctx context.Context, id uint) error 
 		Model(&model.Notification{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
-			"read": true,
+			"read":    true,
 			"read_at": now,
 		}).Error
 }
@@ -50,7 +50,7 @@ func (r *notificationRepository) MarkAllAsRead(ctx context.Context, userID uint)
 		Model(&model.Notification{}).
 		Where("user_id = ? AND `read` = ?", userID, false).
 		Updates(map[string]interface{}{
-			"read": true,
+			"read":    true,
 			"read_at": now,
 		}).Error
 }

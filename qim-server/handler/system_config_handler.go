@@ -28,11 +28,11 @@ func GetSystemConfig(c *gin.Context) {
 func mapConfigToFrontend(raw map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{})
 	rateLimitKeys := map[string]string{
-		"rate_limit:global_rate":          "rateLimitGlobalRate",
+		"rate_limit:global_rate":           "rateLimitGlobalRate",
 		"rate_limit:global_window_seconds": "rateLimitGlobalWindow",
-		"rate_limit:login_max_attempts":   "rateLimitLoginMaxAttempts",
-		"rate_limit:login_window_seconds": "rateLimitLoginWindow",
-		"rate_limit:login_ban_seconds":    "rateLimitLoginBan",
+		"rate_limit:login_max_attempts":    "rateLimitLoginMaxAttempts",
+		"rate_limit:login_window_seconds":  "rateLimitLoginWindow",
+		"rate_limit:login_ban_seconds":     "rateLimitLoginBan",
 	}
 	for k, v := range raw {
 		switch k {

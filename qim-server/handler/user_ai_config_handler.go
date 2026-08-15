@@ -3,13 +3,13 @@ package handler
 import (
 	"encoding/json"
 	"errors"
-	"strconv"
-	"time"
 	"github.com/dshmyz/qim/qim-server/ai"
-	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )

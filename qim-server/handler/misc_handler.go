@@ -297,7 +297,7 @@ func SendToUserMessage(c *gin.Context) {
 func BroadcastChatMessage(c *gin.Context) {
 	var req struct {
 		Content        string `json:"content" binding:"required"`
-		TargetUserIDs  []uint `json:"target_user_ids"` // 为空表示全员；非空则仅发给这些用户
+		TargetUserIDs  []uint `json:"target_user_ids"`  // 为空表示全员；非空则仅发给这些用户
 		ExcludeUserIDs []uint `json:"exclude_user_ids"` // 可选：从目标中排除（如排除系统/机器人）
 	}
 

@@ -46,9 +46,9 @@ func TestChunkDocument_Overlap(t *testing.T) {
 // TestSplitBySize_SentenceBoundary 重叠区域应尽量在句子边界断开，而非字符中间。
 func TestSplitBySize_SentenceBoundary(t *testing.T) {
 	// 每段约 80 rune（句号结尾），3 段共 240+ > maxSize=150，验证重叠在句子边界处
-	s1 := strings.Repeat("第一句详细内容测试一下。", 5)   // 55 rune
-	s2 := strings.Repeat("第二段文字充分描述。", 5)        // 45 rune
-	s3 := strings.Repeat("第三段落完整结束语。", 5)        // 45 rune
+	s1 := strings.Repeat("第一句详细内容测试一下。", 5) // 55 rune
+	s2 := strings.Repeat("第二段文字充分描述。", 5)   // 45 rune
+	s3 := strings.Repeat("第三段落完整结束语。", 5)   // 45 rune
 	text := s1 + "\n\n" + s2 + "\n\n" + s3
 	chunks := SplitBySize(text, 150)
 	require.Greater(t, len(chunks), 1, "应被切分")

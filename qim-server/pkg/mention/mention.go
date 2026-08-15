@@ -1,8 +1,9 @@
 // Package mention 提供 @ 提及的解析、序列化与展示工具。
 //
 // content 中提及以 token 内嵌：
-//   @{mention:<id>|<urlencoded name>}   @ 单人
-//   @{mention:all|所有人}               @ 所有人
+//
+//	@{mention:<id>|<urlencoded name>}   @ 单人
+//	@{mention:all|所有人}               @ 所有人
 //
 // content 是唯一事实源。MentionUserIDs 等派生信息读取时实时计算，不落库。
 package mention
@@ -15,8 +16,9 @@ import (
 )
 
 // tokenRegex 匹配 content 中的 mention token。
-//   group 1: target — "all" 或纯数字 user id
-//   group 2: name   — urlencoded 显示名（可缺失）
+//
+//	group 1: target — "all" 或纯数字 user id
+//	group 2: name   — urlencoded 显示名（可缺失）
 var tokenRegex = regexp.MustCompile(`@\{mention:(all|[1-9]\d*)(?:\|([^}]*))?\}`)
 
 // Mention 表示一次提及。

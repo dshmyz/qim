@@ -108,10 +108,10 @@ func ReloadOrgSyncJobs(sched *scheduler.Scheduler, engine *Engine, db *gorm.DB) 
 // Scheduler 是 OrgSync 专用调度器，内部基于 pkg/scheduler（robfig/cron/v3）
 // 对外保留 Start/Stop/Reload API 以兼容现有调用方
 type Scheduler struct {
-	engine   *Engine
-	mu       sync.Mutex
-	started  bool
-	sched    *scheduler.Scheduler
+	engine  *Engine
+	mu      sync.Mutex
+	started bool
+	sched   *scheduler.Scheduler
 }
 
 func NewScheduler(engine *Engine) *Scheduler {

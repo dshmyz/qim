@@ -33,9 +33,9 @@ func CreateShortLink(c *gin.Context) {
 
 	var req struct {
 		OriginalURL string     `json:"original_url" binding:"required"`
-		CustomCode  string     `json:"custom_code"`  // 可选的自定义后缀
-		ExpiresAt   *time.Time `json:"expires_at"`   // 可选的过期时间
-		Password    string     `json:"password"`     // 可选的访问密码
+		CustomCode  string     `json:"custom_code"` // 可选的自定义后缀
+		ExpiresAt   *time.Time `json:"expires_at"`  // 可选的过期时间
+		Password    string     `json:"password"`    // 可选的访问密码
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -103,11 +103,11 @@ func CreateShortLink(c *gin.Context) {
 		"visit_count":  shortLink.VisitCount,
 		"created_at":   shortLink.CreatedAt,
 	}
-	
+
 	if shortLink.ExpiresAt != nil {
 		response["expires_at"] = shortLink.ExpiresAt
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": response,
@@ -138,11 +138,11 @@ func GetShortLinks(c *gin.Context) {
 			"created_at":   link.CreatedAt,
 			"has_password": link.Password != "",
 		}
-		
+
 		if link.ExpiresAt != nil {
 			item["expires_at"] = link.ExpiresAt
 		}
-		
+
 		response[i] = item
 	}
 
@@ -176,7 +176,7 @@ func RedirectShortLink(c *gin.Context) {
 		if password == "" {
 			password = c.GetHeader("X-ShortLink-Password")
 		}
-		
+
 		if password == "" {
 			response.Unauthorized(c, "需要访问密码")
 			return

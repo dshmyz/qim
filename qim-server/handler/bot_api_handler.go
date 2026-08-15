@@ -38,7 +38,7 @@ func (h *BotAPIHandler) SendMessage(c *gin.Context) {
 
 	var req struct {
 		ToUserID       uint   `json:"to_user_id"`
-		ToUserName     string `json:"to_user_name"`     // 可选：按用户名/昵称解析
+		ToUserName     string `json:"to_user_name"` // 可选：按用户名/昵称解析
 		Content        string `json:"content"`
 		MsgType        string `json:"msg_type"`
 		ReplyToID      *uint  `json:"reply_to_id"`

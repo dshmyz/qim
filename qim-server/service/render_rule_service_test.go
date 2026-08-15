@@ -152,10 +152,10 @@ func TestSaveRules_Overwrite(t *testing.T) {
 	// 覆盖为两条
 	rules2 := []RenderRule{
 		{ID: "rule_a", Name: "A", Enabled: true, Priority: 10,
-			Match: RenderMatch{Pattern: `A-(\d+)`, CaptureGroups: map[string]int{"n": 1}},
+			Match:  RenderMatch{Pattern: `A-(\d+)`, CaptureGroups: map[string]int{"n": 1}},
 			Render: RenderConfig{Type: "link", URLTemplate: "/a/{{n}}", LabelTemplate: "A-{{n}}"}},
 		{ID: "rule_b", Name: "B", Enabled: false, Priority: 20,
-			Match: RenderMatch{Pattern: `B-(\d+)`, CaptureGroups: map[string]int{"n": 1}},
+			Match:  RenderMatch{Pattern: `B-(\d+)`, CaptureGroups: map[string]int{"n": 1}},
 			Render: RenderConfig{Type: "link", URLTemplate: "/b/{{n}}", LabelTemplate: "B-{{n}}"}},
 	}
 	require.NoError(t, svc.SaveRules(rules2))
@@ -181,7 +181,7 @@ func TestSaveRules_InvalidatesCache(t *testing.T) {
 	require.NoError(t, svc.SaveRules([]RenderRule{
 		validJiraRule(),
 		{ID: "x", Name: "X", Enabled: true, Priority: 5,
-			Match: RenderMatch{Pattern: `X-(\d+)`, CaptureGroups: map[string]int{"n": 1}},
+			Match:  RenderMatch{Pattern: `X-(\d+)`, CaptureGroups: map[string]int{"n": 1}},
 			Render: RenderConfig{Type: "link", URLTemplate: "/x/{{n}}", LabelTemplate: "X-{{n}}"}},
 	}))
 

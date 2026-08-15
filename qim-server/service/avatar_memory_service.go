@@ -59,11 +59,11 @@ func (s *AvatarMemoryService) Remember(userID uint, conversationID uint, content
 	memoryID := fmt.Sprintf("memory_%d_%d", userID, time.Now().UnixMilli())
 
 	_, err := s.db.SaveMemory(types.MemorySaveRequest{
-		MemoryID: memoryID,
-		UserID:   fmt.Sprintf("%d", userID),
-		Content:  content,
-		Scope:    "user",
-		Namespace: "avatar",
+		MemoryID:   memoryID,
+		UserID:     fmt.Sprintf("%d", userID),
+		Content:    content,
+		Scope:      "user",
+		Namespace:  "avatar",
 		Importance: importance01(importance), // 1-5 → [0,1]，重要记忆在召回时更靠前
 		Metadata: map[string]interface{}{
 			"conversation_id": fmt.Sprintf("%d", conversationID),
@@ -128,8 +128,8 @@ func (s *AvatarMemoryService) saveConsolidatedMemory(userID, conversationID uint
 		if cerr == nil && conflict {
 			content := ref.Summary
 			_, uerr := s.db.UpdateMemory(types.MemoryUpdateRequest{
-				MemoryID: memories[0].DocID,
-				Content:  &content,
+				MemoryID:   memories[0].DocID,
+				Content:    &content,
 				Importance: func() *float64 { v := importance01(ref.Importance); return &v }(),
 			})
 			if uerr != nil {
@@ -143,18 +143,18 @@ func (s *AvatarMemoryService) saveConsolidatedMemory(userID, conversationID uint
 
 	memoryID := fmt.Sprintf("memory_%d_%d", userID, time.Now().UnixMilli())
 	_, err := s.db.SaveMemory(types.MemorySaveRequest{
-		MemoryID:  memoryID,
-		UserID:    uid,
-		Content:   ref.Summary,
-		Scope:     "user",
-		Namespace: namespace,
+		MemoryID:   memoryID,
+		UserID:     uid,
+		Content:    ref.Summary,
+		Scope:      "user",
+		Namespace:  namespace,
 		Importance: importance01(ref.Importance),
 		Metadata: map[string]interface{}{
-			"conversation_id":          cid,
-			"remembered_at":            fmt.Sprintf("%d", time.Now().Unix()),
-			"importance":               fmt.Sprintf("%.1f", ref.Importance),
-			"knowledge_memory_summary": "true", // 标记为反射摘要记忆
-			"knowledge_memory_themes":  ref.Themes,
+			"conversation_id":           cid,
+			"remembered_at":             fmt.Sprintf("%d", time.Now().Unix()),
+			"importance":                fmt.Sprintf("%.1f", ref.Importance),
+			"knowledge_memory_summary":  "true", // 标记为反射摘要记忆
+			"knowledge_memory_themes":   ref.Themes,
 			"knowledge_memory_entities": ref.Entities,
 		},
 	})
@@ -176,9 +176,9 @@ func (s *AvatarMemoryService) Recall(userID uint, query string, topK int) ([]Sea
 		// 提升重要度与新颖度的排序权重：反射落库的重要记忆（Importance 1-5 → [0,1]）与
 		// 较新的记忆在召回时更靠前，避免被默认权重（importance 0.10 / recency 0.05）稀释。
 		SemanticWeight:   0.55,
-		LexicalWeight:   0.15,
+		LexicalWeight:    0.15,
 		ImportanceWeight: 0.20,
-		RecencyWeight:   0.10,
+		RecencyWeight:    0.10,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("检索记忆失败: %w", err)
@@ -307,9 +307,9 @@ func toStringSlice(v interface{}) []string {
 
 // MemoryGraph 是分身知识图谱「记忆」来源的聚合结果。
 type MemoryGraph struct {
-	Nodes    []MemoryGraphNode    `json:"nodes"`
-	Edges    []MemoryGraphEdge    `json:"edges"`
-	Memories []MemoryGraphMemory  `json:"memories"`
+	Nodes    []MemoryGraphNode   `json:"nodes"`
+	Edges    []MemoryGraphEdge   `json:"edges"`
+	Memories []MemoryGraphMemory `json:"memories"`
 }
 
 type MemoryGraphNode struct {
@@ -327,8 +327,8 @@ type MemoryGraphEdge struct {
 }
 
 type MemoryGraphMemory struct {
-	ID      string   `json:"id"`
-	Content string   `json:"content"`
+	ID      string `json:"id"`
+	Content string `json:"content"`
 	// Terms 该条记忆的主题/实体集合，供前端点节点时按名字回查"包含此名词的记忆"
 	Terms []string `json:"terms"`
 }

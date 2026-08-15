@@ -85,7 +85,7 @@ func (l *IPRateLimiter) cleanupVisitors() {
 func RateLimitMiddleware(limiter *IPRateLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
-		
+
 		if !limiter.Allow(ip) {
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"code":    -1,
@@ -94,7 +94,7 @@ func RateLimitMiddleware(limiter *IPRateLimiter) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		c.Next()
 	}
 }

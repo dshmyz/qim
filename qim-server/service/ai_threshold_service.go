@@ -16,11 +16,11 @@ import (
 // AiThresholdService AI 阈值读写服务。
 // 从 system_configs 表读取阈值，支持运行时热更新（改完即生效）。
 type AiThresholdService struct {
-	db         *gorm.DB
-	cache      map[string]float64
+	db          *gorm.DB
+	cache       map[string]float64
 	cacheExpiry time.Time
-	mu         sync.RWMutex
-	cacheTTL   time.Duration
+	mu          sync.RWMutex
+	cacheTTL    time.Duration
 }
 
 func NewAiThresholdService(db *gorm.DB) *AiThresholdService {

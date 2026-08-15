@@ -24,9 +24,9 @@ type avatarBatchKey struct {
 
 // avatarBatch 合并桶：收集窗口内到达的批内消息，计时器到期后作为一个批量任务提交。
 type avatarBatch struct {
-	base  AvatarTask          // 批首任务（承载 UserID/ConversationID/IsGroupChat/GroupName 等）
-	items []AvatarBatchItem   // 批内逐条消息
-	timer *time.Timer         // trailing-edge 防抖计时器（新消息刷新窗口）
+	base  AvatarTask        // 批首任务（承载 UserID/ConversationID/IsGroupChat/GroupName 等）
+	items []AvatarBatchItem // 批内逐条消息
+	timer *time.Timer       // trailing-edge 防抖计时器（新消息刷新窗口）
 }
 
 // 合并窗口与批上限。
@@ -38,12 +38,12 @@ const (
 // AvatarBatchItem 合并窗口内的一条触发消息。合并器把同一 (UserID, ConversationID)
 // 3 秒窗口内到达的多条触发聚合为一批，worker 据此走批量多模态生成。
 type AvatarBatchItem struct {
-	Msg            string // 消息内容（text 或 image 的 content JSON）
-	MsgType        string // text / image
-	FileID         uint   // MsgType=image 时的文件 id
-	Name           string // MsgType=image 时的文件名
-	TriggerUserID  uint   // 发出者（群聊私聊回弹等按批首发送者）
-	TriggerName    string // 发出者昵称
+	Msg           string // 消息内容（text 或 image 的 content JSON）
+	MsgType       string // text / image
+	FileID        uint   // MsgType=image 时的文件 id
+	Name          string // MsgType=image 时的文件名
+	TriggerUserID uint   // 发出者（群聊私聊回弹等按批首发送者）
+	TriggerName   string // 发出者昵称
 }
 
 // AvatarTask 分身任务
@@ -143,10 +143,10 @@ func (p *AvatarWorkerPool) Close() {
 func (p *AvatarWorkerPool) Submit(task AvatarTask) error {
 	// 从单条任务提取批内消息项：BatchItems 为空时用 TriggerMessage 语义（trigger 侧单条构造）
 	item := AvatarBatchItem{
-		Msg:            task.TriggerMessage,
-		MsgType:        task.TriggerMsgType,
-		TriggerUserID:  task.TriggerUserID,
-		TriggerName:    task.TriggerName,
+		Msg:           task.TriggerMessage,
+		MsgType:       task.TriggerMsgType,
+		TriggerUserID: task.TriggerUserID,
+		TriggerName:   task.TriggerName,
 	}
 	if task.TriggerMsgType == "image" {
 		item.FileID = parseQuotedFileID(task.TriggerMessage)

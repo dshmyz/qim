@@ -118,4 +118,3 @@ func TestOpenAIProviderPropagatesEmbeddingBaseURL(t *testing.T) {
 		t.Fatalf("createOpenAIProvider 未透传 EmbeddingBaseURL: 期望 %q 实际 %q", want, lop.config.EmbeddingBaseURL)
 	}
 }
-

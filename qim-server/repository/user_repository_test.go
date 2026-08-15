@@ -6,8 +6,8 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/model"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
+	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 )
 

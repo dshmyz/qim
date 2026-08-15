@@ -157,9 +157,9 @@ func (f *ProviderFactory) createAnthropicProviderFromConfig(cfg ProviderConfig) 
 		extraParams["temperature"] = 0.7
 	}
 	return NewAnthropicProvider(ProviderConfig{
-		APIKey:  cfg.APIKey,
-		Model:   cfg.Model,
-		BaseURL: cfg.BaseURL,
+		APIKey:      cfg.APIKey,
+		Model:       cfg.Model,
+		BaseURL:     cfg.BaseURL,
 		ExtraParams: extraParams,
 	})
 }

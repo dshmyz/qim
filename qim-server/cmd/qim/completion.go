@@ -6,7 +6,8 @@ import (
 
 // newCompletionCmd 生成 shell 自动补全脚本。
 // 用法: qim completion bash > /etc/bash_completion.d/qim
-//      qim completion zsh > "${fpath[1]}/_qim"
+//
+//	qim completion zsh > "${fpath[1]}/_qim"
 func newCompletionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "completion [bash|zsh|fish|powershell]",

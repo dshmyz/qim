@@ -60,9 +60,9 @@ func parseRememberVerdictJSON(s string) (RememberVerdict, bool) {
 		return RememberVerdict{}, false
 	}
 	var raw struct {
-		Remember   json.RawMessage `json:"remember"`
+		Remember       json.RawMessage `json:"remember"`
 		ShouldRemember json.RawMessage `json:"should_remember"`
-		Importance json.RawMessage `json:"importance"`
+		Importance     json.RawMessage `json:"importance"`
 	}
 	if err := json.Unmarshal([]byte(block), &raw); err != nil {
 		return RememberVerdict{}, false

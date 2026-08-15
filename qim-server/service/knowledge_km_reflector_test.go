@@ -89,7 +89,6 @@ func TestParseReflectionJSON_Invalid(t *testing.T) {
 	}
 }
 
-
 // TestRememberTaskPrompt_IncludesContext
 // 记忆判定提示应包含对话上下文（最近几条消息），让 LLM 理解"这句话在讨论什么"
 // 再判断是否值得记。无上下文时向后兼容，不报错。

@@ -14,8 +14,8 @@ import (
 
 // NoteVectorService 笔记向量化和检索服务
 type NoteVectorService struct {
-	vectorSvc  *VectorService
-	aiService  *ai.AIService
+	vectorSvc   *VectorService
+	aiService   *ai.AIService
 	entityCache sync.Map // key: "userID:noteID" → value: string (逗号分隔实体)
 }
 
@@ -239,8 +239,8 @@ func (s *NoteVectorService) BuildNoteGraph(userID uint, maxNodes int) (*MemoryGr
 		}
 	}
 	type noteItem struct {
-		noteID string
-		title  string
+		noteID   string
+		title    string
 		entities []string
 	}
 	// 并发提取实体：无预提取 metadata 的笔记需要调 LLM。

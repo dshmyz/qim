@@ -27,12 +27,12 @@ func NewTodoExtractor(aiService *ai.AIService) *TodoExtractor {
 
 // ExtractedTodo 提取的待办结构
 type ExtractedTodo struct {
-	Title        string `json:"title"`
-	Description  string `json:"description"`
-	Assignee     string `json:"assignee,omitempty"`
-	DueDate      string `json:"due_date,omitempty"`
-	Priority     string `json:"priority,omitempty"`
-	RemindMinutes int   `json:"remind_minutes,omitempty"` // 提前提醒分钟数
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	Assignee      string `json:"assignee,omitempty"`
+	DueDate       string `json:"due_date,omitempty"`
+	Priority      string `json:"priority,omitempty"`
+	RemindMinutes int    `json:"remind_minutes,omitempty"` // 提前提醒分钟数
 }
 
 // ExtractAndCreateTodos 从消息中提取待办并创建

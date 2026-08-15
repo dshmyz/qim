@@ -54,7 +54,7 @@ func decodeConversationCursor(encoded string) (conversationCursor, time.Time, er
 
 // botConvIdentity 是 bot 会话的稳定显示身份，取自 bots 表（与 virtual_user 虚拟用户无关）。
 type botConvIdentity struct {
-	Name string
+	Name   string
 	Avatar string
 	BotID  uint
 }

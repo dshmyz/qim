@@ -11,9 +11,9 @@ import (
 )
 
 type FileStatistics struct {
-	TotalSize int64  `json:"totalSize"`
-	UsedSize  int64  `json:"usedSize"`
-	FileCount int64  `json:"fileCount"`
+	TotalSize int64 `json:"totalSize"`
+	UsedSize  int64 `json:"usedSize"`
+	FileCount int64 `json:"fileCount"`
 	TypeStats []struct {
 		Type  string `json:"type"`
 		Count int64  `json:"count"`
@@ -90,13 +90,13 @@ func GetAdminLargeFiles(c *gin.Context) {
 	db := database.GetDB()
 
 	type Result struct {
-		ID           uint   `json:"id"`
-		Name         string `json:"name"`
-		Size         int64  `json:"size"`
-		UserID       uint   `json:"user_id"`
-		Username     string `json:"username"`
-		Nickname     string `json:"nickname"`
-		CreatedAt    string `json:"created_at"`
+		ID        uint   `json:"id"`
+		Name      string `json:"name"`
+		Size      int64  `json:"size"`
+		UserID    uint   `json:"user_id"`
+		Username  string `json:"username"`
+		Nickname  string `json:"nickname"`
+		CreatedAt string `json:"created_at"`
 	}
 
 	var results []Result

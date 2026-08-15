@@ -711,7 +711,7 @@ func TestMessageService_RecallMessage_PreservesOriginalContent(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, recalled.IsRecalled)
 	assert.Equal(t, "[消息已撤回]", recalled.Content)
-	
+
 	// 验证 Extra 字段包含原始内容
 	assert.NotEmpty(t, recalled.Extra)
 	var extraData map[string]interface{}

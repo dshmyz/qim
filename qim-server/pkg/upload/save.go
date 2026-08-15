@@ -30,11 +30,11 @@ type SavedFile struct {
 
 // SaveResult 保存配置。
 type SaveConfig struct {
-	Policy       *Policy         // 上传策略（大小/类型校验）
-	Storage      StorageBackend  // 存储后端
-	KeyPrefix    string          // 存储 key 前缀，如 "uploads/feedbacks/2026/01/"
-	FilenameFn   func() string   // 生成最终存储文件名（不含目录），若为 nil 则用 SafeName
-	MaxBytesRead int64           // 最多读取的字节数（用于限制内存），0 表示用 Policy.MaxSize
+	Policy       *Policy                                      // 上传策略（大小/类型校验）
+	Storage      StorageBackend                               // 存储后端
+	KeyPrefix    string                                       // 存储 key 前缀，如 "uploads/feedbacks/2026/01/"
+	FilenameFn   func() string                                // 生成最终存储文件名（不含目录），若为 nil 则用 SafeName
+	MaxBytesRead int64                                        // 最多读取的字节数（用于限制内存），0 表示用 Policy.MaxSize
 	ContextFn    func() (context.Context, context.CancelFunc) // 自定义 context，nil 用默认 30s
 	// SkipTypeCheck 跳过类型/扩展名校验（黑名单 + 白名单），仅用于受信任的管理员分发来源
 	// （source = version / client_update，发布 CLI、MCP、客户端安装包等二进制产物）。

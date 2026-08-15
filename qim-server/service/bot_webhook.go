@@ -18,10 +18,10 @@ import (
 // BotConfig 存储于 model.Bot.Config（JSON 文本列），控制 bot 的回复路由。
 // 无需迁移：Config 已是 text 列，未识别字段忽略。
 type BotConfig struct {
-	Mode             string `json:"mode"`              // "internal_ai"(默认, 既有行为) | "external_webhook"
-	WebhookURL       string `json:"webhook_url"`       // external_webhook 模式下的回调地址（空=纯 pull 模式，不投 webhook）
-	WebhookSecret    string `json:"webhook_secret"`    // HMAC-SHA256 签名密钥，与 bot 访问令牌分离
-	UseCreatorNotes  bool   `json:"use_creator_notes"` // internal_ai 模式下是否读取创建者笔记作为知识库（按 userID scope，仅读自己笔记）
+	Mode            string `json:"mode"`              // "internal_ai"(默认, 既有行为) | "external_webhook"
+	WebhookURL      string `json:"webhook_url"`       // external_webhook 模式下的回调地址（空=纯 pull 模式，不投 webhook）
+	WebhookSecret   string `json:"webhook_secret"`    // HMAC-SHA256 签名密钥，与 bot 访问令牌分离
+	UseCreatorNotes bool   `json:"use_creator_notes"` // internal_ai 模式下是否读取创建者笔记作为知识库（按 userID scope，仅读自己笔记）
 
 	// 模型来源（internal_ai 模式）：true=用系统默认模型（推荐）；false 且 UserConfigID 非空时
 	// 用创建者「我的模型配置」中的自定义 provider 生成回复。

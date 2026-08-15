@@ -207,7 +207,7 @@ func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID 
 		parts = append(parts, fmt.Sprintf("[%d] %s %s\n%s", idx+1, snip.Title, sourceTag, snip.Content))
 		sources = append(sources, KnowledgeSource{
 			Title: title, Score: snip.Score, Source: "knowledge",
-			ID:      snip.DocID,   // 文档ID供前端点击跳转
+			ID:      snip.DocID,                // 文档ID供前端点击跳转
 			Snippet: clipSnippet(snip.Content), // 命中正文摘要，供前端「来源小字/悬停」展示；超长截断防 UI 撑爆
 		})
 	}

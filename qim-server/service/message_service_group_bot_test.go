@@ -414,7 +414,8 @@ func TestE2E_DiagnoseAllSilentFailures(t *testing.T) {
 			setup: func() (uint, uint) {
 				botUser := &model.User{Username: "d1", Type: "bot"}
 				human := &model.User{Username: "d1h", Type: "user"}
-				db.Create(botUser); db.Create(human)
+				db.Create(botUser)
+				db.Create(human)
 				bot := &model.Bot{Name: "D1", IsActive: true, VirtualUserID: &botUser.ID,
 					Config: `{"mode":"external_webhook","webhook_url":"http://127.0.0.1:1"}`}
 				db.Create(bot)
@@ -431,7 +432,8 @@ func TestE2E_DiagnoseAllSilentFailures(t *testing.T) {
 			setup: func() (uint, uint) {
 				botUser := &model.User{Username: "d2", Type: "bot"}
 				human := &model.User{Username: "d2h", Type: "user"}
-				db.Create(botUser); db.Create(human)
+				db.Create(botUser)
+				db.Create(human)
 				bot := &model.Bot{Name: "D2", IsActive: true, VirtualUserID: &botUser.ID,
 					Config: `{"mode":"external_webhook","webhook_url":"http://127.0.0.1:1"}`}
 				db.Create(bot)
@@ -466,7 +468,8 @@ func TestE2E_DiagnoseAllSilentFailures(t *testing.T) {
 			setup: func() (uint, uint) {
 				botUser := &model.User{Username: "d4", Type: "bot"}
 				human := &model.User{Username: "d4h", Type: "user"}
-				db.Create(botUser); db.Create(human)
+				db.Create(botUser)
+				db.Create(human)
 				bot := &model.Bot{Name: "D4", IsActive: true, VirtualUserID: &botUser.ID, Config: ""}
 				db.Create(bot)
 				conv := &model.Conversation{Type: "bot"}
@@ -482,7 +485,8 @@ func TestE2E_DiagnoseAllSilentFailures(t *testing.T) {
 			setup: func() (uint, uint) {
 				botUser := &model.User{Username: "d5", Type: "bot"}
 				human := &model.User{Username: "d5h", Type: "user"}
-				db.Create(botUser); db.Create(human)
+				db.Create(botUser)
+				db.Create(human)
 				bot := &model.Bot{Name: "D5", IsActive: true, VirtualUserID: &botUser.ID,
 					Config: `{"mode":"external_webhookk","webhook_url":"http://127.0.0.1:1"}`}
 				db.Create(bot)
@@ -499,7 +503,8 @@ func TestE2E_DiagnoseAllSilentFailures(t *testing.T) {
 			setup: func() (uint, uint) {
 				botUser := &model.User{Username: "d6", Type: "bot"}
 				human := &model.User{Username: "d6h", Type: "user"}
-				db.Create(botUser); db.Create(human)
+				db.Create(botUser)
+				db.Create(human)
 				bot := &model.Bot{Name: "D6", IsActive: false, VirtualUserID: &botUser.ID,
 					Config: `{"mode":"external_webhook","webhook_url":"http://127.0.0.1:1"}`}
 				db.Create(bot)
@@ -528,4 +533,3 @@ func TestE2E_DiagnoseAllSilentFailures(t *testing.T) {
 		})
 	}
 }
-

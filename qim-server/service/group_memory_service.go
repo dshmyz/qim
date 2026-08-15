@@ -141,8 +141,8 @@ func (s *GroupMemoryService) saveConsolidatedGroupMemory(groupID, conversationID
 		if cerr == nil && conflict {
 			content := ref.Summary
 			_, uerr := s.db.UpdateMemory(types.MemoryUpdateRequest{
-				MemoryID: memories[0].DocID,
-				Content:  &content,
+				MemoryID:   memories[0].DocID,
+				Content:    &content,
 				Importance: func() *float64 { v := importance01(ref.Importance); return &v }(),
 			})
 			if uerr != nil {
@@ -156,11 +156,11 @@ func (s *GroupMemoryService) saveConsolidatedGroupMemory(groupID, conversationID
 
 	memoryID := fmt.Sprintf("groupmem_%d_%d", groupID, time.Now().UnixMilli())
 	_, err := s.db.SaveMemory(types.MemorySaveRequest{
-		MemoryID:  memoryID,
-		UserID:    fmt.Sprintf("%d", groupID),
-		Content:   ref.Summary,
-		Scope:     "user",
-		Namespace: groupMemoryNamespace,
+		MemoryID:   memoryID,
+		UserID:     fmt.Sprintf("%d", groupID),
+		Content:    ref.Summary,
+		Scope:      "user",
+		Namespace:  groupMemoryNamespace,
 		Importance: importance01(ref.Importance),
 		Metadata: map[string]interface{}{
 			"conversation_id":           fmt.Sprintf("%d", conversationID),
@@ -193,9 +193,9 @@ func (s *GroupMemoryService) Recall(groupID uint, query string, topK int) ([]Sea
 		TopK:      topK,
 		// 提升重要度与新颖度权重：与分身 Recall 对齐，重要且较新的群记忆更靠前。
 		SemanticWeight:   0.55,
-		LexicalWeight:   0.15,
+		LexicalWeight:    0.15,
 		ImportanceWeight: 0.20,
-		RecencyWeight:   0.10,
+		RecencyWeight:    0.10,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("检索群记忆失败: %w", err)

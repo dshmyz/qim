@@ -32,12 +32,12 @@ type WebhookEvent struct {
 }
 
 type WebhookPayload struct {
-	UserCreated     *UserEvent     `json:"user_created,omitempty"`
-	UserUpdated     *UserEvent     `json:"user_updated,omitempty"`
-	UserDeleted     *UserEvent     `json:"user_deleted,omitempty"`
-	DeptCreated     *DeptEvent     `json:"department_created,omitempty"`
-	DeptUpdated     *DeptEvent     `json:"department_updated,omitempty"`
-	DeptDeleted     *DeptEvent     `json:"department_deleted,omitempty"`
+	UserCreated *UserEvent `json:"user_created,omitempty"`
+	UserUpdated *UserEvent `json:"user_updated,omitempty"`
+	UserDeleted *UserEvent `json:"user_deleted,omitempty"`
+	DeptCreated *DeptEvent `json:"department_created,omitempty"`
+	DeptUpdated *DeptEvent `json:"department_updated,omitempty"`
+	DeptDeleted *DeptEvent `json:"department_deleted,omitempty"`
 }
 
 type UserEvent struct {

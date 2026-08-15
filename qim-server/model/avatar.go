@@ -106,13 +106,13 @@ type AvatarKnowledgeScope struct {
 //
 // Mode 为遗留字段，仅用于读取存量配置时回填上述新字段（见 Normalize），不再参与决策。
 type AvatarTriggerRules struct {
-	OfflineOnly          bool              `json:"offlineOnly"` // 触发时机：仅离线时才回
-	RequireMention       bool              `json:"requireMention"` // 意图：群里被 @ 才回（私聊无 @ 语义，自动降级为智能判断）
-	SmartDecide          bool              `json:"smartDecide"`    // 意图：LLM 判断该不该回
-	KeywordOnly          bool              `json:"keywordOnly"`    // 意图：关键词命中才回（复用 Keywords）
-	Keywords             []string          `json:"keywords"`
-	TimeRanges           []AvatarTimeRange `json:"timeRanges"`
-	ExcludedConversations []uint           `json:"excludedConversations"`
+	OfflineOnly           bool              `json:"offlineOnly"`    // 触发时机：仅离线时才回
+	RequireMention        bool              `json:"requireMention"` // 意图：群里被 @ 才回（私聊无 @ 语义，自动降级为智能判断）
+	SmartDecide           bool              `json:"smartDecide"`    // 意图：LLM 判断该不该回
+	KeywordOnly           bool              `json:"keywordOnly"`    // 意图：关键词命中才回（复用 Keywords）
+	Keywords              []string          `json:"keywords"`
+	TimeRanges            []AvatarTimeRange `json:"timeRanges"`
+	ExcludedConversations []uint            `json:"excludedConversations"`
 	// —— 遗留迁移 ——
 	Mode string `json:"mode,omitempty"` // mention, offline, keyword, all, smart（存量配置读取时回填新字段）
 }
@@ -153,7 +153,7 @@ type AvatarReplyStrategy struct {
 	MaxReplyLength      string  `json:"maxReplyLength"` // short, medium, long
 	ReplyDelay          int     `json:"replyDelay"`     // 秒
 	ConfidenceThreshold float64 `json:"confidenceThreshold"`
-	DisclaimerStyle     string  `json:"disclaimerStyle"`     // badge, footer, both
-	ReplyOutOfScope     bool    `json:"replyOutOfScope"`    // 是否回复知识范围外的消息，false 时静默跳过不回复
-	GroupReplyTarget    string  `json:"groupReplyTarget"`   // 群聊回复落点：group（默认，回群内）/ private（回触发者私聊）
+	DisclaimerStyle     string  `json:"disclaimerStyle"`  // badge, footer, both
+	ReplyOutOfScope     bool    `json:"replyOutOfScope"`  // 是否回复知识范围外的消息，false 时静默跳过不回复
+	GroupReplyTarget    string  `json:"groupReplyTarget"` // 群聊回复落点：group（默认，回群内）/ private（回触发者私聊）
 }

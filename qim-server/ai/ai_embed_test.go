@@ -11,8 +11,8 @@ type embedRecorderProvider struct {
 	model string
 }
 
-func (p *embedRecorderProvider) Name() string { return "embed-fake" }
-func (p *embedRecorderProvider) Chat([]Message) (string, error) { return "", nil }
+func (p *embedRecorderProvider) Name() string                                        { return "embed-fake" }
+func (p *embedRecorderProvider) Chat([]Message) (string, error)                      { return "", nil }
 func (p *embedRecorderProvider) ChatStream([]Message, func(StreamChunk) error) error { return nil }
 func (p *embedRecorderProvider) ChatStreamWithContext(context.Context, []Message, func(StreamChunk) error) error {
 	return nil
@@ -85,8 +85,8 @@ func TestEmbed_SkipsNonEmbeddingProvider(t *testing.T) {
 // nonEmbedProvider 不支持 embedding 的 provider（模拟 Anthropic）。
 type nonEmbedProvider struct{}
 
-func (p *nonEmbedProvider) Name() string { return "no-embed" }
-func (p *nonEmbedProvider) Chat([]Message) (string, error) { return "", nil }
+func (p *nonEmbedProvider) Name() string                                        { return "no-embed" }
+func (p *nonEmbedProvider) Chat([]Message) (string, error)                      { return "", nil }
 func (p *nonEmbedProvider) ChatStream([]Message, func(StreamChunk) error) error { return nil }
 func (p *nonEmbedProvider) ChatStreamWithContext(context.Context, []Message, func(StreamChunk) error) error {
 	return nil
@@ -95,9 +95,11 @@ func (p *nonEmbedProvider) Embedding(string) ([]float32, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 func (p *nonEmbedProvider) SupportsEmbedding() bool { return false }
-func (p *nonEmbedProvider) ChatWithTools([]Message, []ToolDef) (*ChatResponse, error) { return nil, nil }
+func (p *nonEmbedProvider) ChatWithTools([]Message, []ToolDef) (*ChatResponse, error) {
+	return nil, nil
+}
 func (p *nonEmbedProvider) ChatStreamWithTools(context.Context, []Message, []ToolDef, func(StreamChunk) error) error {
 	return ErrStreamingToolsNotSupported
 }
-func (p *nonEmbedProvider) IsConfigured() bool { return true }
+func (p *nonEmbedProvider) IsConfigured() bool        { return true }
 func (p *nonEmbedProvider) WithModel(string) Provider { return p }

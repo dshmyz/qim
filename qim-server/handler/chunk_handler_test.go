@@ -18,10 +18,10 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 
+	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
-	"github.com/dshmyz/qim/qim-server/pkg/sqlite"
 	"gorm.io/gorm"
 )
 

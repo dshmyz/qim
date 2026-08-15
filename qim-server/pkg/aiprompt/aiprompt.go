@@ -2,7 +2,7 @@
 //
 // 群聊助手（service/smart_reply_graph.go）与私聊/群聊 AI（handler/prompt_builder.go）
 // 曾各自复制一份「5 种性格人设 + 语言规则 + 长度规则 + 通用回复规则」，改一处漏三处
-//（例如品牌名 QIM 就曾差点漏改）。本包把这几段抽成共享函数，两个调用方接入同一份，
+// （例如品牌名 QIM 就曾差点漏改）。本包把这几段抽成共享函数，两个调用方接入同一份，
 // 保证口径一致。品牌名统一走 productname.Name。
 //
 // 长度档位枚举（存于 GroupAIConfig.MaxLength / 分身 ReplyStrategy.MaxReplyLength）：

@@ -320,7 +320,7 @@ func TestAvatarReplyGraph_ExecuteWithImageSources(t *testing.T) {
 	require.NoError(t, db.Create(&cfg).Error)
 
 	capProv := &capturingAvatarProvider{}
-	capProv.reply = "识别到图片：一只猫"             // 继承 fakeAvatarProvider.reply 字段
+	capProv.reply = "识别到图片：一只猫" // 继承 fakeAvatarProvider.reply 字段
 	aiSvc := ai.NewAIService(&ai.AIConfig{})
 	aiSvc.SetProviderForTesting("fake-avatar", capProv)
 

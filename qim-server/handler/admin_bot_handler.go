@@ -16,15 +16,15 @@ import (
 
 // externalBotRow 外部 bot 列表行（脱敏：不回 webhook_secret）。
 type externalBotRow struct {
-	ID              uint   `json:"id"`
-	Name            string `json:"name"`
-	CreatorName     string `json:"creator_name"`
-	IsActive        bool   `json:"is_active"`
-	Mode            string `json:"mode"`
-	WebhookURL      string `json:"webhook_url"`
-	PendingCount    int64  `json:"pending_count"`
-	DeadCount       int64  `json:"dead_count"`
-	CreatedAt       string `json:"created_at"`
+	ID           uint   `json:"id"`
+	Name         string `json:"name"`
+	CreatorName  string `json:"creator_name"`
+	IsActive     bool   `json:"is_active"`
+	Mode         string `json:"mode"`
+	WebhookURL   string `json:"webhook_url"`
+	PendingCount int64  `json:"pending_count"`
+	DeadCount    int64  `json:"dead_count"`
+	CreatedAt    string `json:"created_at"`
 }
 
 // AdminGetExternalBots 列出 external_webhook 模式的 bot（含各 bot 的 pending/dead 投递计数）。
@@ -171,7 +171,7 @@ func AdminGetWebhookDeliveries(c *gin.Context) {
 	// payload 截断预览，详情走单条端点；secret 字段模型已 json:"-"
 	type row struct {
 		model.BotWebhookDelivery
-		BotName       string `json:"bot_name"`
+		BotName        string `json:"bot_name"`
 		PayloadPreview string `json:"payload_preview"`
 	}
 	list := make([]row, 0, len(deliveries))
@@ -212,8 +212,8 @@ func AdminGetWebhookDelivery(c *gin.Context) {
 	db.Model(&model.Bot{}).Select("name").Where("id = ?", d.BotID).Scan(&botName)
 
 	response.Success(c, gin.H{
-		"delivery":  d,
-		"bot_name":  botName,
+		"delivery": d,
+		"bot_name": botName,
 	})
 }
 

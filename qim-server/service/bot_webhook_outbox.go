@@ -69,8 +69,8 @@ func deliverOnce(db *gorm.DB, d *model.BotWebhookDelivery) (bool, error) {
 	if err == nil {
 		now := time.Now()
 		db.Model(&model.BotWebhookDelivery{}).Where("id = ?", d.ID).Updates(map[string]any{
-			"status":       "done",
-			"delivered_at": now,
+			"status":        "done",
+			"delivered_at":  now,
 			"next_retry_at": nil,
 			"last_error":    "",
 		})

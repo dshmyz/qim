@@ -68,16 +68,16 @@ func OperationLogMiddleware() gin.HandlerFunc {
 		}
 
 		log := model.OperationLog{
-			UserID:     uid,
-			Username:   uname,
-			Action:     extractAction(c),
-			Module:     extractModule(c),
-			IP:         c.ClientIP(),
-			UserAgent:  c.GetHeader("User-Agent"),
-			RequestURL: c.Request.URL.Path,
+			UserID:      uid,
+			Username:    uname,
+			Action:      extractAction(c),
+			Module:      extractModule(c),
+			IP:          c.ClientIP(),
+			UserAgent:   c.GetHeader("User-Agent"),
+			RequestURL:  c.Request.URL.Path,
 			RequestBody: truncateString(string(body), 2000),
-			Response:   truncateString(blw.body.String(), 2000),
-			Duration:   int(duration),
+			Response:    truncateString(blw.body.String(), 2000),
+			Duration:    int(duration),
 		}
 
 		db := database.GetDB()

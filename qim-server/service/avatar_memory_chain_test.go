@@ -481,8 +481,10 @@ func TestBuildNoteGraph_FromMetadata_NoLLMCall(t *testing.T) {
 	noteCount, entityCount := 0, 0
 	for _, n := range graph.Nodes {
 		switch n.Type {
-		case "note": noteCount++
-		case "entity": entityCount++
+		case "note":
+			noteCount++
+		case "entity":
+			entityCount++
 		}
 	}
 	if noteCount != 2 {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/cloudwego/eino/schema"
+	"github.com/dshmyz/qim/qim-server/model"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

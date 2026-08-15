@@ -13,11 +13,11 @@ import (
 )
 
 type APIConfig struct {
-	URL         string            `json:"url"`
-	Method      string            `json:"method"`
-	Headers     map[string]string `json:"headers"`
-	AuthToken   string            `json:"auth_token"`
-	Timeout     int               `json:"timeout"`
+	URL       string            `json:"url"`
+	Method    string            `json:"method"`
+	Headers   map[string]string `json:"headers"`
+	AuthToken string            `json:"auth_token"`
+	Timeout   int               `json:"timeout"`
 }
 
 type APISyncer struct {
@@ -46,7 +46,7 @@ func NewAPISyncer(model *model.OrgSyncConfig) (*APISyncer, error) {
 		client: &http.Client{
 			Timeout: time.Duration(cfg.Timeout) * time.Second,
 		},
-		dbID:   model.ID,
+		dbID: model.ID,
 	}, nil
 }
 

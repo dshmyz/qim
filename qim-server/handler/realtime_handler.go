@@ -373,13 +373,13 @@ func GetPendingRequests(c *gin.Context) {
 	}
 
 	type PendingRequest struct {
-		ID              string    `json:"id"`
-		SessionID       string    `json:"session_id"`
-		SessionType     string    `json:"session_type"`
-		ConversationID  uint      `json:"conversation_id"`
-		InitiatorID     uint      `json:"initiator_id"`
-		InitiatorName   string    `json:"initiator_name"`
-		RequestedAt     time.Time `json:"requested_at"`
+		ID             string    `json:"id"`
+		SessionID      string    `json:"session_id"`
+		SessionType    string    `json:"session_type"`
+		ConversationID uint      `json:"conversation_id"`
+		InitiatorID    uint      `json:"initiator_id"`
+		InitiatorName  string    `json:"initiator_name"`
+		RequestedAt    time.Time `json:"requested_at"`
 	}
 
 	var requests []PendingRequest

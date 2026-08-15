@@ -9,7 +9,9 @@ var ErrStreamingToolsNotSupported = &streamingToolsUnsupportedError{}
 
 type streamingToolsUnsupportedError struct{}
 
-func (e *streamingToolsUnsupportedError) Error() string { return "streaming tools not supported by provider" }
+func (e *streamingToolsUnsupportedError) Error() string {
+	return "streaming tools not supported by provider"
+}
 func (e *streamingToolsUnsupportedError) Is(target error) bool {
 	_, ok := target.(*streamingToolsUnsupportedError)
 	return ok

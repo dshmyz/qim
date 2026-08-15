@@ -121,7 +121,7 @@ func (a *ContextAssembler) assembleNotes(ctx context.Context, query string, src 
 		"userID", src.Key, "hits", len(results), "notes", strings.Join(hitLogs, " | "))
 
 	bundle.Messages = append(bundle.Messages, ai.Message{
-		Role:    "system",
+		Role: "system",
 		Content: "以下是创建者的相关笔记，可作为回答参考（请基于笔记内容作答，" +
 			"笔记未覆盖的问题按你的通用能力回答）：\n\n" +
 			strings.Join(parts, "\n\n"),

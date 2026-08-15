@@ -2,13 +2,13 @@ package handler
 
 import (
 	"fmt"
-	"math"
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
+	"math"
 	"regexp"
 	"strings"
 )

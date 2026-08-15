@@ -212,26 +212,26 @@ type ConversationMember struct {
 
 // 消息
 type Message struct {
-	ID              uint           `json:"id" gorm:"primarykey"`
-	ConversationID  uint           `json:"conversation_id" gorm:"not null;index:idx_msg_conv_created,priority:1;index:idx_msg_conv_read_sender,priority:1"`
-	SenderID        uint           `json:"sender_id" gorm:"not null;index;index:idx_msg_conv_read_sender,priority:3"`
-	Type            string         `json:"type" gorm:"size:20;not null"`
-	Content         string         `json:"content" gorm:"type:mediumtext;not null"`
-	QuotedMessageID *uint          `json:"quoted_message_id"`
-	IsRecalled      bool           `json:"is_recalled" gorm:"default:false"`
-	IsRead          bool           `json:"is_read" gorm:"default:false;index:idx_msg_conv_read_sender,priority:2"`
-	Origin          string         `json:"origin" gorm:"size:30;default:''"` // '' | 'user' | 'assistant' | 'avatar'
-	RecalledAt      *time.Time     `json:"recalled_at"`
+	ID              uint       `json:"id" gorm:"primarykey"`
+	ConversationID  uint       `json:"conversation_id" gorm:"not null;index:idx_msg_conv_created,priority:1;index:idx_msg_conv_read_sender,priority:1"`
+	SenderID        uint       `json:"sender_id" gorm:"not null;index;index:idx_msg_conv_read_sender,priority:3"`
+	Type            string     `json:"type" gorm:"size:20;not null"`
+	Content         string     `json:"content" gorm:"type:mediumtext;not null"`
+	QuotedMessageID *uint      `json:"quoted_message_id"`
+	IsRecalled      bool       `json:"is_recalled" gorm:"default:false"`
+	IsRead          bool       `json:"is_read" gorm:"default:false;index:idx_msg_conv_read_sender,priority:2"`
+	Origin          string     `json:"origin" gorm:"size:30;default:''"` // '' | 'user' | 'assistant' | 'avatar'
+	RecalledAt      *time.Time `json:"recalled_at"`
 	// Extra 存放可选的结构化附加信息（JSON 字符串）。
 	// 当前用途：Bot 回复命中创建者笔记时，记录 knowledge_sources=[{title,score}] 供前端折叠展示。
 	// 用 text 存 JSON 避免 MySQL JSON 类型在旧版本的兼容问题；空字符串表示无附加信息。
-	Extra           string         `json:"extra" gorm:"type:text"`
-	CreatedAt       time.Time      `json:"created_at" gorm:"index:idx_msg_conv_created,priority:2"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
-	Sender          User           `json:"sender,omitempty" gorm:"foreignkey:SenderID"`
-	Conversation    *Conversation  `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
-	QuotedMessage   *Message       `json:"quoted_message,omitempty" gorm:"foreignkey:QuotedMessageID"`
+	Extra         string         `json:"extra" gorm:"type:text"`
+	CreatedAt     time.Time      `json:"created_at" gorm:"index:idx_msg_conv_created,priority:2"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	DeletedAt     gorm.DeletedAt `json:"-" gorm:"index"`
+	Sender        User           `json:"sender,omitempty" gorm:"foreignkey:SenderID"`
+	Conversation  *Conversation  `json:"conversation,omitempty" gorm:"foreignkey:ConversationID"`
+	QuotedMessage *Message       `json:"quoted_message,omitempty" gorm:"foreignkey:QuotedMessageID"`
 }
 
 // 文件
@@ -275,20 +275,20 @@ type Folder struct {
 
 // 笔记
 type Note struct {
-	ID        uint           `json:"id" gorm:"primarykey"`
-	UserID    uint           `json:"user_id" gorm:"not null;index"`
-	Title     string         `json:"title" gorm:"size:500;not null"`
-	Content   string         `json:"content" gorm:"type:text;not null"`
-	Type      string         `json:"type" gorm:"size:20;default:'note'"`
-	Style     string         `json:"style" gorm:"type:text"`
-	Tags      string         `json:"tags" gorm:"type:text"`    // JSON 数组字符串
-	Summary   string         `json:"summary" gorm:"type:text"` // AI 生成的摘要
+	ID      uint   `json:"id" gorm:"primarykey"`
+	UserID  uint   `json:"user_id" gorm:"not null;index"`
+	Title   string `json:"title" gorm:"size:500;not null"`
+	Content string `json:"content" gorm:"type:text;not null"`
+	Type    string `json:"type" gorm:"size:20;default:'note'"`
+	Style   string `json:"style" gorm:"type:text"`
+	Tags    string `json:"tags" gorm:"type:text"`    // JSON 数组字符串
+	Summary string `json:"summary" gorm:"type:text"` // AI 生成的摘要
 	// AiAccessible 是否允许分身（AI）读取本篇笔记。默认 true（可见），关闭后该笔记
 	// 不再被向量化进入 user_notes_{userID} 集合，分身检索不到。
-	AiAccessible bool         `json:"ai_accessible" gorm:"default:true;not null"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+	AiAccessible bool           `json:"ai_accessible" gorm:"default:true;not null"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 // 会话记录（用于置顶、隐藏等）
@@ -316,21 +316,21 @@ type MessageReadReceipt struct {
 
 // 机器人
 type Bot struct {
-	ID              uint           `json:"id" gorm:"primarykey"`
-	Name            string         `json:"name" gorm:"size:100;not null"`
-	Avatar          string         `json:"avatar" gorm:"size:500"`
-	Description     string         `json:"description" gorm:"type:text"`
-	Type            string         `json:"type" gorm:"size:50;not null"` // assistant, group_assistant, custom, system
-	Config          string         `json:"config" gorm:"type:text"`      // JSON配置
-	IsActive        bool           `json:"is_active" gorm:"default:true"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
-	CreatorID       uint           `json:"creator_id" gorm:"default:0"` // 0=系统创建
-	CreatorName     string         `json:"creator_name" gorm:"size:100;default:''"`
-	VirtualUserID   *uint          `json:"virtual_user_id" gorm:"index"` // 关联虚拟用户 ID
-	GroupID         *uint          `json:"group_id" gorm:"index"`        // 群聊AI助手关联的群ID
-	IsTemplate      bool           `json:"is_template" gorm:"default:false"`
+	ID            uint           `json:"id" gorm:"primarykey"`
+	Name          string         `json:"name" gorm:"size:100;not null"`
+	Avatar        string         `json:"avatar" gorm:"size:500"`
+	Description   string         `json:"description" gorm:"type:text"`
+	Type          string         `json:"type" gorm:"size:50;not null"` // assistant, group_assistant, custom, system
+	Config        string         `json:"config" gorm:"type:text"`      // JSON配置
+	IsActive      bool           `json:"is_active" gorm:"default:true"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	DeletedAt     gorm.DeletedAt `json:"-" gorm:"index"`
+	CreatorID     uint           `json:"creator_id" gorm:"default:0"` // 0=系统创建
+	CreatorName   string         `json:"creator_name" gorm:"size:100;default:''"`
+	VirtualUserID *uint          `json:"virtual_user_id" gorm:"index"` // 关联虚拟用户 ID
+	GroupID       *uint          `json:"group_id" gorm:"index"`        // 群聊AI助手关联的群ID
+	IsTemplate    bool           `json:"is_template" gorm:"default:false"`
 }
 
 // AI使用日志
@@ -426,7 +426,7 @@ type Task struct {
 	Tags           string         `json:"tags" gorm:"type:text"`
 	SubTasks       string         `json:"sub_tasks" gorm:"type:text"`
 	Position       int            `json:"position" gorm:"default:0"`
-	Reminder       int            `json:"reminder" gorm:"default:0"`        // 提前提醒分钟数，0=不提醒
+	Reminder       int            `json:"reminder" gorm:"default:0"`          // 提前提醒分钟数，0=不提醒
 	ReminderSent   bool           `json:"reminder_sent" gorm:"default:false"` // 已发送提醒
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
@@ -841,7 +841,7 @@ type ClientVersion struct {
 	AppType           string         `json:"app_type" gorm:"size:20;default:'client';uniqueIndex:idx_version_platform;not null"` // "client" | "cli"
 	Version           string         `json:"version" gorm:"size:50;uniqueIndex:idx_version_platform;not null"`
 	Platform          string         `json:"platform" gorm:"size:20;uniqueIndex:idx_version_platform;not null"` // client: windows/macos/linux; cli: darwin-arm64 等
-	Type              string         `json:"type" gorm:"size:20;default:'full'"`                                 // full, patch
+	Type              string         `json:"type" gorm:"size:20;default:'full'"`                                // full, patch
 	DownloadURL       string         `json:"download_url" gorm:"size:500"`
 	Sha512            string         `json:"sha512" gorm:"size:200"`       // 文件 SHA512 哈希（client 用）
 	Sha256            string         `json:"sha256" gorm:"size:200"`       // 文件 SHA256 哈希（CLI 用）

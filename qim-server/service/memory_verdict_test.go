@@ -46,8 +46,8 @@ func TestImportance01(t *testing.T) {
 		{1, 0.2},
 		{3, 0.6},
 		{5, 1.0},
-		{0, 0.2},   // 低于下限，收敛到 1
-		{99, 1.0},  // 高于上限，收敛到 5
+		{0, 0.2},  // 低于下限，收敛到 1
+		{99, 1.0}, // 高于上限，收敛到 5
 	}
 	for _, c := range cases {
 		if got := importance01(c.in); got != c.want {

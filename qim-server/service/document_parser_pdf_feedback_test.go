@@ -113,26 +113,26 @@ func TestParsePDF_AnydocFails_FallsBackToNative(t *testing.T) {
 // 同时保留「扫描件/无文字层」「格式不支持」等真实语义。
 func TestDescribeParseError(t *testing.T) {
 	tests := []struct {
-		name string
-		err  error
+		name         string
+		err          error
 		wantContains []string
-		wantNot []string
+		wantNot      []string
 	}{
 		{
-			name: "scanned pdf strips temp abs path, keeps scan hint",
-			err:  fmt.Errorf("PDF /var/folders/zl/abc/T/qim-doc-123.pdf 无法提取文本内容：该文件可能是扫描件/图片型 PDF（无文字层）"),
+			name:         "scanned pdf strips temp abs path, keeps scan hint",
+			err:          fmt.Errorf("PDF /var/folders/zl/abc/T/qim-doc-123.pdf 无法提取文本内容：该文件可能是扫描件/图片型 PDF（无文字层）"),
 			wantContains: []string{"扫描", "无法提取文本内容"},
 			wantNot:      []string{"/var/folders", "/T/"}, // 不暴露服务端临时目录结构
 		},
 		{
-			name: "unsupported ext passes through",
-			err:  fmt.Errorf("不支持的文件类型 .doc（支持 txt/md/csv/json/pdf/docx/pptx/xlsx 等）"),
+			name:         "unsupported ext passes through",
+			err:          fmt.Errorf("不支持的文件类型 .doc（支持 txt/md/csv/json/pdf/docx/pptx/xlsx 等）"),
 			wantContains: []string{"不支持的文件类型", ".doc"},
 			wantNot:      []string{"/var/", "/tmp/"}, // 无路径可剥，原样透传
 		},
 		{
-			name: "open failure strips path",
-			err:  fmt.Errorf("打开 PDF /tmp/qim-456.pdf 失败: some reason"),
+			name:         "open failure strips path",
+			err:          fmt.Errorf("打开 PDF /tmp/qim-456.pdf 失败: some reason"),
 			wantContains: []string{"打开 PDF", "失败"},
 			wantNot:      []string{"/tmp/"},
 		},

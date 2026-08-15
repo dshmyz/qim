@@ -3,11 +3,11 @@ package service
 import (
 	"encoding/json"
 	"errors"
-	"log"
-	"time"
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/utils"
+	"log"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -18,13 +18,13 @@ var ErrConfigInUse = errors.New("config is in use")
 var ErrUnsupportedProvider = errors.New("unsupported provider")
 
 type AIConfigService struct {
-	db            *gorm.DB
+	db              *gorm.DB
 	providerFactory *ai.ProviderFactory
 }
 
 func NewAIConfigService(db *gorm.DB, factory *ai.ProviderFactory) *AIConfigService {
 	return &AIConfigService{
-		db:            db,
+		db:              db,
 		providerFactory: factory,
 	}
 }
@@ -352,9 +352,9 @@ func resolveUserAIConfigProvider(db *gorm.DB, userID, configID uint) *customProv
 	return &customProvider{
 		ProviderName: cfg.Provider,
 		Config: ai.ProviderConfig{
-			APIKey:       apiKey,
-			Model:        cfg.ModelName,
-			BaseURL:      cfg.BaseURL,
+			APIKey:      apiKey,
+			Model:       cfg.ModelName,
+			BaseURL:     cfg.BaseURL,
 			ExtraParams: buildCustomProviderExtraParams(cfg.MaxTokens, cfg.Temperature),
 		},
 	}
