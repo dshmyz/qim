@@ -31,7 +31,7 @@
 - **AWS S3 SDK v2** 文件存储
 - **Cloudwego Eino** + **CortexDB** AI 能力（多模型支持）
 - **Swaggo** API 文档生成
-- 数据库默认 SQLite（`qim.db`），可选 MySQL
+- 数据库默认 MySQL（`qim-server/config.yaml`），开发环境可切 SQLite
 
 ## 目录结构
 
@@ -128,10 +128,11 @@ swag init -o docs/swagger  # 重新生成 API 文档（生成物在 docs/swagger
 
 ## 重要注意事项
 
-1. **数据库**：默认 SQLite（`qim.db` 在项目根目录），改用 MySQL 需修改 `qim-server/config.yaml`
+1. **数据库**：默认 MySQL（`qim-server/config.yaml`），开发环境可切 SQLite（取消注释 `type: sqlite` 并注释 MySQL 块）
 2. **前端服务器地址**：client 默认连接 `http://localhost:8080`，可在登录界面修改
 3. **Electron 版本锁定**：electronVersion 固定为 42.3.3（`package.json` devDep `^42.3.3`，electron-builder 配置 `electronVersion` 同步）
 4. **Go 版本**：go.mod 声明 go 1.25.0，请使用匹配版本
 5. **AI 多模型**：后端通过 Cloudwego Eino 框架支持 OpenAI/Claude/通义千问/文心一言等多模型
 6. **WebSocket**：连接路径 `/ws?token={jwt_token}`，消息格式 `{type, data, request_id}`
 7. **双因素认证**：后端验证为模拟实现，非生产级
+8. **禁止私自 git checkout / reset / 回滚**：任何 `git checkout`、`git reset`、`git restore`、`git clean`、删除或覆盖文件的操作，**必须先征得用户明确同意**。回滚前必须先备份（`git stash`、复制文件或记录 diff）。目录级 checkout（如 `git checkout -- <dir>/`）一律禁止——只能精确到单个文件，且逐个确认。
