@@ -346,11 +346,13 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 
 	// 初始化WebSocket Hub
 	hub := ws.NewHub(database.GetDB(), cfg.JWT.Secret, cfg.Cluster.Scheme)
-	// 多节点：从配置注入节点列表（cluster.enabled + cluster.nodes）。
+	// 多节点：从配置注入节点列表与认证密钥（cluster.enabled + cluster.nodes + node.secret）。
 	// 此前配置到 Hub 的链路是断的——NewHub 只接收 Scheme，nodes 恒空，
 	// 跨节点推送永远空循环，/node/broadcast 端点成了"能被打、打不出"。
+	// 接收端 NodeAuthMiddleware 在 secret 为空时拒绝一切请求，故密钥必须随节点列表一起注入。
 	if cfg.Cluster.Enabled {
 		hub.SetNodes(cfg.Cluster.Nodes)
+		hub.SetNodeSecret(cfg.Node.Secret)
 	}
 	ws.GlobalHub = hub
 	go hub.Run()

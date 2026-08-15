@@ -340,14 +340,20 @@ func buildUserReadReceiptSet(msgs []model.Message, userID uint) map[uint]bool {
 // handler 层调用点统一传入 per-user 上下文：CurrentUserID/AllMemberIDs/UserReadSet。
 
 // getAllMemberIDs 查询会话全体成员 ID（用于 @all 展开）。
+// getAllMemberIDs 查询会话全体成员 ID（用于 @all 展开）。
+// 优先复用 Hub 的 conversationMembers 缓存（5min TTL，成员变更时主动刷新），
+// 避免每次翻页/发消息都查 DB；缓存未命中时 fallback 到 DB（Pluck 只查 user_id 列）。
 func getAllMemberIDs(convID uint) []uint {
-	db := database.GetDB()
-	var members []model.ConversationMember
-	db.Where("conversation_id = ?", convID).Find(&members)
-	ids := make([]uint, 0, len(members))
-	for _, m := range members {
-		ids = append(ids, m.UserID)
+	if ws.GlobalHub != nil {
+		if ids := ws.GlobalHub.GetCachedMemberIDs(convID); ids != nil {
+			return ids
+		}
 	}
+	db := database.GetDB()
+	var ids []uint
+	db.Model(&model.ConversationMember{}).
+		Where("conversation_id = ?", convID).
+		Pluck("user_id", &ids)
 	return ids
 }
 

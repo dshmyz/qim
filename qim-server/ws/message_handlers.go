@@ -51,6 +51,10 @@ func handleSendMessage(c *Client, data interface{}) {
 	fallbackHandleMessage(c, convID, msgType, content, quotedMessageID)
 }
 
+// fallbackHandleMessage 仅当 Hub.HandleMessage 未注册（nil）时触发的降级路径。
+// 生产环境由 InitWSHandlers 必然注册 MessageService.SendMessage（auth_handler.go），
+// 因此该路径实际不可达；其载荷构建仍是手写（历史遗留，未走 service.BuildMessageResponse），
+// 保留仅作防御。字段集可能落后于统一构建函数——改动消息字段时请同步此处或直接删除。
 func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quotedMessageID *uint) {
 	db := c.hub.db
 
@@ -61,10 +65,7 @@ func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quot
 			Data: map[string]interface{}{"code": "forbidden", "message": "你不是该会话的成员"},
 		}
 		jsonErr, _ := json.Marshal(errMsg)
-		select {
-		case c.send <- jsonErr:
-		default:
-		}
+		safeSend(c, jsonErr)
 		return
 	}
 

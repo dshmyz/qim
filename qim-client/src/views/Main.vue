@@ -1595,11 +1595,11 @@ const fetchMissedMessages = async () => {
     }
   }
 
-  if (convsToSync.length === 0) return
+  if (convsToSync.length === 0) return true
 
   const syncOne = async (convId: string) => {
     const lastMsgId = chatStore.getLastMessageId(convId)
-    if (!lastMsgId) return
+    if (!lastMsgId) return true
 
     try {
       const response = await request(`/api/v1/conversations/${convId}/messages?after_id=${lastMsgId}&page_size=50`)
@@ -1611,14 +1611,16 @@ const fetchMissedMessages = async () => {
           chatStore.appendMessagesSilent(convId, missedMessages)
           logger.log(`[离线补偿] 会话 ${convId} 拉取到 ${missedMessages.length} 条离线消息`)
         }
+        return true
       }
     } catch (error) {
       logger.error(`[离线补偿] 会话 ${convId} 拉取离线消息失败:`, error)
     }
+    return false
   }
 
   // 并行拉取所有需要补偿的会话
-  await Promise.all(convsToSync.map(syncOne))
+  const results = await Promise.all(convsToSync.map(syncOne))
 
   // 流式收尾补偿：断线期间流式消息可能已 finish（type: streaming->markdown），
   // 但 finish 是 UPDATE 既有消息（同 id），after_id 只拉新消息拉不到 -> 本地卡 typing 气泡。
@@ -1626,6 +1628,10 @@ const fetchMissedMessages = async () => {
   if (currentConvId) {
     await reconcileStreamingMessages(currentConvId)
   }
+
+  // 全部会话拉取成功才返回 true——调用方（sync_hint 处理）据此决定是否
+  // acknowledge_sync。失败时不 ack，服务端保留 needsSync 标记并在 3s 后重发 hint。
+  return results.every(Boolean)
 }
 
 // reconcileStreamingMessages 对当前会话内本地仍 isStreaming 的消息，
@@ -1794,9 +1800,13 @@ const connectWebSocket = () => {
     'sync_hint': async (data: any) => {
       // 服务端缓冲区溢出时发送 sync_hint，触发离线消息增量拉取补偿
       logger.log('[WS] 收到 sync_hint，开始离线消息补偿:', data?.reason)
-      await fetchMissedMessages()
-      // 拉取完成后通知服务端，清除 needsSync 标记
-      sendMessage({ type: 'acknowledge_sync' })
+      const synced = await fetchMissedMessages()
+      // 仅拉取成功才 ack 清除服务端 needsSync 标记；失败不 ack，服务端 3s 后重发 hint 重试
+      if (synced) {
+        sendMessage({ type: 'acknowledge_sync' })
+      } else {
+        logger.warn('[WS] 离线补偿拉取失败，等待服务端重发 sync_hint')
+      }
     },
     'group_invitation': handleGroupInvitation,
     'added_to_group': refreshUserGroupsAfter(handleAddedToGroup),

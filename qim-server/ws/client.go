@@ -18,10 +18,7 @@ func (c *Client) sendJSON(m WSMessage) {
 	if err != nil {
 		return
 	}
-	select {
-	case c.send <- data:
-	default:
-	}
+	safeSend(c, data)
 }
 
 func (c *Client) handleAuth(data interface{}) {

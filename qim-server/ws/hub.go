@@ -75,6 +75,7 @@ type Hub struct {
 	nodes               []string
 	nodeID              string
 	nodeScheme          string // 节点间通信协议：http 或 https
+	nodeSecret          string // 节点间通信认证密钥（Node-Secret 头）
 	db                  *gorm.DB
 	jwtSecret           string
 
@@ -166,6 +167,21 @@ func safeCloseSend(ch chan []byte) {
 	close(ch)
 }
 
+// safeSend 向客户端发送通道非阻塞写入，recover 写已关闭 channel 的 panic。
+// 多个并发写入方（sendSyncHints/asyncBroadcast/SendToUser/sendJSON）与
+// unregister/失败清理的 close 竞争时，写 closed channel 会 panic——若不加保护，
+// sync-hint ticker 会因此永久死亡（SafeGo 只 recover 一次，goroutine 直接退出），
+// 静默丢消息补偿功能随之静默失效。返回是否成功入队。
+func safeSend(client *Client, msg []byte) (ok bool) {
+	defer func() { recover() }()
+	select {
+	case client.send <- msg:
+		return true
+	default:
+		return false
+	}
+}
+
 // sendJSON 将 WSMessage 序列化后写入 c.send，交由 writePump 统一写出。
 // 认证阶段 readPump 与 writePump 并发运行，不能直接 c.conn.WriteXXX，
 // 否则会与 writePump 竞争同一连接，触发 gorilla 的 concurrent write panic。
@@ -208,6 +224,13 @@ func NewHub(db *gorm.DB, jwtSecret string, nodeScheme string) *Hub {
 func (h *Hub) SetNodes(nodes []string) {
 	h.nodes = nodes
 	logger.WithModule("WS").Info("节点列表已注入", "count", len(nodes), "nodes", nodes)
+}
+
+// SetNodeSecret 设置节点间通信认证密钥（Node-Secret 头），
+// 由应用初始化时从配置注入（node.secret）。接收端 NodeAuthMiddleware
+// 在 secret 为空时拒绝一切节点请求，因此发送端必须携带相同密钥。
+func (h *Hub) SetNodeSecret(secret string) {
+	h.nodeSecret = secret
 }
 
 // generateNodeID 生成唯一的节点 ID
@@ -344,11 +367,10 @@ func (h *Hub) sendSyncHints() {
 			}
 		}
 
-		select {
-		case client.send <- jsonMsg:
+		if safeSend(client, jsonMsg) {
 			// 发送成功只记录时间，不清标记（可靠性：等 ack）
 			client.lastSyncHintAt.Store(now.UnixNano())
-		default:
+		} else {
 			// channel 仍然满，保持标记，下次轮询再试
 		}
 		return true
@@ -380,9 +402,7 @@ func (h *Hub) asyncBroadcast(message []byte) {
 		utils.SafeGo(func() {
 			defer wg.Done()
 			defer func() { <-h.sendSem }() // 释放信号量
-			select {
-			case c.send <- message:
-			default:
+			if !safeSend(c, message) {
 				failedChan <- c
 			}
 		})
@@ -424,9 +444,7 @@ func (h *Hub) SendToUser(userID uint, message []byte) {
 	if existingClients, ok := h.userClients.Load(userID); ok {
 		clients := existingClients.([]*Client)
 		for _, client := range clients {
-			select {
-			case client.send <- message:
-			default:
+			if !safeSend(client, message) {
 				// 缓冲区满：标记客户端需要同步，触发后续 sync_hint 增量拉取补偿。
 				// 不再静默丢弃——消息已落库，客户端收到 sync_hint 后可按 after_id 拉回。
 				if !client.needsSync.Load() {
