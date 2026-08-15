@@ -65,8 +65,10 @@ type MCPClientGateway struct {
 	sessions map[string]*mcp.ClientSession
 	// groupEnabled 运行时是否把外部 MCP 工具放行给群 @AI。
 	groupEnabled bool
-	// skipSSRFCheck 测试用：跳过运行时 URL 校验（仅测试环境由调用方设 true）。
-	skipSSRFCheck bool
+	// AllowPrivate 是否允许连接内网/本机地址的外部 MCP Server（由配置 mcp.allow_private 注入）。
+	// false 时运行时连接路径校验 URL 拒绝私网/本机地址（SSRF 防护）；true 时仅校验协议 http/https。
+	// 测试中直接置 true 以连接本地测试服务器。
+	AllowPrivate bool
 }
 
 // NewMCPClientGateway 构造网关。配置经 configSvc 读取、工具注册到 registry。
@@ -290,9 +292,12 @@ func (g *MCPClientGateway) syncConn(conn *MCPConnConfig) {
 // 若连接配置了 token，通过自定义 RoundTripper 为每次请求注入
 // Authorization: Bearer <token>（go-sdk 的 StreamableClientTransport 无
 // 顶层 header 字段，需经 HTTPClient 挂 RoundTripper）。
-// ValidateExternalURL 校验 URL 仅允许 http/https 且禁止访问内网地址（SSRF 防护）。
+// ValidateExternalURL 校验外部 MCP Server URL：仅允许 http/https，且默认禁止访问本机/内网地址
+// （SSRF 防护）。当 allowPrivate 为 true 时，本机/私网地址限制被放宽（用于内网部署场景，请参阅配置 mcp.allow_private），
+// 但仍只允许 http/https 协议并强制要求主机名。域名还会在 DNS 解析后进行 loopback 复查，
+// 以防止通过公网域名绕过本机地址黑名单（DNS 解析失败则直接放行）。
 // 预览路径与运行时连接路径共用本函数。
-func ValidateExternalURL(rawURL string) error {
+func ValidateExternalURL(rawURL string, allowPrivate bool) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("URL 格式错误: %v", err)
@@ -306,18 +311,32 @@ func ValidateExternalURL(rawURL string) error {
 		return fmt.Errorf("URL 缺少主机名")
 	}
 
-	// 禁止 localhost 和常见本地地址（含边界形式：0/0.0/0.0.0 等 net.ParseIP 不处理的主机名形式）
-	localhostNames := map[string]bool{
-		"localhost": true, "127.0.0.1": true, "::1": true,
-		"0.0.0.0": true, "0": true, "0.0": true, "0.0.0": true,
-	}
-	if localhostNames[host] {
-		return fmt.Errorf("不允许访问本机地址")
-	}
+	if !allowPrivate {
+		// 禁止 localhost 和常见本地地址（含边界形式：0/0.0/0.0.0 等 net.ParseIP 不处理的主机名形式）
+		localhostNames := map[string]bool{
+			"localhost": true, "127.0.0.1": true, "::1": true,
+			"0.0.0.0": true, "0": true, "0.0": true, "0.0.0": true,
+		}
+		if localhostNames[host] {
+			return fmt.Errorf("不允许访问本机地址")
+		}
 
-	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return fmt.Errorf("不允许访问内网/私有地址")
+		if ip := net.ParseIP(host); ip != nil {
+			if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+				return fmt.Errorf("不允许访问内网/私有地址")
+			}
+		} else {
+			// host 是域名：DNS 解析后复查 loopback，防止用公网域名绕过本机地址黑名单
+			// （域名 A 记录指向 127.0.0.1）。仅拦 loopback，不拦私网 IP——私网由
+			// allow_private 统一控制，避免误杀内网部署的合法域名。DNS 解析失败时放行，
+			// 后续 MCP 连接会自行失败，不误杀暂时解析不通的地址。
+			if ips, err := net.LookupIP(host); err == nil {
+				for _, r := range ips {
+					if r.IsLoopback() {
+						return fmt.Errorf("域名 %s 解析到本机地址 %s，不允许访问", host, r.String())
+					}
+				}
+			}
 		}
 	}
 
@@ -331,10 +350,8 @@ func (g *MCPClientGateway) connect(ctx context.Context, conn *MCPConnConfig) (*m
 		if conn.URL == "" {
 			return nil, fmt.Errorf("streamable-http 连接缺少 url")
 		}
-		if !g.skipSSRFCheck {
-			if err := ValidateExternalURL(conn.URL); err != nil {
-				return nil, fmt.Errorf("SSRF 防护拒绝: %w", err)
-			}
+		if err := ValidateExternalURL(conn.URL, g.AllowPrivate); err != nil {
+			return nil, fmt.Errorf("SSRF 防护拒绝: %w", err)
 		}
 		streaming := &mcp.StreamableClientTransport{Endpoint: conn.URL}
 		if conn.Token != "" {

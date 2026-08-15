@@ -35,7 +35,7 @@ func PreviewMCPTools(c *gin.Context) {
 		response.BadRequest(c, "端点 URL 不能为空")
 		return
 	}
-	if err := service.ValidateExternalURL(req.URL); err != nil {
+	if err := service.ValidateExternalURL(req.URL, cfg != nil && cfg.MCP.AllowPrivate); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}

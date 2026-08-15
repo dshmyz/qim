@@ -51,7 +51,7 @@ func TestMCPClientGateway_SyncRegistersExternalTools(t *testing.T) {
 	setGatewayConfig(t, db, externalMCPConfigKey, string(b))
 
 	gw := NewMCPClientGateway(configSvc, registry)
-	gw.skipSSRFCheck = true
+	gw.AllowPrivate = true
 	gw.Sync()
 
 	// 未开 group_enabled，组助手白名单不应放行
@@ -71,7 +71,7 @@ func TestMCPClientGateway_GroupEnabledGate(t *testing.T) {
 	db := setupGatewayTestDB(t)
 	configSvc := NewSystemConfigService(db)
 	gw := NewMCPClientGateway(configSvc, ai.NewToolRegistry(nil))
-	gw.skipSSRFCheck = true
+	gw.AllowPrivate = true
 
 	assert.False(t, gw.GroupEnabled())
 	setGatewayConfig(t, db, externalMCPGroupEnabledKey, "true")
@@ -93,7 +93,7 @@ func TestMCPClientGateway_DisabledConnNotSynced(t *testing.T) {
 	setGatewayConfig(t, db, externalMCPConfigKey, string(b))
 
 	gw := NewMCPClientGateway(configSvc, registry)
-	gw.skipSSRFCheck = true
+	gw.AllowPrivate = true
 	gw.Sync()
 
 	assert.Empty(t, gw.ListExternalToolNames(), "禁用的连接不应注册外部工具")
@@ -115,7 +115,7 @@ func TestMCPClientGateway_UnreachableServerDegrades(t *testing.T) {
 	setGatewayConfig(t, db, externalMCPConfigKey, string(b))
 
 	gw := NewMCPClientGateway(configSvc, registry)
-	gw.skipSSRFCheck = true
+	gw.AllowPrivate = true
 	gw.Sync() // 不应 panic / 阻塞
 
 	assert.Empty(t, gw.ListExternalToolNames(), "不可达 server 的工具应降级为不可用")
@@ -138,7 +138,7 @@ func TestMCPClientGateway_EmptyAllowedToolsBlocksAll(t *testing.T) {
 	setGatewayConfig(t, db, externalMCPConfigKey, string(b))
 
 	gw := NewMCPClientGateway(configSvc, registry)
-	gw.skipSSRFCheck = true
+	gw.AllowPrivate = true
 	gw.Sync()
 
 	assert.Empty(t, gw.ListExternalToolNames(), "全不选时不应注册任何工具")

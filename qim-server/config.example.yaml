@@ -124,6 +124,13 @@ ws:
 vector:
   path: "./vector.db"
 
+# 外部 MCP 客户端网关配置（管理员在管理后台配置外部 MCP Server 连接）
+# SSRF 防护默认开启：仅允许公网 http/https 地址，禁止 localhost/私网 IP。
+# 内网部署时若外部 MCP Server 位于私网地址，请将 allow_private 设为 true 放开地址限制
+#（仍只允许 http/https 协议）。仅建议在可信内网环境开启。
+mcp:
+  allow_private: false
+
 # 静态资源路径配置（未配置时使用默认值，也可用环境变量覆盖）
 static:
   uploads_dir: "uploads"

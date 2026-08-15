@@ -28,6 +28,7 @@ type Config struct {
 	DataInit DataInitConfig
 	Node     NodeConfig
 	Static   StaticConfig
+	MCP      MCPConfig
 }
 
 // AiThresholdConfig AI 阈值配置项定义：key、默认值、取值范围说明。
@@ -126,6 +127,15 @@ type NodeConfig struct {
 	Secret string `yaml:"secret"`
 }
 
+// MCPConfig 外部 MCP 客户端网关配置。
+type MCPConfig struct {
+	// AllowPrivate 是否允许连接内网/本机地址的外部 MCP Server。
+	// 默认 false：保持 SSRF 防护（仅允许公网 http/https 地址）。
+	// 内网部署（外部 MCP server 位于 192.168.x.x / 10.x / localhost 等地址）时设为 true 放开地址限制，
+	// 但仍只允许 http/https 协议。仅建议在可信内网环境开启。
+	AllowPrivate bool `yaml:"allow_private"`
+}
+
 type StorageConfig struct {
 	Type  string             `yaml:"type"`
 	Local LocalStorageConfig `yaml:"local"`
@@ -178,6 +188,7 @@ type yamlConfig struct {
 	DataInit DataInitConfig `yaml:"data_init"`
 	Node     NodeConfig     `yaml:"node"`
 	Static   StaticConfig   `yaml:"static"`
+	MCP      MCPConfig      `yaml:"mcp"`
 }
 
 func Load() *Config {
@@ -372,6 +383,7 @@ func Load() *Config {
 		DataInit: cfg.DataInit,
 		Node:     cfg.Node,
 		Static:   cfg.Static,
+		MCP:      cfg.MCP,
 	}
 }
 

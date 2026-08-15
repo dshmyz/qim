@@ -73,6 +73,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		di.GlobalContainer.SystemConfigService,
 		toolRegistry,
 	)
+	mcpGateway.AllowPrivate = cfg.MCP.AllowPrivate
 	mcpGateway.Sync()
 
 	groupDocSvc := di.GlobalContainer.GroupDocumentService
