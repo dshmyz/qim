@@ -346,6 +346,12 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 
 	// 初始化WebSocket Hub
 	hub := ws.NewHub(database.GetDB(), cfg.JWT.Secret, cfg.Cluster.Scheme)
+	// 多节点：从配置注入节点列表（cluster.enabled + cluster.nodes）。
+	// 此前配置到 Hub 的链路是断的——NewHub 只接收 Scheme，nodes 恒空，
+	// 跨节点推送永远空循环，/node/broadcast 端点成了"能被打、打不出"。
+	if cfg.Cluster.Enabled {
+		hub.SetNodes(cfg.Cluster.Nodes)
+	}
 	ws.GlobalHub = hub
 	go hub.Run()
 

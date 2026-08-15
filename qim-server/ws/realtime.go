@@ -2,9 +2,10 @@ package ws
 
 import (
 	"encoding/json"
+	"time"
+
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
-	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"

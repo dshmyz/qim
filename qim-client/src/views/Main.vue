@@ -1576,31 +1576,56 @@ const setupPostLoadTasks = () => {
 
 const fetchMissedMessages = async () => {
   const chatStore = useChatStore()
+
+  // 收集需要补偿的会话：当前会话 + 有未读消息的会话（最多同步 5 个，避免 REST 请求风暴）
+  const convsToSync: string[] = []
+
+  // 1. 当前会话优先
   const currentConvId = chatStore.currentConversationId
-  if (!currentConvId) return
-
-  const lastMsgId = chatStore.getLastMessageId(currentConvId)
-  if (!lastMsgId) return
-
-  try {
-    const response = await request(`/api/v1/conversations/${currentConvId}/messages?after_id=${lastMsgId}&page_size=50`)
-    if (response.code === 0 && response.data?.messages) {
-      const missedMessages = response.data.messages
-        .map((msg: any) => processMessage(msg, currentConvId))
-        .filter((m: any) => m !== null)
-      if (missedMessages.length > 0) {
-        chatStore.appendMessagesSilent(currentConvId, missedMessages)
-        logger.log(`[离线补偿] 会话 ${currentConvId} 拉取到 ${missedMessages.length} 条离线消息`)
-      }
-    }
-  } catch (error) {
-    logger.error('[离线补偿] 拉取离线消息失败:', error)
+  if (currentConvId) {
+    convsToSync.push(currentConvId)
   }
+
+  // 2. 有未读消息的会话（排除已加入的当前会话）
+  for (const conv of chatStore.conversations) {
+    if (convsToSync.length >= 5) break
+    const convId = String(conv.id)
+    if (convId !== currentConvId && (conv.unread_count || 0) > 0) {
+      convsToSync.push(convId)
+    }
+  }
+
+  if (convsToSync.length === 0) return
+
+  const syncOne = async (convId: string) => {
+    const lastMsgId = chatStore.getLastMessageId(convId)
+    if (!lastMsgId) return
+
+    try {
+      const response = await request(`/api/v1/conversations/${convId}/messages?after_id=${lastMsgId}&page_size=50`)
+      if (response.code === 0 && response.data?.messages) {
+        const missedMessages = response.data.messages
+          .map((msg: any) => processMessage(msg, convId))
+          .filter((m: any) => m !== null)
+        if (missedMessages.length > 0) {
+          chatStore.appendMessagesSilent(convId, missedMessages)
+          logger.log(`[离线补偿] 会话 ${convId} 拉取到 ${missedMessages.length} 条离线消息`)
+        }
+      }
+    } catch (error) {
+      logger.error(`[离线补偿] 会话 ${convId} 拉取离线消息失败:`, error)
+    }
+  }
+
+  // 并行拉取所有需要补偿的会话
+  await Promise.all(convsToSync.map(syncOne))
 
   // 流式收尾补偿：断线期间流式消息可能已 finish（type: streaming->markdown），
   // 但 finish 是 UPDATE 既有消息（同 id），after_id 只拉新消息拉不到 -> 本地卡 typing 气泡。
   // 重新拉取本地仍 isStreaming 的消息的最新状态并 reconcile。
-  await reconcileStreamingMessages(currentConvId)
+  if (currentConvId) {
+    await reconcileStreamingMessages(currentConvId)
+  }
 }
 
 // reconcileStreamingMessages 对当前会话内本地仍 isStreaming 的消息，
@@ -1766,6 +1791,13 @@ const connectWebSocket = () => {
     'message_deleted': handleMessageDeleted,
     'message_updated': handleMessageUpdated,
     'ai_tool_call': handleToolCall,
+    'sync_hint': async (data: any) => {
+      // 服务端缓冲区溢出时发送 sync_hint，触发离线消息增量拉取补偿
+      logger.log('[WS] 收到 sync_hint，开始离线消息补偿:', data?.reason)
+      await fetchMissedMessages()
+      // 拉取完成后通知服务端，清除 needsSync 标记
+      sendMessage({ type: 'acknowledge_sync' })
+    },
     'group_invitation': handleGroupInvitation,
     'added_to_group': refreshUserGroupsAfter(handleAddedToGroup),
     'group_member_left': refreshUserGroupsAfter(handleGroupMemberLeft),
