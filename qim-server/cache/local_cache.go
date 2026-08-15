@@ -1,120 +1,66 @@
 package cache
 
 import (
-	"container/list"
-	"sync"
+	"fmt"
 	"time"
+
+	"github.com/hashicorp/golang-lru/v2/expirable"
 )
 
 const defaultTTL = 10 * time.Minute
 
+// Cache 基于 hashicorp/golang-lru 的 expirable LRU 的薄封装：
+// LRU 容量淘汰 + 统一过期时间（构造时指定），并发安全。
+// 不做 per-key TTL：当前所有调用点均使用构造时统一 TTL。
 type Cache struct {
-	maxSize   int
-	defaultTTL time.Duration
-	mu        sync.Mutex
-	items     map[string]*list.Element
-	lru       *list.List
-}
-
-type entry struct {
-	key       string
-	value     interface{}
-	expiredAt time.Time
+	lru *expirable.LRU[string, interface{}]
 }
 
 func NewCache(maxSize int) *Cache {
-	return &Cache{
-		maxSize:    maxSize,
-		defaultTTL: defaultTTL,
-		items:      make(map[string]*list.Element),
-		lru:        list.New(),
-	}
+	return NewCacheWithTTL(maxSize, defaultTTL)
 }
 
 func NewCacheWithTTL(maxSize int, ttl time.Duration) *Cache {
-	return &Cache{
-		maxSize:    maxSize,
-		defaultTTL: ttl,
-		items:      make(map[string]*list.Element),
-		lru:        list.New(),
-	}
+	return &Cache{lru: expirable.NewLRU[string, interface{}](maxSize, nil, ttl)}
 }
 
 func (c *Cache) Get(key string) (interface{}, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if elem, ok := c.items[key]; ok {
-		e := elem.Value.(*entry)
-		// 检查是否过期
-		if !e.expiredAt.IsZero() && time.Now().After(e.expiredAt) {
-			// 过期，删除并返回 miss
-			c.lru.Remove(elem)
-			delete(c.items, key)
-			return nil, false
-		}
-		c.lru.MoveToFront(elem)
-		return e.value, true
-	}
-	return nil, false
+	return c.lru.Get(key)
 }
 
-func (c *Cache) Put(key string, value interface{}, ttl ...time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// 计算过期时间：优先使用传入的 TTL，否则使用默认 TTL
-	var expiredAt time.Time
-	if len(ttl) > 0 && ttl[0] > 0 {
-		expiredAt = time.Now().Add(ttl[0])
-	} else {
-		expiredAt = time.Now().Add(c.defaultTTL)
-	}
-
-	if elem, ok := c.items[key]; ok {
-		c.lru.MoveToFront(elem)
-		elem.Value.(*entry).value = value
-		elem.Value.(*entry).expiredAt = expiredAt
-		return
-	}
-
-	if c.lru.Len() >= c.maxSize {
-		oldest := c.lru.Back()
-		if oldest != nil {
-			c.lru.Remove(oldest)
-			delete(c.items, oldest.Value.(*entry).key)
-		}
-	}
-
-	newElem := c.lru.PushFront(&entry{key: key, value: value, expiredAt: expiredAt})
-	c.items[key] = newElem
+func (c *Cache) Put(key string, value interface{}) {
+	c.lru.Add(key, value)
 }
 
 func (c *Cache) Delete(key string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if elem, ok := c.items[key]; ok {
-		c.lru.Remove(elem)
-		delete(c.items, key)
-	}
+	c.lru.Remove(key)
 }
 
 func (c *Cache) Clear() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.lru.Init()
-	c.items = make(map[string]*list.Element)
+	c.lru.Purge()
 }
 
 func (c *Cache) Len() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	return c.lru.Len()
 }
 
 var (
-	UserCache                 = NewCache(1000)
-	ConversationMemberCache    = NewCache(500)
+	UserCache               = NewCache(1000)
+	ConversationMemberCache = NewCache(500)
+	// AvatarPauseCache 缓存用户的 SelfMessagePause 值（分钟）。
+	// key: "pause:{userID}", value: int (0=无配置或未启用，>0=启用且分钟数)。
+	// TTL 5 分钟；AvatarConfig 创建/删除/更新 SelfMessagePause 时主动失效。
+	AvatarPauseCache = NewCacheWithTTL(1000, 5*time.Minute)
 )
+
+// InvalidateAvatarPauseCache 清除指定用户的分身暂停缓存。
+// 在 AvatarConfig 创建、删除或 SelfMessagePause 字段变更后调用。
+func InvalidateAvatarPauseCache(userID uint) {
+	AvatarPauseCache.Delete(fmt.Sprintf("pause:%d", userID))
+}
+
+// InvalidateConversationMemberCache 清除指定会话的成员列表缓存。
+// 成员变更（加群/退群/改角色/转移群主）后调用，防止 TTL 内读到陈旧成员列表。
+func InvalidateConversationMemberCache(convID uint) {
+	ConversationMemberCache.Delete(fmt.Sprintf("conv_members:%d", convID))
+}
