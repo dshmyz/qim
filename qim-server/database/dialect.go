@@ -2,7 +2,9 @@ package database
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
@@ -113,17 +115,20 @@ func (d *mysqlDialect) HasFulltextIndex(db *gorm.DB, table, indexName string) bo
 func (d *mysqlDialect) InitFulltext(db *gorm.DB) {
 	d.supportsFulltext = false
 
-	if err := db.Exec("CREATE TEMPORARY TABLE IF NOT EXISTS __probe_ft (content TEXT)").Error; err != nil {
-		logger.WithModule("Database").Warn("能力探测失败：无法创建临时表", "error", err)
+	// MySQL 8 不允许在 TEMPORARY 表上建 FULLTEXT 索引（Error 1796:
+	// "Cannot create FULLTEXT index on temporary InnoDB table"），
+	// 探测必须使用真实表，测完即删。随机表名避免并发实例冲突。
+	probeTable := "__qim_ft_probe_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	if err := db.Exec("CREATE TABLE " + probeTable + " (content TEXT) ENGINE=InnoDB").Error; err != nil {
+		logger.WithModule("Database").Warn("FULLTEXT 能力探测失败：无法创建探测表", "error", err)
 		return
 	}
-	defer db.Exec("DROP TEMPORARY TABLE IF EXISTS __probe_ft")
+	defer db.Exec("DROP TABLE IF EXISTS " + probeTable)
 
-	if err := db.Exec("ALTER TABLE __probe_ft ADD FULLTEXT INDEX __probe_ft_idx (content)").Error; err != nil {
+	if err := db.Exec("ALTER TABLE " + probeTable + " ADD FULLTEXT INDEX __qim_ft_probe_idx (content)").Error; err != nil {
 		logger.WithModule("Database").Info("FULLTEXT 索引不可用，将使用 LIKE 搜索", "error", err)
 		return
 	}
-	db.Exec("DROP INDEX __probe_ft_idx ON __probe_ft")
 
 	d.supportsFulltext = true
 	logger.WithModule("Database").Info("数据库支持 FULLTEXT 全文索引")
