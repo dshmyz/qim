@@ -29,6 +29,7 @@
             <span class="overview-status" :class="config.enabled ? 'active' : 'inactive'">
               {{ config.enabled ? '运行中' : '已关闭' }}
             </span>
+            <p v-if="approvalHint" class="approval-hint">{{ approvalHint }}</p>
           </div>
           <button
             :class="['power-btn', { on: config.enabled }]"
@@ -159,6 +160,23 @@ const { configs: modelConfigs, fetchConfigs } = useModelConfigs()
 const learningProgress = computed(() => personaState.learnStatus.value.progress)
 const learningStatus = computed(() => personaState.learnStatus.value.status)
 const toggleBusy = ref(false)
+
+// 分身未开启时，按审批状态给一行就地提示，说明开启需管理员审批及当前进度
+const approvalHint = computed(() => {
+  if (!config.value || config.value.enabled) return ''
+  switch (config.value.approvalStatus) {
+    case 'pending':
+      return '已提交开启申请，等待管理员审批，通过后自动生效'
+    case 'rejected':
+      return config.value.approvalRejectedReason
+        ? `开启申请被拒绝：${config.value.approvalRejectedReason}，可点击电源按钮重新提交`
+        : '开启申请被拒绝，可点击电源按钮重新提交'
+    case 'none':
+      return '开启需管理员审批，通过后自动生效'
+    default:
+      return ''
+  }
+})
 
 async function handleToggle() {
   if (!config.value || toggleBusy.value) return
@@ -375,6 +393,12 @@ async function handleSave() {
 
 .overview-status.inactive {
   background: var(--hover-color);
+  color: var(--text-secondary);
+}
+
+.approval-hint {
+  margin: 6px 0 0 0;
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
 }
 
