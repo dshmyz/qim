@@ -25,8 +25,8 @@ const (
 	// 状态变更防抖延迟
 	StatusDebounceDelay = 500 * time.Millisecond
 
-	// syncHintTimeout 是 sync_hint 重试窗口：自首次成功发送 hint 起，
-	// 客户端仍未 acknowledge_sync（老客户端不支持 / 已失联）则停止重发。
+	// syncHintTimeout 是 sync_hint 重试窗口：自首次尝试发送 hint（本次溢出发生）起，
+	// 客户端仍未 acknowledge_sync（老客户端不支持 / 已失联 / channel 一直满）则停止重发。
 	syncHintTimeout = 30 * time.Second
 )
 
@@ -113,9 +113,11 @@ type Client struct {
 	// needsSync 标记客户端发送缓冲区溢出，需要拉取离线消息补偿。
 	// 由 SendToUser 在 channel 满时置位，由客户端 acknowledge_sync 后清除。
 	needsSync atomic.Bool
-	// lastSyncHintAt 最近一次成功发送 sync_hint 的 UnixNano 时间戳。
-	// 用于超时兜底：syncHintTimeout 内客户端未 ack 则停止重发。
-	lastSyncHintAt atomic.Int64
+	// syncHintStartedAt 本次溢出补偿的起始时间（首次尝试发送 sync_hint 的 UnixNano）。
+	// 作为重试窗口起点：从首次尝试起 syncHintTimeout 内客户端仍未 acknowledge_sync
+	// （老客户端不支持 / 已失联 / channel 一直满从未发送成功）则放弃重发，
+	// 避免对失联或慢性溢出的客户端无限推送。ack 或超时放弃时归零，供下次溢出重新计时。
+	syncHintStartedAt atomic.Int64
 }
 
 type WSMessage struct {
@@ -358,18 +360,23 @@ func (h *Hub) sendSyncHints() {
 		}
 
 		now := time.Now()
-		lastSent := client.lastSyncHintAt.Load()
-		if lastSent > 0 {
-			// 超时兜底：重试窗口内客户端仍未 ack，停止重发
-			if now.Sub(time.Unix(0, lastSent)) > syncHintTimeout {
+		started := client.syncHintStartedAt.Load()
+		if started > 0 {
+			// 超时兜底：自首次尝试起重试窗口内仍未 ack 则放弃。窗口起点用 syncHintStartedAt
+			// 而非「最近一次成功发送」——若 channel 一直满从未发送成功，后者恒 0 会导致
+			// 永不超时、每 3s 无限重试；且间歇性发送成功的客户端会不断刷新窗口导致无限拖延。
+			if now.Sub(time.Unix(0, started)) > syncHintTimeout {
 				client.needsSync.Store(false)
+				client.syncHintStartedAt.Store(0)
 				return true
 			}
 		}
 
 		if safeSend(client, jsonMsg) {
-			// 发送成功只记录时间，不清标记（可靠性：等 ack）
-			client.lastSyncHintAt.Store(now.UnixNano())
+			// 发送成功只记录窗口起点（无则记录），不清标记（可靠性：等 ack）
+			if client.syncHintStartedAt.Load() == 0 {
+				client.syncHintStartedAt.Store(now.UnixNano())
+			}
 		} else {
 			// channel 仍然满，保持标记，下次轮询再试
 		}
@@ -377,9 +384,17 @@ func (h *Hub) sendSyncHints() {
 	})
 }
 
-// asyncBroadcast 异步广播消息给所有客户端，使用并发发送不阻塞事件循环
-
+// asyncBroadcast 异步广播消息给所有客户端，使用并发发送不阻塞事件循环。
+// 本地投递 + 转发其他节点；来自其他节点的中继走 DeliverBroadcastFromNode，
+// 只做本地投递、不回传（防止跨节点消息环）。
 func (h *Hub) asyncBroadcast(message []byte) {
+	h.deliverLocally(message)
+	h.broadcastToOtherNodes(message)
+}
+
+// deliverLocally 仅向本节点客户端投递广播消息，不转发其他节点。
+// 供 asyncBroadcast（本地消息）与 DeliverBroadcastFromNode（节点中继接收）复用。
+func (h *Hub) deliverLocally(message []byte) {
 	// 收集所有客户端到切片
 	var clients []*Client
 	h.clients.Range(func(key, value interface{}) bool {
@@ -388,7 +403,6 @@ func (h *Hub) asyncBroadcast(message []byte) {
 	})
 
 	if len(clients) == 0 {
-		h.broadcastToOtherNodes(message)
 		return
 	}
 
@@ -434,13 +448,21 @@ func (h *Hub) asyncBroadcast(message []byte) {
 			}
 		}
 	}
-
-	h.broadcastToOtherNodes(message)
 }
 
 // startNodeCommunication 启动节点间通信服务
 
 func (h *Hub) SendToUser(userID uint, message []byte) {
+	// 本地投递 + 转发其他节点。多节点下同一用户可能同时连接多个节点，
+	// 各节点独立投递一次（多设备各收一次），不会产生单设备重复；
+	// 对端节点只做本地投递（DeliverToUserFromNode），不回传，故无环。
+	h.deliverToUserLocal(userID, message)
+	h.sendToUserToOtherNodes(userID, message)
+}
+
+// deliverToUserLocal 仅向本节点该用户的连接投递，不转发其他节点。
+func (h *Hub) deliverToUserLocal(userID uint, message []byte) {
+	now := time.Now()
 	if existingClients, ok := h.userClients.Load(userID); ok {
 		clients := existingClients.([]*Client)
 		for _, client := range clients {
@@ -449,14 +471,36 @@ func (h *Hub) SendToUser(userID uint, message []byte) {
 				// 不再静默丢弃——消息已落库，客户端收到 sync_hint 后可按 after_id 拉回。
 				if !client.needsSync.Load() {
 					client.needsSync.Store(true)
+					// 首次溢出即记录重试窗口起点（CAS 保证不重置已开始的窗口），
+					// 即使 channel 一直满、hint 从未发送成功，也能按 syncHintTimeout 兜底停止。
+					client.syncHintStartedAt.CompareAndSwap(0, now.UnixNano())
 					logger.WithModule("WS").Warn("客户端发送缓冲区溢出，标记需要同步",
 						"userID", userID, "channel_len", len(client.send), "channel_cap", cap(client.send))
 				}
 			}
 		}
 	}
+}
 
-	h.sendToUserToOtherNodes(userID, message)
+// DeliverBroadcastFromNode 处理来自其他节点的广播中继：仅投递本节点客户端，不再转发。
+// origin==本节点 ID 表示消息源自本节点又绕回（本节点地址被配置进 nodes 列表时），
+// 直接丢弃——接收端按 origin 去环比发送端跳过自身更可靠（nodeID 是 UUID，与地址永不等）。
+func (h *Hub) DeliverBroadcastFromNode(origin string, message []byte) {
+	if origin != "" && origin == h.nodeID {
+		logger.WithModule("WS").Debug("丢弃回环节点广播", "origin", origin)
+		return
+	}
+	// 与原 Broadcast 通道投递一致：异步本地投递，不阻塞节点 HTTP 中继
+	utils.SafeGoWithLabel("node-broadcast-local", func() { h.deliverLocally(message) })
+}
+
+// DeliverToUserFromNode 处理来自其他节点的用户定向消息中继：仅投递本节点该用户，不再转发。
+func (h *Hub) DeliverToUserFromNode(origin string, userID uint, message []byte) {
+	if origin != "" && origin == h.nodeID {
+		logger.WithModule("WS").Debug("丢弃回环节点定向消息", "origin", origin, "userID", userID)
+		return
+	}
+	h.deliverToUserLocal(userID, message)
 }
 
 func (h *Hub) BroadcastToAllOnlineUsers(message []byte) {
@@ -540,12 +584,16 @@ func (h *Hub) cleanExpiredConversationCache() {
 // GetCachedMemberIDs 返回指定会话的成员 ID 列表缓存。
 // 缓存命中且未过期时直接返回；否则返回 nil，由调用方 fallback 到 DB。
 // 用于 handler 层（如 GetMessages 的 @all 展开）避免每次请求都查 DB。
+// 返回的是缓存内部 slice 的副本：调用方若误写（append/改元素）不会污染缓存，
+// 否则会连带污染后续 @all 展开与广播名单。
 func (h *Hub) GetCachedMemberIDs(convID uint) []uint {
 	h.mu.RLock()
 	cached, found := h.conversationMembers[convID]
 	h.mu.RUnlock()
 	if found && time.Now().Before(cached.expiredAt) {
-		return cached.memberIDs
+		ids := make([]uint, len(cached.memberIDs))
+		copy(ids, cached.memberIDs)
+		return ids
 	}
 	return nil
 }

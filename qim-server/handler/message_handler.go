@@ -472,11 +472,14 @@ func GetMessages(c *gin.Context) {
 	cardActionMap := buildCardActionMap(result.Messages, uid)
 	// 批量查当前用户对本页消息的已读回执，让 is_read 反映 per-user 状态
 	userReadSet := buildUserReadReceiptSet(result.Messages, uid)
+	// 批量预加载群 AI 助手名，避免逐条 assistant 消息回查 groups（N+1）
+	assistantNames := service.PreloadAssistantNames(result.Messages)
 	for _, msg := range result.Messages {
 		resp := service.BuildMessageResponse(msg, service.MessageResponseOptions{
-			CurrentUserID: uid,
-			AllMemberIDs:  allMemberIDs,
-			UserReadSet:   userReadSet,
+			CurrentUserID:  uid,
+			AllMemberIDs:   allMemberIDs,
+			UserReadSet:    userReadSet,
+			AssistantNames: assistantNames,
 		})
 		if msg.Type == "card" {
 			if actionID, ok := cardActionMap[msg.ID]; ok {
@@ -564,12 +567,15 @@ func GetMessagesByFilter(c *gin.Context) {
 	// 与 GetMessages 对齐：返回 per-user is_read 而非全局字段
 	allMemberIDs := getAllMemberIDs(uint(convIDUint))
 	userReadSet := buildUserReadReceiptSet(result.Messages, uid)
+	// 批量预加载群 AI 助手名，避免逐条 assistant 消息回查 groups（N+1）
+	assistantNames := service.PreloadAssistantNames(result.Messages)
 	var responseMessages []map[string]interface{}
 	for _, msg := range result.Messages {
 		responseMessages = append(responseMessages, service.BuildMessageResponse(msg, service.MessageResponseOptions{
-			CurrentUserID: uid,
-			AllMemberIDs:  allMemberIDs,
-			UserReadSet:   userReadSet,
+			CurrentUserID:  uid,
+			AllMemberIDs:   allMemberIDs,
+			UserReadSet:    userReadSet,
+			AssistantNames: assistantNames,
 		}))
 	}
 
@@ -1378,12 +1384,15 @@ func SearchMessages(c *gin.Context) {
 		}
 	}
 	userReadSet := buildUserReadReceiptSet(messages, uid)
+	// 搜索可跨会话：批量预加载所有命中消息的群 AI 助手名，消除逐条 assistant 消息回查 groups（N+1）
+	assistantNames := service.PreloadAssistantNames(messages)
 	var responseMessages []map[string]interface{}
 	for _, msg := range messages {
 		responseMessages = append(responseMessages, service.BuildMessageResponse(msg, service.MessageResponseOptions{
-			CurrentUserID: uid,
-			AllMemberIDs:  convMemberMap[msg.ConversationID],
-			UserReadSet:   userReadSet,
+			CurrentUserID:  uid,
+			AllMemberIDs:   convMemberMap[msg.ConversationID],
+			UserReadSet:    userReadSet,
+			AssistantNames: assistantNames,
 		}))
 	}
 

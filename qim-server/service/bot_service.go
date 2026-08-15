@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/ws"
 
 	"gorm.io/gorm"
 )
@@ -38,7 +39,9 @@ func (s *BotService) UpdateBot(bot *model.Bot) error {
 }
 
 func (s *BotService) DeleteBot(id uint) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	// 事务内收集受影响会话（删除成员行之前），供提交后失效 Hub 成员缓存。
+	var affectedConvIDs []uint
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		var bot model.Bot
 		if err := tx.First(&bot, id).Error; err != nil {
 			return err
@@ -53,11 +56,28 @@ func (s *BotService) DeleteBot(id uint) error {
 		// 若不清除，前端群成员列表仍会显示该 bot，且对其发起私聊时后端
 		// CreateSingleConversation 反查 virtual_user_id 失败返回 404「机器人不存在」。
 		if bot.VirtualUserID != nil {
+			if err := tx.Model(&model.ConversationMember{}).
+				Where("user_id = ?", *bot.VirtualUserID).
+				Distinct().
+				Pluck("conversation_id", &affectedConvIDs).Error; err != nil {
+				return err
+			}
 			if err := tx.Where("user_id = ?", *bot.VirtualUserID).Delete(&model.ConversationMember{}).Error; err != nil {
 				return err
 			}
 		}
 
 		return tx.Delete(&bot).Error
-	})
+	}); err != nil {
+		return err
+	}
+
+	// 事务成功提交后，失效受影响会话的 Hub 成员缓存。
+	// 否则缓存 TTL（5min）内 @all 展开与广播名单仍含已删 bot 的虚拟用户（幽灵成员）。
+	if ws.GlobalHub != nil {
+		for _, convID := range affectedConvIDs {
+			ws.GlobalHub.UpdateConversationMembers(convID)
+		}
+	}
+	return nil
 }

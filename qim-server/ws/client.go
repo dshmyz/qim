@@ -120,8 +120,11 @@ func (c *Client) readPump() {
 		case "heartbeat":
 			// 心跳，无需处理
 		case "acknowledge_sync":
-			// 客户端确认已收到 sync_hint 并完成增量拉取，清除溢出标记
+			// 客户端确认已收到 sync_hint 并完成增量拉取，清除溢出标记。
+			// 同时归零 syncHintStartedAt：若不复位，本次溢出已开始的重试窗口会残留，
+			// 下次溢出时会按旧起点立刻判超时，静默丢失补偿直接失效。
 			c.needsSync.Store(false)
+			c.syncHintStartedAt.Store(0)
 		case "subscribe_user_status":
 			handleSubscribeUserStatus(c, msg.Data)
 		case "unsubscribe_user_status":

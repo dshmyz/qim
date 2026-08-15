@@ -39,10 +39,7 @@ func handleSendMessage(c *Client, data interface{}) {
 				Data: map[string]interface{}{"code": "send_failed", "message": err.Error()},
 			}
 			jsonErr, _ := json.Marshal(errMsg)
-			select {
-			case c.send <- jsonErr:
-			default:
-			}
+			safeSend(c, jsonErr)
 		}
 		return
 	}

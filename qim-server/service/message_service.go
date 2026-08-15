@@ -228,7 +228,14 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 		}
 	}
 
-	// 成员校验 + 会话类型合并为一次 JOIN（原来分两次查询）
+	// 成员校验 + 会话类型合并为一次 JOIN（原来分两次查询）。
+	// 注意 INNER JOIN 语义：conversation_members 里存在成员行但 conversations 中
+	// 无对应会话（孤儿成员行）时，JOIN 匹配不到 → 拒绝发送（ErrMessageForbidden）。
+	// 这是刻意防御而非倒退：孤儿成员行通常源于会话被删除后成员行未随事务清理、
+	// 或 bot 虚拟用户残留。旧实现按 member 行单独查询会放行，从而在已删除的
+	// 会话上创建悬挂消息（conversation_id 指向不存在的会话，广播名单又反查不到
+	// 成员，静默丢失）。Conversation 用 IsDeleted bool 而非 gorm soft-delete，
+	// 因此该 JOIN 不需要额外过滤 is_deleted 条件。
 	var mwt memberWithType
 	if err := db.Table("conversation_members cm").
 		Select("cm.*, c.type as conv_type").
@@ -1841,6 +1848,10 @@ type MessageResponseOptions struct {
 	// BroadcastWS 标记为 WS 广播：无 per-user 上下文，is_read 固定 false
 	// （避免 A 已读后 B 收到的广播也显示已读），不输出 is_at_mention（前端按 mention_user_ids 自己算）。
 	BroadcastWS bool
+	// AssistantNames 预加载的群 AI 助手名（conversation_id -> 展示名），HTTP 批量列表场景
+	// 由 handler 一次性批量查询（PreloadAssistantNames）后传入，避免逐条 assistant 消息
+	// N+1 回查 groups；为空时 BuildMessageResponse 内部按需解析（单条 WS 广播 / 发送响应路径）。
+	AssistantNames map[uint]string
 }
 
 // BuildMessageResponse 构建消息响应体，HTTP 响应、WS 广播、AI 消息广播三路共用。
@@ -1891,7 +1902,7 @@ func BuildMessageResponse(msg model.Message, opts MessageResponseOptions) map[st
 		// 流式消息标记：type=streaming 即进行中，客户端据此显示 typing 动画；
 		// 已 finish 的消息 type 已是 markdown，is_streaming=false。刷新后不卡空气泡。
 		"is_streaming":      msg.Type == "streaming",
-		"ai_assistant_name": resolveAIName(msg),
+		"ai_assistant_name": resolveAIName(msg, opts.AssistantNames),
 		"origin":            msg.Origin,
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
@@ -1923,18 +1934,28 @@ func BuildMessageResponse(msg model.Message, opts MessageResponseOptions) map[st
 }
 
 // resolveAIName 解析 AI 消息的展示名：分身名 / 群 AI 配置名 / bot 昵称，兜底 "AI助手"。
-func resolveAIName(msg model.Message) string {
+// preloaded 是 handler 批量场景预加载的群 AI 助手名（conversation_id -> 展示名），
+// 非 nil 时 assistant 分支直接查表，避免逐条消息回查 groups（N+1）；
+// nil 时走 DB 查询（单条 WS 广播 / 发送响应路径，本就只需一条查询）。
+func resolveAIName(msg model.Message, preloaded map[uint]string) string {
 	nameCache := GetAINameCache()
 	db := database.GetDB()
 
 	if msg.Origin == "assistant" {
-		var group model.Group
-		if err := db.Select("ai_config").
-			Where("conversation_id = ?", msg.ConversationID).
-			First(&group).Error; err == nil && group.AIConfigJSON != "" {
-			aiConfig := group.GetAIConfig()
-			if aiConfig.AssistantName != "" {
-				return aiConfig.AssistantName
+		if preloaded != nil {
+			// 预加载命中即返回；未命中表示该会话未配置助手名（等价于下方 DB 查询无结果）。
+			if name, ok := preloaded[msg.ConversationID]; ok {
+				return name
+			}
+		} else {
+			var group model.Group
+			if err := db.Select("ai_config").
+				Where("conversation_id = ?", msg.ConversationID).
+				First(&group).Error; err == nil && group.AIConfigJSON != "" {
+				aiConfig := group.GetAIConfig()
+				if aiConfig.AssistantName != "" {
+					return aiConfig.AssistantName
+				}
 			}
 		}
 	}
@@ -1947,6 +1968,48 @@ func resolveAIName(msg model.Message) string {
 		return msg.Sender.Nickname
 	}
 	return "AI助手"
+}
+
+// PreloadAssistantNames 批量预加载一批消息中群 AI 助手名（conversation_id -> 展示名），
+// 供 HTTP 消息列表场景传入 BuildMessageResponse 的 AssistantNames，消除逐条 assistant 消息
+// 回查 groups 的 N+1。仅收集 Origin=="assistant" 的消息所在会话，一次 IN 查询。
+// 返回 nil 表示这批消息没有 assistant 消息（调用方无需处理）；非 nil 表示已查询，
+// 会话不在映射中即无已配置的助手名（此时不能回退到逐条查询，否则 N+1 依旧）。
+func PreloadAssistantNames(msgs []model.Message) map[uint]string {
+	convIDs := make([]uint, 0)
+	seen := make(map[uint]struct{})
+	for _, m := range msgs {
+		if m.Origin != "assistant" {
+			continue
+		}
+		if _, ok := seen[m.ConversationID]; ok {
+			continue
+		}
+		seen[m.ConversationID] = struct{}{}
+		convIDs = append(convIDs, m.ConversationID)
+	}
+	if len(convIDs) == 0 {
+		return nil
+	}
+
+	result := make(map[uint]string, len(convIDs))
+	var groups []model.Group
+	if err := database.GetDB().Select("conversation_id", "ai_config").
+		Where("conversation_id IN ?", convIDs).Find(&groups).Error; err != nil {
+		// 查询失败返回非 nil 空 map：阻止调用方回退逐条查询（N+1 依旧），
+		// 代价仅是这批消息的助手名暂时缺失（兜底 "AI助手"）。
+		return result
+	}
+	for _, g := range groups {
+		if g.AIConfigJSON == "" {
+			continue
+		}
+		aiConfig := g.GetAIConfig()
+		if aiConfig.AssistantName != "" {
+			result[g.ConversationID] = aiConfig.AssistantName
+		}
+	}
+	return result
 }
 
 // containsUint 判断 uint 切片是否包含 v。

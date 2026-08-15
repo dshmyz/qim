@@ -39,12 +39,13 @@ func TestSendSyncHints_KeepsFlagUntilAck(t *testing.T) {
 	}
 }
 
-// TestSendSyncHints_RetriesWithinWindow 首次发送后 3~30 秒内未 ack，应继续重发。
+// TestSendSyncHints_RetriesWithinWindow 首次尝试发送后 3~30 秒内未 ack，应继续重发。
+// 窗口起点是 syncHintStartedAt（首次尝试），而非最近一次成功发送。
 func TestSendSyncHints_RetriesWithinWindow(t *testing.T) {
 	hub := &Hub{}
 	client := newSyncTestClient()
 	client.needsSync.Store(true)
-	client.lastSyncHintAt.Store(time.Now().Add(-5 * time.Second).UnixNano())
+	client.syncHintStartedAt.Store(time.Now().Add(-5 * time.Second).UnixNano())
 	hub.clients.Store(client, true)
 
 	hub.sendSyncHints()
@@ -62,7 +63,7 @@ func TestSendSyncHints_TimeoutStopsRetry(t *testing.T) {
 	hub := &Hub{}
 	client := newSyncTestClient()
 	client.needsSync.Store(true)
-	client.lastSyncHintAt.Store(time.Now().Add(-(syncHintTimeout + time.Second)).UnixNano())
+	client.syncHintStartedAt.Store(time.Now().Add(-(syncHintTimeout + time.Second)).UnixNano())
 	hub.clients.Store(client, true)
 
 	hub.sendSyncHints()
@@ -72,6 +73,26 @@ func TestSendSyncHints_TimeoutStopsRetry(t *testing.T) {
 		t.Fatal("超时后不应再发送 hint")
 	default:
 	}
+}
+
+// TestSendSyncHints_TimeoutNeverDelivered 极端场景：channel 一直满、hint 从未发送成功。
+// 旧实现窗口起点只在发送成功时记录（lastSyncHintAt=0），从未投递即永不超时，每 3s 无限重试；
+// 现在 SendToUser 首次溢出时就通过 CompareAndSwap 预置 syncHintStartedAt，超时对从未投递同样生效。
+func TestSendSyncHints_TimeoutNeverDelivered(t *testing.T) {
+	hub := &Hub{}
+	client := newSyncTestClient()
+	client.needsSync.Store(true)
+	// 模拟 channel 从溢出起就一直满（从未投递成功）
+	for i := 0; i < cap(client.send); i++ {
+		client.send <- []byte("full")
+	}
+	// 窗口起点已超时（对应 SendToUser 已预置起点、但 hint 一直没发出去的场景）
+	client.syncHintStartedAt.Store(time.Now().Add(-(syncHintTimeout + time.Second)).UnixNano())
+	hub.clients.Store(client, true)
+
+	hub.sendSyncHints()
+	require.False(t, client.needsSync.Load(), "窗口超时后应放弃，即使从未投递成功")
+	require.Zero(t, client.syncHintStartedAt.Load(), "放弃后窗口起点应归零，供下次溢出重新计时")
 }
 
 // TestSendSyncHints_SkipNonFlagged 未溢出的客户端不受影响。

@@ -255,6 +255,7 @@ func DeleteSystemMessage(c *gin.Context) {
 func BroadcastMessage(c *gin.Context) {
 	var req struct {
 		Message string `json:"message"`
+		Origin  string `json:"origin"` // 发送方节点 ID：用于丢弃回环，防跨节点消息风暴
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "请求参数错误")
@@ -262,7 +263,10 @@ func BroadcastMessage(c *gin.Context) {
 	}
 
 	if ws.GlobalHub != nil {
-		ws.GlobalHub.Broadcast <- []byte(req.Message)
+		// 节点中继接收：仅投递本节点客户端，不再转发其他节点
+		// （此前写 GlobalHub.Broadcast 会再次进 asyncBroadcast → broadcastToOtherNodes，
+		//  多节点下消息在节点间无限转发形成风暴）
+		ws.GlobalHub.DeliverBroadcastFromNode(req.Origin, []byte(req.Message))
 	}
 
 	response.SuccessWithMessage(c, "消息广播成功", nil)
@@ -272,6 +276,7 @@ func SendToUserMessage(c *gin.Context) {
 	var req struct {
 		UserID  uint   `json:"user_id"`
 		Message string `json:"message"`
+		Origin  string `json:"origin"` // 发送方节点 ID：用于丢弃回环
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "请求参数错误")
@@ -279,7 +284,9 @@ func SendToUserMessage(c *gin.Context) {
 	}
 
 	if ws.GlobalHub != nil {
-		ws.GlobalHub.SendToUser(req.UserID, []byte(req.Message))
+		// 节点中继接收：仅投递本节点该用户，不再转发其他节点
+		// （此前直接 SendToUser 会再次 sendToUserToOtherNodes 回传发送方，双向无限循环）
+		ws.GlobalHub.DeliverToUserFromNode(req.Origin, req.UserID, []byte(req.Message))
 	}
 
 	response.SuccessWithMessage(c, "消息发送成功", nil)
