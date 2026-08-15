@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/cache"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
-	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/utils"
@@ -187,7 +187,6 @@ type TodoExtractorInterface interface {
 // Global todo extractor instance
 var todoExtractor TodoExtractorInterface
 
-
 // InitSmartReplyEngine initializes the smart reply engine with the given AI service
 func InitSmartReplyEngine(aiService *ai.AIService) {
 	detector := ai.NewIntentDetector(aiService)
@@ -264,7 +263,6 @@ func InitSmartReplyGraph() error {
 	return nil
 }
 
-
 // GetSmartReplyEngine returns the smart reply engine instance
 func GetSmartReplyEngine() *SmartReplyEngine {
 	return smartReplyEngine
@@ -311,31 +309,7 @@ func TryExtractTodosWithPreloaded(senderID uint, conv *model.Conversation, conve
 	go todoExtractor.ExtractAndCreateTodos(content, senderID, conversationID)
 }
 
-func resolveAIName(msg model.Message) string {
-	nameCache := service.GetAINameCache()
-	db := database.GetDB()
-
-	if msg.Origin == "assistant" {
-		var group model.Group
-		if err := db.Select("ai_config").
-			Where("conversation_id = ?", msg.ConversationID).
-			First(&group).Error; err == nil && group.AIConfigJSON != "" {
-			aiConfig := group.GetAIConfig()
-			if aiConfig.AssistantName != "" {
-				return aiConfig.AssistantName
-			}
-		}
-	}
-	if msg.Origin == "avatar" {
-		if name := nameCache.GetAvatarName(msg.SenderID); name != "" {
-			return name
-		}
-	}
-	if msg.Sender.Type == "bot" || msg.Sender.Type == "system" {
-		return msg.Sender.Nickname
-	}
-	return "AI助手"
-}
+// resolveAIName 已收编到 service.resolveAIName（BuildMessageResponse 内部调用）。
 
 // buildUserReadReceiptSet 批量查询当前用户对指定消息的已读回执，
 // 返回 set[messageID]bool。用于让 buildMessageResponse 返回 per-user 的 is_read。
@@ -362,70 +336,8 @@ func buildUserReadReceiptSet(msgs []model.Message, userID uint) map[uint]bool {
 // allMemberIDs 用于 @all 展开；currentUserID 用于计算 is_at_mention。
 // userReadSet 非 nil 时，is_read 取决于当前用户是否在该集合中（per-user 已读状态）；
 // 为 nil 时退化为全局 messages.is_read（发送响应等场景）。
-func buildMessageResponse(msg model.Message, currentUserID uint, allMemberIDs []uint, userReadSet map[uint]bool) gin.H {
-	mentions := mention.Parse(msg.Content)
-	mentionUserIDs := mention.ExtractUserIDs(mentions, allMemberIDs, msg.SenderID)
-	isAtMention := msg.SenderID != currentUserID && containsUint(mentionUserIDs, currentUserID)
-
-	aiName := resolveAIName(msg)
-	senderType := msg.Sender.Type
-	if msg.Origin == "assistant" || msg.Origin == "avatar" {
-		senderType = "bot"
-	}
-
-	resp := gin.H{
-		"id":                msg.ID,
-		"conversation_id":   msg.ConversationID,
-		"sender_id":         msg.SenderID,
-		"sender_type":       senderType,
-		"type":              msg.Type,
-		"content":           msg.Content,
-		"quoted_message_id": msg.QuotedMessageID,
-		"is_recalled":       msg.IsRecalled,
-		// 发送者自己的消息始终已读（无需回执）；其余看 per-user 回执
-		"is_read":           userReadSet != nil && (msg.SenderID == currentUserID || userReadSet[msg.ID]),
-		"is_avatar_reply":   msg.Origin == "avatar",
-		"is_ai_message":     msg.Origin == "assistant" || msg.Origin == "avatar" || msg.Sender.Type == "bot" || msg.Sender.Type == "system",
-		// 流式消息标记：type=streaming 即进行中。客户端据此显示 typing 动画；
-		// 历史/已 finish 的消息 type 已是 markdown，is_streaming=false。刷新后不再卡空气泡。
-		"is_streaming":      msg.Type == "streaming",
-		"ai_assistant_name": aiName,
-		"origin":            msg.Origin,
-		"recalled_at":       msg.RecalledAt,
-		"created_at":        msg.CreatedAt,
-		"sender":            msg.Sender,
-		"quoted_message":    msg.QuotedMessage,
-		"mention_user_ids":  mentionUserIDs,
-		"is_at_mention":     isAtMention,
-		// 透出 Extra（JSON 字符串）。撤回消息时 RecallMessage 将 original_content
-		// 写入 Extra，「撤回后重新编辑」依赖它回填输入框；历史拉取若丢失该字段，
-		// 切窗口/重启后重新拉取的消息将无法回填。
-		"extra": msg.Extra,
-	}
-
-	// 分身消息：透出分身名称
-	if msg.Origin == "avatar" {
-		resp["avatar_name"] = service.GetAINameCache().GetAvatarName(msg.SenderID)
-	}
-
-	// 解析 Extra：透出 tool_calls / knowledge_sources / sources，供前端回放/历史拉取后
-	// 渲染独立工具卡片与「知识来源/依据」徽章。与 service 级 buildMessageResponse 对齐。
-	for k, v := range service.ParseMessageExtraFields(msg.Extra) {
-		resp[k] = v
-	}
-
-	return resp
-}
-
-// containsUint 判断 uint 切片是否包含 v。
-func containsUint(s []uint, v uint) bool {
-	for _, item := range s {
-		if item == v {
-			return true
-		}
-	}
-	return false
-}
+// buildMessageResponse 已统一收编到 service.BuildMessageResponse（HTTP/WS/AI 三路共用）。
+// handler 层调用点统一传入 per-user 上下文：CurrentUserID/AllMemberIDs/UserReadSet。
 
 // getAllMemberIDs 查询会话全体成员 ID（用于 @all 展开）。
 func getAllMemberIDs(convID uint) []uint {
@@ -555,7 +467,11 @@ func GetMessages(c *gin.Context) {
 	// 批量查当前用户对本页消息的已读回执，让 is_read 反映 per-user 状态
 	userReadSet := buildUserReadReceiptSet(result.Messages, uid)
 	for _, msg := range result.Messages {
-		resp := buildMessageResponse(msg, uid, allMemberIDs, userReadSet)
+		resp := service.BuildMessageResponse(msg, service.MessageResponseOptions{
+			CurrentUserID: uid,
+			AllMemberIDs:  allMemberIDs,
+			UserReadSet:   userReadSet,
+		})
 		if msg.Type == "card" {
 			if actionID, ok := cardActionMap[msg.ID]; ok {
 				resp["card_action_id"] = actionID
@@ -642,9 +558,13 @@ func GetMessagesByFilter(c *gin.Context) {
 	// 与 GetMessages 对齐：返回 per-user is_read 而非全局字段
 	allMemberIDs := getAllMemberIDs(uint(convIDUint))
 	userReadSet := buildUserReadReceiptSet(result.Messages, uid)
-	var responseMessages []gin.H
+	var responseMessages []map[string]interface{}
 	for _, msg := range result.Messages {
-		responseMessages = append(responseMessages, buildMessageResponse(msg, uid, allMemberIDs, userReadSet))
+		responseMessages = append(responseMessages, service.BuildMessageResponse(msg, service.MessageResponseOptions{
+			CurrentUserID: uid,
+			AllMemberIDs:  allMemberIDs,
+			UserReadSet:   userReadSet,
+		}))
 	}
 
 	response.Success(c, gin.H{
@@ -708,7 +628,10 @@ func SendMessage(c *gin.Context) {
 	}
 
 	allMemberIDs := getAllMemberIDs(uint(convIDUint))
-	responseData := buildMessageResponse(*msg, uid, allMemberIDs, nil)
+	responseData := service.BuildMessageResponse(*msg, service.MessageResponseOptions{
+		CurrentUserID: uid,
+		AllMemberIDs:  allMemberIDs,
+	})
 
 	response.Success(c, responseData)
 }
@@ -722,12 +645,22 @@ func applyOwnMessagePause(db *gorm.DB, userID, convID uint) {
 		return
 	}
 
-	var config model.AvatarConfig
-	if err := db.Where("user_id = ?", userID).First(&config).Error; err != nil {
-		return // 非分身主人
+	// 内存缓存短路：缓存 SelfMessagePause 值（分钟），0 = 无配置或未启用
+	cacheKey := fmt.Sprintf("pause:%d", userID)
+	pauseMinutes := 0
+	if cached, ok := cache.AvatarPauseCache.Get(cacheKey); ok {
+		pauseMinutes = cached.(int)
+	} else {
+		var config model.AvatarConfig
+		if err := db.Where("user_id = ?", userID).First(&config).Error; err != nil {
+			cache.AvatarPauseCache.Put(cacheKey, 0) // 无配置，缓存 5 分钟
+		} else {
+			pauseMinutes = config.SelfMessagePause
+			cache.AvatarPauseCache.Put(cacheKey, pauseMinutes)
+		}
 	}
-	if config.SelfMessagePause <= 0 {
-		return // 未启用「我发消息后暂停」
+	if pauseMinutes <= 0 {
+		return
 	}
 
 	// 会话行不存在则无需暂停（分身未在该会话激活）
@@ -739,7 +672,7 @@ func applyOwnMessagePause(db *gorm.DB, userID, convID uint) {
 		return
 	}
 
-	takeoverUntil := time.Now().Add(time.Duration(config.SelfMessagePause) * time.Minute)
+	takeoverUntil := time.Now().Add(time.Duration(pauseMinutes) * time.Minute)
 	if err := db.Model(&model.AvatarSession{}).
 		Where("user_id = ? AND conversation_id = ?", userID, convID).
 		Update("takeover_until", takeoverUntil).Error; err != nil {
@@ -747,7 +680,9 @@ func applyOwnMessagePause(db *gorm.DB, userID, convID uint) {
 	}
 }
 
-// broadcastNewMessage 广播新消息到会话并更新相关状态
+// broadcastNewMessage 广播新消息到会话并更新相关状态（AI 消息广播路径）。
+// 载荷构建统一走 service.BuildMessageResponse（与 HTTP 历史拉取、用户消息 WS 广播同源），
+// 避免第三套手搓载荷字段漂移。
 func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Conversation) {
 	convSvc := di.GlobalContainer.ConversationService
 
@@ -775,39 +710,10 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 	// AI 消息不含 mention（AI 不会 @ 人），mention_user_ids 恒为空数组
 	mentionUserIDs := []uint{}
 
-	aiName := resolveAIName(*msg)
-
-	responseData := gin.H{
-		"id":                msg.ID,
-		"conversation_id":   msg.ConversationID,
-		"sender_id":         msg.SenderID,
-		"type":              msg.Type,
-		"content":           msg.Content,
-		"quoted_message_id": msg.QuotedMessageID,
-		"is_recalled":       msg.IsRecalled,
-		"is_read":           msg.IsRead,
-		"is_avatar_reply":   msg.Origin == "avatar",
-		"is_ai_message":     msg.Origin == "assistant" || msg.Origin == "avatar" || msg.Sender.Type == "bot" || msg.Sender.Type == "system",
-		"ai_assistant_name": aiName,
-		"origin":            msg.Origin,
-		"recalled_at":       msg.RecalledAt,
-		"created_at":        msg.CreatedAt,
-		"sender":            msg.Sender,
-		"quoted_message":    msg.QuotedMessage,
-		"mention_user_ids":  mentionUserIDs,
-		"extra":             msg.Extra,
-	}
-
-	// 分身消息：透出分身名称
-	if msg.Origin == "avatar" {
-		responseData["avatar_name"] = service.GetAINameCache().GetAvatarName(msg.SenderID)
-	}
-
-	// 解析 Extra：透出 tool_calls / knowledge_sources / sources，供前端实时渲染独立工具卡片
-	// 与「知识来源/依据」徽章。与 handler/service 两份 buildMessageResponse 对齐。
-	for k, v := range service.ParseMessageExtraFields(msg.Extra) {
-		responseData[k] = v
-	}
+	responseData := service.BuildMessageResponse(*msg, service.MessageResponseOptions{
+		MentionUserIDs: mentionUserIDs,
+		BroadcastWS:    true,
+	})
 
 	if ws.GlobalHub != nil {
 		newMsg := ws.WSMessage{
@@ -1466,9 +1372,13 @@ func SearchMessages(c *gin.Context) {
 		}
 	}
 	userReadSet := buildUserReadReceiptSet(messages, uid)
-	var responseMessages []gin.H
+	var responseMessages []map[string]interface{}
 	for _, msg := range messages {
-		responseMessages = append(responseMessages, buildMessageResponse(msg, uid, convMemberMap[msg.ConversationID], userReadSet))
+		responseMessages = append(responseMessages, service.BuildMessageResponse(msg, service.MessageResponseOptions{
+			CurrentUserID: uid,
+			AllMemberIDs:  convMemberMap[msg.ConversationID],
+			UserReadSet:   userReadSet,
+		}))
 	}
 
 	response.Success(c, gin.H{

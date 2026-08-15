@@ -201,7 +201,7 @@ func (s *BotMessagingService) sendToConversation(bot *model.Bot, convID uint, co
 
 	// 广播到会话（排除 bot 虚拟用户）
 	if s.hub != nil {
-		responseData := buildBotMessageResponse(msg)
+		responseData := BuildMessageResponse(msg, MessageResponseOptions{BroadcastWS: true})
 		wsMsg := ws.WSMessage{Type: "new_message", Data: responseData}
 		jsonMsg, _ := json.Marshal(wsMsg)
 		s.hub.SendToConversation(convID, *bot.VirtualUserID, jsonMsg)
@@ -460,7 +460,7 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 		}
 		// 广播新消息气泡到会话（排除点击者，客户端已乐观渲染）
 		if s.hub != nil {
-			resp := buildBotMessageResponse(actionMsg)
+			resp := BuildMessageResponse(actionMsg, MessageResponseOptions{BroadcastWS: true})
 			wsMsg := ws.WSMessage{Type: "new_message", Data: resp}
 			jsonMsg, _ := json.Marshal(wsMsg)
 			s.hub.SendToConversation(msg.ConversationID, userID, jsonMsg)
@@ -533,31 +533,6 @@ func cardActionText(content, actionID string) (string, error) {
 		}
 	}
 	return "", errors.New("无效的卡片动作")
-}
-
-// buildBotMessageResponse 组装 WS 推送的消息响应，字段对齐 MessageService.buildMessageResponse。
-func buildBotMessageResponse(msg model.Message) map[string]interface{} {
-	isAIMessage := msg.Origin == "assistant" || msg.Origin == "avatar" ||
-		msg.Origin == "bot" || msg.Sender.Type == "bot" || msg.Sender.Type == "system"
-	return map[string]interface{}{
-		"id":                msg.ID,
-		"conversation_id":   msg.ConversationID,
-		"sender_id":         msg.SenderID,
-		"type":              msg.Type,
-		"content":           msg.Content,
-		"quoted_message_id": msg.QuotedMessageID,
-		"is_recalled":       msg.IsRecalled,
-		"is_read":           msg.IsRead,
-		"is_avatar_reply":   msg.Origin == "avatar",
-		"is_ai_message":     isAIMessage,
-		"is_streaming":      msg.Type == "streaming",
-		"origin":            msg.Origin,
-		"recalled_at":       msg.RecalledAt,
-		"created_at":        msg.CreatedAt,
-		"sender":            msg.Sender,
-		"quoted_message":    msg.QuotedMessage,
-		"mention_user_ids":  []uint{},
-	}
 }
 
 // StreamChunk 处理外部 agent 对流式消息的分段追加：

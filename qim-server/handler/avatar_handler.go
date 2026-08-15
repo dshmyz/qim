@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/cache"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
@@ -302,6 +303,7 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 	}
 
 	// 创建后自动提交审批：审批开启则走审批流程，审批关闭则直接启用
+	cache.InvalidateAvatarPauseCache(userID)
 	if h.approvalService != nil {
 		if h.approvalService.IsApprovalEnabled(model.ApprovalTypeAvatar) {
 			if err := h.approvalService.CreateApproval(model.ApprovalTypeAvatar, config.ID, userID); err != nil {
@@ -425,6 +427,11 @@ func (h *AvatarHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 
+	// SelfMessagePause 可能被本次更新修改，清除缓存确保下次发送生效
+	if req.SelfMessagePause != nil {
+		cache.InvalidateAvatarPauseCache(userID)
+	}
+
 	h.db.First(&config, config.ID)
 	response := h.toConfigResponse(config)
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": response})
@@ -482,6 +489,8 @@ func (h *AvatarHandler) DeleteConfig(c *gin.Context) {
 		response.InternalServerError(c, "删除失败")
 		return
 	}
+
+	cache.InvalidateAvatarPauseCache(userID)
 
 	di.GlobalContainer.OperationLogService.LogUserOperation(c, "avatar", "delete_config")
 
@@ -1208,11 +1217,11 @@ func (h *AvatarHandler) GetAvatarKnowledgeGraph(c *gin.Context) {
 			return
 		}
 		response.Success(c, gin.H{
-			"nodes":        graph.Nodes,
-			"edges":        graph.Edges,
-			"memories":     graph.Memories,
-			"total_nodes":  len(graph.Nodes),
-			"total_edges":  len(graph.Edges),
+			"nodes":       graph.Nodes,
+			"edges":       graph.Edges,
+			"memories":    graph.Memories,
+			"total_nodes": len(graph.Nodes),
+			"total_edges": len(graph.Edges),
 		})
 		return
 	}
@@ -1230,11 +1239,11 @@ func (h *AvatarHandler) GetAvatarKnowledgeGraph(c *gin.Context) {
 			return
 		}
 		response.Success(c, gin.H{
-			"nodes":        graph.Nodes,
-			"edges":        graph.Edges,
-			"memories":     graph.Memories,
-			"total_nodes":  len(graph.Nodes),
-			"total_edges":  len(graph.Edges),
+			"nodes":       graph.Nodes,
+			"edges":       graph.Edges,
+			"memories":    graph.Memories,
+			"total_nodes": len(graph.Nodes),
+			"total_edges": len(graph.Edges),
 		})
 		return
 	}

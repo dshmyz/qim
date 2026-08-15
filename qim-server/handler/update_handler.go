@@ -113,7 +113,7 @@ func latestVersionCached(svc *service.VersionService, platform, clientID string)
 	if err != nil {
 		return nil, err
 	}
-	updateVersionCache.Put(key, version, 5*time.Second)
+	updateVersionCache.Put(key, version)
 	return version, nil
 }
 

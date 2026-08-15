@@ -328,16 +328,15 @@ func TestHandleBotMessage_NoHit_ExtraEmpty(t *testing.T) {
 }
 
 // TestBuildMessageResponse_PopulatesKnowledgeSourcesFromExtra
-// buildMessageResponse 应把 Extra 中的 knowledge_sources 解析并放入响应体顶层，
+// BuildMessageResponse 应把 Extra 中的 knowledge_sources 解析并放入响应体顶层，
 // 供前端直接消费（无需再解析 Extra 字符串）。
 func TestBuildMessageResponse_PopulatesKnowledgeSourcesFromExtra(t *testing.T) {
-	msgSvc := NewMessageService(nil, nil, nil)
 
 	t.Run("Extra 包含 knowledge_sources", func(t *testing.T) {
 		msg := model.Message{
 			Extra: `{"knowledge_sources":[{"title":"Q3 规划","score":0.92}]}`,
 		}
-		resp := msgSvc.buildMessageResponse(msg, nil)
+		resp := BuildMessageResponse(msg, MessageResponseOptions{BroadcastWS: true})
 		ks, ok := resp["knowledge_sources"].([]interface{})
 		assert.True(t, ok)
 		require.Len(t, ks, 1)
@@ -347,30 +346,29 @@ func TestBuildMessageResponse_PopulatesKnowledgeSourcesFromExtra(t *testing.T) {
 
 	t.Run("Extra 为空时不输出 knowledge_sources", func(t *testing.T) {
 		msg := model.Message{Extra: ""}
-		resp := msgSvc.buildMessageResponse(msg, nil)
+		resp := BuildMessageResponse(msg, MessageResponseOptions{BroadcastWS: true})
 		_, ok := resp["knowledge_sources"]
 		assert.False(t, ok, "Extra 为空时响应不应包含 knowledge_sources")
 	})
 
 	t.Run("Extra 为损坏 JSON 时安全降级", func(t *testing.T) {
 		msg := model.Message{Extra: "{not-json"}
-		resp := msgSvc.buildMessageResponse(msg, nil)
+		resp := BuildMessageResponse(msg, MessageResponseOptions{BroadcastWS: true})
 		_, ok := resp["knowledge_sources"]
 		assert.False(t, ok, "损坏 JSON 时不应 panic，也不应输出 knowledge_sources")
 	})
 }
 
 // TestBuildMessageResponse_PopulatesAvatarSourcesFromExtra
-// buildMessageResponse 应把 Extra 中的 sources（分身命中知识来源）解析并放入响应体顶层，
+// BuildMessageResponse 应把 Extra 中的 sources（分身命中知识来源）解析并放入响应体顶层，
 // 供前端渲染「依据」徽章，且在刷新/REST 回放后仍可见（与广播下发的 sources 一致）。
 func TestBuildMessageResponse_PopulatesAvatarSourcesFromExtra(t *testing.T) {
-	msgSvc := NewMessageService(nil, nil, nil)
 
 	t.Run("Extra 包含新结构 sources（KnowledgeSource 形状）", func(t *testing.T) {
 		msg := model.Message{
 			Extra: `{"sources":[{"source":"notes","title":"会议纪要","score":0.9,"id":"doc-1","snippet":"..."}]}`,
 		}
-		resp := msgSvc.buildMessageResponse(msg, nil)
+		resp := BuildMessageResponse(msg, MessageResponseOptions{BroadcastWS: true})
 		srcs, ok := resp["sources"].([]interface{})
 		assert.True(t, ok)
 		require.Len(t, srcs, 1)
@@ -386,7 +384,7 @@ func TestBuildMessageResponse_PopulatesAvatarSourcesFromExtra(t *testing.T) {
 		msg := model.Message{
 			Extra: `{"sources":[{"type":"note","title":"会议纪要","snippet":"..."}]}`,
 		}
-		resp := msgSvc.buildMessageResponse(msg, nil)
+		resp := BuildMessageResponse(msg, MessageResponseOptions{BroadcastWS: true})
 		srcs, ok := resp["sources"].([]interface{})
 		assert.True(t, ok)
 		require.Len(t, srcs, 1)
@@ -397,7 +395,7 @@ func TestBuildMessageResponse_PopulatesAvatarSourcesFromExtra(t *testing.T) {
 
 	t.Run("Extra 无 sources 时不输出", func(t *testing.T) {
 		msg := model.Message{Extra: `{"tool_calls":[]}`}
-		resp := msgSvc.buildMessageResponse(msg, nil)
+		resp := BuildMessageResponse(msg, MessageResponseOptions{BroadcastWS: true})
 		_, ok := resp["sources"]
 		assert.False(t, ok, "Extra 无 sources 时响应不应包含 sources")
 	})

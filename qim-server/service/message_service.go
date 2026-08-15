@@ -33,6 +33,13 @@ var ErrMessageRecallTimeout = errors.New("message recall timeout")
 var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
 var ErrMuted = errors.New("you are muted in this conversation")
 
+// memberWithType 用于一次 JOIN 同时拿到成员校验信息和会话类型，
+// 替代原来分两次查询的 member + convType。
+type memberWithType struct {
+	model.ConversationMember
+	ConvType string `gorm:"column:conv_type"`
+}
+
 // NoteSearcher 笔记检索接口（用于 bot 回复时按创建者 scope 检索笔记作为知识库）。
 // *NoteVectorService 天然实现此接口；测试时可注入 mock。
 type NoteSearcher interface {
@@ -44,14 +51,14 @@ type MessageService struct {
 	hub *ws.Hub
 
 	aiService            *ai.AIService
-	noteSearcher         NoteSearcher // bot 回复时按创建者 scope 检索笔记；nil=降级（不检索）
-	groupMemorySvc       *GroupMemoryService // 群记忆（外部 bot 被 @ 时注入群上下文）；nil=降级（不拼接）
+	noteSearcher         NoteSearcher          // bot 回复时按创建者 scope 检索笔记；nil=降级（不检索）
+	groupMemorySvc       *GroupMemoryService   // 群记忆（外部 bot 被 @ 时注入群上下文）；nil=降级（不拼接）
 	groupKnowledgeSvc    *GroupDocumentService // 群知识库；nil=降级（不拼接）
 	sensitiveWordCache   []model.SensitiveWord
 	sensitiveWordCacheMu sync.RWMutex
 	sensitiveWordLoaded  bool
 
-	contextAsm     *ContextAssembler // 上下文注入预制（笔记/记忆/群文档知识源，声明式）；nil=跳过
+	contextAsm     *ContextAssembler  // 上下文注入预制（笔记/记忆/群文档知识源，声明式）；nil=跳过
 	botReplyWorker *ReplyOrchestrator // 专属机器人回复的并发控制（限并发+会话串行）；nil=走旧直发
 
 	// streamingSender 流式 AI 消息发送 + 工具调用事件推送能力（handler.WebSocketMessageSender 实现）。
@@ -68,10 +75,10 @@ type MessageService struct {
 
 func NewMessageService(db *gorm.DB, hub *ws.Hub, aiService *ai.AIService) *MessageService {
 	return &MessageService{
-		db:             db,
-		hub:            hub,
-		aiService:      aiService,
-		contextAsm:     NewContextAssembler(db),
+		db:         db,
+		hub:        hub,
+		aiService:  aiService,
+		contextAsm: NewContextAssembler(db),
 		botReplyWorker: NewReplyOrchestrator(ReplyOrchestratorOpts{
 			Workers:   8,
 			Serialize: true, // 专属机器人：按会话串行，防同会话乱序/重复回复
@@ -221,10 +228,17 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 		}
 	}
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", convID, senderID).First(&member).Error; err != nil {
+	// 成员校验 + 会话类型合并为一次 JOIN（原来分两次查询）
+	var mwt memberWithType
+	if err := db.Table("conversation_members cm").
+		Select("cm.*, c.type as conv_type").
+		Joins("JOIN conversations c ON c.id = cm.conversation_id").
+		Where("cm.conversation_id = ? AND cm.user_id = ?", convID, senderID).
+		First(&mwt).Error; err != nil {
 		return nil, ErrMessageForbidden
 	}
+	member := mwt.ConversationMember
+	convType := mwt.ConvType
 
 	// 群级禁言检查：被禁言且未到期则拒绝发言（群主/管理员豁免，保证管理动作不受阻）
 	if member.MutedUntil != nil && member.MutedUntil.After(time.Now()) && member.Role != "owner" && member.Role != "admin" {
@@ -242,46 +256,65 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 		QuotedMessageID: quotedMessageID,
 		IsRead:          false,
 	}
-	if err := db.Create(&msg).Error; err != nil {
+
+	// 写入操作合并为一次事务：Create + UPDATE conversations + unread/mention 计数。
+	// @all 成员展开在事务内读取，保证未读 @ 计数与广播名单基于同一数据库快照。
+	now := time.Now()
+	var mentionUserIDs []uint
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&msg).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Exec("UPDATE conversations SET last_message_id = ?, last_message_at = ? WHERE id = ?",
+			msg.ID, now, convID).Error; err != nil {
+			return err
+		}
+
+		if convType == "bot" {
+			return nil // bot 会话无需更新成员计数
+		}
+
+		mentionUserIDs = s.resolveMentionUserIDs(tx, convID, mentions, senderID)
+
+		if err := tx.Model(&model.ConversationMember{}).
+			Where("conversation_id = ? AND user_id != ?", convID, senderID).
+			UpdateColumn("unread_count", gorm.Expr("unread_count + 1")).Error; err != nil {
+			return err
+		}
+
+		if len(mentionUserIDs) > 0 {
+			if err := tx.Model(&model.ConversationMember{}).
+				Where("conversation_id = ? AND user_id IN ?", convID, mentionUserIDs).
+				UpdateColumn("unread_at_mention_count", gorm.Expr("unread_at_mention_count + 1")).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
-	// 优化：单次预加载而非 3 次 Preload 调用
-	db.Preload("Sender").Preload("QuotedMessage").Preload("QuotedMessage.Sender").First(&msg, msg.ID)
-
-	now := time.Now()
-	// 优化：合并查会话 + 更新会话为单次 UPDATE
-	result := db.Exec("UPDATE conversations SET last_message_id = ?, last_message_at = ? WHERE id = ?", msg.ID, now, convID)
-	if result.Error != nil {
-		return nil, result.Error
+	// 按需加载 Sender 和 QuotedMessage（替代原来的 4 次 Preload/First）。
+	// 放在事务后：Create 失败时不白跑查询，且 Create 时 msg 不带关联字段，
+	// 避免 GORM 对 belongs-to 关联做多余保存。
+	db.First(&msg.Sender, msg.SenderID)
+	if msg.QuotedMessageID != nil {
+		db.First(&msg.QuotedMessage, *msg.QuotedMessageID)
+		if msg.QuotedMessage != nil {
+			db.First(&msg.QuotedMessage.Sender, msg.QuotedMessage.SenderID)
+		}
 	}
 
-	// 获取会话类型用于判断 bot/正常
-	var convType string
-	db.Model(&model.Conversation{}).Where("id = ?", convID).Select("type").First(&convType)
+	// 恢复会话显示：非关键操作，表不存在时不阻塞消息发送（与原行为一致）
+	db.Model(&model.ConversationSession{}).
+		Where("conversation_id = ? AND is_hidden = ?", convID, true).
+		Update("is_hidden", false)
 
 	if convType == "bot" {
 		s.submitBotReply(senderID, convID, msgType, content)
 	} else {
-		// 恢复会话显示：新消息到来时，如果会话被隐藏则恢复显示
-		db.Model(&model.ConversationSession{}).
-			Where("conversation_id = ? AND is_hidden = ?", convID, true).
-			Update("is_hidden", false)
-
-		db.Model(&model.ConversationMember{}).
-			Where("conversation_id = ? AND user_id != ?", convID, senderID).
-			UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
-
-		// 计算被提及的用户 ID（@all 展开为全体成员，排除发送者）
-		mentionUserIDs := s.resolveMentionUserIDs(convID, mentions, senderID)
-
-		// 更新被提及成员的未读 @ 计数
-		if len(mentionUserIDs) > 0 {
-			db.Model(&model.ConversationMember{}).
-				Where("conversation_id = ? AND user_id IN ?", convID, mentionUserIDs).
-				UpdateColumn("unread_at_mention_count", gorm.Expr("unread_at_mention_count + 1"))
-		}
-
 		if s.hub != nil {
 			// 广播（mention_user_ids 数组随消息发送，前端据此算 is_at_mention）
 			s.broadcastMessage(&msg, mentionUserIDs, senderID)
@@ -298,11 +331,12 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 }
 
 // resolveMentionUserIDs 解析 mentions，展开 @all，返回被提及的用户 ID 列表。
-// excludeUserID 用于排除指定用户（如发送者）。
-func (s *MessageService) resolveMentionUserIDs(convID uint, mentions []mention.Mention, excludeUserID uint) []uint {
+// excludeUserID 用于排除指定用户（如发送者）。db 参数用于事务内/外复用，
+// 保证 @all 成员展开与未读 @ 计数处于同一数据库快照。
+func (s *MessageService) resolveMentionUserIDs(db *gorm.DB, convID uint, mentions []mention.Mention, excludeUserID uint) []uint {
 	var allMembers []model.ConversationMember
 	if mention.IsAllMentioned(mentions) {
-		if err := s.db.Where("conversation_id = ?", convID).Find(&allMembers).Error; err != nil {
+		if err := db.Where("conversation_id = ?", convID).Find(&allMembers).Error; err != nil {
 			allMembers = nil
 		}
 	}
@@ -318,7 +352,7 @@ func (s *MessageService) resolveMentionUserIDs(convID uint, mentions []mention.M
 func (s *MessageService) MentionUserIDsForAI(convID uint, content string) []uint {
 	mentions := mention.Parse(content)
 	// excludeUserID=0：不排除任何用户（AI 触发场景由调用方决定）
-	return s.resolveMentionUserIDs(convID, mentions, 0)
+	return s.resolveMentionUserIDs(s.db, convID, mentions, 0)
 }
 
 // HandleGroupBotMention 群聊外部 agent 触发：群消息 @ 到某 bot 虚拟用户时，把该消息
@@ -841,7 +875,7 @@ func (s *MessageService) sendBotTextReply(userID, convID uint, bot model.Bot, re
 	if s.hub != nil {
 		wsMsg := ws.WSMessage{
 			Type: "new_message",
-			Data: s.buildMessageResponse(botReply, nil),
+			Data: BuildMessageResponse(botReply, MessageResponseOptions{BroadcastWS: true}),
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
 		s.hub.SendToUser(userID, jsonMsg)
@@ -1064,7 +1098,7 @@ func (s *MessageService) handleBotMessageLegacy(userID, convID uint, bot model.B
 	if s.hub != nil {
 		wsMsg := ws.WSMessage{
 			Type: "new_message",
-			Data: s.buildMessageResponse(botReply, nil),
+			Data: BuildMessageResponse(botReply, MessageResponseOptions{BroadcastWS: true}),
 		}
 		jsonMsg, _ := json.Marshal(wsMsg)
 		s.hub.SendToUser(userID, jsonMsg)
@@ -1791,28 +1825,62 @@ func (s *MessageService) SearchMessagesByFullText(userID uint, keyword string, c
 	return s.SearchMessages(userID, keyword, convID, limit, offset)
 }
 
-// buildMessageResponse 构建消息响应体。
-// HTTP 响应、WS 广播、历史拉取三路共用。
-// mentionUserIDs 为已展开（含 @all 展开）的被提及用户 ID 列表。
-// is_at_mention 不在此处计算——per-recipient，由调用方按当前用户算。
-// broadcastFromWS 标记该响应用于 WS 广播：此时无 per-user 上下文，
-// is_read 固定 false（新消息一定是未读），避免全局 msg.IsRead 导致
-// A 已读后 B 收到的广播也显示已读。
-func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs []uint, broadcastFromWS ...bool) map[string]interface{} {
-	isRead := msg.IsRead
-	if len(broadcastFromWS) > 0 && broadcastFromWS[0] {
-		isRead = false
-	}
+// MessageResponseOptions 控制消息响应载荷构建的 per-channel / per-user 差异。
+// 唯一构建入口：HTTP 响应、WS 广播、AI 消息广播全部经由 BuildMessageResponse，
+// 避免多处手搓载荷导致字段漂移（sender_type/is_streaming/extra 等曾只进 HTTP 版）。
+type MessageResponseOptions struct {
+	// MentionUserIDs 已展开的 @ 名单（含 @all），WS 广播场景由发送路径传入；
+	// nil 时若提供 AllMemberIDs 则按 content 重新展开。
+	MentionUserIDs []uint
+	// AllMemberIDs 会话全体成员（@all 展开 + is_at_mention 计算用），HTTP 场景传入。
+	AllMemberIDs []uint
+	// UserReadSet per-user 已读回执集（HTTP 历史拉取）；nil 时回退 msg.IsRead。
+	UserReadSet map[uint]bool
+	// CurrentUserID 当前请求用户（HTTP）；>0 时计算 is_at_mention，并按回执判定已读。
+	CurrentUserID uint
+	// BroadcastWS 标记为 WS 广播：无 per-user 上下文，is_read 固定 false
+	// （避免 A 已读后 B 收到的广播也显示已读），不输出 is_at_mention（前端按 mention_user_ids 自己算）。
+	BroadcastWS bool
+}
+
+// BuildMessageResponse 构建消息响应体，HTTP 响应、WS 广播、AI 消息广播三路共用。
+// 字段集含：id/conversation_id/sender_id/sender_type/type/content/quoted_message_id/
+// is_recalled/is_read/is_avatar_reply/is_ai_message/is_streaming/ai_assistant_name/
+// origin/recalled_at/created_at/sender/quoted_message/mention_user_ids/extra，
+// 以及按需的 is_at_mention（HTTP）、avatar_name（分身）和 Extra 解析出的
+// tool_calls/knowledge_sources/sources。
+func BuildMessageResponse(msg model.Message, opts MessageResponseOptions) map[string]interface{} {
+	// @ 名单：广播场景直接使用传入的已展开名单；HTTP 场景从内容展开
+	mentionUserIDs := opts.MentionUserIDs
 	if mentionUserIDs == nil {
 		mentionUserIDs = []uint{}
+		if opts.AllMemberIDs != nil {
+			mentions := mention.Parse(msg.Content)
+			mentionUserIDs = mention.ExtractUserIDs(mentions, opts.AllMemberIDs, msg.SenderID)
+		}
+	}
+
+	// per-user / per-channel 已读
+	isRead := msg.IsRead
+	if opts.BroadcastWS {
+		isRead = false
+	} else if opts.UserReadSet != nil {
+		isRead = opts.CurrentUserID > 0 && (msg.SenderID == opts.CurrentUserID || opts.UserReadSet[msg.ID])
+	}
+
+	senderType := msg.Sender.Type
+	if msg.Origin == "assistant" || msg.Origin == "avatar" {
+		senderType = "bot"
 	}
 	isAvatarReply := msg.Origin == "avatar"
 	isAIMessage := msg.Origin == "assistant" || msg.Origin == "avatar" ||
 		msg.Sender.Type == "bot" || msg.Sender.Type == "system"
+
 	resp := map[string]interface{}{
 		"id":                msg.ID,
 		"conversation_id":   msg.ConversationID,
 		"sender_id":         msg.SenderID,
+		"sender_type":       senderType,
 		"type":              msg.Type,
 		"content":           msg.Content,
 		"quoted_message_id": msg.QuotedMessageID,
@@ -1820,23 +1888,79 @@ func (s *MessageService) buildMessageResponse(msg model.Message, mentionUserIDs 
 		"is_read":           isRead,
 		"is_avatar_reply":   isAvatarReply,
 		"is_ai_message":     isAIMessage,
+		// 流式消息标记：type=streaming 即进行中，客户端据此显示 typing 动画；
+		// 已 finish 的消息 type 已是 markdown，is_streaming=false。刷新后不卡空气泡。
+		"is_streaming":      msg.Type == "streaming",
+		"ai_assistant_name": resolveAIName(msg),
 		"origin":            msg.Origin,
 		"recalled_at":       msg.RecalledAt,
 		"created_at":        msg.CreatedAt,
 		"sender":            msg.Sender,
 		"quoted_message":    msg.QuotedMessage,
 		"mention_user_ids":  mentionUserIDs,
+		// 透出 Extra（JSON 字符串）。撤回消息时 RecallMessage 将 original_content
+		// 写入 Extra，「撤回后重新编辑」依赖它回填输入框；通道缺失会导致切窗口后无法回填。
+		"extra": msg.Extra,
 	}
-	// 解析 Extra：透出 tool_calls / knowledge_sources / sources，供前端回放渲染
+
+	// is_at_mention 仅 HTTP 场景计算（per-recipient）；WS 广播前端按 mention_user_ids 自己算
+	if !opts.BroadcastWS && opts.CurrentUserID > 0 && opts.AllMemberIDs != nil {
+		resp["is_at_mention"] = msg.SenderID != opts.CurrentUserID && containsUint(mentionUserIDs, opts.CurrentUserID)
+	}
+
+	// 分身消息：透出分身名称
+	if msg.Origin == "avatar" {
+		resp["avatar_name"] = GetAINameCache().GetAvatarName(msg.SenderID)
+	}
+
+	// 解析 Extra：透出 tool_calls / knowledge_sources / sources，供前端渲染工具卡片
+	// 与「知识来源/依据」徽章。
 	for k, v := range ParseMessageExtraFields(msg.Extra) {
 		resp[k] = v
 	}
+
 	return resp
+}
+
+// resolveAIName 解析 AI 消息的展示名：分身名 / 群 AI 配置名 / bot 昵称，兜底 "AI助手"。
+func resolveAIName(msg model.Message) string {
+	nameCache := GetAINameCache()
+	db := database.GetDB()
+
+	if msg.Origin == "assistant" {
+		var group model.Group
+		if err := db.Select("ai_config").
+			Where("conversation_id = ?", msg.ConversationID).
+			First(&group).Error; err == nil && group.AIConfigJSON != "" {
+			aiConfig := group.GetAIConfig()
+			if aiConfig.AssistantName != "" {
+				return aiConfig.AssistantName
+			}
+		}
+	}
+	if msg.Origin == "avatar" {
+		if name := nameCache.GetAvatarName(msg.SenderID); name != "" {
+			return name
+		}
+	}
+	if msg.Sender.Type == "bot" || msg.Sender.Type == "system" {
+		return msg.Sender.Nickname
+	}
+	return "AI助手"
+}
+
+// containsUint 判断 uint 切片是否包含 v。
+func containsUint(s []uint, v uint) bool {
+	for _, item := range s {
+		if item == v {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseMessageExtraFields 解析消息 Extra（JSON 字符串），提取 tool_calls、knowledge_sources、
 // sources 三个顶层字段，返回供消息响应透出的 map。解析失败或为空时返回 nil。
-// handler 和 service 两层的消息响应构造共用此函数，避免三处重复解析逻辑。
 func ParseMessageExtraFields(extra string) map[string]interface{} {
 	if extra == "" {
 		return nil
@@ -1864,7 +1988,10 @@ func (s *MessageService) broadcastMessage(msg *model.Message, mentionUserIDs []u
 	if s.hub == nil {
 		return
 	}
-	payload := s.buildMessageResponse(*msg, mentionUserIDs, true)
+	payload := BuildMessageResponse(*msg, MessageResponseOptions{
+		MentionUserIDs: mentionUserIDs,
+		BroadcastWS:    true,
+	})
 	wsMsg := ws.WSMessage{Type: "new_message", Data: payload}
 	jsonMsg, _ := json.Marshal(wsMsg)
 	s.hub.SendToConversation(msg.ConversationID, senderID, jsonMsg)

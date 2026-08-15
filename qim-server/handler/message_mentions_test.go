@@ -4,13 +4,14 @@ import (
 	"testing"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestBuildMessageResponse_ParsesMentionTokenForCurrentUser(t *testing.T) {
 	message := model.Message{SenderID: 1, Content: "@{mention:2|Member} 请看"}
 
-	response := buildMessageResponse(message, 2, []uint{1, 2}, nil)
+	response := service.BuildMessageResponse(message, service.MessageResponseOptions{CurrentUserID: 2, AllMemberIDs: []uint{1, 2}})
 
 	assert.Equal(t, []uint{2}, response["mention_user_ids"])
 	assert.True(t, response["is_at_mention"].(bool))
@@ -27,7 +28,7 @@ func TestBuildMessageResponse_ReportsBotSenderType(t *testing.T) {
 		},
 	}
 
-	response := buildMessageResponse(message, 2, []uint{1, 2}, nil)
+	response := service.BuildMessageResponse(message, service.MessageResponseOptions{CurrentUserID: 2, AllMemberIDs: []uint{1, 2}})
 
 	assert.Equal(t, "bot", response["sender_type"])
 	assert.True(t, response["is_ai_message"].(bool))
@@ -44,11 +45,11 @@ func TestBuildMessageResponse_CarriesExtraForRecallEdit(t *testing.T) {
 		Extra:    `{"original_content":"明天开会记得带上方案"}`,
 	}
 
-	response := buildMessageResponse(message, 4, []uint{4}, nil)
+	response := service.BuildMessageResponse(message, service.MessageResponseOptions{CurrentUserID: 4, AllMemberIDs: []uint{4}})
 
 	assert.Equal(t, `{"original_content":"明天开会记得带上方案"}`, response["extra"])
 
 	// 无 Extra 时恒为 ""，与 WS 侧原始模型 json tag 行为一致，前端可稳定访问该字段
-	response2 := buildMessageResponse(model.Message{ID: 300, SenderID: 4, Content: "hi"}, 4, []uint{4}, nil)
+	response2 := service.BuildMessageResponse(model.Message{ID: 300, SenderID: 4, Content: "hi"}, service.MessageResponseOptions{CurrentUserID: 4, AllMemberIDs: []uint{4}})
 	assert.Equal(t, "", response2["extra"])
 }
