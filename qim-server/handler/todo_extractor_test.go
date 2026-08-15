@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -17,8 +18,11 @@ const (
 	testInterval = 10 * time.Millisecond
 )
 
-// mockTodoExtractor 用于测试，记录是否被调用及参数
+// mockTodoExtractor 用于测试，记录是否被调用及参数。
+// ExtractAndCreateTodos 由异步 goroutine 调用（TryExtractTodos 内 go ...），
+// 测试主协程读取——必须加锁，否则 -race 报 data race。
 type mockTodoExtractor struct {
+	mu             sync.Mutex
 	called         bool
 	calledContent  string
 	calledSenderID uint
@@ -26,10 +30,18 @@ type mockTodoExtractor struct {
 }
 
 func (m *mockTodoExtractor) ExtractAndCreateTodos(content string, senderID uint, conversationID uint) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.called = true
 	m.calledContent = content
 	m.calledSenderID = senderID
 	m.calledConvID = conversationID
+}
+
+func (m *mockTodoExtractor) snapshot() (called bool, content string, senderID, convID uint) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.called, m.calledContent, m.calledSenderID, m.calledConvID
 }
 
 func setupTodoTestDB(t *testing.T) *gorm.DB {
@@ -77,13 +89,17 @@ func TestTryExtractTodos_TriggersExtractionWhenExtractTodosEnabled(t *testing.T)
 	TryExtractTodos(1, conv.ID, "明天需要完成项目报告")
 
 	// 等待 goroutine 执行
+	var called bool
+	var calledContent string
+	var calledSenderID, calledConvID uint
 	assert.Eventually(t, func() bool {
-		return mock.called
+		called, calledContent, calledSenderID, calledConvID = mock.snapshot()
+		return called
 	}, testTimeout, testInterval, "ExtractTodos=true 时应触发提取")
 
-	assert.Equal(t, "明天需要完成项目报告", mock.calledContent)
-	assert.Equal(t, uint(1), mock.calledSenderID)
-	assert.Equal(t, conv.ID, mock.calledConvID)
+	assert.Equal(t, "明天需要完成项目报告", calledContent)
+	assert.Equal(t, uint(1), calledSenderID)
+	assert.Equal(t, conv.ID, calledConvID)
 }
 
 // TestTryExtractTodos_DoesNotTriggerForNonGroupChat 验证：
@@ -103,7 +119,8 @@ func TestTryExtractTodos_DoesNotTriggerForNonGroupChat(t *testing.T) {
 
 	// 等一小段时间确保 goroutine 没有调用
 	assert.Never(t, func() bool {
-		return mock.called
+		called, _, _, _ := mock.snapshot()
+		return called
 	}, 100*time.Millisecond, 10*time.Millisecond, "非群聊不应触发提取")
 }
 
@@ -133,7 +150,8 @@ func TestTryExtractTodos_DoesNotTriggerWhenExtractTodosDisabled(t *testing.T) {
 	TryExtractTodos(1, conv.ID, "明天需要完成项目报告")
 
 	assert.Never(t, func() bool {
-		return mock.called
+		called, _, _, _ := mock.snapshot()
+		return called
 	}, 100*time.Millisecond, 10*time.Millisecond, "ExtractTodos=false 时不应触发提取")
 }
 
@@ -160,11 +178,15 @@ func TestTryExtractTodos_UsesPreloadedConversation(t *testing.T) {
 
 	TryExtractTodosWithPreloaded(1, conv, conv.ID, "明天需要完成项目报告")
 
+	var called bool
+	var calledContent string
+	var calledSenderID, calledConvID uint
 	assert.Eventually(t, func() bool {
-		return mock.called
+		called, calledContent, calledSenderID, calledConvID = mock.snapshot()
+		return called
 	}, testTimeout, testInterval, "传入预加载 conv 时应触发提取")
 
-	assert.Equal(t, "明天需要完成项目报告", mock.calledContent)
-	assert.Equal(t, uint(1), mock.calledSenderID)
-	assert.Equal(t, conv.ID, mock.calledConvID)
+	assert.Equal(t, "明天需要完成项目报告", calledContent)
+	assert.Equal(t, uint(1), calledSenderID)
+	assert.Equal(t, conv.ID, calledConvID)
 }

@@ -1,0 +1,100 @@
+name: Go CI
+
+on:
+  push:
+    paths: ['qim-server/**']
+  pull_request:
+    paths: ['qim-server/**']
+
+jobs:
+  # ── 静态分析 & 格式检查（不依赖 MySQL） ──────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: qim-server/go.mod
+          cache-dependency-path: qim-server/go.sum
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "❌ 以下文件未格式化："
+            echo "$unformatted"
+            exit 1
+          fi
+        working-directory: qim-server
+
+      - name: go vet
+        run: go vet ./...
+        working-directory: qim-server
+      # golangci-lint 暂未启用：默认规则集（errcheck/unused/staticcheck 全量）在当前
+      # 代码库上累计 90+ 历史问题，`version: latest` + 无 .golangci.yml 配置必然红。
+      # 待代码收敛后加 .golangci.yml 最小配置再开启（govet/ineffassign/精选 staticcheck）。
+
+  # ── 编译验证 ────────────────────────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: qim-server/go.mod
+          cache-dependency-path: qim-server/go.sum
+
+      - name: Build
+        run: go build ./...
+        working-directory: qim-server
+
+  # ── 测试（MySQL 集成 + race detector + 覆盖率） ─────────────────
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: qim_server
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -ptest"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      QIM_TEST_MYSQL_HOST: 127.0.0.1
+      QIM_TEST_MYSQL_USER: root
+      QIM_TEST_MYSQL_PASSWORD: test
+      QIM_TEST_MYSQL_DB: qim_server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: qim-server/go.mod
+          cache-dependency-path: qim-server/go.sum
+
+      - name: Run tests (race + coverage)
+        run: go test -v -race -count=1 -coverprofile=coverage.out ./...
+        working-directory: qim-server
+
+      - name: Coverage summary
+        run: |
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $NF}')
+          echo "📊 总覆盖率: $total"
+        working-directory: qim-server
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: qim-server/coverage.out

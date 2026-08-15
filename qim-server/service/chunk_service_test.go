@@ -25,6 +25,22 @@ func setupChunkServiceTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to connect database: %v", err)
 	}
 
+	// :memory: 库每连接独立，必须锁死单连接，否则事务/并发拿到新连接报 no such table
+	if sqlDB, err := db.DB(); err == nil {
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(1)
+	}
+
+	// :memory: SQLite 每个连接是独立空库。必须锁死单连接，
+	// 否则事务/异步 goroutine（CompleteUpload 的 cleanupChunks）拿到新连接
+	// 会报 "no such table"（此前偶发 flaky 的根因，-race 下必现）。
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("failed to get sql.DB: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+
 	err = db.AutoMigrate(&model.User{}, &model.File{}, &model.UploadTask{}, &model.FileChunk{})
 	if err != nil {
 		t.Fatalf("failed to migrate: %v", err)

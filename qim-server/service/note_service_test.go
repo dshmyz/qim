@@ -54,6 +54,18 @@ func newFakeNoteService(t *testing.T) *NoteService {
 	if err != nil {
 		t.Fatalf("打开内存 SQLite 失败: %v", err)
 	}
+
+	// :memory: 库每连接独立，必须锁死单连接，否则事务/并发拿到新连接报 no such table
+	if sqlDB, err := db.DB(); err == nil {
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(1)
+	}
+
+	// :memory: 库每连接独立，必须锁死单连接，否则事务/并发拿到新连接报 no such table
+	if sqlDB, err := db.DB(); err == nil {
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(1)
+	}
 	if err := db.AutoMigrate(&model.Note{}); err != nil {
 		t.Fatalf("迁移 Note 表失败: %v", err)
 	}
