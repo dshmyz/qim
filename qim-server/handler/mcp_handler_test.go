@@ -15,9 +15,12 @@ func TestValidateExternalURL(t *testing.T) {
 		wantErr      bool
 		errMsg       string
 	}{
-		// — 正常 URL —
-		{"正常 HTTPS", "https://mcp.example.com/sse", false, false, ""},
-		{"正常 HTTP", "http://mcp.example.com:8080/tools", false, false, ""},
+		// — 正常 URL（用公开 IP 字面量，避免依赖外部 DNS）—
+		{"正常 HTTPS", "https://203.0.113.10/sse", false, false, ""},
+		{"正常 HTTP", "http://203.0.113.10:8080/tools", false, false, ""},
+		// 域名需真实解析（fail-closed）；.invalid 为 RFC 2606 保留 TLD，必不解析，
+		// 锁定「解析失败即拒绝、杜绝临时解析失败放行后拨号恢复」的防绕过语义。
+		{"域名解析失败 fail-closed", "http://mcp.invalid/mcp", false, true, "解析失败"},
 
 		// — 协议拒绝（allowPrivate 不放开协议校验）—
 		{"file 协议", "file:///etc/passwd", false, true, "仅支持 http/https"},
@@ -39,6 +42,14 @@ func TestValidateExternalURL(t *testing.T) {
 		{"单零 0", "http://0:8080/mcp", false, true, "不允许访问本机"},
 		{"双零 0.0", "http://0.0:8080/mcp", false, true, "不允许访问本机"},
 		{"三零 0.0.0", "http://0.0.0:8080/mcp", false, true, "不允许访问本机"},
+
+		// — 加固新增：IPv6 未指定/0.0.0.0/8 其余段/IPv4-mapped/组播 —
+		{"IPv6 全零 ::", "http://[::]/mcp", false, true, "不允许访问本机"},
+		{"IPv6 全零长形式", "http://[0:0:0:0:0:0:0:0]/mcp", false, true, "不允许访问本机"},
+		{"0.0.0.0/8 其余段", "http://0.0.0.1/mcp", false, true, "不允许访问内网"},
+		{"IPv4-mapped loopback", "http://[::ffff:127.0.0.1]/mcp", false, true, "不允许访问内网"},
+		{"IPv4 组播", "http://224.0.0.1/mcp", false, true, "不允许访问内网"},
+		{"IPv6 组播", "http://[ff02::1]/mcp", false, true, "不允许访问内网"},
 
 		// — 已知内部元数据/内网域名 —
 		{"AWS 元数据", "http://169.254.169.254/latest/meta-data/", false, true, "不允许访问内网"},

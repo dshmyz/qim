@@ -40,7 +40,7 @@ func PreviewMCPTools(c *gin.Context) {
 		return
 	}
 
-	transport, err := buildPreviewTransport(&req)
+	transport, err := buildPreviewTransport(&req, cfg != nil && cfg.MCP.AllowPrivate)
 	if err != nil {
 		response.BadRequest(c, fmt.Sprintf("传输方式错误: %v", err))
 		return
@@ -75,7 +75,7 @@ func PreviewMCPTools(c *gin.Context) {
 	response.Success(c, tools)
 }
 
-func buildPreviewTransport(req *previewMCPToolsReq) (mcp.Transport, error) {
+func buildPreviewTransport(req *previewMCPToolsReq, allowPrivate bool) (mcp.Transport, error) {
 	transport := req.Transport
 	if transport == "" {
 		transport = "streamable-http"
@@ -85,9 +85,11 @@ func buildPreviewTransport(req *previewMCPToolsReq) (mcp.Transport, error) {
 		if req.URL == "" {
 			return nil, fmt.Errorf("streamable-http 传输需要 url")
 		}
-		streaming := &mcp.StreamableClientTransport{Endpoint: req.URL}
-		if req.Token != "" {
-			streaming.HTTPClient = service.TokenAuthHTTPClient(req.Token)
+		// 与运行时连接路径一致走 SSRF 防护 client：URL 已在 PreviewMCPTools 中
+		// ValidateExternalURL 预检，此处再对拨号/重定向做同一策略防护（token 非空注入鉴权头）。
+		streaming := &mcp.StreamableClientTransport{
+			Endpoint:   req.URL,
+			HTTPClient: service.SSRFProtectedHTTPClient(allowPrivate, req.Token),
 		}
 		return streaming, nil
 	default:

@@ -39,6 +39,11 @@ type AvatarReplyContext struct {
 	Sources []KnowledgeSource
 	// SkipReply 命中"知识范围外且配置为不回复"时置位，Execute 据此跳过 LLM 调用
 	SkipReply bool
+	// HistoryBefore 对话历史锚点：非 nil 时只取该时间之前的消息作为上下文。
+	// 「帮我回复」草稿模式由 handler 传入目标消息的 CreatedAt——目标可能不是会话最新一条，
+	// 若仍按"整个会话最近 N 条"取历史，会把目标之后的后续对话混进来导致答非所问。
+	// nil（分身自动回复等触发消息即最新一条）保持原"最近 N 条"语义。
+	HistoryBefore *time.Time
 	// CustomProvider 非 nil 表示分身配置了「使用自定义模型」（!UseSystemConfig && ModelConfigID）。
 	// 命中时回复生成走该 provider（图外临时创建），绕开编译图内固定使用系统配置的 model 节点。
 	CustomProvider *customProvider
@@ -255,13 +260,7 @@ func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, 
 
 	log.Printf("[AvatarReplyGraph] 生成回复耗时: %v", time.Since(startTime))
 
-	if maxRunes := avatarMaxReplyChars(input.ReplyStrategy.MaxReplyLength); maxRunes > 0 {
-		// 按 rune 截断，避免在多字节 UTF-8（中文）rune 中间切断产生无效 UTF-8
-		runes := []rune(reply)
-		if len(runes) > maxRunes {
-			reply = strings.TrimSpace(string(runes[:maxRunes])) + "…"
-		}
-	}
+	reply = truncateReply(input, reply)
 
 	return reply, input.Sources, nil
 }
@@ -274,10 +273,6 @@ func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, 
 // 走视觉识别，不因"知识范围外"而静默，与"尽力而为失败则跳过"的降级语义配合——能看图就回，
 // 看不了/模型不支持则由 worker 跳过）。返回与 ExecuteWithSources 同构：回复 + 命中的知识来源。
 func (g *AvatarReplyGraph) ExecuteWithImageSources(ctx context.Context, userID uint, conversationID uint, message string, imageURL string, imageName string, preloaded *model.AvatarConfig) (string, []KnowledgeSource, error) {
-	if g.template == nil {
-		return "", nil, fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
-	}
-
 	input := &AvatarReplyContext{
 		Message:        message,
 		ConversationID: conversationID,
@@ -289,57 +284,16 @@ func (g *AvatarReplyGraph) ExecuteWithImageSources(ctx context.Context, userID u
 		return "", nil, err
 	}
 
-	vars := g.buildTemplateVars(input)
-	messageList, err := g.template.Format(ctx, vars)
+	messageList, err := g.renderPrompt(ctx, input)
 	if err != nil {
-		return "", nil, fmt.Errorf("渲染分身 prompt 失败: %w", err)
+		return "", nil, err
 	}
 
-	// 替换最后一条 user 消息为携带图片的 MultiContent 多模态消息：
+	// 把 user 消息替换为携带图片的 MultiContent 多模态消息：
 	// 原文本保留（包含对话上下文与"对方说"），追加图片识别指令，并携带 base64 data URL。
-	aiMessages := make([]ai.Message, 0, len(messageList))
-	for _, m := range messageList {
-		role := string(m.Role)
-		if role == "user" {
-			imgText := fmt.Sprintf("\n\n📷 用户发送了一张图片「%s」，请识别图片内容并结合以上对话与图片回复。", imageName)
-			userMsg := &schema.Message{
-				Role:    schema.User,
-				Content: m.Content + imgText,
-				MultiContent: []schema.ChatMessagePart{
-					{Type: schema.ChatMessagePartTypeText, Text: m.Content + imgText},
-					{
-						Type: schema.ChatMessagePartTypeImageURL,
-						ImageURL: &schema.ChatMessageImageURL{
-							URL: imageURL,
-						},
-					},
-				},
-			}
-			aiMessages = append(aiMessages, einoMessageToAIMessage(userMsg))
-			continue
-		}
-		aiMessages = append(aiMessages, einoMessageToAIMessage(m))
-	}
+	messageList = injectSingleImage(messageList, imageURL, fmt.Sprintf("📷 用户发送了一张图片「%s」，请识别图片内容并结合以上对话与图片回复。", imageName))
 
-	var reply string
-	if input.CustomProvider != nil {
-		// 自选模型：同样支持多模态，与 generateWithCustomProvider 一致的 provider 分支
-		reply, err = g.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, aiMessages, input.CustomProvider.ProviderName, input.CustomProvider.Config)
-	} else {
-		reply, err = g.aiService.GetCompletion(ai.TaskTypeChat, aiMessages)
-	}
-	if err != nil {
-		return "", input.Sources, err
-	}
-
-	if maxRunes := avatarMaxReplyChars(input.ReplyStrategy.MaxReplyLength); maxRunes > 0 {
-		runes := []rune(reply)
-		if len(runes) > maxRunes {
-			reply = strings.TrimSpace(string(runes[:maxRunes])) + "…"
-		}
-	}
-
-	return reply, input.Sources, nil
+	return g.completeReply(input, einoMessagesToAIMessages(messageList))
 }
 
 // ExecuteBatchWithImagesSources 供分身对「合并窗口内连发的一批消息」生成一条合并回复。
@@ -352,10 +306,6 @@ func (g *AvatarReplyGraph) ExecuteWithImageSources(ctx context.Context, userID u
 // 由 AvatarService 在调用本方法前用 groupDocSvc.ImageURLForContext 逐图读取；读图在调用方
 // 完成并返回错误时 worker 整批跳过。返回回复 + 命中的知识来源。
 func (g *AvatarReplyGraph) ExecuteBatchWithImagesSources(ctx context.Context, userID uint, conversationID uint, orderTexts []string, imageURLs []string, imageNames []string, preloaded *model.AvatarConfig) (string, []KnowledgeSource, error) {
-	if g.template == nil {
-		return "", nil, fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
-	}
-
 	// 把批内文本拼成一条合并 prompt：带序号并提示这是对方连发的一组消息
 	lines := make([]string, 0, len(orderTexts))
 	seq := 1
@@ -375,41 +325,48 @@ func (g *AvatarReplyGraph) ExecuteBatchWithImagesSources(ctx context.Context, us
 		return "", nil, err
 	}
 
+	messageList, err := g.renderPrompt(ctx, input)
+	if err != nil {
+		return "", nil, err
+	}
+
+	// 把 user 消息替换为携带批内全部图片的 MultiContent 多模态消息
+	messageList = injectMultiImage(messageList, imageURLs, "📷 对方连发了一组消息（含图片），请整体理解这些内容并结合对话回复。")
+
+	return g.completeReply(input, einoMessagesToAIMessages(messageList))
+}
+
+// generateWithCustomProvider 用分身「自选模型」生成回复（非流式）。
+// 复用 renderPrompt 渲染 prompt（含模板变量拼装），再用用户自选 provider 完成一次对话。
+// 转换统一走 einoMessagesToAIMessages（含 MultiContent 图片提取），不再手拼纯文本 ai.Message。
+func (g *AvatarReplyGraph) generateWithCustomProvider(ctx context.Context, input *AvatarReplyContext) (string, error) {
+	messageList, err := g.renderPrompt(ctx, input)
+	if err != nil {
+		return "", err
+	}
+	return g.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, einoMessagesToAIMessages(messageList), input.CustomProvider.ProviderName, input.CustomProvider.Config)
+}
+
+// renderPrompt 渲染分身 prompt（buildTemplateVars + template.Format），图内/图外各路径共用；
+// 未编译（template 未设置）时返回明确错误。
+func (g *AvatarReplyGraph) renderPrompt(ctx context.Context, input *AvatarReplyContext) ([]*schema.Message, error) {
+	if g.template == nil {
+		return nil, fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
+	}
 	vars := g.buildTemplateVars(input)
 	messageList, err := g.template.Format(ctx, vars)
 	if err != nil {
-		return "", nil, fmt.Errorf("渲染分身 prompt 失败: %w", err)
+		return nil, fmt.Errorf("渲染分身 prompt 失败: %w", err)
 	}
+	return messageList, nil
+}
 
-	// 替换最后一条 user 消息为携带批内全部图片的 MultiContent 多模态消息
-	aiMessages := make([]ai.Message, 0, len(messageList))
-	for _, m := range messageList {
-		role := string(m.Role)
-		if role == "user" {
-			imgText := "\n\n📷 对方连发了一组消息（含图片），请整体理解这些内容并结合对话回复。"
-			parts := []schema.ChatMessagePart{
-				{Type: schema.ChatMessagePartTypeText, Text: m.Content + imgText},
-			}
-			for _, url := range imageURLs {
-				parts = append(parts, schema.ChatMessagePart{
-					Type: schema.ChatMessagePartTypeImageURL,
-					ImageURL: &schema.ChatMessageImageURL{
-						URL: url,
-					},
-				})
-			}
-			userMsg := &schema.Message{
-				Role:         schema.User,
-				Content:      m.Content + imgText,
-				MultiContent: parts,
-			}
-			aiMessages = append(aiMessages, einoMessageToAIMessage(userMsg))
-			continue
-		}
-		aiMessages = append(aiMessages, einoMessageToAIMessage(m))
-	}
-
+// completeReply 用整组 aiMessages 完成一次非流式生成并统一截断：自选模型走临时 provider、
+// 否则走系统配置。返回回复 + 命中的知识来源。注意：自选模型失败不在此回退系统默认——
+// executeWithSources 的「自选失败回退 runnable.Invoke」契约保留在调用方。
+func (g *AvatarReplyGraph) completeReply(input *AvatarReplyContext, aiMessages []ai.Message) (string, []KnowledgeSource, error) {
 	var reply string
+	var err error
 	if input.CustomProvider != nil {
 		reply, err = g.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, aiMessages, input.CustomProvider.ProviderName, input.CustomProvider.Config)
 	} else {
@@ -418,63 +375,82 @@ func (g *AvatarReplyGraph) ExecuteBatchWithImagesSources(ctx context.Context, us
 	if err != nil {
 		return "", input.Sources, err
 	}
+	return truncateReply(input, reply), input.Sources, nil
+}
 
+// truncateReply 按分身 MaxReplyLength 对回复做 rune 截断（避免中文等变长 UTF-8 在字节中切断），
+// 0 表示不截断。
+func truncateReply(input *AvatarReplyContext, reply string) string {
 	if maxRunes := avatarMaxReplyChars(input.ReplyStrategy.MaxReplyLength); maxRunes > 0 {
 		runes := []rune(reply)
 		if len(runes) > maxRunes {
 			reply = strings.TrimSpace(string(runes[:maxRunes])) + "…"
 		}
 	}
-
-	return reply, input.Sources, nil
+	return reply
 }
 
-// einoMessageToAIMessage 把单个 eino schema.Message 转为 ai.Message，并从 MultiContent
-// 提取图片 URL：单图落到 ai.Message.ImageURL（向后兼容单图序列化），多图落到 ImageURLs
-// （分身批量多模态合并路径）。与 eino_chat_model.go 的 einoMessagesToAIMessages 同逻辑，
-// 供图外渲染的多模态路径复用。
-func einoMessageToAIMessage(msg *schema.Message) ai.Message {
-	out := ai.Message{Role: string(msg.Role), Content: msg.Content}
-	if urls := imageURLsFromMessage(msg); len(urls) > 0 {
-		out.ImageURL = urls[0]
-		if len(urls) > 1 {
-			out.ImageURLs = urls
+// injectSingleImage 把 prompt 中的 user 消息替换为携带单张图片的 MultiContent 多模态消息：
+// 原文本保留，追加 instruct 指令文本，并携带 imageURL 的 base64 data URL（供视觉模型识别）。
+// 与 injectMultiImage 共用同一「user 消息替换」骨架。
+func injectSingleImage(messageList []*schema.Message, imageURL string, instruct string) []*schema.Message {
+	out := make([]*schema.Message, 0, len(messageList))
+	for _, m := range messageList {
+		if string(m.Role) != "user" {
+			out = append(out, m)
+			continue
 		}
+		imgText := "\n\n" + instruct
+		out = append(out, &schema.Message{
+			Role:    schema.User,
+			Content: m.Content + imgText,
+			MultiContent: []schema.ChatMessagePart{
+				{Type: schema.ChatMessagePartTypeText, Text: m.Content + imgText},
+				{Type: schema.ChatMessagePartTypeImageURL, ImageURL: &schema.ChatMessageImageURL{URL: imageURL}},
+			},
+		})
 	}
 	return out
 }
 
-// generateWithCustomProvider 用分身「自选模型」生成回复（非流式）。
-// 复用 buildTemplateVars + template.Format 渲染 prompt，再用用户自选 provider 完成一次对话。
-func (g *AvatarReplyGraph) generateWithCustomProvider(ctx context.Context, input *AvatarReplyContext) (string, error) {
-	if g.template == nil {
-		return "", fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
+// injectMultiImage 与 injectSingleImage 同骨架，但把 user 消息替换为携带批内多张图片的
+// MultiContent（多个 image_url part），供「合并窗口连发一批消息」的多模态批量路径使用。
+func injectMultiImage(messageList []*schema.Message, imageURLs []string, instruct string) []*schema.Message {
+	out := make([]*schema.Message, 0, len(messageList))
+	for _, m := range messageList {
+		if string(m.Role) != "user" {
+			out = append(out, m)
+			continue
+		}
+		imgText := "\n\n" + instruct
+		parts := []schema.ChatMessagePart{
+			{Type: schema.ChatMessagePartTypeText, Text: m.Content + imgText},
+		}
+		for _, url := range imageURLs {
+			parts = append(parts, schema.ChatMessagePart{
+				Type:     schema.ChatMessagePartTypeImageURL,
+				ImageURL: &schema.ChatMessageImageURL{URL: url},
+			})
+		}
+		out = append(out, &schema.Message{
+			Role:         schema.User,
+			Content:      m.Content + imgText,
+			MultiContent: parts,
+		})
 	}
-	vars := g.buildTemplateVars(input)
-	messages, err := g.template.Format(ctx, vars)
-	if err != nil {
-		return "", fmt.Errorf("渲染分身 prompt 失败: %w", err)
-	}
-	aiMessages := make([]ai.Message, 0, len(messages))
-	for _, m := range messages {
-		aiMessages = append(aiMessages, ai.Message{Role: string(m.Role), Content: m.Content})
-	}
-	return g.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, aiMessages, input.CustomProvider.ProviderName, input.CustomProvider.Config)
+	return out
 }
 
 // ExecuteStream 以流式生成分身回复（供"帮我回复"草稿模式使用）。
 // 与 Execute 的差异：1) 不走编译图，渲染模板后直接调 chatModel.Stream；2) 忽略 SkipReply
 // （用户主动要草稿，即使命中"知识范围外静默"也照常生成）；3) 不做 MaxReplyLength 截断
 // （草稿进输入框由用户自行编辑，截断无意义）。
-func (g *AvatarReplyGraph) ExecuteStream(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (*schema.StreamReader[*schema.Message], error) {
-	if g.template == nil {
-		return nil, fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
-	}
-
+func (g *AvatarReplyGraph) ExecuteStream(ctx context.Context, userID uint, conversationID uint, message string, historyBefore *time.Time, preloaded *model.AvatarConfig) (*schema.StreamReader[*schema.Message], error) {
 	input := &AvatarReplyContext{
 		Message:        message,
 		ConversationID: conversationID,
 		UserID:         userID,
+		HistoryBefore:  historyBefore,
 	}
 
 	if err := g.prepare(ctx, input, preloaded); err != nil {
@@ -482,18 +458,50 @@ func (g *AvatarReplyGraph) ExecuteStream(ctx context.Context, userID uint, conve
 	}
 	// 草稿模式：忽略 SkipReply（用户主动要草稿，不该因"超知识范围"静默）
 
-	vars := g.buildTemplateVars(input)
-	messageList, err := g.template.Format(ctx, vars)
+	messageList, err := g.renderPrompt(ctx, input)
 	if err != nil {
-		return nil, fmt.Errorf("渲染分身 prompt 失败: %w", err)
+		return nil, err
 	}
 
+	return g.executeStream(ctx, input, messageList)
+}
+
+// ExecuteStreamWithImageSources 供"帮我回复"草稿目标消息是图片时流式生成草稿：
+// 按 fileID 读出的 base64 data URL 注入最后一条 user 消息的 MultiContent（text + image_url），
+// 使草稿基于图片内容生成。与 ExecuteStream 同走图外渲染 + 流式，仅多一步图片注入；
+// 读图失败由调用方（AvatarService）降级为纯文本草稿，不落到这里。
+func (g *AvatarReplyGraph) ExecuteStreamWithImageSources(ctx context.Context, userID uint, conversationID uint, message string, imageURL string, imageName string, historyBefore *time.Time, preloaded *model.AvatarConfig) (*schema.StreamReader[*schema.Message], error) {
+	input := &AvatarReplyContext{
+		Message:        message,
+		ConversationID: conversationID,
+		UserID:         userID,
+		HistoryBefore:  historyBefore,
+	}
+
+	if err := g.prepare(ctx, input, preloaded); err != nil {
+		return nil, err
+	}
+
+	messageList, err := g.renderPrompt(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	// 把 user 消息替换为携带图片的 MultiContent 多模态消息：原文本保留，追加草稿语境
+	// 的图片识别指令，并携带 base64 data URL。由 executeStream（EinoChatModel.Stream →
+	// einoMessagesToAIMessages）提取图片透传给模型。
+	messageList = injectSingleImage(messageList, imageURL, fmt.Sprintf("📷 对方发来了一张图片「%s」，请识别图片内容并结合以上对话起草一条回复。", imageName))
+
+	return g.executeStream(ctx, input, messageList)
+}
+
+// executeStream 草稿模式流式生成的公共核心：按 messageList（含图片时已由调用方注入
+// MultiContent）走流式。自选模型分支用 einoMessagesToAIMessages 提取图片透传（手拼
+// ai.Message 会丢 ImageURL），与系统配置的 EinoChatModel 路径行为一致。
+func (g *AvatarReplyGraph) executeStream(ctx context.Context, input *AvatarReplyContext, messageList []*schema.Message) (*schema.StreamReader[*schema.Message], error) {
 	// 自选模型走临时 provider 流式；否则走系统配置的 EinoChatModel。
 	if input.CustomProvider != nil {
-		aiMessages := make([]ai.Message, 0, len(messageList))
-		for _, m := range messageList {
-			aiMessages = append(aiMessages, ai.Message{Role: string(m.Role), Content: m.Content})
-		}
+		aiMessages := einoMessagesToAIMessages(messageList)
 		sr, sw := schema.Pipe[*schema.Message](0)
 		go func() {
 			defer sw.Close()
@@ -634,7 +642,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 		historyEnabled = *input.KnowledgeScope.ConversationHistory
 	}
 	if historyEnabled && input.ConversationID > 0 {
-		history = g.getConversationHistory(input.ConversationID, 10, input.Message)
+		history = g.getConversationHistory(input.ConversationID, 10, input.Message, input.HistoryBefore)
 	}
 	input.History = history
 
@@ -684,14 +692,19 @@ func buildCustomProviderExtraParams(maxTokens int, temperature float64) map[stri
 // needReplyForOutOfScope 已废弃：范围外静默已改为硬门控（无知识命中即 SkipReply），
 // 不再需要 LLM 二次判断。保留此函数已无调用点，故移除。
 
-func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int, triggerMessage string) string {
+func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int, triggerMessage string, before *time.Time) string {
 	// 不再一刀切排除 avatar 自回复：近期（selfTurnWindow 内）的 avatar 自回复保留作
-	// 多轮指代锚点（用户可能追问“你刚说的”），只滤掉远期自回复（自我复制污染源）。
+	// 多轮指代锚点（用户可能追问”你刚说的”），只滤掉远期自回复（自我复制污染源）。
 	// 为此多取一段（limit+1），在内存里丢弃远期自回复 + 触发消息后仍尽量满足 limit。
+	// before 非 nil（草稿模式锚定到目标消息）时，只取该时间之前的历史——目标可能不是
+	// 会话最新一条，按”整个会话最近 N 条”会把目标之后的后续对话混进来导致答非所问。
+	query := g.db.Where("conversation_id = ?", conversationID).
+		Where("type = ?", "text")
+	if before != nil {
+		query = query.Where("created_at < ?", *before)
+	}
 	var messages []model.Message
-	g.db.Where("conversation_id = ?", conversationID).
-		Where("type = ?", "text").
-		Order("created_at DESC").
+	query.Order("created_at DESC").
 		Limit(limit + 8).
 		Find(&messages)
 

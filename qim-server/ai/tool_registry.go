@@ -50,13 +50,25 @@ func NewToolRegistry(aiService *AIService) *ToolRegistry {
 	return registry
 }
 
-// RegisterTool 注册工具
-func (r *ToolRegistry) RegisterTool(tool Tool) {
+// RegisterTool 注册工具。
+// 返回 error：新工具名与某已注册工具名仅大小写不同（如 send_message vs Send_Message）时
+// 拒绝注册——canonicalKey 的大小写不敏感回退扫描依赖 map 迭代顺序，两个仅大小写不同的键
+// 会让 GetTool/EnableTool 等的大小写不敏感查找结果不确定。同一名字重复注册仍允许（覆盖，
+// 幂等，供外部 MCP 断线重连时重注册同名工具）。
+func (r *ToolRegistry) RegisterTool(tool Tool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.tools[tool.Name()] = tool
-	r.enabledTools[tool.Name()] = true // 默认启用
-	logger.WithModule("ToolRegistry").Info("Registered tool", "tool", tool.Name())
+	name := tool.Name()
+	lower := strings.ToLower(name)
+	for key := range r.tools {
+		if key != name && strings.ToLower(key) == lower {
+			return fmt.Errorf("tool %q 与既有工具 %q 仅大小写不同，拒绝注册（避免大小写不敏感查找不确定）", name, key)
+		}
+	}
+	r.tools[name] = tool
+	r.enabledTools[name] = true // 默认启用
+	logger.WithModule("ToolRegistry").Info("Registered tool", "tool", name)
+	return nil
 }
 
 // RemoveTool 按名字移除工具（含其启用状态）。用于外部 MCP 连接在运行时被删除/

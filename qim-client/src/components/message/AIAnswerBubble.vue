@@ -72,7 +72,9 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
 .ai-answer-bubble.im {
   padding: 10px 14px;
   border-radius: 12px;
-  font-size: var(--font-size-xs);
+  /* 跟随设置字号滑块基准（--font-size-sm），与普通文本/Markdown 气泡统一，
+     不再单独用 --font-size-xs（此前导致 AI 消息比普通消息小一档）。 */
+  font-size: var(--font-size-sm);
   line-height: 1.6;
 }
 .ai-answer-bubble.im.self {

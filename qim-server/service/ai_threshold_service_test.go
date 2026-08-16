@@ -10,9 +10,9 @@ import (
 
 func TestAiThresholdService_GetFloat_Default(t *testing.T) {
 	svc := NewAiThresholdService(nil) // nil DB → 全部走默认值
-	assert.Equal(t, 0.6, svc.GetFloat("ai.knowledge_score_threshold", 0.6))
+	assert.Equal(t, 0.3, svc.GetFloat("ai.knowledge_score_threshold", 0.3))
 	assert.Equal(t, 0.5, svc.GetFloat("ai.memory_recall_threshold", 0.5))
-	assert.Equal(t, 0.7, svc.GetFloat("ai.conflict_detection_threshold", 0.7))
+	assert.Equal(t, 0.3, svc.GetFloat("ai.conflict_detection_threshold", 0.3))
 	assert.Equal(t, 20.0, svc.GetFloat("ai.context_history_limit", 20))
 	assert.Equal(t, 0.99, svc.GetFloat("ai.unknown_key", 0.99), "未知 key 应返回指定默认值")
 }
@@ -30,7 +30,7 @@ func TestAiThresholdService_GetAll(t *testing.T) {
 	assert.Equal(t, 0.3, all["ai.knowledge_score_threshold"])
 	assert.Equal(t, 0.3, all["ai.memory_source_threshold"])
 	assert.Equal(t, 0.5, all["ai.memory_recall_threshold"])
-	assert.Equal(t, 0.7, all["ai.conflict_detection_threshold"])
+	assert.Equal(t, 0.3, all["ai.conflict_detection_threshold"])
 	assert.Equal(t, 20.0, all["ai.context_history_limit"])
 	assert.Equal(t, 5.0, all["ai.recent_ai_messages_limit"])
 }

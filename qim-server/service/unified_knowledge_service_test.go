@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/stretchr/testify/assert"
@@ -450,4 +452,52 @@ func TestParseVerdict_RequiresBothKeys(t *testing.T) {
 			}
 		})
 	}
+}
+
+// blockingReranker 判定时阻塞到注入 ctx（judgeCtx）到期，模拟模型挂起/超慢：
+// 预算耗尽返回"拿不准"，同时记录调用次数，供超时语义断言。
+type blockingReranker struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (m *blockingReranker) Relevant(ctx context.Context, _ string, _ KnowledgeSnippet) (bool, bool, error) {
+	m.mu.Lock()
+	m.calls++
+	m.mu.Unlock()
+	<-ctx.Done() // 阻塞到判定预算（judgeCtx）耗尽
+	return false, false, ctx.Err()
+}
+
+func (m *blockingReranker) callCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls
+}
+
+// TestFilterByReranker_TimeoutStopsJudgingKeepsRemaining 回归：LLM 相关性校验阶段有总超时预算
+// （默认 15s，测试注入 30ms）。首条判定阻塞耗尽预算后，循环在逐条间的 judgeCtx.Err() 检查处
+// 提前退出：不再发起新判定（calls==1），未判片段全部保留（宁可多留不可阻塞整条回复）。
+func TestFilterByReranker_TimeoutStopsJudgingKeepsRemaining(t *testing.T) {
+	svc := NewUnifiedKnowledgeService(nil, nil, nil, nil)
+	svc.rerankJudgeTimeout = 30 * time.Millisecond // 注入短预算，避免等默认 15s
+
+	blocking := &blockingReranker{}
+	svc.SetReranker(blocking)
+
+	snips := []KnowledgeSnippet{
+		{Title: "A", Score: 0.9, Content: "cA"},
+		{Title: "B", Score: 0.8, Content: "cB"},
+		{Title: "C", Score: 0.7, Content: "cC"},
+	}
+	filtered := svc.filterByReranker("q", snips)
+
+	// 只判了首条（被超时打断）；B、C 未发起判定即保留。
+	assert.Equal(t, 1, blocking.callCount(), "预算耗尽后不得再发起新判定")
+	require.Len(t, filtered, 3, "未判片段应全部保留")
+	titles := make([]string, 0, len(filtered))
+	for _, s := range filtered {
+		titles = append(titles, s.Title)
+	}
+	assert.Equal(t, []string{"A", "B", "C"}, titles, "原序保留，未判片段不被丢弃")
 }

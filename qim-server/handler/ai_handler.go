@@ -121,6 +121,8 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		aiGroup.POST("/completion", h.GetCompletion)
 		aiGroup.POST("/completion/stream", h.GetCompletionStream)
+		// 过时：同步「帮我回复」端点，无前端消费者（前端统一走 /draft-reply/stream），
+		// 保留仅向后兼容，后续择机移除。
 		aiGroup.POST("/draft-reply", h.DraftReply)
 		aiGroup.POST("/draft-reply/stream", h.DraftReplyStream)
 		aiGroup.GET("/tools", h.ListTools)
@@ -141,6 +143,9 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 
 		// 新增: 图片翻译
 		aiGroup.POST("/translate/image", h.TranslateImage)
+
+		// 图片识别/描述（复用图片翻译同一套视觉路由）
+		aiGroup.POST("/describe-image", h.DescribeImage)
 
 		// 新增: 智能消息速览
 		aiGroup.GET("/digest", h.GetDigest)
@@ -202,9 +207,10 @@ type DraftReplyRequest struct {
 	MessageID      uint `json:"message_id" binding:"required"`
 }
 
-// DraftReply 根据对话上下文起草回复
-// @Summary 帮我回复
-// @Description 根据目标消息及上下文生成回复草稿
+// DraftReply 根据对话上下文起草回复（过时）
+// @Summary 帮我回复（已过时，将移除）
+// @Description 根据目标消息及上下文生成回复草稿。⚠️ 已过时：前端已统一改走流式
+// /draft-reply/stream，本同步端点无调用方，保留仅向后兼容，后续择机移除。
 // @Tags AI
 // @Accept json
 // @Produce json
@@ -234,7 +240,7 @@ func (h *AIHandler) DraftReply(c *gin.Context) {
 				response.BadRequest(c, err.Error())
 				return
 			}
-			stream, err := h.avatarService.GenerateReplyStream(c.Request.Context(), userID, req.ConversationID, target.Content, &avatarCfg)
+			stream, err := h.draftReplyAvatarStream(c, userID, req, target, &avatarCfg)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "生成回复失败: " + err.Error()})
 				return
@@ -294,6 +300,35 @@ func loadDraftTarget(req DraftReplyRequest) (*model.Message, error) {
 		return nil, fmt.Errorf("消息与会话不匹配")
 	}
 	return &target, nil
+}
+
+// draftReplyAvatarStream 分身路径的草稿流：目标消息是图片时按 content 里的 file id 读图注入
+// 多模态草稿（读图失败由 AvatarService 降级为纯文本草稿），否则按原文本起草。
+// 对话历史锚定到目标消息的 CreatedAt——右键历史消息时目标可能不是会话最新一条，
+// 只有取目标之前的消息作上下文，草稿才针对目标而非混进其后的后续对话。
+func (h *AIHandler) draftReplyAvatarStream(c *gin.Context, userID uint, req DraftReplyRequest, target *model.Message, avatarCfg *model.AvatarConfig) (*schema.StreamReader[*schema.Message], error) {
+	if target.Type != "image" {
+		return h.avatarService.GenerateReplyStream(c.Request.Context(), userID, req.ConversationID, target.Content, &target.CreatedAt, avatarCfg)
+	}
+	fileID, name, _ := parseDraftImageMeta(target.Content)
+	return h.avatarService.GenerateReplyStreamWithImageSources(c.Request.Context(), userID, req.ConversationID, name, fileID, &target.CreatedAt, avatarCfg)
+}
+
+// parseDraftImageMeta 从图片消息 Content（{"url":"...","id":123,"name":"xx.png"}）解析 file id 与文件名，
+// 供帮我回复对图片目标走多模态草稿。解析失败返回 ok=false（fileID=0，AvatarService 侧统一降级）。
+func parseDraftImageMeta(content string) (fileID uint, name string, ok bool) {
+	trimmed := strings.TrimSpace(content)
+	if !strings.HasPrefix(trimmed, "{") {
+		return 0, "", false
+	}
+	var payload struct {
+		ID   uint   `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil || payload.ID == 0 {
+		return 0, "", false
+	}
+	return payload.ID, payload.Name, true
 }
 
 func buildDraftReplyMessages(req DraftReplyRequest, currentUserID uint) ([]ai.Message, error) {
@@ -393,7 +428,7 @@ func (h *AIHandler) DraftReplyStream(c *gin.Context) {
 				response.BadRequest(c, err.Error())
 				return
 			}
-			stream, err := h.avatarService.GenerateReplyStream(c.Request.Context(), userID, req.ConversationID, target.Content, &avatarCfg)
+			stream, err := h.draftReplyAvatarStream(c, userID, req, target, &avatarCfg)
 			if err != nil {
 				logger.WithModule("AIHandler").Warn("分身流式生成失败，回退简单起草", "error", err)
 				// 回退到简单起草路径

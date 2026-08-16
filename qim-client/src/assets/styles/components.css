@@ -821,7 +821,8 @@
   border-radius: 4px;
   background: #f0f0f0;
   color: #666;
-  font-size: var(--font-size-xxs);
+  /* 与消息正文同号（--font-size-sm 为滑块基准），不再小一档 */
+  font-size: var(--font-size-sm);
 }
 
 /* Jira 工单卡片专用样式（示例，可扩展） */

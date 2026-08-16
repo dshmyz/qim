@@ -32,7 +32,6 @@ func (f *ProviderFactory) createOpenAIProvider(cfg *AIConfig) Provider {
 		Model:            cfg.OpenAI.Model,
 		BaseURL:          cfg.OpenAI.BaseURL,
 		EmbeddingBaseURL: cfg.OpenAI.EmbeddingBaseURL,
-		EmbeddingModel:   cfg.OpenAI.EmbeddingModel,
 		ExtraParams:      extraParams,
 	})
 }
@@ -136,7 +135,6 @@ func (f *ProviderFactory) createGenericOpenAIProvider(name string, cfg ProviderC
 		Model:            cfg.Model,
 		BaseURL:          cfg.BaseURL,
 		EmbeddingBaseURL: cfg.EmbeddingBaseURL,
-		EmbeddingModel:   cfg.EmbeddingModel,
 		ExtraParams:      extraParams,
 	})
 }

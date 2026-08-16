@@ -35,6 +35,7 @@
     @send-message-reminder="emit('send-message-reminder')"
     @ai-summary="emit('ai-summary')"
     @translate="emit('translate')"
+    @ai-describe-image="emit('ai-describe-image')"
     @smart-reply="emit('smart-reply')"
     @save-to-group-files="emit('save-to-group-files')"
   />
@@ -151,6 +152,7 @@ const emit = defineEmits<{
   'mini-app-toast': [message: string]
   'ai-summary': []
   'translate': []
+  'ai-describe-image': []
   'smart-reply': []
   'save-to-group-files': []
 }>()

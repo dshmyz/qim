@@ -252,13 +252,27 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 	tmpFile.Close()
 	defer os.Remove(tmpPath)
 
-	text, err := s.parser.Parse(tmpPath)
-	if err != nil {
-		s.db.Model(status).Updates(map[string]interface{}{
-			"status": "failed",
-			"error":  "文档解析失败: " + describeParseError(err),
-		})
-		return err
+	var text string
+	if isImageDocument(doc.File.MimeType) {
+		// 直接上传的图片（截图/照片/扫描件）：视觉 OCR 识别文字后走既有切片+向量化流程。
+		// 扫描件 PDF 不在此列——MIME 为 application/pdf，仍走 parser 并维持"无文字层"明确报错。
+		text, err = s.ocrImageToText(tmpPath, doc.File.Name)
+		if err != nil {
+			s.db.Model(status).Updates(map[string]interface{}{
+				"status": "failed",
+				"error":  "图片文字识别失败: " + err.Error(),
+			})
+			return err
+		}
+	} else {
+		text, err = s.parser.Parse(tmpPath)
+		if err != nil {
+			s.db.Model(status).Updates(map[string]interface{}{
+				"status": "failed",
+				"error":  "文档解析失败: " + describeParseError(err),
+			})
+			return err
+		}
 	}
 
 	if text == "" || len(text) < 10 {
@@ -1172,6 +1186,56 @@ func (s *GroupDocumentService) ImageURLForContext(fileID uint) (name string, dat
 		contentType = http.DetectContentType(data)
 	}
 	return file.Name, "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
+// isImageDocument 判断文档 MIME 是否为图片类型：先去掉 "; charset=..." 后缀，
+// 再按 image/ 前缀匹配。直接上传的图片经此判断走视觉 OCR 入库。
+func isImageDocument(mimeType string) bool {
+	base := mimeType
+	if idx := strings.Index(base, ";"); idx > 0 {
+		base = strings.TrimSpace(base[:idx])
+	}
+	return strings.HasPrefix(base, "image/")
+}
+
+// readImageAsDataURL 读取本地文件为 base64 data URL，供图片 OCR 等视觉任务使用。
+// 超过 quoteMaxImageSize（5MB）时返回哨兵错误，避免超大图 base64 膨胀后进 prompt。
+func readImageAsDataURL(path, fileName string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("读取图片失败: %w", err)
+	}
+	if len(data) > int(quoteMaxImageSize) {
+		return "", fmt.Errorf("%w: 图片实际 %d 字节超过 %d 上限", ErrQuotedImageTooLarge, len(data), quoteMaxImageSize)
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(fileName))
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
+// ocrImageToText 读取已落地的本地临时图片并调用视觉模型逐字识别其中的文字，
+// 返回识别出的原文文本（供后续切片+向量化）。未配置视觉路由/读图失败时返回错误，
+// 由调用方落 failed 状态与明确文案，而不是卡在 pending 让用户无法重试。
+func (s *GroupDocumentService) ocrImageToText(tmpPath, fileName string) (string, error) {
+	if s.aiService == nil {
+		return "", fmt.Errorf("AI 服务未初始化")
+	}
+	dataURL, err := readImageAsDataURL(tmpPath, fileName)
+	if err != nil {
+		return "", err
+	}
+	if !s.aiService.HasVisionRoute() {
+		return "", fmt.Errorf("当前未配置支持视觉的 AI 模型，无法识别图片文字（请在 AI 设置中启用视觉/多模态路由）")
+	}
+	ocrText, err := s.aiService.GetCompletion(ai.TaskTypeVision, []ai.Message{
+		{Role: "user", Content: "请逐字识别图片中的全部文字，输出原文文本，不要添加任何解释。", ImageURL: dataURL},
+	})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(ocrText), nil
 }
 
 func (s *GroupDocumentService) RetryDocument(groupDocID uint) error {

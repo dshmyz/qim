@@ -201,6 +201,7 @@
       @send-message-reminder="sendMessageReminder"
       @ai-summary="handleAISummary"
       @translate="handleAITranslate"
+      @ai-describe-image="handleAIDescribeImage"
       @smart-reply="handleSmartReply"
       @save-to-group-files="saveMessageToGroupFiles"
       @remove-member="handleRemoveMemberFromOverlay"
@@ -236,7 +237,18 @@
       :visible="showTranslatePanel"
       :original-text="translateContent"
       :message-type="translateMessageType"
+      :server-url="serverUrl"
       @close="showTranslatePanel = false"
+    />
+
+    <!-- AI 图片识别/描述面板（复用翻译面板，action=describe 分支） -->
+    <AITranslatePanel
+      :visible="showDescribePanel"
+      :original-text="describeContent"
+      message-type="image"
+      action="describe"
+      :server-url="serverUrl"
+      @close="showDescribePanel = false"
     />
 
     <GroupFilesPanel
@@ -374,7 +386,6 @@ const {
   translateText,
   rewriteText,
   polishText,
-  draftReply,
   draftReplyStream,
   abortDraftReply,
 } = useAIActions()
@@ -426,6 +437,11 @@ const showSummaryPanel = ref(false)
 const showTranslatePanel = ref(false)
 const translateContent = ref('')
 const translateMessageType = ref<'image' | 'text' | undefined>(undefined)
+
+// AI 图片识别/描述面板状态
+const showDescribePanel = ref(false)
+const describeContent = ref('')
+
 const showGroupFiles = ref(false)
 const referenceMessageId = ref<number | null>(null)
 const referenceFileId = ref<number | null>(null)
@@ -532,10 +548,10 @@ const handleAIAction = async (actionId: string) => {
     case 'draft-reply': {
       const conversationId = props.conversation?.id
       if (!conversationId) return
-      // 找最后一条对方发来的文本消息
+      // 找最后一条对方发来的文本/图片消息（图片目标由后端读图起草多模态草稿）
       const uid = String(currentUserId.value)
       const target = [...props.messages].reverse().find(
-        (m: any) => String(m.sender_id) !== uid && (m.type === 'text' || m.type === 'markdown') && !m.isRecalled
+        (m: any) => String(m.sender_id) !== uid && (m.type === 'text' || m.type === 'markdown' || m.type === 'image') && !m.isRecalled
       )
       if (!target) {
         $message.warning('没有可回复的消息')
@@ -2380,8 +2396,20 @@ const handleAITranslate = () => {
   closeMessageContextMenu()
 }
 
+// AI 识别/描述图片（右键菜单）
+const handleAIDescribeImage = () => {
+  if (!selectedMessage.value || !selectedMessage.value.content) {
+    closeMessageContextMenu()
+    return
+  }
+  describeContent.value = selectedMessage.value.content
+  showDescribePanel.value = true
+  closeMessageContextMenu()
+}
+
 // 智能回复（右键菜单：带上下文起草）
-const handleSmartReply = async () => {
+// 与 AI 快捷操作「帮我回复」走同一流式入口，效果一致：打字机填充 + 草稿状态 + 可重新生成
+const handleSmartReply = () => {
   if (!selectedMessage.value || !selectedMessage.value.id) {
     closeMessageContextMenu()
     return
@@ -2391,16 +2419,7 @@ const handleSmartReply = async () => {
   closeMessageContextMenu()
   if (!conversationId) return
 
-  try {
-    const reply = await draftReply(Number(conversationId), Number(msg.id))
-    if (reply) {
-      inputMessage.value = reply
-      autoResizeTextarea()
-      $message.success('回复草稿已生成')
-    }
-  } catch {
-    $message.error('生成回复失败')
-  }
+  startDraftReply(Number(conversationId), Number(msg.id), msg)
 }
 
 // 发送消息提醒（右键菜单路径；铃铛直接调 composable 的 remind）

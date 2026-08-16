@@ -3,19 +3,19 @@
     <div v-if="visible" class="ai-translate-overlay" @click.self="close">
       <div class="ai-translate-panel">
         <div class="panel-header">
-          <h3>翻译结果</h3>
+          <h3>{{ isDescribe ? '图片识别' : '翻译结果' }}</h3>
           <button class="close-btn" @click="close">&times;</button>
         </div>
 
         <div v-if="isTranslating" class="translating-state">
           <div class="translating-spinner"></div>
-          <p>正在翻译...</p>
+          <p>{{ isDescribe ? '正在识别图片...' : '正在翻译...' }}</p>
           <p class="translating-hint">这可能需要几秒钟</p>
         </div>
 
         <div v-else-if="translatedText" class="translate-content">
           <div v-if="messageType === 'image'" class="image-preview">
-            <img :src="originalText" alt="待翻译图片" />
+            <img :src="previewImageUrl" alt="待翻译图片" />
           </div>
           <div v-else class="original-section">
             <div class="section-label">原文</div>
@@ -23,11 +23,11 @@
           </div>
           <div class="divider"></div>
           <div class="translated-section">
-            <div class="section-label">译文</div>
+            <div class="section-label">{{ isDescribe ? '描述' : '译文' }}</div>
             <div class="section-text">{{ translatedText }}</div>
           </div>
           <div class="translate-actions">
-            <button @click="copyTranslation">复制译文</button>
+            <button @click="copyTranslation">{{ isDescribe ? '复制描述' : '复制译文' }}</button>
           </div>
         </div>
 
@@ -37,7 +37,7 @@
         </div>
 
         <div v-else class="error-state">
-          <p>翻译失败</p>
+          <p>{{ isDescribe ? '识别失败' : '翻译失败' }}</p>
           <button @click="translate">重试</button>
         </div>
       </div>
@@ -46,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useAIActions } from '../../composables/useAIActions'
 import QMessage from '../../utils/qmessage'
 
@@ -55,15 +55,36 @@ const props = defineProps<{
   originalText: string
   messageType?: string
   targetLang?: string
+  action?: 'translate' | 'describe'
+  serverUrl: string
 }>()
 
 const emit = defineEmits<{
   close: []
 }>()
 
-const { translateText, translateImage, isProcessing: isTranslating } = useAIActions()
+const { translateText, translateImage, describeImage, isProcessing: isTranslating } = useAIActions()
 const translatedText = ref<string | null>(null)
 const translateError = ref<string | null>(null)
+
+// describe 模式复用同一面板做图片识别/描述：标题、文案、调用函数均按 action 分支
+const isDescribe = computed(() => props.action === 'describe')
+
+// 图片消息 content 是 JSON（{"url": "/static/...", "name": ...}）或纯路径。
+// 直接当 <img> src 会裂图：需解析出 url，相对路径再拼 serverUrl 前缀
+// （与 ImageMessage.vue 的 fullImageUrl 解析一致）。
+const previewImageUrl = computed(() => {
+  let url = props.originalText
+  try {
+    const parsed = JSON.parse(props.originalText)
+    if (parsed && typeof parsed.url === 'string') url = parsed.url
+  } catch {
+    // 非 JSON：原样作为 URL
+  }
+  if (!url || url.startsWith('http') || url.startsWith('data:')) return url
+  const base = (props.serverUrl || '').replace(/\/$/, '')
+  return `${base}/${url.replace(/^\//, '')}`
+})
 
 watch(() => props.visible, async (newVal) => {
   if (newVal && props.originalText) {
@@ -75,7 +96,9 @@ const translate = async () => {
   translatedText.value = null
   translateError.value = null
   try {
-    if (props.messageType === 'image') {
+    if (props.action === 'describe') {
+      translatedText.value = await describeImage(props.originalText)
+    } else if (props.messageType === 'image') {
       translatedText.value = await translateImage(
         props.originalText,
         props.targetLang || 'zh'
@@ -87,7 +110,7 @@ const translate = async () => {
       )
     }
   } catch (e: any) {
-    translateError.value = e.message || '翻译失败'
+    translateError.value = e.message || (isDescribe.value ? '识别失败' : '翻译失败')
   }
 }
 
@@ -98,7 +121,7 @@ const close = () => {
 const copyTranslation = async () => {
   if (translatedText.value) {
     await navigator.clipboard.writeText(translatedText.value)
-    QMessage.success('已复制译文')
+    QMessage.success(isDescribe.value ? '已复制描述' : '已复制译文')
   }
 }
 </script>

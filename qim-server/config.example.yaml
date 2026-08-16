@@ -78,7 +78,8 @@ storage:
 # AI 配置
 ai:
   # 路由配置：管理后台可在线修改，此处仅填初始值
-  # 完整任务类型：chat / intent_recognition / analysis / embedding / tool_calling / search / digest / vision
+  # 完整任务类型：chat / intent_recognition / analysis / embedding / search / digest / vision
+  # （tool_calling 无运行时调用点，工具调用走 chat 路由，不配置独立路由）
   router:
     default_task: "chat"
     routes:
@@ -98,7 +99,6 @@ ai:
     api_key: "your-openai-api-key"
     model: "gpt-3.5-turbo"
     base_url: "https://api.openai.com/v1"
-    embedding_model: "text-embedding-ada-002"
 
   anthropic:
     api_key: ""

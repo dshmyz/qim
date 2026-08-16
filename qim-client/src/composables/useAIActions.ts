@@ -62,6 +62,33 @@ export function useAIActions() {
     }
   }
 
+  // 图片识别/描述：复用图片翻译同一套视觉路由（/api/v1/ai/describe-image）
+  const describeImage = async (
+    imageUrl: string,
+    instruction?: string
+  ) => {
+    isProcessing.value = true
+    errorMessage.value = null
+
+    try {
+      const response = await post<any>(
+        '/api/v1/ai/describe-image',
+        { image_url: imageUrl, instruction },
+        { baseUrl: serverUrl.value, timeout: 60000 }
+      )
+      if (!response || !response.data) {
+        errorMessage.value = '图片识别失败'
+        throw new Error('图片识别失败')
+      }
+      return response.data.description
+    } catch (error: any) {
+      errorMessage.value = error.message || '图片识别失败'
+      throw error
+    } finally {
+      isProcessing.value = false
+    }
+  }
+
   const rewriteText = async (
     text: string,
     style: string = 'concise',
@@ -235,29 +262,6 @@ export function useAIActions() {
     }
   }
 
-  // 帮我回复：根据目标消息 + 对话上下文起草回复草稿
-  const draftReply = async (conversationId: number, messageId: number) => {
-    isProcessing.value = true
-    errorMessage.value = null
-    try {
-      const response = await post<any>(
-        '/api/v1/ai/draft-reply',
-        { conversation_id: conversationId, message_id: messageId },
-        { baseUrl: serverUrl.value }
-      )
-      if (!response || !response.data) {
-        errorMessage.value = '生成回复失败'
-        throw new Error('生成回复失败')
-      }
-      return response.data.reply ?? ''
-    } catch (error: any) {
-      errorMessage.value = error.message || '生成回复失败'
-      throw error
-    } finally {
-      isProcessing.value = false
-    }
-  }
-
   // 帮我回复（流式）：逐字推送给调用方，实现打字机效果
   const draftReplyStream = (
     conversationId: number,
@@ -296,13 +300,13 @@ export function useAIActions() {
     errorMessage,
     translateText,
     translateImage,
+    describeImage,
     rewriteText,
     polishText,
     generateSummary,
     generateSummaryMeta,
     generateSummaryStream,
     searchMessages,
-    draftReply,
     draftReplyStream,
     abortDraftReply,
     abort: abortStream,

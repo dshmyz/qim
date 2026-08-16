@@ -303,14 +303,43 @@ func (s *AvatarService) PreviewReply(userID uint, message string) (string, error
 
 // GenerateReplyStream 流式生成分身回复（供"帮我回复"草稿模式：复用分身全套上下文，
 // 但把流式输出交给调用方，不落库不发送）。config 非 nil 时复用调用方已加载的配置。
+// historyBefore 为对话历史锚点（目标消息的 CreatedAt）：非 nil 时只取该时间之前的消息作
+// 上下文，避免目标不是会话最新一条时把后续对话混进历史导致答非所问。
 // ctx 透传自 HTTP 请求，客户端断开时取消上游 AI 请求，避免空跑浪费 token。
-func (s *AvatarService) GenerateReplyStream(ctx context.Context, userID uint, conversationID uint, triggerMessage string, config *model.AvatarConfig) (*schema.StreamReader[*schema.Message], error) {
+func (s *AvatarService) GenerateReplyStream(ctx context.Context, userID uint, conversationID uint, triggerMessage string, historyBefore *time.Time, config *model.AvatarConfig) (*schema.StreamReader[*schema.Message], error) {
 	graph := s.replyGraph.Load()
 	if graph == nil {
 		return nil, fmt.Errorf("回复 Graph 未初始化")
 	}
 
-	return graph.ExecuteStream(ctx, userID, conversationID, triggerMessage, config)
+	return graph.ExecuteStream(ctx, userID, conversationID, triggerMessage, historyBefore, config)
+}
+
+// GenerateReplyStreamWithImageSources 流式生成分身「帮我回复」草稿：目标消息是图片时按 fileID
+// 读图（base64 data URL）走流式多模态生成，草稿基于图片内容。读图失败（存储不可用/图片过大/
+// 读取错误）或未接入群文档服务时降级为纯文本草稿——换诚实文案说明看不到图片内容，不让草稿
+// 功能对图片消息失效、也不把 {"url":...} JSON 泄漏给模型。
+func (s *AvatarService) GenerateReplyStreamWithImageSources(ctx context.Context, userID uint, conversationID uint, imageName string, fileID uint, historyBefore *time.Time, config *model.AvatarConfig) (*schema.StreamReader[*schema.Message], error) {
+	graph := s.replyGraph.Load()
+	if graph == nil {
+		return nil, fmt.Errorf("回复 Graph 未初始化")
+	}
+
+	if s.groupDocSvc != nil {
+		if name, dataURL, err := s.groupDocSvc.ImageURLForContext(fileID); err == nil && dataURL != "" {
+			if imageName == "" {
+				imageName = name
+			}
+			return graph.ExecuteStreamWithImageSources(ctx, userID, conversationID,
+				"对方发来了一张图片，请起草一条回复。", dataURL, imageName, historyBefore, config)
+		}
+	}
+
+	fallbackMsg := "对方发来了一张图片，但无法读取图片内容，请根据对话上下文起草一条回复。"
+	if imageName != "" {
+		fallbackMsg = fmt.Sprintf("对方发来了一张图片「%s」，但无法读取图片内容，请根据对话上下文起草一条回复。", imageName)
+	}
+	return graph.ExecuteStream(ctx, userID, conversationID, fallbackMsg, historyBefore, config)
 }
 
 // min 返回两个整数中的较小值

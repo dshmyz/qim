@@ -162,7 +162,6 @@ type OpenAIConfig struct {
 	Model            string `yaml:"model"`
 	BaseURL          string `yaml:"base_url"`
 	EmbeddingBaseURL string `yaml:"embedding_base_url"`
-	EmbeddingModel   string `yaml:"embedding_model"`
 }
 
 type BaiduConfig struct {

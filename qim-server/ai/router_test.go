@@ -76,7 +76,7 @@ func TestSelectProviderVisionFallsBackToDefault(t *testing.T) {
 // TestSelectProviderEmbeddingNoRouteUsesProviderDefault 验证 embedding 任务未显式配置路由时
 // 回退到 defaultTask（chat）路由，但**模型名必须返回空串**：此时 chat 路由的模型是文本模型，
 // 绝不能经 WithModel 塞给 embedding 端点（会把 gpt-4o 之类发送到 /embeddings 导致 400/404）。
-// 空模型让 Embed() 走 provider.Embedding() 使用自身配置的 embedding 模型。
+// 空模型让 Embed() 走 provider.Embedding() 使用 provider 自身配置的 Model（统一单源，无独立 embedding 模型配置）。
 // （对照：vision 回退仍返回 chat 模型——视觉模型可读图；embedding 是唯一必须丢弃 chat 模型的场景。）
 func TestSelectProviderEmbeddingNoRouteUsesProviderDefault(t *testing.T) {
 	router := NewModelRouter(RouterConfig{

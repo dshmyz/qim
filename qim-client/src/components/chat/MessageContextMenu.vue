@@ -32,6 +32,7 @@ interface Emits {
   (e: 'send-message-reminder'): void
   (e: 'ai-summary'): void
   (e: 'translate'): void
+  (e: 'ai-describe-image'): void
   (e: 'smart-reply'): void
   (e: 'save-to-group-files'): void
 }
@@ -69,7 +70,8 @@ const canSendReminder = computed((): boolean => systemConfigStore.canRemind(prop
 const canSmartReply = computed(() => {
   if (!props.message || !aiEnabled.value) return false
   if (props.message.isSelf) return false
-  return props.message.type === 'text'
+  // 文本/图片消息都能起草：图片目标由后端按消息内 file id 读图注入多模态草稿
+  return props.message.type === 'text' || props.message.type === 'image'
 })
 
 const canSaveFileToGroup = computed(() =>
@@ -85,7 +87,8 @@ const menuItems = computed<ContextMenuItem[]>(() => {
   if (msg.type === 'image') {
     items.push(
       { label: '复制', icon: 'fas fa-copy', action: () => emit('copy-message') },
-      { label: '另存为', icon: 'fas fa-save', action: () => { if (msg.content) emit('save-file-as', msg.content) } }
+      { label: '另存为', icon: 'fas fa-save', action: () => { if (msg.content) emit('save-file-as', msg.content) } },
+      { label: '识别/描述这张图', icon: 'fas fa-eye', visible: aiEnabled.value, action: () => emit('ai-describe-image') }
     )
   }
 

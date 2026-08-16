@@ -92,6 +92,9 @@ type SmartReplyContext struct {
 	// Quoted 被引用对象（文件正文 / 图片 / 读取失败）的上下文注入，nil 表示无被引用内容。
 	// 由 prepareInput 按被引用消息类型与成败设值；判别联合见 QuotedContext。
 	Quoted *QuotedContext
+	// IsSelfQuote 直接发图/发文件（不引用）时由 handler 合成自引用，QuotedMessageID 指向触发消息自身。
+	// 与显式引用的区别仅在措辞主语（"用户发送了" vs "你引用了"）；读取逻辑完全复用。
+	IsSelfQuote bool
 
 	// 动态上下文
 	KnowledgeCtx string // 知识库检索结果
@@ -144,7 +147,7 @@ type SmartReplyGraph struct {
 	userSvc          *UserService
 	quotedFile       QuotedDocumentReader
 	mcpGateway       *MCPClientGateway
-	// thresholdSvc 阈值读取服务；nil 时知识来源门槛用默认 0.6（向后兼容）。
+	// thresholdSvc 阈值读取服务；nil 时知识来源门槛用默认 0.3（与 config 默认一致）。
 	thresholdSvc *AiThresholdService
 }
 
@@ -295,10 +298,14 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 		} else {
 			logger.WithModule("SmartReplyGraph").Info("引用图片降级：未配置视觉路由",
 				"userID", input.UserID, "convID", input.ConversationID)
+			refPrefix := "你引用了"
+			if input.IsSelfQuote {
+				refPrefix = "用户发送了"
+			}
 			input.Quoted = &QuotedContext{
 				Kind: QuotedFailed,
 				Name: input.Quoted.Name,
-				Text: fmt.Sprintf("📷 你引用了一条图片消息「%s」，但当前配置的模型不支持查看图片。请如实说明你看不到图片，可请对方把图片里的关键信息用文字发出来。", input.Quoted.Name),
+				Text: fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但当前配置的模型不支持查看图片。请如实说明你看不到图片，可请对方把图片里的关键信息用文字发出来。", input.Quoted.Name),
 			}
 		}
 	}
@@ -525,28 +532,42 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 		warn := func(t QuotedKind, name, msg string) {
 			input.Quoted = &QuotedContext{Kind: t, Name: name, Text: msg}
 		}
+		// 措辞主语：显式引用（"你引用了…"）vs 直接发送自引用（"用户发送了…"）。
+		// 读取逻辑完全一致，仅提示语区分，避免 AI 把直接发送误认为引用。
+		refPrefix := "你引用了"
+		if input.IsSelfQuote {
+			refPrefix = "用户发送了"
+		}
+		fileLabel := "被引用文件"
+		if input.IsSelfQuote {
+			fileLabel = "用户发送的文件"
+		}
+		imageInstruction := "请识别其内容并结合用户的问题回答"
+		if input.IsSelfQuote {
+			imageInstruction = "请识别其内容并结合上下文回复"
+		}
 		var quoted model.Message
 		if err := g.db.First(&quoted, *input.QuotedMessageID).Error; err == nil && quoted.Type == "file" {
 			quotedName := nameOfQuoted(quoted.Content)
 			fileID := parseQuotedFileID(quoted.Content)
 			if fileID == 0 {
 				// 被引用的是文件消息但拿不到文件 id（Content 缺失/非 JSON）
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 你引用了一条文件消息「%s」，但其内容缺少可解析的文件信息，无法读取正文。请说明你无法读取该文件，可请对方重新发送。", quotedName))
+				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条文件消息「%s」，但其内容缺少可解析的文件信息，无法读取正文。请说明你无法读取该文件，可请对方重新发送。", quotedName))
 			} else if name, text, err := g.quotedFile.ExtractTextForContext(fileID); err == nil {
 				text = truncateQuotedFileText(text)
 				if text != "" {
 					// 截断后仍可能有内容则注入正文
-					warn(QuotedFile, name, fmt.Sprintf("📄 被引用文件「%s」的内容：\n%s", name, text))
+					warn(QuotedFile, name, fmt.Sprintf("📄 "+fileLabel+"「%s」的内容：\n%s", name, text))
 				} else {
 					// 解析成功但正文为空（如空文档），明确告知而非假装读到
-					warn(QuotedFailed, quotedName, fmt.Sprintf("📄 你引用了一条文件消息「%s」，但其内容为空或无法提取出文字，请如实说明。", quotedName))
+					warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条文件消息「%s」，但其内容为空或无法提取出文字，请如实说明。", quotedName))
 				}
 			} else if errors.Is(err, ErrQuotedFileTooLarge) {
 				// 文件过大：提示语区别于"类型不支持"
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 你引用了一条文件消息「%s」，但其体积过大（超过 20MB），无法一次性读入上下文。请说明你只能读取较小的文本/文档文件，可建议对方拆分成多份。", quotedName))
+				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条文件消息「%s」，但其体积过大（超过 20MB），无法一次性读入上下文。请说明你只能读取较小的文本/文档文件，可建议对方拆分成多份。", quotedName))
 			} else {
 				// 类型不支持 / 解析失败 / 存储读取失败：显式告知 AI，让它诚实回复"读不了"
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 你引用了一条文件消息「%s」，但该文件无法读取正文（类型不在可读取范围：txt/md/csv/json/pdf/docx/xlsx/pptx，或存在其他读取/解析错误）。请说明你无法读取该文件内容，可建议对方转成上述格式或上传到群知识库。", quotedName))
+				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条文件消息「%s」，但该文件无法读取正文（类型不在可读取范围：txt/md/csv/json/pdf/docx/xlsx/pptx，或存在其他读取/解析错误）。请说明你无法读取该文件内容，可建议对方转成上述格式或上传到群知识库。", quotedName))
 			}
 		} else if err == nil && (quoted.Type == "image" || quoted.Type == "video" || quoted.Type == "audio") {
 			quotedName := nameOfQuoted(quoted.Content)
@@ -554,21 +575,21 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 				// 图片：走多模态路径，成功则注入 base64 data URL，失败降级为"看不了"。
 				fileID := parseQuotedFileID(quoted.Content)
 				if fileID == 0 {
-					warn(QuotedFailed, quotedName, fmt.Sprintf("📷 你引用了一条图片消息「%s」，但其内容缺少可解析的图片信息，无法读取。请如实说明你看不到该图片，可请对方重新发送。", quotedName))
+					warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但其内容缺少可解析的图片信息，无法读取。请如实说明你看不到该图片，可请对方重新发送。", quotedName))
 				} else if name, dataURL, derr := g.quotedFile.ImageURLForContext(fileID); derr == nil && dataURL != "" {
 					logger.WithModule("SmartReplyGraph").Info("引用图片读取成功",
 						"fileID", fileID, "name", name, "dataURLLen", len(dataURL))
-					warn(QuotedImage, name, fmt.Sprintf("📷 你引用了一张图片「%s」，请识别其内容并结合用户的问题回答。", name))
+					warn(QuotedImage, name, fmt.Sprintf("📷 "+refPrefix+"一张图片「%s」，%s。", name, imageInstruction))
 					input.Quoted.ImageURL = dataURL
 				} else if errors.Is(derr, ErrQuotedImageTooLarge) {
-					warn(QuotedFailed, quotedName, fmt.Sprintf("📷 你引用了一条图片消息「%s」，但其体积过大（超过 5MB），无法读入上下文。请如实说明你看不到该图片，可建议对方压缩后重新发送。", quotedName))
+					warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但其体积过大（超过 5MB），无法读入上下文。请如实说明你看不到该图片，可建议对方压缩后重新发送。", quotedName))
 				} else {
 					// 读取失败 / 存储读取失败 / reader 未实现多模态：显式告知 AI 看不到图，诚实回复。
-					warn(QuotedFailed, quotedName, fmt.Sprintf("📷 你引用了一条图片消息「%s」，但该图片当前无法读入上下文（读取失败或图片不可用）。请如实说明你看不到该图片，可建议对方重新发送。", quotedName))
+					warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但该图片当前无法读入上下文（读取失败或图片不可用）。请如实说明你看不到该图片，可建议对方重新发送。", quotedName))
 				}
 			} else {
 				// 引用的是视频/语音消息：当前不支持解析，显式告知而不是当作无引用
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 你引用了一条%s消息，但该类型目前无法解析其内容进上下文。请如实说明你无法读取该%s。", mediaTypeName(quoted.Type), mediaTypeName(quoted.Type)))
+				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条%s消息，但该类型目前无法解析其内容进上下文。请如实说明你无法读取该%s。", mediaTypeName(quoted.Type), mediaTypeName(quoted.Type)))
 			}
 		}
 	}

@@ -7,6 +7,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDownloadAsDataURLRejectsOversizedImageWithoutTruncating(t *testing.T) {
@@ -128,4 +133,117 @@ func TestDataURLTooLargePlain(t *testing.T) {
 	if !dataURLTooLarge(huge) {
 		t.Fatal("huge plain dataURL should be too large")
 	}
+}
+
+// describeCaptureProvider 测试用视觉 Provider 桩：复用 mockToolProvider 的 no-op 实现，
+// Chat 捕获最近一次收到的 ai.Message（断言 ImageURL 透传）并按 reply 返回固定描述。
+type describeCaptureProvider struct {
+	mockToolProvider
+	reply        string
+	lastMessages []ai.Message
+}
+
+func (p *describeCaptureProvider) Chat(messages []ai.Message) (string, error) {
+	p.lastMessages = messages
+	return p.reply, nil
+}
+
+// WithModel 覆盖 mockToolProvider 的实现：默认返回被嵌入的裸 mockToolProvider
+// （Chat 恒返回 "ok" 且不记录消息）。GetCompletion 带 model 路由时走
+// provider.WithModel(model).Chat(...)，这里返回自身以命中上面的消息捕获。
+func (p *describeCaptureProvider) WithModel(model string) ai.Provider {
+	return p
+}
+
+// newDescribeImageTestAI 构造带视觉路由（可选）的 AIHandler，注入捕获型视觉 provider。
+func newDescribeImageTestAI(routeVision bool, reply string) (*AIHandler, *describeCaptureProvider) {
+	routes := map[ai.TaskType]ai.Route{
+		ai.TaskTypeChat: {Provider: "mock", Model: "chat"},
+	}
+	if routeVision {
+		routes[ai.TaskTypeVision] = ai.Route{Provider: "mock", Model: "vision"}
+	}
+	aiSvc := ai.NewAIService(&ai.AIConfig{
+		Router: ai.RouterConfig{
+			DefaultTask: ai.TaskTypeChat,
+			Routes:      routes,
+		},
+	})
+	capProv := &describeCaptureProvider{reply: reply}
+	aiSvc.SetProviderForTesting("mock", capProv)
+	return NewAIHandler(aiSvc, nil), capProv
+}
+
+func describeImageRequest(router *gin.Engine, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/describe-image", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+// TestDescribeImage_Success 验证图片识别正常路径：provider 返回描述 JSON 时，端点返回
+// 描述文本，且透传给模型的最后一条 user 消息携带图片 base64 data URL。
+func TestDescribeImage_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, capProv := newDescribeImageTestAI(true, `{"description":"一只猫蹲在窗台上"}`)
+	router := gin.New()
+	router.POST("/describe-image", h.DescribeImage)
+
+	w := describeImageRequest(router, `{"image_url":"data:image/png;base64,aW1n"}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "一只猫蹲在窗台上")
+
+	var lastUser ai.Message
+	for _, m := range capProv.lastMessages {
+		if m.Role == "user" {
+			lastUser = m
+		}
+	}
+	assert.Equal(t, "data:image/png;base64,aW1n", lastUser.ImageURL, "DescribeImage 应把图片 data URL 交给视觉模型")
+	assert.Contains(t, lastUser.Content, "识别图片内容并详细描述", "未传 instruction 时应用默认识别指令")
+}
+
+// TestDescribeImage_CustomInstruction 验证自定义 instruction 透传。
+func TestDescribeImage_CustomInstruction(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, capProv := newDescribeImageTestAI(true, `{"description":"图中有一份体检报告"}`)
+	router := gin.New()
+	router.POST("/describe-image", h.DescribeImage)
+
+	w := describeImageRequest(router, `{"image_url":"data:image/png;base64,aW1n","instruction":"请提取体检报告中的关键指标"}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var lastUser ai.Message
+	for _, m := range capProv.lastMessages {
+		if m.Role == "user" {
+			lastUser = m
+		}
+	}
+	assert.Contains(t, lastUser.Content, "请提取体检报告中的关键指标", "自定义 instruction 应透传给模型")
+}
+
+// TestDescribeImage_NoVisionRoute 验证未配置「视觉理解」路由时返回 400，
+// 而不是把图片 base64 硬塞给不支持视觉的模型。
+func TestDescribeImage_NoVisionRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newDescribeImageTestAI(false, `{"description":"x"}`)
+	router := gin.New()
+	router.POST("/describe-image", h.DescribeImage)
+
+	w := describeImageRequest(router, `{"image_url":"data:image/png;base64,aW1n"}`)
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "视觉理解", "应提示配置视觉任务路由")
+}
+
+// TestDescribeImage_EmptyDescription 验证模型返回空文本时返回 400 明确文案。
+func TestDescribeImage_EmptyDescription(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newDescribeImageTestAI(true, "")
+	router := gin.New()
+	router.POST("/describe-image", h.DescribeImage)
+
+	w := describeImageRequest(router, `{"image_url":"data:image/png;base64,aW1n"}`)
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "未能识别图片内容")
 }

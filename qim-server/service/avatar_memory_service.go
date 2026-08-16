@@ -18,7 +18,7 @@ type AvatarMemoryService struct {
 	// conflictCheck 判断新旧两条记忆是否"同一主题但结论矛盾"：矛盾则更新旧的
 	// （保留 memoryID），否则新增。nil 时用 LLM 默认实现。可注入以便测试不真调 LLM。
 	conflictCheck func(newMemo, oldMemo string) (bool, error)
-	// thresholdSvc 阈值读取服务；nil 时用默认 0.7（向后兼容）。
+	// thresholdSvc 阈值读取服务；nil 时用默认 0.3（与 config 默认一致）。
 	thresholdSvc *AiThresholdService
 }
 
@@ -34,7 +34,7 @@ func (s *AvatarMemoryService) SetConflictCheck(f func(newMemo, oldMemo string) (
 	s.conflictCheck = f
 }
 
-// SetThresholdService 注入阈值读取服务；nil 时冲突检测用默认 0.7。
+// SetThresholdService 注入阈值读取服务；nil 时冲突检测用默认 0.3。
 func (s *AvatarMemoryService) SetThresholdService(t *AiThresholdService) {
 	s.thresholdSvc = t
 }
@@ -115,7 +115,7 @@ func (s *AvatarMemoryService) ConsolidateMessage(userID, conversationID uint, co
 	return s.saveConsolidatedMemory(userID, conversationID, "avatar", ref, memories)
 }
 
-// saveConsolidatedMemory 落库反射记忆：与最相似旧记忆（score≥0.7）语义冲突时
+// saveConsolidatedMemory 落库反射记忆：与最相似旧记忆（score≥冲突检测门槛）语义冲突时
 // 更新旧记忆内容（保留 memoryID），否则新增一条。返回是否真的落库。
 // 提取为独立方法便于测试（不依赖整条 LLM 反射流程）。
 func (s *AvatarMemoryService) saveConsolidatedMemory(userID, conversationID uint, namespace string, ref MemoryReflection, memories []SearchResult) (bool, error) {

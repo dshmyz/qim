@@ -238,12 +238,18 @@ func AddGroupDocument(c *gin.Context) {
 		}
 	}
 
+	// 直接上传的图片（截图/照片/扫描件）也允许入知识库，入库时由服务端走视觉 OCR
+	// 识别文字后切片向量化；扫描件 PDF 不在此列（维持现有"无文字层"明确报错）。
+	if !isAllowed && strings.HasPrefix(mimeBase, "image/") {
+		isAllowed = true
+	}
+
 	// OOXML 文档（docx/xlsx/pptx）是 ZIP 容器，服务端 DetectMimeType（http.DetectContentType）
 	// 一律返回 application/zip，MIME 白名单无法命中。用原始文件扩展名兜底识别，
 	// 使这类文档也能绑定进群知识库。
 	if !isAllowed {
 		ext := strings.ToLower(filepath.Ext(file.OriginalName))
-		for _, e := range []string{".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv", ".md"} {
+		for _, e := range []string{".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv", ".md", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"} {
 			if ext == e {
 				isAllowed = true
 				break
@@ -252,7 +258,7 @@ func AddGroupDocument(c *gin.Context) {
 	}
 
 	if !isAllowed {
-		response.BadRequest(c, "只支持添加文档类型的文件（PDF、Word、Excel、PPT、TXT等）")
+		response.BadRequest(c, "只支持添加文档或图片类型的文件（PDF、Word、Excel、PPT、TXT、PNG、JPG等）")
 		return
 	}
 

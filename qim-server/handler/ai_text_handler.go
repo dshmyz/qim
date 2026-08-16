@@ -50,6 +50,12 @@ type TranslateImageRequest struct {
 	TargetLang string `json:"target_lang"` // 默认 zh
 }
 
+// DescribeImageRequest 图片识别/描述请求
+type DescribeImageRequest struct {
+	ImageURL    string `json:"image_url" binding:"required"`
+	Instruction string `json:"instruction"` // 可选：自定义识别指令，默认"识别图片内容并详细描述"
+}
+
 // TextProcessRequest 统一文本处理请求
 type TextProcessRequest struct {
 	Action     string `json:"action" binding:"required"` // translate/rewrite/polish
@@ -327,6 +333,87 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 			"translated_text": parsed.TranslatedText,
 			"original_text":   parsed.OriginalText,
 			"target_lang":     targetLang,
+		},
+	})
+}
+
+// DescribeImage 图片识别/描述（AI 视觉理解）。
+// 复用图片翻译同一套视觉链路：extractImageURL（支持消息 content JSON）+ imageToDataURL
+// （存储→base64 data URL，5MB 护栏）+「视觉理解」路由（TaskTypeVision）门控。
+func (h *AIHandler) DescribeImage(c *gin.Context) {
+	var req DescribeImageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	if !h.aiService.IsConfigured() {
+		response.InternalServerError(c, "AI服务未配置")
+		return
+	}
+
+	// 解析 image_url：可能是 JSON 格式（如 {"url": "/uploads/...", ...}）
+	imageURL := extractImageURL(req.ImageURL)
+
+	dataURL := imageToDataURL(imageURL)
+	if dataURL == "" {
+		response.BadRequest(c, fmt.Sprintf("不支持的图片地址格式: %s", imageURL))
+		return
+	}
+	if strings.HasPrefix(dataURL, "data:") && dataURLTooLarge(dataURL) {
+		response.BadRequest(c, fmt.Sprintf("图片过大，最大支持%dMB", maxImageTranslateSize/(1024*1024)))
+		return
+	}
+
+	// 与图片翻译一致：要求显式配置「视觉理解」路由，避免把 base64 硬塞给不支持视觉的模型
+	if !h.aiService.HasVisionRoute() {
+		response.BadRequest(c, "图片识别需要配置「视觉理解」任务路由（管理后台 → AI 模型配置 → 模型路由），当前未配置可用的视觉模型")
+		return
+	}
+
+	instruction := strings.TrimSpace(req.Instruction)
+	if instruction == "" {
+		instruction = "识别图片内容并详细描述"
+	}
+
+	systemPrompt := fmt.Sprintf(`%s
+
+你是一个图片识别助手。请基于图片内容完成用户指定的任务（识别/描述/提取信息等）。
+请严格按以下 JSON 格式输出，不要包含任何其他内容：
+{"description": "对图片的识别/描述结果"}
+
+注意：只输出图片中实际存在的信息，不要编造。`, aiprompt.CurrentTimeLine())
+
+	messages_input := []ai.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: instruction, ImageURL: dataURL},
+	}
+
+	// 通过路由选择视觉 Provider / 模型，与图片翻译一致不传 Override
+	result, err := h.aiService.GetCompletion(ai.TaskTypeVision, messages_input)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片识别失败: " + err.Error()})
+		return
+	}
+
+	// 解析 JSON 格式响应，提取描述；未按 JSON 返回时直接取全文（识别/描述可容忍自由文本）
+	var parsed struct {
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(result)), &parsed); err != nil || parsed.Description == "" {
+		parsed.Description = strings.TrimSpace(result)
+	}
+
+	if parsed.Description == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "未能识别图片内容"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "success",
+		"data": gin.H{
+			"description": parsed.Description,
 		},
 	})
 }

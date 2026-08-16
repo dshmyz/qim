@@ -217,3 +217,72 @@ func TestLooksMemorable(t *testing.T) {
 	assert.True(t, looksMemorable("我下周三要去上海出差，项目A的评审改到周五上午"))
 	assert.True(t, looksMemorable("I prefer replies in English, thanks"))
 }
+
+func uintPtr(v uint) *uint { return &v }
+
+// TestIsDirectMediaType 直接发送的媒体消息类型判定：图片/文件可多模态读取，视频/语音仅跳过。
+func TestIsDirectMediaType(t *testing.T) {
+	assert.True(t, isDirectMediaType("image"), "图片是直接媒体")
+	assert.True(t, isDirectMediaType("file"), "文件是直接媒体")
+	assert.True(t, isDirectMediaType("video"), "视频是直接媒体")
+	assert.True(t, isDirectMediaType("audio"), "语音是直接媒体")
+	assert.False(t, isDirectMediaType("text"))
+	assert.False(t, isDirectMediaType("markdown"))
+	assert.False(t, isDirectMediaType(""))
+}
+
+// TestDecideDirectMediaReply 直接发媒体消息时群 AI 触发决策：
+// off / mention_only / 未启用 / 反刷屏窗口内不触发；其余启用模式触发。
+func TestDecideDirectMediaReply(t *testing.T) {
+	cfg := func(mode string, enabled bool) *model.GroupAIConfig {
+		return &model.GroupAIConfig{Enabled: enabled, ReplyMode: mode}
+	}
+	cases := []struct {
+		name     string
+		cfg      *model.GroupAIConfig
+		antiSpam bool
+		want     bool
+	}{
+		{"off 不触发", cfg("off", true), false, false},
+		{"mention_only 不触发", cfg("mention_only", true), false, false},
+		{"未启用不触发", cfg("always", false), false, false},
+		{"反刷屏窗口内不触发", cfg("always", true), true, false},
+		{"always 触发", cfg("always", true), false, true},
+		{"smart 触发", cfg("smart", true), false, true},
+		{"空模式（默认自动）触发", cfg("", true), false, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, decideDirectMediaReply(c.cfg, c.antiSpam))
+		})
+	}
+}
+
+// TestSelfQuoteMessageID 直接发图/发文件合成自引用：图片/文件无显式引用时返回自身 ID；
+// 显式引用优先；文本/视频/语音不自引用。
+func TestSelfQuoteMessageID(t *testing.T) {
+	explicitQuoted := uint(99)
+	cases := []struct {
+		name string
+		msg  *model.Message
+		want *uint
+	}{
+		{"直接图片 → 自引用", &model.Message{ID: 1, Type: "image"}, uintPtr(1)},
+		{"直接文件 → 自引用", &model.Message{ID: 2, Type: "file"}, uintPtr(2)},
+		{"文本消息 → 保持 nil 引用", &model.Message{ID: 3, Type: "text"}, nil},
+		{"图片但已显式引用 → 保留原引用", &model.Message{ID: 4, Type: "image", QuotedMessageID: &explicitQuoted}, &explicitQuoted},
+		{"视频 → 不自引用", &model.Message{ID: 5, Type: "video"}, nil},
+		{"nil 消息 → nil", nil, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := selfQuoteMessageID(c.msg)
+			if c.want == nil {
+				assert.Nil(t, got)
+				return
+			}
+			require.NotNil(t, got, "应返回自引用 ID")
+			assert.Equal(t, *c.want, *got)
+		})
+	}
+}

@@ -284,10 +284,9 @@ func (p *OpenAIProvider) Embedding(text string) ([]float32, error) {
 		} `json:"usage"`
 	}
 
+	// embedding 模型统一取 config.Model：embedding 模型名由 router.routes.embedding.model
+	// 经 WithModel 显式下发（无路由时回退到 provider 自身配置的 Model），不存在独立配置。
 	embeddingModel := p.config.Model
-	if p.config.EmbeddingModel != "" {
-		embeddingModel = p.config.EmbeddingModel
-	}
 
 	// embedding base URL：火山引擎等平台的 embedding 接口路径与 chat 不同
 	// （如 /api/v3/embeddings vs /api/plan/v3/chat/completions），通过配置显式指定。

@@ -78,13 +78,14 @@ export const DEFAULT_MODELS: Record<ProviderType, string[]> = {
 
 // ===== AI 模型路由（任务类型 → provider/model） =====
 
-// 任务类型，与后端 ai.TaskType 对齐
+// 任务类型，与后端 ai.TaskType 对齐。
+// 注：后端保留 TaskTypeToolCalling 常量，但无任何调用点传它（工具调用实际走 chat 路由），
+// 故不出现在路由配置选项里，避免管理员配置了却不生效。
 export type TaskType =
   | 'chat'
   | 'intent_recognition'
   | 'analysis'
   | 'embedding'
-  | 'tool_calling'
   | 'search'
   | 'digest'
   | 'vision'
@@ -116,7 +117,6 @@ export const TASK_TYPE_OPTIONS: Array<{ value: TaskType; label: string; desc: st
   { value: 'intent_recognition', label: '意图识别', desc: '判断用户意图' },
   { value: 'analysis', label: '分析 / 摘要生成', desc: '内容分析与总结' },
   { value: 'embedding', label: 'Embedding', desc: '向量化（语义检索）' },
-  { value: 'tool_calling', label: '工具调用', desc: 'AI 调用内置工具' },
   { value: 'search', label: '搜索', desc: '知识库 / 语义检索' },
   { value: 'digest', label: '摘要 / 聚合', desc: '消息摘要、聚合总结' },
   { value: 'vision', label: '视觉理解', desc: '图片 / 多模态理解' },

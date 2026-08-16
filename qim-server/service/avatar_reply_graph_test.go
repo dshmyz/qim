@@ -2,7 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
+	"io"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/dshmyz/gracedb/pkg/gracedb"
 	"github.com/dshmyz/qim/qim-server/ai"
@@ -303,6 +307,26 @@ func (c *capturingAvatarProvider) Chat(messages []ai.Message) (string, error) {
 	return c.reply, nil
 }
 
+// streamingAvatarProvider 测试用流式 Provider 桩：在复用 capturingAvatarProvider 的
+// 整段回复与消息捕获基础上，ChatStreamWithContext 把固定回复逐字拆块发出
+// （EinoChatModel.Stream 走的是 ChatStreamWithContext），供流式草稿路径
+// （ExecuteStreamWithImageSources）断言流式拼装结果与图片 data URL 透传。
+type streamingAvatarProvider struct {
+	capturingAvatarProvider
+}
+
+var _ ai.Provider = (*streamingAvatarProvider)(nil)
+
+func (c *streamingAvatarProvider) ChatStreamWithContext(ctx context.Context, messages []ai.Message, onChunk func(chunk ai.StreamChunk) error) error {
+	c.lastMessages = messages
+	for _, r := range []rune(c.reply) {
+		if err := onChunk(ai.StreamChunk{Content: string(r)}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // TestAvatarReplyGraph_ExecuteWithImageSources 验证分身图片触发消息走多模态生成：
 // 1) 生成的回复能经 fake provider 返回；2) 透传给模型的最后一条 user 消息携带图片 data URL。
 // 图片路径忽略知识范围外静默（能看图就回，看不了由 worker 跳过），此处用 out-of-scope 配置验证仍回复。
@@ -359,6 +383,130 @@ func TestExecuteWithImageSources_ModelError(t *testing.T) {
 	_, _, err := g.ExecuteWithImageSources(context.Background(), 1, 1, `{"id":1}`, "data:image/png;base64,dddd", "x.png", &cfg)
 	// aiSvc 未配置 provider → GetCompletion 返回未配置错误，图片路径应如实上抛，由 worker 跳过
 	assert.Error(t, err, "模型不可用时应返回错误而非静默假回复")
+}
+
+// TestAvatarReplyGraph_ExecuteStreamWithImageSources 验证分身「帮我回复」草稿模式基于图片流式生成：
+// 1) 流式逐块拼出的草稿与整段回复一致；2) 透传给模型的最后一条 user 消息携带图片 data URL 与文件名提示。
+// 草稿模式忽略知识范围外静默（用户主动要草稿），此处用 out-of-scope 配置验证仍回复。
+func TestAvatarReplyGraph_ExecuteStreamWithImageSources(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{
+		UserID:             1,
+		Enabled:            true,
+		Name:               "分身",
+		KnowledgeScopeJSON: `{}`, // 无知识来源，验证图片草稿路径不被范围外静默挡住
+		ReplyStrategyJSON:  `{"replyOutOfScope":false}`,
+	}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	capProv := &streamingAvatarProvider{}
+	capProv.reply = "识别到图片：一只猫"
+	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	aiSvc.SetProviderForTesting("fake-avatar", capProv)
+
+	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
+	require.NoError(t, g.BuildGraph())
+
+	const dataURL = "data:image/png;base64,cccc"
+	stream, err := g.ExecuteStreamWithImageSources(context.Background(), 1, 1,
+		"对方发来了一张图片，请起草一条回复。", dataURL, "cat.png", nil, &cfg)
+	require.NoError(t, err)
+	defer stream.Close()
+
+	// 消费流式 reader，逐块拼出完整草稿（与 handler streamCompletionFromReader 同构）
+	var sb strings.Builder
+	for {
+		msg, recvErr := stream.Recv()
+		if recvErr != nil {
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+			t.Fatalf("流式接收失败: %v", recvErr)
+		}
+		if msg != nil {
+			sb.WriteString(msg.Content)
+		}
+	}
+	assert.Equal(t, "识别到图片：一只猫", sb.String(), "流式草稿应逐块拼出与整段一致的回复")
+
+	// 取透传给模型的最后一条 user 消息，断言携带图片 data URL
+	var lastUser ai.Message
+	for _, m := range capProv.lastMessages {
+		if m.Role == "user" {
+			lastUser = m
+		}
+	}
+	assert.Equal(t, dataURL, lastUser.ImageURL, "分身流式图片路径应把 base64 data URL 作为 ImageURL 交给模型")
+	assert.Contains(t, lastUser.Content, "cat.png", "分身流式图片路径应提示模型识别该图片")
+}
+
+// TestAvatarReplyGraph_ExecuteStream_HistoryAnchored 验证草稿模式的历史锚定：
+// 右键历史消息（非会话最新一条）派生草稿时，对话历史只取目标消息「之前」的内容，
+// 不含目标之后的消息——否则模型会在"对方说：旧消息"与历史里的后续对话中左右矛盾、答非所问。
+func TestAvatarReplyGraph_ExecuteStream_HistoryAnchored(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "qim", Nickname: "QIM", PasswordHash: "h"}).Error)
+	require.NoError(t, db.Create(&model.User{ID: 2, Username: "bob", Nickname: "Bob", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{
+		UserID:             1,
+		Enabled:            true,
+		Name:               "分身",
+		KnowledgeScopeJSON: `{}`, // 无知识来源，草稿模式忽略范围外静默（用户主动要草稿）
+		ReplyStrategyJSON:  `{"replyOutOfScope":false}`,
+	}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	// 会话时间线（最后一条是目标之后的后续对话，锚定后不应进入历史）：
+	//   Bob: 早上好 → QIM: 早，资料发你 → Bob: 看下这份报价【目标】→ QIM: 收到，明天回复你
+	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)
+	msgs := []model.Message{
+		{ConversationID: 1, SenderID: 2, Type: "text", Content: "早上好", CreatedAt: base.Add(0 * time.Minute)},
+		{ConversationID: 1, SenderID: 1, Type: "text", Content: "早，资料发你", CreatedAt: base.Add(1 * time.Minute)},
+		{ConversationID: 1, SenderID: 2, Type: "text", Content: "看下这份报价", CreatedAt: base.Add(2 * time.Minute)},
+		{ConversationID: 1, SenderID: 1, Type: "text", Content: "收到，明天回复你", CreatedAt: base.Add(3 * time.Minute)},
+	}
+	for i := range msgs {
+		require.NoError(t, db.Create(&msgs[i]).Error)
+	}
+	target := msgs[2] // 看下这份报价
+
+	capProv := &streamingAvatarProvider{}
+	capProv.reply = "好的，报价我看了明天答复你"
+	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	aiSvc.SetProviderForTesting("fake-avatar", capProv)
+
+	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
+	require.NoError(t, g.BuildGraph())
+
+	// 目标不是最新一条，把历史锚定到目标的 CreatedAt 派生草稿
+	stream, err := g.ExecuteStream(context.Background(), 1, 1, target.Content, &target.CreatedAt, &cfg)
+	require.NoError(t, err)
+	defer stream.Close()
+	for {
+		_, recvErr := stream.Recv()
+		if recvErr != nil {
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+			t.Fatalf("流式接收失败: %v", recvErr)
+		}
+	}
+
+	// 取透传给模型的 user 消息，断言历史已锚定到目标
+	var userMsg ai.Message
+	for _, m := range capProv.lastMessages {
+		if m.Role == "user" {
+			userMsg = m
+		}
+	}
+	require.NotEmpty(t, userMsg.Content, "应有 user 消息携带 prompt")
+	assert.Contains(t, userMsg.Content, "对方说：看下这份报价", "草稿应以目标消息为回复对象")
+	assert.Contains(t, userMsg.Content, "Bob: 早上好", "目标之前的历史应保留")
+	assert.Contains(t, userMsg.Content, "QIM: 早，资料发你", "目标之前的历史应保留")
+	assert.NotContains(t, userMsg.Content, "收到，明天回复你", "目标之后的消息不应混入历史（否则模型答非所问）")
 }
 
 // TestAvatarReplyGraph_ExecuteBatchWithImagesSources 验证分身「合并窗口连发一批消息」走批量多模态生成：

@@ -218,6 +218,23 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 			e.maybeRememberGroupMessage(group.ID, conversationID, content)
 		}
 
+		// 直接发图/发文件（不引用）：合成自引用复用引用机制的多模态读取（读图/读正文）。
+		// 媒体消息一律不再落入文本意图检测，避免把 {"url":...} JSON 当普通消息回。
+		// 触发范围：auto/smart/keyword 等启用模式；off / mention_only 维持现状不回复。
+		// video/audio 仅跳过（无法解析进上下文），同样不落入意图检测。
+		if e.smartReplyGraph != nil && isDirectMediaType(msg.Type) {
+			if decideDirectMediaReply(aiConfig, antiSpamBlocked) && (msg.Type == "image" || msg.Type == "file") {
+				question := "请识别用户发送的这张图片，并结合上下文回复。"
+				if msg.Type == "file" {
+					question = "请阅读用户发送的这份文件的内容，并结合上下文回复。"
+				}
+				e.submitConvReply(conversationID, func() {
+					e.handleAIMention(userID, conversationID, question, content, &conv, assistantName, msg)
+				})
+			}
+			return
+		}
+
 		switch DecideGroupAIReply(*aiConfig, content, assistantName, antiSpamBlocked) {
 		case GroupAIMentionReply:
 			question := extractAIQuestion(content, assistantName)
@@ -249,6 +266,32 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 	if shouldReply {
 		e.submitConvReply(conversationID, func() { e.generateAndSendReply(userID, conversationID, content, intent) })
 	}
+}
+
+// isDirectMediaType 直接发送的媒体消息类型（引用消息不属于此场景）。
+// 图片/文件可走多模态读取；视频/语音当前无法解析，仅用于跳过文本意图检测。
+func isDirectMediaType(t string) bool {
+	return t == "image" || t == "file" || t == "video" || t == "audio"
+}
+
+// decideDirectMediaReply 直接发媒体消息时群 AI 是否触发回复。
+// off / mention_only 维持现状不触发（mention_only 语义是"仅@触发"）；
+// 其余启用模式（auto/smart/keyword 等）触发，与 DecideGroupAIReply 的 Auto 判定保持一致。
+func decideDirectMediaReply(cfg *model.GroupAIConfig, antiSpamBlocked bool) bool {
+	return cfg.Enabled && !antiSpamBlocked && cfg.ReplyMode != "off" && cfg.ReplyMode != "mention_only"
+}
+
+// selfQuoteMessageID 直接发图/发文件（不引用）时合成自引用：返回触发消息自身 ID，
+// 供图上下文复用引用机制读取图片/正文。显式引用优先——原消息已引用其他消息时不覆盖。
+// 非图片/文件（文本/视频/语音）或 nil 消息原样返回原引用（可能为 nil）。
+func selfQuoteMessageID(origMsg *model.Message) *uint {
+	if origMsg == nil {
+		return nil
+	}
+	if origMsg.QuotedMessageID == nil && (origMsg.Type == "image" || origMsg.Type == "file") {
+		return &origMsg.ID
+	}
+	return origMsg.QuotedMessageID
 }
 
 // submitConvReply 把一次群助手/自动回复提交到按会话串行的异步队列。
@@ -549,10 +592,9 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 
 func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID uint, question string, originalContent string, assistantName string, origMsg *model.Message) {
 	ctx := context.Background()
-	var quotedMessageID *uint
-	if origMsg != nil {
-		quotedMessageID = origMsg.QuotedMessageID
-	}
+	// 直接发图/发文件（不引用）时由 selfQuoteMessageID 合成自引用；显式引用优先。
+	quotedMessageID := selfQuoteMessageID(origMsg)
+	isSelfQuote := origMsg != nil && origMsg.QuotedMessageID == nil && (origMsg.Type == "image" || origMsg.Type == "file")
 	input := &service.SmartReplyContext{
 		Message:         question,
 		OriginalContent: originalContent,
@@ -561,6 +603,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		IsAIMention:     true,
 		AssistantName:   assistantName,
 		QuotedMessageID: quotedMessageID,
+		IsSelfQuote:     isSelfQuote,
 	}
 
 	// 管理操作指令（踢人/加人/禁言等）走带工具路径：注入 AI 群管理工具，

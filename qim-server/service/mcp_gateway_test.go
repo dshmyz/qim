@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -157,10 +158,10 @@ func (t *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return t.inner.RoundTrip(req)
 }
 
-// TestTokenAuthHTTPClient_InjectAuthorization 验证带 token 时：authorizationTransport
+// TestAuthorizationTransport_InjectAuthorization 验证带 token 时：authorizationTransport
 // 在转发前注入 Authorization: Bearer <token>，且 clone 后的请求（进入内层 transport 的
 // 那份）确实携带该头——即请求经整条链路到达服务端时已完成注入。
-func TestTokenAuthHTTPClient_InjectAuthorization(t *testing.T) {
+func TestAuthorizationTransport_InjectAuthorization(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -182,15 +183,15 @@ func TestTokenAuthHTTPClient_InjectAuthorization(t *testing.T) {
 		"带 token 时应注入 Authorization: Bearer")
 }
 
-// TestTokenAuthHTTPClient_EmptyTokenNoHeader 验证 token 为空时不注入鉴权头，
+// TestAuthorizationTransport_EmptyTokenNoHeader 验证 token 为空时不注入鉴权头，
 // 行为与未配置 token 的历史路径一致。
-func TestTokenAuthHTTPClient_EmptyTokenNoHeader(t *testing.T) {
+func TestAuthorizationTransport_EmptyTokenNoHeader(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
-	// 空 token 时不走 tokenAuthHTTPClient（connect 仅在非空时构造），
+	// 空 token 时 SSRFProtectedHTTPClient 不挂 authorizationTransport（见其 token 非空判断），
 	// 这里直接验证 authorizationTransport 对空 token 不注入头。
 	authRec := &recordingTransport{inner: &authorizationTransport{token: "", inner: http.DefaultTransport}}
 
@@ -203,4 +204,87 @@ func TestTokenAuthHTTPClient_EmptyTokenNoHeader(t *testing.T) {
 	require.NotNil(t, authRec.last, "应捕获到出站请求")
 	assert.Empty(t, authRec.last.Header.Get("Authorization"),
 		"token 为空时不应注入 Authorization 头")
+}
+
+// TestSSRFProtectedHTTPClient_InjectAuthorization 端到端验证 SSRFProtectedHTTPClient
+// 工厂接线：token 非空时，出站请求确实携带 Authorization: Bearer
+// （覆盖 connect() 与预览路径 buildPreviewTransport 共用该工厂的场景）。
+func TestSSRFProtectedHTTPClient_InjectAuthorization(t *testing.T) {
+	gotAuthCh := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuthCh <- r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := SSRFProtectedHTTPClient(true, "secret-token")
+	resp, err := client.Get(srv.URL)
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, "Bearer secret-token", <-gotAuthCh, "带 token 时应注入 Authorization: Bearer")
+}
+
+// TestSSRFProtectedHTTPClient_NoAuthWithoutToken 验证 token 为空时 SSRFProtectedHTTPClient
+// 不注入鉴权头（工厂的 token 非空判断接线正确）。
+func TestSSRFProtectedHTTPClient_NoAuthWithoutToken(t *testing.T) {
+	gotAuthCh := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuthCh <- r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := SSRFProtectedHTTPClient(true, "")
+	resp, err := client.Get(srv.URL)
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Empty(t, <-gotAuthCh, "token 为空时不应注入 Authorization 头")
+}
+
+// TestSSRFRedirectPolicy_RejectsPrivateTarget 验证 CheckRedirect 对重定向目标重新执行
+// SSRF 校验：公网 server 302 到内网/元数据地址时拒绝跟随（内网响应不会回流）；
+// allowPrivate=true 时放行。
+func TestSSRFRedirectPolicy_RejectsPrivateTarget(t *testing.T) {
+	policy := ssrfRedirectPolicy(false)
+	req, err := http.NewRequest(http.MethodGet, "http://169.254.169.254/latest/meta-data/", nil)
+	require.NoError(t, err)
+	err = policy(req, nil)
+	require.Error(t, err, "重定向到内网地址应被拒绝")
+	assert.Contains(t, err.Error(), "SSRF")
+
+	req2, err := http.NewRequest(http.MethodGet, "http://169.254.169.254/latest/meta-data/", nil)
+	require.NoError(t, err)
+	require.NoError(t, ssrfRedirectPolicy(true)(req2, nil), "allowPrivate=true 时应放行重定向目标")
+}
+
+// TestSSRFDialContext_BlocksBlockedLiteralIP 验证 DialContext 在拨号前直接拒绝
+// 内网/本机/未指定字面量 IP（不经网络）：私有、0.0.0.0/8、链路本地、IPv6 未指定。
+func TestSSRFDialContext_BlocksBlockedLiteralIP(t *testing.T) {
+	ctx := context.Background()
+	for _, addr := range []string{"10.0.0.1:80", "0.0.0.1:80", "169.254.169.254:80", "[::]:80"} {
+		_, err := ssrfDialContext(false)(ctx, "tcp", addr)
+		assert.Error(t, err, "应拒绝拨号 %s", addr)
+		assert.Contains(t, err.Error(), "不允许访问", "拨号 %s 的拒绝原因应说明禁止访问", addr)
+	}
+}
+
+// TestMCPClientGateway_AllowPrivateFalseRejectsLocalURL 验证运行时连接路径在
+// allow_private 关闭时拒绝本机地址连接：Sync 不注册工具、不 panic。
+func TestMCPClientGateway_AllowPrivateFalseRejectsLocalURL(t *testing.T) {
+	db := setupGatewayTestDB(t)
+	configSvc := NewSystemConfigService(db)
+	registry := ai.NewToolRegistry(nil)
+
+	conns := []MCPConnConfig{
+		{Name: "demo", Transport: "streamable-http", URL: "http://127.0.0.1:9100/mcp", Enabled: true},
+	}
+	b, err := json.Marshal(conns)
+	require.NoError(t, err)
+	setGatewayConfig(t, db, externalMCPConfigKey, string(b))
+
+	gw := NewMCPClientGateway(configSvc, registry)
+	gw.AllowPrivate = false // 默认值：SSRF 防护开启
+	gw.Sync()
+
+	assert.Empty(t, gw.ListExternalToolNames(), "本机地址连接应被 SSRF 防护拒绝")
 }

@@ -24,6 +24,9 @@ type UnifiedKnowledgeService struct {
 	// reranker 相关性二次判定；nil 时走纯装配路径（不做任何限制）。
 	// 与装配层解耦：装配层不关心"要不要这条"，只负责格式化/去重/阈值。
 	reranker KnowledgeReranker
+	// rerankJudgeTimeout LLM 相关性校验阶段的总超时预算（0 时用包级默认 15s）。
+	// 提取为字段便于测试注入短超时，快速锁定"预算耗尽→保留未判片段"语义。
+	rerankJudgeTimeout time.Duration
 }
 
 type LegacyKnowledgeFallback struct {
@@ -99,12 +102,13 @@ func memoryResultsToSources(results []SearchResult, threshold float64) []Knowled
 
 func NewUnifiedKnowledgeService(groupDocSvc *GroupDocumentService, fallback *LegacyKnowledgeFallback, thresholdSvc *AiThresholdService, aiService *ai.AIService) *UnifiedKnowledgeService {
 	return &UnifiedKnowledgeService{
-		groupDocSvc:    groupDocSvc,
-		legacyFallback: fallback,
-		vectorEnabled:  true,
-		thresholdSvc:   thresholdSvc,
-		aiService:      aiService,
-		reranker:       NewLLMReranker(aiService),
+		groupDocSvc:        groupDocSvc,
+		legacyFallback:     fallback,
+		vectorEnabled:      true,
+		thresholdSvc:       thresholdSvc,
+		aiService:          aiService,
+		reranker:           NewLLMReranker(aiService),
+		rerankJudgeTimeout: rerankJudgeTimeout, // 默认 15s 总预算
 	}
 }
 
@@ -279,8 +283,12 @@ func (s *UnifiedKnowledgeService) filterByReranker(query string, snippets []Know
 	// 校验阶段整体加超时上限。LLM 判定是串行的（每条一次调用，最多 limit*3 条），
 	// 单次调用虽受 provider 的 HTTP 超时兜底（~120s），多条累加会拖住整条回复。预算耗尽即
 	// 停止发起新判定并保留剩余未判片段（宁可多留不可阻塞），GetCompletion 非流式暂未透传 ctx，
-	// 故在逐条间的 ctx.Err() 检查处提前退出。
-	judgeCtx, cancel := context.WithTimeout(context.Background(), rerankJudgeTimeout)
+	// 故在逐条间的 ctx.Err() 检查处提前退出。预算取字段值，0 时回退包级默认 15s。
+	timeout := s.rerankJudgeTimeout
+	if timeout <= 0 {
+		timeout = rerankJudgeTimeout
+	}
+	judgeCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	filtered := make([]KnowledgeSnippet, 0, len(snippets))

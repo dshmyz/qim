@@ -69,13 +69,21 @@ type avatarSendMeta struct {
 	sources         []KnowledgeSource
 }
 
+// orchSubmitter 批量任务提交与编排器关闭的最小接口。实现为 *ReplyOrchestrator。
+// 抽成接口是为了让合并桶逻辑可独立测试：注入惰性假编排器即可驱动 enqueueToBucket
+// 的「批满 flush」路径，不必启动 worker goroutine，也不会落到真实处理（DB 访问）。
+type orchSubmitter interface {
+	Submit(key uint, handle func()) error
+	Close()
+}
+
 // AvatarWorkerPool 分身工作池
 //
 // 队列、worker 并发上限、全局限流、按分身用户限流等通用并发治理统一委托给
 // ReplyOrchestrator；本类型只保留分身专属的处理/发送逻辑（生成、仿真人延迟、
 // 私聊回弹、接管期跳过、WS 通知、来源压缩持久化等），并作为其处理闭包。
 type AvatarWorkerPool struct {
-	orch     *ReplyOrchestrator
+	orch     orchSubmitter
 	service  *AvatarService
 	db       *gorm.DB
 	delaySem chan struct{} // 限制延迟发送 goroutine 并发上限

@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,6 +39,64 @@ func TestCompactSources(t *testing.T) {
 // helper：构造一个可直接驱动 enqueueToBucket 的裸工作池（仅承载合并桶，不触发 flush 落库）。
 func newCoalesceTestPool() *AvatarWorkerPool {
 	return &AvatarWorkerPool{buckets: make(map[avatarBatchKey]*avatarBatch)}
+}
+
+// coalesceFakeOrch 惰性假编排器：接收批量任务但不运行 handle（避免落到真实 process/DB），
+// 仅统计提交次数，供「批满 flush」路径的合并桶不变量测试使用。
+type coalesceFakeOrch struct {
+	mu      sync.Mutex
+	submits int
+}
+
+func (f *coalesceFakeOrch) Submit(uint, func()) error {
+	f.mu.Lock()
+	f.submits++
+	f.mu.Unlock()
+	return nil
+}
+
+func (f *coalesceFakeOrch) Close() {}
+
+// TestAvatarWorkerPoolCoalesce_BatchFullRemovesBucket 回归：批内消息达到 avatarBatchMaxSize 时
+// 应立即合并提交并把该 key 的桶从 map 删除，绝不能残留「空桶+计时器」。
+// 旧实现在 flush 后预置空桶并挂 time.AfterFunc，空桶到期被 fireBucket/flushBucket 处理时
+// 读 b.items[0]（任务标识以批首为准）越界 panic，且发生在 timer goroutine 里，
+// HTTP recover 拦不住会崩掉整个服务。本测试锁定 flush 后桶被删、无残留可被 fire。
+func TestAvatarWorkerPoolCoalesce_BatchFullRemovesBucket(t *testing.T) {
+	orch := &coalesceFakeOrch{}
+	p := &AvatarWorkerPool{buckets: make(map[avatarBatchKey]*avatarBatch), orch: orch}
+	key := avatarBatchKey{UserID: 1, ConversationID: 10}
+
+	for i := 0; i < avatarBatchMaxSize; i++ {
+		require.NoError(t, p.enqueueToBucket(
+			AvatarTask{UserID: 1, ConversationID: 10, TriggerMessage: fmt.Sprintf("m%d", i), TriggerMsgType: "text"},
+			AvatarBatchItem{Msg: fmt.Sprintf("m%d", i), MsgType: "text"},
+		))
+	}
+
+	// 达到批上限：立即提交一次批量任务，且桶必须从 map 删除。
+	orch.mu.Lock()
+	require.Equal(t, 1, orch.submits, "达到批上限应恰好提交一次批量任务")
+	orch.mu.Unlock()
+
+	p.coalesceMu.Lock()
+	_, lingering := p.buckets[key]
+	p.coalesceMu.Unlock()
+	assert.False(t, lingering, "flush 后不应残留该 key 的空桶（否则空桶到期读 items[0] 越界 panic）")
+
+	// 后续同 key 消息应走 b==nil 分支按需新建新批（旧实现预置空桶导致续批混入错误 base）。
+	require.NoError(t, p.enqueueToBucket(
+		AvatarTask{UserID: 1, ConversationID: 10, TriggerMessage: "续批消息", TriggerMsgType: "text"},
+		AvatarBatchItem{Msg: "续批消息", MsgType: "text"},
+	))
+	p.coalesceMu.Lock()
+	b2, ok := p.buckets[key]
+	if b2 != nil && b2.timer != nil {
+		b2.timer.Stop()
+	}
+	p.coalesceMu.Unlock()
+	require.True(t, ok, "flush 后的下一条消息应重新建桶")
+	require.Len(t, b2.items, 1, "新批应从 1 条开始累积，不带旧批内容")
 }
 
 // TestAvatarWorkerPoolCoalesce_AccumulatesSameKey 同一 (UserID,ConversationID) 3 秒窗口内

@@ -72,7 +72,7 @@
               type="file"
               multiple
               class="file-input-hidden"
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,text/markdown"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.png,.jpg,.jpeg,.gif,.webp,.bmp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,text/markdown,image/png,image/jpeg,image/gif,image/webp,image/bmp"
               @change="onUpload"
             />
             <button class="btn btn-secondary" @click="cancelFilePicker">取消</button>
@@ -185,11 +185,13 @@ function isBindableDocument(file: any): boolean {
     'text/markdown'
   ]
   if (docMimes.includes(mime)) return true
+  // 直接上传的图片也允许入知识库（服务端走视觉 OCR 识别文字后向量化）
+  if (mime.startsWith('image/')) return true
   // 扩展名兜底：OOXML（zip 容器）及历史 mime 异常的文档仍按扩展名识别
   const name = String(file.name || file.original_name || '')
   const extMatch = /\.([^.]+)$/.exec(name)
   const ext = extMatch ? ('.' + extMatch[1]).toLowerCase() : ''
-  return ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.md'].includes(ext)
+  return ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.md', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'].includes(ext)
 }
 
 function isFileSelected(fileId: number) {
@@ -241,7 +243,7 @@ async function onUpload(event: Event) {
       }
     })
 
-    // 仅文档类型可绑定；其余类型（图片/视频等）上报但自动跳过
+    // 仅文档/图片类型可绑定；其余类型（视频/音频等）上报但自动跳过
     const bound = results.filter(r => r.success && r.fileId && isBindableDocument(r.file))
     const uploaded = results.filter(r => r.success).length
     const failed = results.length - uploaded
@@ -251,9 +253,9 @@ async function onUpload(event: Event) {
     }
 
     if (uploaded > 0 && bound.length < uploaded) {
-      QMessage.warning(`已上传 ${uploaded} 个文件，其中 ${uploaded - bound.length} 个非文档类型未绑定`)
+      QMessage.warning(`已上传 ${uploaded} 个文件，其中 ${uploaded - bound.length} 个非文档/图片类型未绑定`)
     } else if (bound.length === 0 && uploaded > 0) {
-      QMessage.warning('上传的文件均非文档类型，未绑定到知识库')
+      QMessage.warning('上传的文件均非文档/图片类型，未绑定到知识库')
     } else if (failed > 0 && bound.length === 0) {
       QMessage.error('上传失败')
     } else if (bound.length > 0) {
