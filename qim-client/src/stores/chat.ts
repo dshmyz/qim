@@ -8,6 +8,15 @@ export interface MessageReadInfo {
   total_members: number
 }
 
+// ai_reply_started 事件携带的回复者信息（群 AI 助手/默认 AI/bot 虚拟用户），
+// 供「思考中」占位渲染成带头像的正常消息行。
+export interface ThinkingSender {
+  id: string | number
+  nickname?: string
+  name?: string
+  avatar?: string
+}
+
 const STORAGE_KEY = 'qim_conversations'
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let lastSaveTime = 0
@@ -15,8 +24,10 @@ const SAVE_THROTTLE = 500 // ms
 
 // AI 回复开始（ai_reply_started）到回复消息落库之间的「思考中」占位安全超时：
 // 前端靠非本人 new_message（流式首帧/完整回复/系统提示）清除占位，此兜底防止
-// 事件丢失导致某会话永久卡在思考态。
-const AI_THINKING_TIMEOUT = 90_000 // ms
+// 事件丢失导致某会话永久卡在思考态。取 180s 对齐后端 aiReplyTimeout 的最大生成
+// 预算（带图 180s / 文本 60s）——若取 90s，慢回复（图片+多步 ReAct 或外部 agent
+// webhook）在首帧到达前占位会先熄灭，造成「占位没了回复还没来」的空窗。
+const AI_THINKING_TIMEOUT = 180_000 // ms
 const aiThinkingTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 function mergeByConversationId(existing: Conversation[], incoming: Conversation[]) {
@@ -71,6 +82,7 @@ export const useChatStore = defineStore('chat', () => {
   const messagePage = ref<Map<string, number>>(new Map())
   const readUsersMap = ref<Map<string, MessageReadInfo>>(new Map())
   const aiThinking = ref<Map<string, boolean>>(new Map())
+  const aiThinkingSenders = ref<Map<string, ThinkingSender>>(new Map())
 
   // 计算属性
   const currentConversation = computed(() => {
@@ -101,6 +113,13 @@ export const useChatStore = defineStore('chat', () => {
 
   // 基础方法
   function setCurrentConversation(id: string | null) {
+    // 会话切换（含离开到 null）：清除旧会话的「思考中」占位标记，满足需求
+    // 「切换/离开会话时占位即消失」。同会话重复设置（仅切视图）不清除，
+    // 避免回复仍在途中时占位被误灭。bot 会话不走本方法，由 useBotChat 自管。
+    const prev = currentConversationId.value
+    if (prev !== null && prev !== id) {
+      setAiThinking(prev, false)
+    }
     currentConversationId.value = id
   }
 
@@ -233,9 +252,13 @@ export const useChatStore = defineStore('chat', () => {
 
   // AI 回复「思考中」占位状态：收到 ai_reply_started 置 true（并挂 90s 兜底计时），
   // 回复消息/系统提示到达（isAiThinking=false）或兜底超时置 false。
-  function setAiThinking(conversationId: string, thinking: boolean) {
+  // sender 为事件携带的回复者信息，用于把占位渲染成带头像的正常消息行。
+  function setAiThinking(conversationId: string, thinking: boolean, sender?: ThinkingSender | null) {
     if (thinking) {
       aiThinking.value = new Map(aiThinking.value).set(conversationId, true)
+      if (sender) {
+        aiThinkingSenders.value = new Map(aiThinkingSenders.value).set(conversationId, sender)
+      }
       const prev = aiThinkingTimers.get(conversationId)
       if (prev) clearTimeout(prev)
       aiThinkingTimers.set(conversationId, setTimeout(() => {
@@ -251,11 +274,20 @@ export const useChatStore = defineStore('chat', () => {
         next.delete(conversationId)
         aiThinking.value = next
       }
+      if (aiThinkingSenders.value.has(conversationId)) {
+        const next = new Map(aiThinkingSenders.value)
+        next.delete(conversationId)
+        aiThinkingSenders.value = next
+      }
     }
   }
 
   function isAiThinking(conversationId: string): boolean {
     return aiThinking.value.get(conversationId) === true
+  }
+
+  function getAiThinkingSender(conversationId: string): ThinkingSender | null {
+    return aiThinkingSenders.value.get(conversationId) || null
   }
 
   // 业务逻辑方法
@@ -491,6 +523,7 @@ export const useChatStore = defineStore('chat', () => {
     getReadUsersMap,
     setAiThinking,
     isAiThinking,
+    getAiThinkingSender,
     // 业务逻辑方法
     pinConversation,
     muteConversation,

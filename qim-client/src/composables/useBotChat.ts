@@ -297,6 +297,11 @@ export function useBotChat(botId: Ref<number | null>) {
    */
   const setActiveThread = async (threadId: number): Promise<void> => {
     if (abortController.value) abortController.value.abort() // 终止进行中的流
+    // 切换线程前清除旧线程的「思考中」占位标记（与 reset 同理，满足切换即消失）
+    const prevCid = conversationId.value
+    if (prevCid != null && Number(prevCid) !== threadId) {
+      chatStore.setAiThinking(String(prevCid), false)
+    }
     conversationId.value = threadId
     await loadMessages(true)
   }
@@ -400,6 +405,13 @@ export function useBotChat(botId: Ref<number | null>) {
    * 重置会话
    */
   const reset = (): void => {
+    // 离开当前 bot 会话（切换 bot / 新话题 / 清空）：先清除旧线程的「思考中」
+    // 占位标记，避免标记滞留——否则切回旧线程时若回复仍未到会误显示占位，
+    // 与「切换/离开会话占位即消失」的需求相悖。
+    const prevCid = conversationId.value
+    if (prevCid != null) {
+      chatStore.setAiThinking(String(prevCid), false)
+    }
     conversationId.value = null
     clearMessages()
     error.value = null
@@ -441,7 +453,13 @@ export function useBotChat(botId: Ref<number | null>) {
           if (msg.isStreaming !== undefined) existing.isStreaming = msg.isStreaming
           if (msg.tool_calls) (existing as any).tool_calls = msg.tool_calls
         } else {
-          messages.value.push(msg as any)
+          // 新消息：必须走 processBotMessage 规范化（chatStore 消息 timestamp 是 string，
+          // BotMessage.timestamp 契约是 Date——否则 BotChatView.shouldShowDivider 调
+          // getTime() 崩溃）；再叠加流式字段（首次 chunk 即带 isStreaming/tool_calls）
+          const normalized = processBotMessage(msg as any)
+          if (msg.isStreaming !== undefined) normalized.isStreaming = msg.isStreaming
+          if (msg.tool_calls) (normalized as any).tool_calls = msg.tool_calls
+          messages.value.push(normalized)
         }
       }
     },

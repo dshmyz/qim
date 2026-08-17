@@ -604,6 +604,10 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 
 func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID uint, question string, originalContent string, assistantName string, origMsg *model.Message) {
 	ctx := context.Background()
+	// AI 开始处理：先推开始事件供前端「思考中」占位。放在分支前统一覆盖三分支——
+	// 纯流式分支（无工具）是大多数群的默认路径，只有这里能兜住；带工具分支内部
+	// handleAIMentionWithTools 会再推一次，幂等无害（仅重置占位计时）。
+	e.messageSender.NotifyReplyStarted(conversationID, assistantName)
 	// 直接发图/发文件（不引用）时由 selfQuoteMessageID 合成自引用；显式引用优先。
 	quotedMessageID := selfQuoteMessageID(origMsg)
 	isSelfQuote := origMsg != nil && origMsg.QuotedMessageID == nil && (origMsg.Type == "image" || origMsg.Type == "file")
@@ -741,7 +745,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint, kind string, exec func(context.Context, *service.SmartReplyContext, ai.ReActStepCallback) (string, error), execStream func(context.Context, *service.SmartReplyContext, ai.ReActStepCallback, func(ai.StreamChunk) error) (bool, error)) {
 	// AI 开始处理：先推开始事件供前端「思考中」占位（首个流式帧到达前）。
 	// 本函数仅在 messageSender 非 nil 时被调用（引擎装配保证），此处不再重复判空。
-	e.messageSender.NotifyReplyStarted(conversationID)
+	e.messageSender.NotifyReplyStarted(conversationID, assistantName)
 
 	sendChunk, getMsg, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
@@ -953,6 +957,9 @@ func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uin
 		log.Printf("[SmartReply] 构建提示词上下文失败")
 		return
 	}
+
+	// AI 开始处理：先推开始事件供前端「思考中」占位（graph 未装配时的兜底流式路径）。
+	e.messageSender.NotifyReplyStarted(conversationID, assistantName)
 
 	systemPrompt := e.promptBuilder.BuildSystemPrompt(ctx)
 

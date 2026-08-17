@@ -161,8 +161,23 @@
         </div>
       </template>
 
-      <!-- 思考指示器：ai_reply_started 置位后显示，首个回复消息到达或安全超时后消失 -->
-      <ThinkingIndicator v-if="aiThinking && !hasStreamingMessage" />
+      <!-- 思考指示器：ai_reply_started 置位后显示，首个回复消息到达或安全超时后消失。
+           复用 bot 消息行的 message-wrapper 骨架（avatar + message-column + message-bubble），
+           渲染成一条带头像的正常 bot 消息 -->
+      <div v-if="aiThinking && !hasStreamingMessage" class="message-wrapper bot">
+        <Avatar
+          :src="aiThinkingSender?.avatar || bot?.avatar"
+          :name="aiThinkingSender?.name || bot?.name || 'AI助手'"
+          :alt="aiThinkingSender?.name || bot?.name || 'AI助手'"
+          size="sm"
+          class="message-avatar"
+        />
+        <div class="message-column">
+          <div class="message-bubble">
+            <ThinkingIndicator />
+          </div>
+        </div>
+      </div>
 
       <!-- 错误提示 -->
       <div v-if="error" class="error-message">
@@ -225,6 +240,12 @@ const chatStore = useChatStore()
 const aiThinking = computed(() => {
   const cid = props.currentConversationId
   return cid != null && chatStore.isAiThinking(String(cid))
+})
+
+/** 当前会话 AI 回复者身份（事件携带），供占位消息行渲染头像/昵称；bot 侧兜底用 bot 信息 */
+const aiThinkingSender = computed(() => {
+  const cid = props.currentConversationId
+  return cid != null ? chatStore.getAiThinkingSender(String(cid)) : null
 })
 
 interface Bot {
@@ -466,24 +487,32 @@ function onScroll() {
 }
 
 /**
- * BotMessage.timestamp 是 Date，useChatUtils.formatTime 只接受 number|string，
- * 这里统一转成时间戳（ms）供分隔线/悬停时间复用 IM 的智能日期格式。
+ * 统一转时间戳（ms）：Date 直接取 getTime；number/数字字符串走 Number；
+ * ISO 字符串走 Date 解析（不信任 Number 对 "2026-08-17T…" 的 NaN 结果）；
+ * 解析失败返回 0（不产生分隔线、不崩溃）。供分隔线/悬停时间复用 IM 的智能日期格式。
  */
-function toBotTime(ts: Date): number {
-  return ts instanceof Date ? ts.getTime() : Number(ts)
+function toBotTime(ts: Date | string | number): number {
+  if (ts instanceof Date) return ts.getTime()
+  const n = Number(ts)
+  if (!Number.isNaN(n)) return n
+  const d = new Date(ts as string)
+  return Number.isNaN(d.getTime()) ? 0 : d.getTime()
 }
 
 /**
  * 时间分隔线：与上一条间隔 > 5 分钟或跨天时显示（对齐 IM 消息列表的判定规则）。
- * BotMessage.timestamp 是 Date，这里本地直接比较，避免与 IM 的 shouldShowTimeDivider(Message) 强转类型。
+ * timestamp 统一经 toBotTime 转时间戳再比较：历史消息是 Date（processBotMessage），
+ * WS 桥接新消息理论上也是 Date，但防御任何来源的 string/number（type 契约外漏网）。
  */
 function shouldShowDivider(idx: number, msg: BotMessage): boolean {
   if (idx === 0) return true
   const prev = props.messages[idx - 1]
   if (!prev) return true
-  if (msg.timestamp.getTime() - prev.timestamp.getTime() > 5 * 60 * 1000) return true
-  const cur = msg.timestamp
-  const p = prev.timestamp
+  const curTs = toBotTime(msg.timestamp)
+  const prevTs = toBotTime(prev.timestamp)
+  if (curTs - prevTs > 5 * 60 * 1000) return true
+  const cur = new Date(curTs)
+  const p = new Date(prevTs)
   return cur.getFullYear() !== p.getFullYear()
     || cur.getMonth() !== p.getMonth()
     || cur.getDate() !== p.getDate()
@@ -838,6 +867,12 @@ watch(() => props.isStreaming, () => {
   border-radius: 12px;
   position: relative;
   max-width: 100%;
+}
+
+/* 「思考中」占位复用 message-wrapper/message-bubble 骨架：气泡自身已带 padding，
+   去掉 ThinkingIndicator 的内部 padding，避免气泡过高 */
+.message-wrapper :deep(.thinking-indicator) {
+  padding: 0;
 }
 
 /* AI 失败态气泡描边 */

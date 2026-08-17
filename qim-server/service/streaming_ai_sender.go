@@ -41,7 +41,9 @@ type StreamingAISender interface {
 	SendToolCallEvent(conversationID uint, msgID uint, record ToolCallRecord)
 	// NotifyReplyStarted 在 AI 回复开始处理时推一条 ai_reply_started WS 事件，
 	// 前端据此在首个流式帧/回复消息到达前显示「思考中」。不落库，无副作用。
-	NotifyReplyStarted(conversationID uint)
+	// assistantName 用于解析回复者身份（群 AI 助手/默认 AI），事件携带其头像昵称
+	// 供前端把占位渲染成带头像的正常消息行；bot 会话解析不依赖该名，传 bot.Name 即可。
+	NotifyReplyStarted(conversationID uint, assistantName string)
 }
 
 // NewToolCallFeedback 构造带工具回复的 ReAct 进度回调（群 @AI、专属机器人等带工具路径共用）。

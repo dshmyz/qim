@@ -28,7 +28,7 @@ func (m *mockStreamingAISender) SendToolCallEvent(conversationID uint, msgID uin
 	m.events = append(m.events, mockToolEvent{convID: conversationID, msgID: msgID, record: record})
 }
 
-func (m *mockStreamingAISender) NotifyReplyStarted(conversationID uint) {
+func (m *mockStreamingAISender) NotifyReplyStarted(conversationID uint, assistantName string) {
 	// 测试替身：开始事件不落库不记录，仅保证接口合规。
 }
 

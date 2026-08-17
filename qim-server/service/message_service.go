@@ -850,11 +850,25 @@ func (s *MessageService) handleBotImageMessage(userID, convID uint, bot model.Bo
 
 	// 构造 aiMessages：历史 + 图片（多模态）
 	aiMessages := s.buildBotHistory(bot, convID, 20)
-	aiMessages = append(aiMessages, ai.Message{
-		Role:     "user",
-		Content:  fmt.Sprintf("用户发送了一张图片「%s」，请识别其内容。", file.Name),
-		ImageURL: dataURL,
-	})
+	imgPrompt := fmt.Sprintf("用户发送了一张图片「%s」，请识别其内容。", file.Name)
+	if s.aiService != nil && s.aiService.HasVisionRoute() {
+		// 配置了视觉路由：保留多模态 ImageURL（图片走视觉模型）。
+		aiMessages = append(aiMessages, ai.Message{
+			Role:     "user",
+			Content:  imgPrompt,
+			ImageURL: dataURL,
+		})
+	} else {
+		// 未配置视觉路由：纯文本模型收到 base64 必然 400（秒回「AI 服务不可用」）。
+		// 与群 AI 引用图片的降级一致（smart_reply_graph.resolveQuotedImageTaskType）：
+		// 把图片改写为失败提示语文本，让 AI 诚实说明看不到图片，而不是触发模型调用错误。
+		logger.WithModule("handleBotMessage").Info("图片降级：未配置视觉路由",
+			"convID", convID, "fileID", file.ID, "fileName", file.Name)
+		aiMessages = append(aiMessages, ai.Message{
+			Role:    "user",
+			Content: fmt.Sprintf("用户发送了一张图片消息「%s」，但当前配置的模型不支持查看图片。请如实说明你看不到图片，可请对方把图片里的关键信息用文字发出来。", file.Name),
+		})
+	}
 
 	botCfg := ParseBotConfig(bot.Config)
 	s.dispatchBotReply(userID, convID, bot, botCfg, aiMessages, nil)
@@ -919,6 +933,33 @@ var botAllowedTools = []string{
 	"search_knowledge",
 }
 
+// aiReplyTimeout 返回 bot AI 回复的超时预算：多模态（带图）请求 + 多步 ReAct 显著更慢，
+// 60s 会被图片消息耗尽（实测图片触发工具循环时第 3 步模型请求已 context deadline exceeded）。
+// 按是否含图放宽：文本保持 60s（不拖长普通提问的等待），带图放宽到 180s。
+func aiReplyTimeout(aiMessages []ai.Message) time.Duration {
+	for _, m := range aiMessages {
+		if m.ImageURL != "" || len(m.ImageURLs) > 0 {
+			return 180 * time.Second
+		}
+	}
+	return 60 * time.Second
+}
+
+// botReplyTaskType 返回 bot 回复的任务路由：带图请求且配置了视觉路由 -> TaskTypeVision
+// （图片走专门的视觉模型，否则纯文本 chat 模型收到 base64 必然 400）；其余走默认 TaskTypeChat。
+// 与群 AI resolveQuotedImageTaskType 的路由选择一致。
+func botReplyTaskType(aiMessages []ai.Message, aiSvc *ai.AIService) ai.TaskType {
+	if aiSvc == nil || !aiSvc.HasVisionRoute() {
+		return ai.TaskTypeChat
+	}
+	for _, m := range aiMessages {
+		if m.ImageURL != "" || len(m.ImageURLs) > 0 {
+			return ai.TaskTypeVision
+		}
+	}
+	return ai.TaskTypeChat
+}
+
 // handleBotMessageStreaming 专属机器人 1:1 流式 + 工具调用回复。
 //
 // 复用群 @AI 的 SendStreamingAIMessage（懒创建流式消息）+ GetCompletionWithToolsStreamMultiStep
@@ -933,7 +974,7 @@ var botAllowedTools = []string{
 func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot model.Bot, botCfg BotConfig, aiMessages []ai.Message, knowledgeSources []KnowledgeSource) {
 	// AI 开始处理：先推开始事件供前端「思考中」占位（首个流式帧到达前）。
 	// 本函数仅在 streamingSender 非 nil 时被调用（dispatchBotReply 判定），此处不再重复判空。
-	s.streamingSender.NotifyReplyStarted(convID)
+	s.streamingSender.NotifyReplyStarted(convID, bot.Name)
 
 	sendChunk, getMsg, finish, err := s.streamingSender.SendStreamingAIMessage(convID, bot.Name)
 	if err != nil {
@@ -970,31 +1011,38 @@ func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot mode
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// 任务路由：带图请求走 TaskTypeVision（视觉模型），否则 TaskTypeChat。
+	// 群 AI 引用图片即按此路由（resolveQuotedImageTaskType）；bot 图片此前一直发 TaskTypeChat，
+	// 纯文本 chat 模型收到 base64 秒回 400 兜底「AI 服务不可用」。
+	taskType := botReplyTaskType(aiMessages, s.aiService)
+
+	// 超时预算：带图（多模态）+ 多步 ReAct 显著更慢，60s 会被图片请求耗尽（实测第 3 步即
+	// context deadline exceeded）；按是否含图放宽，文本保持 60s 不拖长普通提问的等待。
+	ctx, cancel := context.WithTimeout(context.Background(), aiReplyTimeout(aiMessages))
 	defer cancel()
 
 	var streamErr error
 	if custom != nil && custom.ProviderName != "" {
 		// 自定义模型：纯流式、不带工具（不能假设创建者自选 provider 支持 tool-call）
-		streamErr = s.aiService.ChatStreamWithProviderConfig(ctx, ai.TaskTypeChat, aiMessages, custom.ProviderName, custom.Config, onChunk)
+		streamErr = s.aiService.ChatStreamWithProviderConfig(ctx, taskType, aiMessages, custom.ProviderName, custom.Config, onChunk)
 		// 生成期失败（密钥失效/配额耗尽/网络错/模型名错误）且尚未流出内容时，回退系统默认（带工具），
 		// 兑现「回退系统默认…不阻断回复」契约——单条用户自定义配置出问题不应拖垮整个 bot 回复。
 		// 已流出部分内容则保留（流式中途无法干净衔接重试）。
 		if streamErr != nil && !contentProduced {
 			logger.WithModule("handleBotMessage").Warn("bot 自定义模型生成失败，回退系统默认",
 				"botID", bot.ID, "provider", custom.ProviderName, "error", streamErr)
-			streamErr = s.aiService.GetCompletionWithToolsStreamMultiStep(ctx, ai.TaskTypeChat, aiMessages, callerCtx, botAllowedTools, ai.MaxReActSteps, feedback, onChunk)
+			streamErr = s.aiService.GetCompletionWithToolsStreamMultiStep(ctx, taskType, aiMessages, callerCtx, botAllowedTools, ai.MaxReActSteps, feedback, onChunk)
 			if errors.Is(streamErr, ai.ErrStreamingToolsNotSupported) {
-				streamErr = s.aiService.GetCompletionStreamWithContext(ctx, ai.TaskTypeChat, aiMessages, onChunk)
+				streamErr = s.aiService.GetCompletionStreamWithContext(ctx, taskType, aiMessages, onChunk)
 			}
 		}
 	} else {
 		// 系统默认：带工具的流式 ReAct
-		streamErr = s.aiService.GetCompletionWithToolsStreamMultiStep(ctx, ai.TaskTypeChat, aiMessages, callerCtx, botAllowedTools, ai.MaxReActSteps, feedback, onChunk)
+		streamErr = s.aiService.GetCompletionWithToolsStreamMultiStep(ctx, taskType, aiMessages, callerCtx, botAllowedTools, ai.MaxReActSteps, feedback, onChunk)
 		if errors.Is(streamErr, ai.ErrStreamingToolsNotSupported) {
 			// Provider 不支持流式 tool-call -> 降级纯流式（无工具）
 			logger.WithModule("handleBotMessage").Info("bot 流式工具不可用，降级纯流式", "convID", convID)
-			streamErr = s.aiService.GetCompletionStreamWithContext(ctx, ai.TaskTypeChat, aiMessages, onChunk)
+			streamErr = s.aiService.GetCompletionStreamWithContext(ctx, taskType, aiMessages, onChunk)
 		}
 	}
 
@@ -1041,7 +1089,11 @@ func (s *MessageService) handleBotMessageLegacy(userID, convID uint, bot model.B
 			}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		// 任务路由与流式路径一致：带图走 TaskTypeVision（视觉模型）。
+		taskType := botReplyTaskType(aiMessages, s.aiService)
+
+		// 超时预算与流式路径一致：带图请求放宽（aiReplyTimeout），文本保持 60s。
+		ctx, cancel := context.WithTimeout(context.Background(), aiReplyTimeout(aiMessages))
 		defer cancel()
 
 		done := make(chan struct{})
@@ -1051,21 +1103,21 @@ func (s *MessageService) handleBotMessageLegacy(userID, convID uint, bot model.B
 				return nil
 			}
 			if custom != nil && custom.ProviderName != "" {
-				streamErr = s.aiService.ChatStreamWithProviderConfig(ctx, ai.TaskTypeChat, aiMessages, custom.ProviderName, custom.Config, onChunk)
+				streamErr = s.aiService.ChatStreamWithProviderConfig(ctx, taskType, aiMessages, custom.ProviderName, custom.Config, onChunk)
 				// 生成期失败且尚未流出内容时，回退系统默认，兑现「不阻断回复」契约。
 				// 已流出部分内容则保留（流式中途无法干净衔接重试）。
 				if streamErr != nil && builder.Len() == 0 {
 					logger.WithModule("handleBotMessage").Warn("bot 自定义模型生成失败，回退系统默认",
 						"botID", bot.ID, "provider", custom.ProviderName, "error", streamErr)
-					streamErr = s.aiService.GetCompletionStreamWithContext(ctx, ai.TaskTypeChat, aiMessages, onChunk)
+					streamErr = s.aiService.GetCompletionStreamWithContext(ctx, taskType, aiMessages, onChunk)
 				}
 			} else {
-				streamErr = s.aiService.GetCompletionStreamWithContext(ctx, ai.TaskTypeChat, aiMessages, onChunk)
+				streamErr = s.aiService.GetCompletionStreamWithContext(ctx, taskType, aiMessages, onChunk)
 			}
 			close(done)
 		}()
 
-		// 超时保护：AI 调用最长 60 秒
+		// 超时保护：按是否含图由 aiReplyTimeout 决定（文本 60s / 带图 180s）
 		select {
 		case <-done:
 			// 正常完成
@@ -1175,7 +1227,7 @@ func (s *MessageService) forwardBotMessageToWebhook(bot model.Bot, webhookURL, w
 	// 已确认走 webhook 投递：推开始事件供前端「思考中」占位——外部 agent 回复等待期最长，
 	// 最需要占位。回复经回调落库为 bot 消息后由前端按非本人消息清除；失败走系统提示同样清除。
 	if s.streamingSender != nil {
-		s.streamingSender.NotifyReplyStarted(convID)
+		s.streamingSender.NotifyReplyStarted(convID, bot.Name)
 	}
 
 	deliveryID, err := EnqueueWebhookDelivery(s.db, bot.ID, "bot.message", string(payloadJSON), webhookURL, webhookSecret)

@@ -1803,10 +1803,10 @@ const connectWebSocket = () => {
     'message_updated': handleMessageUpdated,
     'ai_tool_call': handleToolCall,
     'ai_reply_started': (data: any) => {
-      // AI 回复开始处理：置「思考中」占位；回复消息（流式首帧/完整回复/系统提示）
-      // 到达或 90s 安全超时后由 setAiThinking(false) 清除。
+      // AI 回复开始处理：置「思考中」占位（含回复者头像昵称，渲染带头像的消息行）；
+      // 回复消息（流式首帧/完整回复/系统提示）到达或 90s 安全超时后由 setAiThinking(false) 清除。
       const cid = data?.conversation_id
-      if (cid != null) chatStore.setAiThinking(String(cid), true)
+      if (cid != null) chatStore.setAiThinking(String(cid), true, data?.sender)
     },
     'sync_hint': async (data: any) => {
       // 服务端缓冲区溢出时发送 sync_hint，触发离线消息增量拉取补偿
