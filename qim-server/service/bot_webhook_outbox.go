@@ -82,7 +82,13 @@ func deliverOnce(db *gorm.DB, d *model.BotWebhookDelivery) (bool, error) {
 	// 失败：记 last_error，决定重试或死信
 	if d.Attempts >= MaxAttempts {
 		markDead(db, d, err.Error())
+		// 死信：不再自动重试，回一条系统提示告知用户（payload 已在上面解析过）
+		notifyWebhookDeliveryIssue(db, payload, webhookNoticeDead)
 		return true, nil
+	}
+	// 首次失败即回系统提示（自动重试中），会话级去重防连发刷屏
+	if d.Attempts == 1 {
+		notifyWebhookDeliveryIssue(db, payload, webhookNoticeFirstFailure)
 	}
 	nextRetry := nextRetryTime(d.Attempts)
 	db.Model(&model.BotWebhookDelivery{}).Where("id = ?", d.ID).Updates(map[string]any{

@@ -45,6 +45,22 @@ export function normalizePartialMarkdown(md: string): string {
 }
 
 /**
+ * 宽容无空格标题：CommonMark 的 ATX 标题要求 `#` 后跟空白（`### 八`），而 AI 输出
+ * 中文标题常省略空格（`###八、环境准备`）。marked 不认这种写法，会把整行当普通段落
+ * 原样输出——用户看到的就是字面上的 "###八"。这里对「行首 0-3 空格 + 1-6 个 # +
+ * 非空白字符」的标题行补一个空格，让 `###八` 也能正确渲染为标题。
+ *
+ * 只匹配行首的 #（列表项 `- ###`、正文内 `###` 不受影响）；下一个字符排除 #，避免
+ * `#######` 这种 7 个 # 的普通段落被改写成标题。必须在 extractNoteLinks 之后调用：
+ * 围栏代码块 / 行内 code 已整体占位（占位符不含 #），其内部的 `###` 不会被触碰。
+ */
+const LOOSE_HEADING_RE = /^( {0,3})(#{1,6})([^ \t#\n][^\n]*)$/gm
+
+export function normalizeLooseHeadings(md: string): string {
+  return md.replace(LOOSE_HEADING_RE, '$1$2 $3')
+}
+
+/**
  * 剔除块级元素之间的纯空白文本节点（marked 序列化产物里的 "\n"）。
  *
  * marked() 把 markdown 源里的空行/换行折叠成 "<p>…</p>\n<p>…</p>" 的形式——即
@@ -110,7 +126,8 @@ export function renderMarkdown(md: string, opts: MarkdownRenderOpts = {}): strin
   let text = opts.decodeMention ? decodeToPlainText(md) : md
   text = opts.streaming ? normalizePartialMarkdown(text) : text
   const { text: safeText, titles, fences } = extractNoteLinks(text)
-  const result = marked(safeText)
+  // 宽容无空格标题：extractNoteLinks 之后调用（围栏 code 已占位，内部 ### 不受影响）
+  const result = marked(normalizeLooseHeadings(safeText))
   let html = typeof result === 'string' ? result : String(result)
   html = stripBetweenBlockWhitespace(html)
   // 使用 DOMPurify 进行消毒，防止 XSS 攻击

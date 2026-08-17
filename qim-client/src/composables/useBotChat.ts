@@ -1,15 +1,23 @@
 // src/composables/useBotChat.ts
 
-import { ref, computed, type Ref } from 'vue'
-import { getStoredServerUrl, useServerUrl } from './useServerUrl'
-import { request, getToken } from './useRequest'
+import { ref, computed, watch, type Ref } from 'vue'
+import { useServerUrl } from './useServerUrl'
+import { request } from './useRequest'
 import { useCurrentUser } from './useCurrentUser'
 import { useProcessConversation } from './useProcessConversation'
 import { useChatStore } from '../stores/chat'
 import type { BotMessage } from '../types/bot'
 
 function normalizeSenderType(msg: any): BotMessage['senderType'] {
-  if (msg.sender_type) return msg.sender_type
+  // sender_type 可能是 bot/system/api 或普通用户角色（user/admin/...）。
+  // 除 bot/system/api 外一律归一为 user，否则管理员消息会带着 "admin"
+  // 渲染成 bot 侧（左边白气泡），用户自己的消息显示错位。
+  if (msg.sender_type) {
+    if (msg.sender_type === 'bot' || msg.sender_type === 'system' || msg.sender_type === 'api') {
+      return msg.sender_type
+    }
+    return 'user'
+  }
   const senderType = msg.sender?.type
 	if (
 		msg.origin === 'assistant' ||
@@ -48,6 +56,13 @@ export function normalizeBotHistoryMessages(messages: any[]): BotMessage[] {
   return messages.map((msg: any) => processBotMessage(msg))
 }
 
+export interface BotConversationThread {
+  id: number
+  name: string
+  last_message_at: string | null
+  updated_at: string
+}
+
 /**
  * Bot 对话管理 composable
  * 负责 Bot 会话的初始化、消息加载、发送和流式处理
@@ -64,9 +79,6 @@ export function useBotChat(botId: Ref<number | null>) {
   const streamingMessageId = ref<string | null>(null)
   const abortController = ref<AbortController | null>(null)
 
-  // 无会话模式下的对话历史（用于多轮对话）
-  const chatHistory = ref<{ role: 'system' | 'user' | 'assistant'; content: string }[]>([])
-
   // 当前用户信息
   const { currentUser } = useCurrentUser()
 
@@ -80,25 +92,64 @@ export function useBotChat(botId: Ref<number | null>) {
   const pageSize = ref(20)
   const hasMoreMessages = ref(false)
 
+  // 当前 bot 的多会话线程列表（「历史会话」下拉数据源）
+  const conversationThreads = ref<BotConversationThread[]>([])
+
+  // 已加载会话对应的 botId：openBot 用它做对象级重置。
+  // 同一 bot 重新进入（AIAssistantApp.backToDashboard 保留 conversationId）时
+  // 复用会话、仅重新拉取最新消息；切换到另一个 bot 时重置，避免相互串话。
+  let loadedBotId: number | null | undefined = undefined
+
+  /**
+   * 打开一个 bot 对话对象。
+   * 同一 bot 重新进入：保留会话状态，仅重新拉取最新消息；
+   * 切换到另一个 bot：重置会话状态，避免相互串话。
+   */
+  const openBot = async (targetBotId: number | null): Promise<void> => {
+    if (loadedBotId === targetBotId) {
+      await loadMessages()
+      return
+    }
+    reset()
+    loadedBotId = targetBotId
+    await loadMessages()
+  }
+
   /**
    * 初始化 Bot 会话
    * 创建或获取与指定 Bot 的会话
-   * 如果没有 botId，则跳过会话初始化（直接使用 AI completion 接口）
+   * @param fresh true=强制开一段全新会话（多会话「新话题」），false=复用最近一段
+   *
+   * Single-flight：并发调用（「新话题」POST 往返期间用户立即发送消息时，
+   * sendMessage 会兜底 initConversation(false)）共用同一次请求，避免两个 POST
+   * 竞速导致 conversationId 被后返回者覆盖、消息落入非预期线程。
+   * 规则：复用请求（fresh=false）可共享任何在途初始化；强制新段（fresh=true）
+   * 不能共享 fresh=false 的在途请求（新话题必须开新段），等它结束后再发。
    */
-  const initConversation = async (): Promise<boolean> => {
-    // 没有 botId 时，跳过会话初始化，后续直接使用 AI completion 接口
-    if (!botId.value) {
-      conversationId.value = null
-      return true
-    }
+  let inflightInit: { fresh: boolean; promise: Promise<boolean> } | null = null
 
+  const initConversation = async (fresh: boolean = false): Promise<boolean> => {
+    while (inflightInit) {
+      if (!fresh || inflightInit.fresh) {
+        return inflightInit.promise
+      }
+      await inflightInit.promise.catch(() => false)
+    }
+    const promise = doInitConversation(fresh).finally(() => {
+      if (inflightInit?.promise === promise) inflightInit = null
+    })
+    inflightInit = { fresh, promise }
+    return promise
+  }
+
+  const doInitConversation = async (fresh: boolean = false): Promise<boolean> => {
     isLoading.value = true
     error.value = null
 
     try {
       const response: any = await request('/api/v1/conversations', {
         method: 'POST',
-        body: JSON.stringify({ type: 'bot', bot_id: botId.value })
+        body: JSON.stringify({ type: 'bot', bot_id: botId.value, fresh })
       })
 
       if (response.code === 0 && response.data) {
@@ -200,8 +251,60 @@ export function useBotChat(botId: Ref<number | null>) {
   }
 
   /**
-   * 发送消息（流式）
-   * @param content 消息内容
+   * 新建会话（多会话「新话题」）。
+   * 强制服务端开一段全新会话（fresh=true），各段上下文互相隔离；
+   * 新线程会自动入列「历史会话」下拉。
+   */
+  const startNewConversation = async (): Promise<void> => {
+    if (abortController.value) abortController.value.abort() // 终止进行中的流
+    reset()
+    await initConversation(true) // 新会话为空，无需再拉历史
+    await loadConversationThreads() // 新线程入列「历史会话」下拉
+  }
+
+  /**
+   * 拉取当前 bot 的全部会话线程（「历史会话」下拉数据源）。
+   * 服务端按 bot_id 过滤（避免全局列表先按 100 条截断再客户端过滤导致旧线程丢失），
+   * 循环翻页拉全量（上限 10 页为防御性兜底）；最新在前。
+   */
+  const loadConversationThreads = async (): Promise<void> => {
+    if (!botId.value) return
+    try {
+      const rows: any[] = []
+      for (let page = 1; page <= 10; page++) {
+        const response: any = await request(
+          `/api/v1/conversations?type=bot&bot_id=${botId.value}&page=${page}&page_size=100`
+        )
+        rows.push(...(response?.data?.list || []))
+        if (!response?.data?.has_more) break
+      }
+      conversationThreads.value = rows
+        .filter((c: any) => c.type === 'bot' && Number(c.bot_id) === botId.value)
+        .map((c: any) => ({
+          id: Number(c.id),
+          name: c.name || '',
+          last_message_at: c.last_message_at || null,
+          updated_at: c.updated_at || c.created_at || ''
+        }))
+        .sort((a, b) => (a.updated_at > b.updated_at ? -1 : 1)) // 最新优先
+    } catch (e) {
+      console.error('拉取会话线程列表失败:', e)
+    }
+  }
+
+  /**
+   * 切换到历史会话线程（「历史会话」下拉点击）：在该 bot 内换段，不重置对象状态
+   */
+  const setActiveThread = async (threadId: number): Promise<void> => {
+    if (abortController.value) abortController.value.abort() // 终止进行中的流
+    conversationId.value = threadId
+    await loadMessages(true)
+  }
+
+  /**
+   * 发送消息（REST + WS streaming）
+   * REST 立即返回用户消息，bot 回复由 WS streaming 推送，
+   * 通过 watcher 同步 chatStore → 本 composable 的 messages。
    */
   const sendMessage = async (content: string): Promise<void> => {
     if (!content.trim()) {
@@ -211,6 +314,12 @@ export function useBotChat(botId: Ref<number | null>) {
 
     isSending.value = true
     error.value = null
+
+    // 先确保会话就绪：openBot 已初始化过则复用；万一尚未就绪，这里补齐
+    if (!conversationId.value) {
+      const ok = await initConversation()
+      if (!ok || !conversationId.value) return
+    }
 
     // 添加用户消息
     const userMessage: BotMessage = {
@@ -231,147 +340,42 @@ export function useBotChat(botId: Ref<number | null>) {
     }
     messages.value.push(userMessage)
 
-    // 创建流式消息占位符
-    const streamMessageId = `stream_${Date.now()}`
-    const streamMessage: BotMessage = {
-      id: streamMessageId as any,
-      conversationId: conversationId.value,
-      senderId: botId.value || 0,
-      senderType: 'bot',
-      type: 'text',
-      content: '',
-      timestamp: new Date(),
-      isStreaming: true
-    }
-    messages.value.push(streamMessage)
-    streamingMessageId.value = streamMessageId
-
+    // 统一走 REST SendMessage（bot 回复由 WS streaming 推送，与群AI/分身同一通道）
     try {
-      abortController.value = new AbortController()
+      const response: any = await request(
+        `/api/v1/conversations/${conversationId.value}/messages`,
+        { method: 'POST', body: JSON.stringify({ type: 'text', content: content.trim() }) }
+      )
 
-      const token = getToken()
-      const serverUrl = getStoredServerUrl()
-
-      let streamUrl: string
-      let requestBody: string
-
-      if (conversationId.value) {
-        // 有会话 ID，使用 Bot 会话流式接口
-        streamUrl = `${serverUrl}/api/v1/conversations/${conversationId.value}/messages/stream`
-        requestBody = JSON.stringify({ type: 'text', content: content.trim() })
-      } else {
-        // 无会话 ID，直接使用 AI completion 接口，带上对话历史
-        streamUrl = `${serverUrl}/api/v1/ai/completion/stream`
-        const messages = [
-          { role: 'system' as const, content: '你是一个智能助手，帮助用户解决问题。' },
-          ...chatHistory.value,
-          { role: 'user' as const, content: content.trim() }
-        ]
-        requestBody = JSON.stringify({ messages })
+      if (response.code !== 0) {
+        throw new Error(response.message || '发送失败')
       }
-
-      const response = await fetch(streamUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: requestBody,
-        signal: abortController.value.signal
-      })
-
-      if (!response.ok) {
-        let errorMessage = `请求失败 (${response.status})`
-        try {
-          const errorData = await response.json()
-          if (errorData.message) {
-            errorMessage = errorData.message
-          } else if (errorData.error) {
-            errorMessage = errorData.error
-          }
-        } catch {
-          // 如果无法解析JSON，使用默认消息
-        }
-        throw new Error(errorMessage)
-      }
-
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('No response body')
-      }
-
-      let accumulatedContent = ''
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const chunk = new TextDecoder('utf-8').decode(value)
-        buffer += chunk
-
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim()
-            if (!data) continue
-
-            try {
-              const parsedChunk = JSON.parse(data)
-
-              if (parsedChunk.content) {
-                accumulatedContent += parsedChunk.content
-              }
-
-              if (parsedChunk.finish === 'stop') {
-                break
-              }
-            } catch {
-              // 如果不是 JSON，直接追加内容
-              accumulatedContent += data
-            }
-          }
-        }
-
-        // 更新流式消息内容
-        const messageIndex = messages.value.findIndex(m => String(m.id) === streamMessageId)
-        if (messageIndex !== -1) {
-          messages.value[messageIndex].content = accumulatedContent
-        }
-      }
-
-      // 完成流式传输
-      const messageIndex = messages.value.findIndex(m => String(m.id) === streamMessageId)
-      if (messageIndex !== -1) {
-        messages.value[messageIndex].isStreaming = false
-        messages.value[messageIndex].type = 'markdown'
-      }
-
-      // 无会话模式下，将对话加入历史以支持多轮对话
-      if (!conversationId.value) {
-        chatHistory.value.push({ role: 'user', content: content.trim() })
-        chatHistory.value.push({ role: 'assistant', content: accumulatedContent })
-      }
+      // REST 成功：用户消息已展示，bot 回复将由 WS streaming 推送
+      // （1~3秒后 watcher 从 chatStore 同步到 BotChatView messages，无需本地占位）
     } catch (e: any) {
-      if (e.name === 'AbortError') {
-        console.log('消息发送已取消')
-      } else {
-        error.value = e.message || '发送消息失败'
-        console.error('发送消息失败:', e)
-
-        // 移除失败的流式消息
-        const messageIndex = messages.value.findIndex(m => String(m.id) === streamMessageId)
-        if (messageIndex !== -1) {
-          messages.value.splice(messageIndex, 1)
-        }
+      error.value = e.message || '发送消息失败'
+      console.error('发送消息失败:', e)
+      // 标记用户消息为发送失败（气泡提供重发）
+      const userMsgIndex = messages.value.findIndex(m => m.id === userMessage.id)
+      if (userMsgIndex !== -1) {
+        messages.value[userMsgIndex].isFailed = true
       }
     } finally {
       isSending.value = false
       streamingMessageId.value = null
-      abortController.value = null
     }
+  }
+
+  /**
+   * 重发失败的用户消息：先从列表移除该失败消息（避免列表残留重复），再原样重发。
+   * @param msg 发送失败的用户消息（isFailed === true）
+   */
+  const retryMessage = (msg: BotMessage): void => {
+    const idx = messages.value.findIndex(m => m.id === msg.id)
+    if (idx !== -1) {
+      messages.value.splice(idx, 1)
+    }
+    sendMessage(msg.content)
   }
 
   /**
@@ -390,7 +394,6 @@ export function useBotChat(botId: Ref<number | null>) {
     messages.value = []
     currentPage.value = 1
     hasMoreMessages.value = false
-    chatHistory.value = []
   }
 
   /**
@@ -414,6 +417,37 @@ export function useBotChat(botId: Ref<number | null>) {
    */
   const isStreaming = computed(() => streamingMessageId.value !== null)
 
+  // bot 切换时刷新「历史会话」线程列表（含 null → 具体 bot / 具体 bot → 另一个 bot）
+  watch(botId, () => {
+    loadConversationThreads()
+  })
+
+  // WS bot 回复桥接：REST 发送后 bot 回复经 WS → Main.vue → chatStore，
+  // 此处监听 chatStore 中当前会话的新 bot 消息，同步到 BotChatView 自有的 messages。
+  watch(
+    () => {
+      const cid = conversationId.value
+      return cid ? chatStore.messages.get(String(cid)) : undefined
+    },
+    (storeMsgs) => {
+      if (!storeMsgs?.length || !conversationId.value) return
+      for (const msg of storeMsgs) {
+        if (msg.isSelf) continue
+        const existing = messages.value.find(m => String(m.id) === String(msg.id))
+        if (existing) {
+          // 流式 chunk 更新：仅合并内容和流式标记，保留本地字段（isSelf/sender）
+          existing.content = msg.content
+          if (msg.type) existing.type = msg.type as BotMessage['type']
+          if (msg.isStreaming !== undefined) existing.isStreaming = msg.isStreaming
+          if (msg.tool_calls) (existing as any).tool_calls = msg.tool_calls
+        } else {
+          messages.value.push(msg as any)
+        }
+      }
+    },
+    { deep: true }
+  )
+
   return {
     // 状态
     conversationId,
@@ -423,14 +457,20 @@ export function useBotChat(botId: Ref<number | null>) {
     isStreaming,
     error,
     hasMoreMessages,
+    conversationThreads,
 
     // 方法
     initConversation,
     loadMessages,
     loadMoreMessages,
     sendMessage,
+    retryMessage,
     cancelStream,
     clearMessages,
-    reset
+    reset,
+    openBot,
+    startNewConversation,
+    loadConversationThreads,
+    setActiveThread
   }
 }

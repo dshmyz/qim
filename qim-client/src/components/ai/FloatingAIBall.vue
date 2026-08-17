@@ -22,14 +22,26 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAISidebar } from '../../composables/useAISidebar'
+import { useSystemConfigStore } from '../../stores/systemConfig'
 import { openMenu } from '../../composables/useUI'
 import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
 import type { ContextMenuItem } from '../shared/context-menu-types'
 
 const { showFloatingAIBall: show, showAISidebar: isSidebarOpen, toggleSidebar, toggleFloatingBall } = useAISidebar()
 
+const systemConfigStore = useSystemConfigStore()
+
+// 打开 AI 工作台（找AI聊聊 + 我的 bot）快速入口
+const emit = defineEmits<{ openWorkspace: [] }>()
+
 // ── 右键菜单 ──
 const menuItems = computed<ContextMenuItem[]>(() => [
+  {
+    label: 'AI 工作台',
+    icon: 'fas fa-briefcase',
+    visible: systemConfigStore.enableAI, // 工作台渲染受 enableAI 门控，关闭时隐藏该项避免死点
+    action: () => emit('openWorkspace'),
+  },
   {
     label: isSidebarOpen.value ? '关闭 AI 助手' : '打开 AI 助手',
     icon: 'fas fa-robot',

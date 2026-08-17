@@ -349,9 +349,9 @@
                 }
             }
         },
-        "/api/v1/ai/draft-reply": {
+        "/api/v1/ai/describe-image": {
             "post": {
-                "description": "根据目标消息及上下文生成回复草稿",
+                "description": "视觉模型识别/描述图片内容，支持自定义识别指令",
                 "consumes": [
                     "application/json"
                 ],
@@ -361,7 +361,53 @@
                 "tags": [
                     "AI"
                 ],
-                "summary": "帮我回复",
+                "summary": "图片识别/描述",
+                "parameters": [
+                    {
+                        "description": "图片识别请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.DescribeImageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误或未配置视觉路由",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/draft-reply": {
+            "post": {
+                "description": "根据目标消息及上下文生成回复草稿。⚠️ 已过时：前端已统一改走流式",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "帮我回复（已过时，将移除）",
                 "parameters": [
                     {
                         "description": "起草请求",
@@ -464,6 +510,98 @@
                 "responses": {
                     "200": {
                         "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/translate": {
+            "post": {
+                "description": "将文本翻译为目标语言",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "翻译文本",
+                "parameters": [
+                    {
+                        "description": "翻译请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.TranslateTextRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/translate/image": {
+            "post": {
+                "description": "上传图片地址，视觉模型识别图中文字并翻译为目标语言",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "图片翻译",
+                "parameters": [
+                    {
+                        "description": "图片翻译请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.TranslateImageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功响应",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误或图片无可翻译文字",
+                        "schema": {
+                            "$ref": "#/definitions/handler.AIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
                         "schema": {
                             "$ref": "#/definitions/handler.AIResponse"
                         }
@@ -662,6 +800,21 @@
                 }
             }
         },
+        "handler.DescribeImageRequest": {
+            "type": "object",
+            "required": [
+                "image_url"
+            ],
+            "properties": {
+                "image_url": {
+                    "type": "string"
+                },
+                "instruction": {
+                    "description": "可选：自定义识别指令，默认\"识别图片内容并详细描述\"",
+                    "type": "string"
+                }
+            }
+        },
         "handler.DraftReplyRequest": {
             "type": "object",
             "required": [
@@ -740,6 +893,41 @@
             "properties": {
                 "enabled": {
                     "type": "boolean"
+                }
+            }
+        },
+        "handler.TranslateImageRequest": {
+            "type": "object",
+            "required": [
+                "image_url"
+            ],
+            "properties": {
+                "image_url": {
+                    "type": "string"
+                },
+                "target_lang": {
+                    "description": "默认 zh",
+                    "type": "string"
+                }
+            }
+        },
+        "handler.TranslateTextRequest": {
+            "type": "object",
+            "required": [
+                "target_lang",
+                "text"
+            ],
+            "properties": {
+                "source_lang": {
+                    "description": "auto/zh/en/...",
+                    "type": "string"
+                },
+                "target_lang": {
+                    "description": "zh/en/ja/ko/fr/de",
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
                 }
             }
         },

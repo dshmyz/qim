@@ -174,7 +174,7 @@ import type { SlashCommandItem } from '../../utils/slashCommand'
 
 interface PendingFile { file: File; name: string }
 interface Member { id: string; name: string; username?: string; avatar: string; type?: 'bot' | 'user' }
-interface Conversation { id: string; type: 'single' | 'group' | 'discussion'; members?: Member[] }
+interface Conversation { id: string; type: 'single' | 'group' | 'discussion' | 'bot'; members?: Member[] }
 
 interface Props {
   conversation: Conversation | null

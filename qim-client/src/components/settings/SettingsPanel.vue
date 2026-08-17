@@ -27,6 +27,10 @@
             <i class="fas fa-keyboard"></i>
             <span>快捷键</span>
           </div>
+          <div class="settings-sidebar-item" :class="{ active: localTab === 'developer' }" @click="localTab = 'developer'">
+            <i class="fas fa-terminal"></i>
+            <span>开发者</span>
+          </div>
         </div>
         <div class="settings-main">
           <div v-if="localTab === 'basic'" class="settings-section">
@@ -228,6 +232,10 @@
             <div class="settings-section-header"><h4>快捷键设置</h4></div>
             <ShortcutSettings ref="shortcutSettingsRef" v-model="localShortcuts" />
           </div>
+
+          <div v-if="localTab === 'developer'" class="settings-section">
+            <DeveloperSettings />
+          </div>
         </div>
       </div>
       <div class="settings-footer">
@@ -253,6 +261,7 @@ import { useSlashCommandPanelEnabled } from '../../composables/useSlashCommandPa
 import AvatarCropper from '../modals/AvatarCropper.vue'
 import ShortcutSettings from './ShortcutSettings.vue'
 import DataStorageSettings from './DataStorageSettings.vue'
+import DeveloperSettings from './DeveloperSettings.vue'
 import type { ShortcutsConfig } from '../../composables/useShortcuts'
 import type { MessageSettings, AppearanceSettings } from '../../composables/useSettings'
 

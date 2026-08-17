@@ -13,6 +13,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -97,6 +98,7 @@ func botConversationResponse(conv model.Conversation, bot model.Bot) gin.H {
 	resp := gin.H{
 		"id":                conv.ID,
 		"type":              conv.Type,
+		"bot_id":            bot.ID,
 		"name":              bot.Name,
 		"avatar":            bot.Avatar,
 		"other_member_id":   nil,
@@ -138,6 +140,10 @@ func GetConversations(c *gin.Context) {
 
 	// 按类型过滤（可选）：single / group / bot / discussion
 	typeFilter := c.Query("type")
+
+	// 按 bot 过滤（可选）：仅返回与指定 bot 的 1:1 会话（bot「历史会话」下拉数据源）。
+	// 服务端过滤避免客户端先取全局前 100 再按 bot 过滤导致旧线程被截断丢失。
+	botIDFilter, _ := strconv.Atoi(c.Query("bot_id"))
 
 	cursorValue := c.Query("cursor")
 	var cursor conversationCursor
@@ -181,6 +187,10 @@ func GetConversations(c *gin.Context) {
 		query += ` AND c.type = ?`
 		args = append(args, typeFilter)
 	}
+	if botIDFilter > 0 {
+		query += ` AND EXISTS (SELECT 1 FROM bot_conversations bc WHERE bc.conversation_id = cm.conversation_id AND bc.bot_id = ?)`
+		args = append(args, botIDFilter)
+	}
 	if cursorValue != "" {
 		query += `
 			AND (
@@ -216,6 +226,10 @@ func GetConversations(c *gin.Context) {
 	if typeFilter != "" {
 		countQuery += ` AND c.type = ?`
 		countArgs = append(countArgs, typeFilter)
+	}
+	if botIDFilter > 0 {
+		countQuery += ` AND EXISTS (SELECT 1 FROM bot_conversations bc WHERE bc.conversation_id = cm.conversation_id AND bc.bot_id = ?)`
+		countArgs = append(countArgs, botIDFilter)
 	}
 	db.Raw(countQuery, countArgs...).Scan(&total)
 
@@ -321,6 +335,7 @@ func GetConversations(c *gin.Context) {
 		OtherMemberID    uint      `json:"other_member_id,omitempty"`
 		OtherMemberName  string    `json:"other_member_name,omitempty"`
 		OtherMemberType  string    `json:"other_member_type,omitempty"`
+		BotID            uint      `json:"bot_id,omitempty"`
 	}
 
 	groupConvIDs := make([]uint, 0, len(convMembers))
@@ -514,6 +529,7 @@ func GetConversations(c *gin.Context) {
 					convWithPin.OtherMemberName = bi.Name
 					convWithPin.OtherMemberType = "bot"
 					convWithPin.OtherMemberID = 0
+					convWithPin.BotID = bi.BotID
 				}
 			} else if otherUserID, ok := otherMemberMap[convID]; ok {
 				if otherUser, ok := userMap[otherUserID]; ok {
@@ -782,6 +798,15 @@ func SearchConversations(c *gin.Context) {
 	response.Success(c, results)
 }
 
+// botForbiddenMessage 依据 bot 状态返回统一的 403 文案：
+// 未启用 → 「机器人未启用」；否则（自定义 bot 且当前用户非创建者）→ 「机器人仅创建者可用」。
+func botForbiddenMessage(bot *model.Bot) string {
+	if !bot.IsActive {
+		return "机器人未启用"
+	}
+	return "机器人仅创建者可用"
+}
+
 func CreateSingleConversation(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
@@ -789,6 +814,9 @@ func CreateSingleConversation(c *gin.Context) {
 		UserID      uint  `json:"user_id"`
 		RecipientID uint  `json:"recipient_id"`
 		BotID       *uint `json:"bot_id"`
+		// Fresh 仅对 bot 会话生效：true=强制开一段新会话（多会话「新话题」），
+		// false（默认）=复用最近一段。非 bot 分支忽略该字段。
+		Fresh bool `json:"fresh"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -809,15 +837,27 @@ func CreateSingleConversation(c *gin.Context) {
 			return
 		}
 
-		var botConv model.BotConversation
-		findBotSingleConversation(db, *req.BotID, userID.(uint), &botConv)
-
-		if botConv.ID > 0 {
-			ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
-			db.Preload("Conversation.Members").Preload("Conversation.Members.User").
-				First(&botConv, botConv.ID)
-			response.Success(c, botConversationResponse(botConv.Conversation, bot))
+		// 访问门控：与回复路径同一判定（service.BotUsableByUser）。
+		// 自定义 bot 仅创建者可用；未启用/非创建者一律 403，防止任何人按 bot_id 越权使用他人 bot
+		// （烧创建者自定义模型配额、按创建者人设对外服务）。
+		if !service.BotUsableByUser(userID.(uint), &bot) {
+			response.Forbidden(c, botForbiddenMessage(&bot))
 			return
+		}
+
+		var botConv model.BotConversation
+		// 多会话语义：fresh=true（「新话题」）跳过复用直接新建；否则复用最近一段。
+		// findBotSingleConversation 已按 bot_conversations.id DESC 取最新，避免多段时任挑旧会话。
+		if !req.Fresh {
+			findBotSingleConversation(db, *req.BotID, userID.(uint), &botConv)
+
+			if botConv.ID > 0 {
+				ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
+				db.Preload("Conversation.Members").Preload("Conversation.Members.User").
+					First(&botConv, botConv.ID)
+				response.Success(c, botConversationResponse(botConv.Conversation, bot))
+				return
+			}
 		}
 
 		tx := db.Begin()
@@ -888,8 +928,9 @@ func CreateSingleConversation(c *gin.Context) {
 			response.NotFound(c, "机器人不存在")
 			return
 		}
-		if !bot.IsActive {
-			response.Forbidden(c, "机器人未启用")
+		// 与 bot_id 分支同一门控：停用 → 403「机器人未启用」；非创建者访问自定义 bot → 403「机器人仅创建者可用」。
+		if !service.BotUsableByUser(userID.(uint), &bot) {
+			response.Forbidden(c, botForbiddenMessage(&bot))
 			return
 		}
 
@@ -1083,6 +1124,9 @@ func CreateBotConversation(c *gin.Context) {
 
 	var req struct {
 		BotID uint `json:"bot_id" binding:"required"`
+		// Fresh true=强制开一段新会话（多会话「新话题」），false（默认）=复用最近一段。
+		// 前端「找AI聊聊」工作台 POST /conversations type=bot 由分发器转此 handler。
+		Fresh bool `json:"fresh"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1109,16 +1153,19 @@ func CreateBotConversation(c *gin.Context) {
 		return
 	}
 
-	// 查找是否已有会话
+	// 多会话语义：fresh=true（「新话题」）跳过复用直接新建；否则复用最近一段
+	// （findBotSingleConversation 按 bot_conversations.id DESC 取最新，避免多段时任挑旧会话）。
 	var botConv model.BotConversation
-	findBotSingleConversation(db, req.BotID, userID.(uint), &botConv)
+	if !req.Fresh {
+		findBotSingleConversation(db, req.BotID, userID.(uint), &botConv)
 
-	if botConv.ID > 0 {
-		ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
-		db.Preload("Conversation.Members").Preload("Conversation.Members.User").
-			First(&botConv, botConv.ID)
-		response.Success(c, botConversationResponse(botConv.Conversation, bot))
-		return
+		if botConv.ID > 0 {
+			ensureBotConversationMember(db, botConv.ConversationID, bot.VirtualUserID)
+			db.Preload("Conversation.Members").Preload("Conversation.Members.User").
+				First(&botConv, botConv.ID)
+			response.Success(c, botConversationResponse(botConv.Conversation, bot))
+			return
+		}
 	}
 
 	// 创建新会话
@@ -1208,11 +1255,15 @@ func ensureBotConversationMember(db *gorm.DB, conversationID uint, virtualUserID
 // findBotSingleConversation 反查某用户对该 bot 的 1:1 bot 会话。
 // 原实现按 BotConversation.user_id 反查，去掉该列后改用
 // ConversationMember(含该 user) + Conversation.Type=bot join 等价替代。
+// 多会话下同一 (bot, user) 可有多段，按「最近使用」取段：
+// last_message_at 为空（刚建还没发消息）时回落 created_at，与 GetConversations
+// 的排序口径一致；按创建 id 取段会把用户切回旧线程后的重进落到错误的新段。
 func findBotSingleConversation(db *gorm.DB, botID, userID uint, out *model.BotConversation) {
 	db.
 		Joins("JOIN conversations c ON c.id = bot_conversations.conversation_id").
 		Joins("JOIN conversation_members cm ON cm.conversation_id = c.id").
 		Where("bot_conversations.bot_id = ? AND c.type = ? AND cm.user_id = ?", botID, "bot", userID).
+		Order("COALESCE(c.last_message_at, c.created_at) DESC").
 		Preload("Conversation").
 		First(out)
 }

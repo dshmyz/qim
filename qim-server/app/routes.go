@@ -548,6 +548,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/bots/:id/token", botAPIHandler.IssueToken)
 			authed.DELETE("/bots/:id/token/:tid", botAPIHandler.RevokeToken)
 			authed.PUT("/bots/:id/config", botAPIHandler.UpdateBotConfig)
+			// 用户长期令牌（qim CLI / qim-mcp 经 Bearer 以本人身份调用用户 API）
+			authed.GET("/user-tokens", handler.ListUserTokens)
+			authed.POST("/user-tokens", handler.IssueUserToken)
+			authed.DELETE("/user-tokens/:tid", handler.RevokeUserToken)
 			// Bot 卡片按钮回调（JWT 用户鉴权：点击按钮的人类用户，非 bot 令牌）
 			authed.POST("/messages/:id/card-action", botAPIHandler.SubmitCardAction)
 
@@ -828,7 +832,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			}
 
 			// 节点间通信（需要节点内部认证）
-			node := authed.Group("", middleware.NodeAuthMiddleware(cfg.Node.Secret))
+			// 注意：必须挂在 api 组而非 authed 组——跨节点请求只携带 Node-Secret，
+			// 挂在 authed 下会被 AuthMiddleware 以无 Bearer token 为由先 401，
+			// NodeAuthMiddleware 永远执行不到，导致跨节点传输全线不通。
+			node := api.Group("", middleware.NodeAuthMiddleware(cfg.Node.Secret))
 			node.POST("/node/broadcast", handler.BroadcastMessage)
 			node.POST("/node/send-to-user", handler.SendToUserMessage)
 

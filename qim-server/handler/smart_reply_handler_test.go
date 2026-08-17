@@ -232,28 +232,37 @@ func TestIsDirectMediaType(t *testing.T) {
 }
 
 // TestDecideDirectMediaReply 直接发媒体消息时群 AI 触发决策：
-// off / mention_only / 未启用 / 反刷屏窗口内不触发；其余启用模式触发。
+// off / mention_only / 未启用 / 反刷屏窗口内不触发；其余启用模式触发；
+// 开启 TriggerKeywords 时媒体正文（{"url":...} JSON）须命中关键词才触发。
 func TestDecideDirectMediaReply(t *testing.T) {
 	cfg := func(mode string, enabled bool) *model.GroupAIConfig {
 		return &model.GroupAIConfig{Enabled: enabled, ReplyMode: mode}
 	}
+	withKeywords := func(mode string, kws string) *model.GroupAIConfig {
+		return &model.GroupAIConfig{Enabled: true, ReplyMode: mode, TriggerKeywords: kws}
+	}
+	mediaContent := `{"url":"/static/files/img.png"}`
 	cases := []struct {
 		name     string
 		cfg      *model.GroupAIConfig
+		content  string
 		antiSpam bool
 		want     bool
 	}{
-		{"off 不触发", cfg("off", true), false, false},
-		{"mention_only 不触发", cfg("mention_only", true), false, false},
-		{"未启用不触发", cfg("always", false), false, false},
-		{"反刷屏窗口内不触发", cfg("always", true), true, false},
-		{"always 触发", cfg("always", true), false, true},
-		{"smart 触发", cfg("smart", true), false, true},
-		{"空模式（默认自动）触发", cfg("", true), false, true},
+		{"off 不触发", cfg("off", true), mediaContent, false, false},
+		{"mention_only 不触发", cfg("mention_only", true), mediaContent, false, false},
+		{"未启用不触发", cfg("always", false), mediaContent, false, false},
+		{"反刷屏窗口内不触发", cfg("always", true), mediaContent, true, false},
+		{"always 触发", cfg("always", true), mediaContent, false, true},
+		{"smart 触发", cfg("smart", true), mediaContent, false, true},
+		{"空模式（默认自动）触发", cfg("", true), mediaContent, false, true},
+		{"关键词门控：JSON 正文未命中关键词不触发", withKeywords("always", "总结,翻译"), mediaContent, false, false},
+		{"关键词门控：命中关键词触发（URL/文件名含关键词）", withKeywords("always", "总结"), `{"url":"/static/files/总结.png"}`, false, true},
+		{"关键词门控：mention_only 仍不触发", withKeywords("mention_only", "总结"), `{"url":"/static/files/总结.png"}`, false, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			assert.Equal(t, c.want, decideDirectMediaReply(c.cfg, c.antiSpam))
+			assert.Equal(t, c.want, decideDirectMediaReply(c.cfg, c.content, c.antiSpam))
 		})
 	}
 }

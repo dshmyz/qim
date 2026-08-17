@@ -290,6 +290,218 @@ func seedBusinessBotTemplates(db *gorm.DB) {
 	markMigrationCompleted(db, "seed_business_bot_templates")
 }
 
+// ensureTemplateBotVirtualUsers 为缺失虚拟用户的模板/系统 Bot 补齐虚拟用户。
+// 早期 seedBotTemplates 只建 Bot 行、不建 virtual_user（当时模板未参与 1:1 会话），
+// 导致 AI助手/代码助手等模板无 virtual_user_id。它们一旦进入 1:1 bot 会话，
+// StreamMessage 会兜底到系统账号（GetSystemUserID）作为回复者——那是群发系统通知
+// 用的广播身份，bot 冒充它会在单聊里与广播通知串号。补齐后与工作台 CreateBot 的
+// 「每 bot 一虚拟用户」约定一致：回复以 bot 自身身份发出，系统账号只用于广播。
+func ensureTemplateBotVirtualUsers(db *gorm.DB) {
+	if isMigrationCompleted(db, "ensure_template_bot_virtual_users") {
+		return
+	}
+	if !tableExists(db, "bots") {
+		markMigrationCompleted(db, "ensure_template_bot_virtual_users")
+		return
+	}
+
+	var bots []model.Bot
+	db.Where("virtual_user_id IS NULL AND is_active = ? AND (is_template = ? OR creator_id = 0)",
+		true, true).Find(&bots)
+
+	created := 0
+	for i := range bots {
+		bot := &bots[i]
+		virtualUser := model.User{
+			Username: fmt.Sprintf("bot_%d", bot.ID),
+			Nickname: bot.Name,
+			Avatar:   bot.Avatar,
+			Type:     "bot",
+		}
+		if err := db.Create(&virtualUser).Error; err != nil {
+			logger.WithModule("Init").Error("创建模板 Bot 虚拟用户失败",
+				"botID", bot.ID, "name", bot.Name, "error", err)
+			continue
+		}
+		if err := db.Model(&model.Bot{}).Where("id = ?", bot.ID).Update("virtual_user_id", virtualUser.ID).Error; err != nil {
+			logger.WithModule("Init").Error("更新模板 Bot 虚拟用户失败",
+				"botID", bot.ID, "name", bot.Name, "error", err)
+			continue
+		}
+		created++
+		logger.WithModule("Init").Info("为模板 Bot 补齐虚拟用户",
+			"botID", bot.ID, "name", bot.Name, "virtualUserID", virtualUser.ID)
+	}
+
+	if created > 0 {
+		logger.WithModule("Init").Info("模板 Bot 虚拟用户补齐完成", "created", created)
+	}
+	markMigrationCompleted(db, "ensure_template_bot_virtual_users")
+}
+
+// 内置 AI 助手：系统唯一的固定聊天对端（非模板、creator_id=0）。
+// 早期把模板当聊天对端——GetDefaultAIAssistant 按「第一个 assistant」挑到 AI助手模板，
+// 前端「找AI聊聊」也优先取 assistant 模板，模板兼做了会话对端，与「模板=创建样板」
+// 的语义冲突。此函数收敛为：系统只内置一个 assistant bot 作为所有通用 AI 对话的对端；
+// 模板保持纯样板（is_template=true 不进会话）。虚拟用户沿用「每 bot 一虚拟用户」约定。
+func ensureBuiltinAssistantBot(db *gorm.DB) {
+	if isMigrationCompleted(db, "ensure_builtin_assistant_bot") {
+		return
+	}
+	if !tableExists(db, "bots") {
+		markMigrationCompleted(db, "ensure_builtin_assistant_bot")
+		return
+	}
+
+	// 内置对端的识别标记：type=assistant 且非模板且系统创建（creator_id=0）且不在群。
+	// 上次运行已存在（含早期清理遗留的降级对端）直接复用，幂等。
+	var existing model.Bot
+	err := db.Where(
+		"type = ? AND group_id IS NULL AND is_template = ? AND creator_id = ? AND is_active = ?",
+		model.BotTypeAssistant, false, 0, true,
+	).Order("id ASC").First(&existing).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		logger.WithModule("Init").Error("查询内置 AI 助手失败", "error", err)
+		return
+	}
+
+	bot := existing
+	if bot.ID == 0 {
+		bot = model.Bot{
+			Name:        "智能助手",
+			Avatar:      "",
+			Description: "系统内置通用 AI 助手",
+			Type:        model.BotTypeAssistant,
+			Config:      `{"system_prompt":"你是一个有用的AI助手，能够帮助用户回答各种问题、完成任务。","use_system_config":true}`,
+			IsActive:    true,
+			IsTemplate:  false,
+			CreatorID:   0,
+		}
+		if err := db.Create(&bot).Error; err != nil {
+			logger.WithModule("Init").Error("创建内置 AI 助手失败", "error", err)
+			return
+		}
+	}
+
+	// 已有虚拟用户则视为就绪（上次创建成功过但未打标记等情形）
+	if bot.VirtualUserID != nil {
+		logger.WithModule("Init").Info("内置 AI 助手已就绪",
+			"botID", bot.ID, "name", bot.Name, "virtualUserID", *bot.VirtualUserID)
+		markMigrationCompleted(db, "ensure_builtin_assistant_bot")
+		return
+	}
+
+	// 可重入：若上次运行在「创建虚拟用户 -> 回写 bot.virtual_user_id」两步之间崩溃，
+	// 重跑会撞 username 唯一约束而永久卡死（标记永不打上）。先按用户名找回已有虚拟用户复用。
+	var virtualUser model.User
+	err = db.Where("username = ?", "bot_builtin_assistant").First(&virtualUser).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		logger.WithModule("Init").Error("查询内置 AI 助手虚拟用户失败", "error", err)
+		return
+	}
+	if err == gorm.ErrRecordNotFound {
+		virtualUser = model.User{
+			Username: "bot_builtin_assistant",
+			Nickname: bot.Name,
+			Avatar:   bot.Avatar,
+			Type:     "bot",
+		}
+		if err := db.Create(&virtualUser).Error; err != nil {
+			logger.WithModule("Init").Error("创建内置 AI 助手虚拟用户失败", "error", err)
+			return
+		}
+	} else {
+		logger.WithModule("Init").Info("复用已存在的内置 AI 助手虚拟用户", "userID", virtualUser.ID)
+	}
+	if err := db.Model(&model.Bot{}).Where("id = ?", bot.ID).Update("virtual_user_id", virtualUser.ID).Error; err != nil {
+		logger.WithModule("Init").Error("更新内置 AI 助手虚拟用户失败", "error", err)
+		return
+	}
+
+	logger.WithModule("Init").Info("内置 AI 助手就绪",
+		"botID", bot.ID, "name", bot.Name, "virtualUserID", virtualUser.ID)
+	markMigrationCompleted(db, "ensure_builtin_assistant_bot")
+}
+
+// fixLegacyBotSingleConversations 修复历史会话语义：早期版本用「type='single' + bot 虚拟用户
+// 成员」表达机器人 1:1 会话，与新语义「机器人 1:1 = type='bot' + bot_conversations」冲突
+// （前端一律按 collaboration.type==='bot' 识别机器人会话，旧 single 数据会被当成普通单聊，
+// 丢失 AI 徽标/头像卡/bot 能力）。此迁移把「对端是 bot 虚拟用户」的 single 会话改写为
+// type='bot' 并补 bot_conversations 关联，使该不变式在新旧数据上同时成立：
+//   - 命中条件：type='single' 且成员里有 users.type='bot' 的虚拟用户，且该虚拟用户能反查
+//     到未删除的 bots 行（可关联 bot_conversations）。
+//   - 不命中：与 system 广播账号（type='system'）的单聊（系统公告）保持 single 不动。
+//   - 孤儿虚拟用户（bots 已删除、无对应 bots 行）无法关联 bot_conversations，保持 single 不动。
+func fixLegacyBotSingleConversations(db *gorm.DB) {
+	if isMigrationCompleted(db, "fix_legacy_bot_single_conversations") {
+		return
+	}
+	if !tableExists(db, "users") || !tableExists(db, "bots") || !tableExists(db, "conversations") ||
+		!tableExists(db, "conversation_members") || !tableExists(db, "bot_conversations") {
+		markMigrationCompleted(db, "fix_legacy_bot_single_conversations")
+		return
+	}
+
+	var rows []struct {
+		ConversationID uint
+		BotID          uint
+		VUserID        uint
+	}
+	if err := db.Raw(`
+		SELECT c.id AS conversation_id, b.id AS bot_id, m.user_id AS v_user_id
+		FROM conversations c
+		JOIN conversation_members m ON m.conversation_id = c.id
+		JOIN users u ON u.id = m.user_id AND u.type = 'bot'
+		JOIN bots b ON b.virtual_user_id = m.user_id AND b.deleted_at IS NULL
+		WHERE c.type = 'single'
+		ORDER BY c.id
+	`).Scan(&rows).Error; err != nil {
+		logger.WithModule("Init").Error("查询历史 bot 单聊会话失败", "error", err)
+		return
+	}
+
+	fixed, linked := 0, 0
+	seen := make(map[uint]struct{})
+	for _, r := range rows {
+		// 同一会话命中多个 bot 成员属防御场景，只处理一次
+		if _, ok := seen[r.ConversationID]; ok {
+			continue
+		}
+		seen[r.ConversationID] = struct{}{}
+
+		// 补 bot_conversations 关联（已存在则跳过，幂等）
+		var cnt int64
+		db.Model(&model.BotConversation{}).
+			Where("bot_id = ? AND conversation_id = ?", r.BotID, r.ConversationID).
+			Count(&cnt)
+		if cnt == 0 {
+			if err := db.Create(&model.BotConversation{BotID: r.BotID, ConversationID: r.ConversationID}).Error; err != nil {
+				logger.WithModule("Init").Error("补建 bot 会话关联失败",
+					"conversationID", r.ConversationID, "botID", r.BotID, "error", err)
+				continue
+			}
+			linked++
+		}
+
+		// 改写会话类型（再次限定 type='single'，防御并发/重复执行）
+		if err := db.Model(&model.Conversation{}).
+			Where("id = ? AND type = ?", r.ConversationID, "single").
+			Update("type", "bot").Error; err != nil {
+			logger.WithModule("Init").Error("改写历史 bot 会话类型失败",
+				"conversationID", r.ConversationID, "error", err)
+			continue
+		}
+		fixed++
+		logger.WithModule("Init").Info("历史 bot 单聊会话改写为 bot",
+			"conversationID", r.ConversationID, "botID", r.BotID, "vUserID", r.VUserID)
+	}
+
+	if fixed > 0 {
+		logger.WithModule("Init").Info("历史 bot 单聊会话修复完成", "fixed", fixed, "linked", linked)
+	}
+	markMigrationCompleted(db, "fix_legacy_bot_single_conversations")
+}
+
 // InitApp 初始化应用
 func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	// 加载配置
@@ -336,6 +548,15 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 	if cfg.DataInit.BotTemplates {
 		seedBotTemplates(db)
 		seedBusinessBotTemplates(db)
+		// 模板 bot 补齐虚拟用户（数据完整性修复，幂等）：无 vuid 的模板在 1:1 会话
+		// 回复会兜底到系统广播账号，此处按「每 bot 一虚拟用户」约定补齐。
+		ensureTemplateBotVirtualUsers(db)
+		// 内置 AI 助手：系统唯一的固定聊天对端（非模板，creator_id=0）。模板只当创建样板，
+		// 不参与会话；找AI聊聊/通用单聊统一打到这个内置 bot 上。
+		ensureBuiltinAssistantBot(db)
+		// 历史语义修复：旧「single + bot 虚拟用户」会话改写为 type='bot' + bot_conversations，
+		// 与新语义「机器人 1:1 必 type='bot'」对齐（幂等，标记防重跑）。
+		fixLegacyBotSingleConversations(db)
 	}
 
 	// ========== 测试数据（迁移之后） ==========
@@ -444,6 +665,7 @@ func MigrateDB(db *gorm.DB) error {
 		&model.MessageReadReceipt{},    // 依赖 User, Message
 		&model.BotConversation{},       // 依赖 Bot, User, Conversation
 		&model.BotToken{},              // 依赖 Bot，外部 agent 访问令牌
+		&model.UserToken{},             // 依赖 User，用户长期令牌（CLI/MCP 鉴权）
 		&model.BotWebhookDelivery{},    // 依赖 Bot，webhook outbox 重试/死信
 		&model.CardActionRecord{},      // 卡片点击幂等，依赖 Bot/Message/User
 		&model.SystemMessage{},         // 依赖 User

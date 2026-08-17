@@ -1,7 +1,13 @@
 <template>
   <div class="chat-header">
     <div class="header-info">
-      <div class="avatar-wrapper">
+      <!-- 单聊/机器人头像可点：弹出随行资料小卡（跟随头像位置，移开即消失，与群成员名片一致） -->
+      <div
+        class="avatar-wrapper"
+        :class="{ 'clickable': isAvatarClickable }"
+        @click="popoverOpen"
+        @mouseleave="popoverScheduleHide"
+      >
         <Avatar
           :src="conversation?.avatar"
           :name="displayName"
@@ -12,7 +18,10 @@
         />
       </div>
       <div class="header-text">
-        <div class="header-name">{{ displayName }}</div>
+        <div class="header-name">
+          <span class="header-name-text">{{ displayName }}</span>
+          <span v-if="isBotChat" class="bot-badge"><i class="fas fa-robot"></i>AI 机器人</span>
+        </div>
         <div class="header-status">
           <template v-if="isSingleChat">
             <span v-if="conversation?.ip" class="ip-info">
@@ -63,6 +72,19 @@
       @update-extract-todos="(value) => emit('update-extract-todos', value)"
       @open-group-files="emit('open-group-files')"
     />
+
+    <!-- 单聊/机器人随行资料小卡：点击头部头像弹出，跟随头像位置，移开即消失 -->
+    <Teleport to="body">
+      <UserProfileCard
+        v-if="isAvatarClickable && popoverState"
+        :member="popoverState.member"
+        :server-url="serverUrl"
+        :fallback-avatar="conversation?.avatar"
+        :style="popoverStyle"
+        @mouseenter="popoverCancelHide"
+        @mouseleave="popoverScheduleHide"
+      />
+    </Teleport>
   </div>
 </template>
 
@@ -71,8 +93,9 @@ import { computed } from 'vue'
 import type { Conversation } from '../../types'
 import Avatar from '../shared/Avatar.vue'
 import ChatHeaderActions from './ChatHeaderActions.vue'
+import UserProfileCard from '../shared/UserProfileCard.vue'
 import { buildConversationBadge } from '../../utils/user'
-import { ref } from 'vue'
+import { useProfilePopover, type ProfileMember } from '../../composables/useProfilePopover'
 
 interface Props {
   conversation: Conversation
@@ -127,6 +150,9 @@ const isGroupOrDiscussion = computed(() =>
 
 const isSingleChat = computed(() => props.conversation?.type === 'single')
 
+// bot 1:1 会话：头部显示「AI 机器人」徽标，与普通单聊/群聊区分（bot 虚拟用户昵称 = bot 名）。
+const isBotChat = computed(() => props.conversation?.type === 'bot')
+
 // 聊天头部头像角标：统一由 buildConversationBadge 构造，Avatar 只负责渲染。
 // ChatHeader 持有 currentUser，传入以支持 single 会话 partner 推导时排除自己。
 const headerBadge = computed(() =>
@@ -134,6 +160,73 @@ const headerBadge = computed(() =>
 )
 
 const displayName = computed(() => props.conversation?.name || '未知会话')
+
+// ---------------------------------------------------------------------------
+// 单聊/机器人随行资料小卡：点击头部头像弹出，跟随头像位置，移开即消失。
+// 行为共享 useProfilePopover（与群成员名片对齐）：重复点击切换、悬停保持、
+// 离开头像/卡片 200ms 后收起；列表数据不完整时异步拉取用户详情富化名片。
+// ---------------------------------------------------------------------------
+
+const isAvatarClickable = computed(() => isSingleChat.value || isBotChat.value)
+
+// 对端身份解析：
+// - 单聊：members 中非自己的成员；单聊会话的 members 常为空，回退会话级
+//   other_member_id / other_member_name（取不到对端 id 时无法打开资料卡）。
+// - 机器人：对端即 bot 的虚拟用户（成员里非自己的那个），名字/头像取会话级
+//   （bot 1:1 会话直接以 bot 身份命名），卡片只体现「AI 助手」身份、不显示个人资料。
+const buildPeerProfile = (): ProfileMember | null => {
+  const conv = props.conversation
+  if (!conv) return null
+  const cid = String(props.currentUser?.id ?? '')
+  const others = conv.members || []
+  const other = others.find(m => String((m as any).id) !== cid) || others[0] || null
+  const o = other as any
+
+  if (isSingleChat.value) {
+    const userId = other ? (o.user?.id ?? o.id) : (conv.other_member_id ?? null)
+    if (!userId) return null
+    return {
+      id: String(userId),
+      name: (other ? (o.name || o.nickname) : null) || conv.other_member_name || displayName.value,
+      avatar: (other ? o.avatar : null) || conv.avatar || '',
+      username: other ? o.username : (conv as any).username,
+      email: other ? o.email : undefined,
+      mobile: other ? (o.mobile ?? o.phone) : undefined,
+      department: other ? o.department : undefined,
+      position: other ? o.position : undefined,
+      signature: (other ? o.signature : null) || conv.signature,
+      ip: (other ? o.ip : null) || conv.ip,
+      status: other ? o.status : conv.status,
+      user: other ? o : undefined
+    }
+  }
+
+  if (isBotChat.value) {
+    const userId = other ? (o.user?.id ?? o.id) : (conv.other_member_id ?? null)
+    // 兜底用会话 id 保持「重复点击切换」稳定（取不到虚拟用户 id 的极端情形）
+    return {
+      id: String(userId ?? conv.id),
+      name: (other ? (o.name || o.nickname) : null) || conv.other_member_name || displayName.value,
+      avatar: (other ? o.avatar : null) || conv.avatar || '',
+      type: 'bot',
+      status: other ? o.status : conv.status,
+      user: other ? o : undefined
+    }
+  }
+
+  return null
+}
+
+// 共享随行资料小卡。解构到组件顶层：popoverState/popoverStyle 是 ref，模板里
+// 顶层 ref 才能自动解包（嵌套在返回对象里访问 popover.popoverState 不会解包，
+// RefImpl 恒真值 + 无 .member 属性，会让 UserProfileCard 收到 undefined member）。
+const {
+  popoverState,
+  popoverStyle,
+  open: popoverOpen,
+  scheduleHide: popoverScheduleHide,
+  cancelHide: popoverCancelHide
+} = useProfilePopover(buildPeerProfile)
 
 defineExpose({
   aiEnabled,
@@ -170,6 +263,7 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .header-avatar {
@@ -184,15 +278,55 @@ defineExpose({
   flex-shrink: 0;
 }
 
+.avatar-wrapper.clickable {
+  cursor: pointer;
+}
+
 .header-text {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
+/* 名字 + 「AI 机器人」徽标同行：名字可截断（flex），徽标 flex-shrink:0 永远可见 */
 .header-name {
   font-weight: 500;
   font-size: var(--font-size-sm);
   color: var(--text-color);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.header-name-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+/* 「AI 机器人」徽标：bot 身份紫色胶囊 + 机器人图标（与群内 bot 角色标签同款 accent） */
+.bot-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--font-size-xxxs);
+  font-weight: 500;
+  line-height: 1.3;
+  color: #7c3aed;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.10), rgba(79, 172, 254, 0.06));
+  border: 1px solid rgba(124, 58, 237, 0.20);
+  white-space: nowrap;
+}
+
+.bot-badge i {
+  font-size: var(--font-size-tiny);
+  line-height: 1;
 }
 
 .header-status {

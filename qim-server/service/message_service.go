@@ -558,6 +558,14 @@ func (s *MessageService) handleBotMessage(userID, convID uint, msgType, content 
 		return
 	}
 
+	// 访问门控：与 CreateSingleConversation 同一判定（BotUsableByUser）。
+	// 停用 bot → 不再回复（避免既有会话继续烧钱）；非创建者访问他人自定义 bot → 不再回复。
+	// 删除场景由 DeleteBot 删 bot_conversations 天然覆盖（本函数查不到记录已提前返回）。
+	if !BotUsableByUser(userID, &bot) {
+		logger.WithModule("handleBotMessage").Debug("bot 不可用，跳过回复", "botID", bot.ID, "talker", userID)
+		return
+	}
+
 	// 外部 agent 模式：转发用户消息到 webhook，不再走内部 AI
 	// 单聊（1:1 bot 会话）不注入群上下文——本函数仅群聊 @ 场景需要群记忆/知识。
 	if cfg := ParseBotConfig(bot.Config); cfg.IsExternalWebhook() {
@@ -584,9 +592,13 @@ func (s *MessageService) handleBotMessage(userID, convID uint, msgType, content 
 		return // sticker/system 等不触发 bot 回复
 	}
 
+	// 上下文窗口取「最近 20 条」而非最早 20 条：原 ASC+Limit 会拿到会话开头的 20 条，
+	// 长会话下 AI 反而丢失最近上下文（越聊越失忆）。先 DESC 取最近 N 条，再反转为时间正序喂给模型。
 	var messages []model.Message
-	db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
-
+	db.Where("conversation_id = ?", convID).Order("created_at DESC").Limit(20).Find(&messages)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
 	aiMessages := make([]ai.Message, 0, len(messages)+1)
 
 	botCfg := ParseBotConfig(bot.Config)
@@ -637,10 +649,15 @@ func (s *MessageService) dispatchBotReply(userID, convID uint, bot model.Bot, bo
 
 // buildBotHistory 从 bot 1:1 会话中提取最近 N 条消息，转为 ai.Message 格式。
 // bot 虚拟用户的消息标记为 "assistant"，人类消息标记为 "user"。
+// 上下文窗口取最近 N 条而非最早 N 条（ASC+Limit 会拿到会话开头，长会话丢失近期上下文）：
+// 先 DESC 取最近 N 条，再反转为时间正序喂给模型。
 // 供 handleBotMessage / handleBotFileMessage / handleBotImageMessage 共用。
 func (s *MessageService) buildBotHistory(bot model.Bot, convID uint, limit int) []ai.Message {
 	var messages []model.Message
-	s.db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(limit).Find(&messages)
+	s.db.Where("conversation_id = ?", convID).Order("created_at DESC").Limit(limit).Find(&messages)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
 	aiMessages := make([]ai.Message, 0, len(messages))
 	for _, msg := range messages {
 		role := "user"
@@ -914,6 +931,10 @@ var botAllowedTools = []string{
 //   - 自定义模型（创建者自选 provider）：纯流式、不带工具（不能假设其 provider 支持 tool-call）；
 //     生成失败且未流出内容时回退系统默认（带工具），兑现「不阻断回复」契约。
 func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot model.Bot, botCfg BotConfig, aiMessages []ai.Message, knowledgeSources []KnowledgeSource) {
+	// AI 开始处理：先推开始事件供前端「思考中」占位（首个流式帧到达前）。
+	// 本函数仅在 streamingSender 非 nil 时被调用（dispatchBotReply 判定），此处不再重复判空。
+	s.streamingSender.NotifyReplyStarted(convID)
+
 	sendChunk, getMsg, finish, err := s.streamingSender.SendStreamingAIMessage(convID, bot.Name)
 	if err != nil {
 		logger.WithModule("handleBotMessage").Error("创建流式消息失败，降级到非流式", "error", err, "convID", convID)
@@ -1149,6 +1170,12 @@ func (s *MessageService) forwardBotMessageToWebhook(bot model.Bot, webhookURL, w
 		logger.WithModule("handleBotMessage").Info("外部 bot 未配 webhook_url，走纯 pull 模式（不投递）",
 			"botID", bot.ID, "convID", convID)
 		return
+	}
+
+	// 已确认走 webhook 投递：推开始事件供前端「思考中」占位——外部 agent 回复等待期最长，
+	// 最需要占位。回复经回调落库为 bot 消息后由前端按非本人消息清除；失败走系统提示同样清除。
+	if s.streamingSender != nil {
+		s.streamingSender.NotifyReplyStarted(convID)
 	}
 
 	deliveryID, err := EnqueueWebhookDelivery(s.db, bot.ID, "bot.message", string(payloadJSON), webhookURL, webhookSecret)

@@ -139,15 +139,6 @@ export function useMainMessageSending(
       return
     }
 
-    const currentConv = currentConversation.value
-    const isBotConversation = currentConv && (currentConv.type === 'bot' || currentConv.isBot)
-
-    if (isBotConversation) {
-      ensureConversationInList(conversationId)
-      await handleStreamMessage(conversationId, requestData, messageData, miniAppData, newsData)
-      return
-    }
-
     try {
       const response = await request(`/api/v1/conversations/${conversationId}/messages`, {
         method: 'POST',
@@ -177,6 +168,7 @@ export function useMainMessageSending(
 
         ensureConversationInList(conversationId)
         chatStore.receiveMessage(conversationId, newMessage as any, true)
+
         onMessageSent?.()
       } else {
         let errorMessage = '消息发送失败'

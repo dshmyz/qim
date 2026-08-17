@@ -14,11 +14,18 @@
       :is-loading="isLoading"
       :is-sending="isSending"
       :is-streaming="isStreaming"
+      :has-more-messages="hasMoreMessages"
       :error="chatError"
+      :history-threads="conversationThreads"
+      :current-conversation-id="conversationId"
       @back="handleBack"
       @send="handleSendMessage"
       @clear-messages="handleClearMessages"
       @new-conversation="handleNewConversation"
+      @load-more="handleLoadMore"
+      @stop-stream="handleStopStream"
+      @switch-history="handleSwitchHistory"
+      @retry-message="handleRetryMessage"
     />
   </div>
 </template>
@@ -50,15 +57,23 @@ const selectedBotId = ref<number | null>(null)
 
 // 使用 useBotChat 管理 Bot 对话
 const {
+  conversationId,
+  conversationThreads,
   messages: botMessages,
   isLoading,
   isSending,
   isStreaming,
   error: chatError,
-  loadMessages,
+  hasMoreMessages,
+  loadMoreMessages,
   sendMessage,
+  retryMessage,
+  cancelStream,
   clearMessages,
-  reset
+  reset,
+  openBot,
+  startNewConversation,
+  setActiveThread
 } = useBotChat(selectedBotId)
 
 onMounted(async () => {
@@ -80,8 +95,8 @@ const currentBot = computed<Bot | null>(() =>
  */
 async function selectBot(botId: number) {
   selectedBotId.value = botId
-  // 加载历史消息
-  await loadMessages()
+  // openBot：对象级开关，切换 bot 时内部 reset，复用会话/多轮历史语义与工作台一致
+  await openBot(botId)
 }
 
 /**
@@ -100,6 +115,13 @@ async function handleSendMessage(content: string) {
 }
 
 /**
+ * 重发发送失败的用户消息
+ */
+function handleRetryMessage(msg: BotMessage) {
+  retryMessage(msg)
+}
+
+/**
  * 清空对话
  */
 function handleClearMessages() {
@@ -107,12 +129,28 @@ function handleClearMessages() {
 }
 
 /**
- * 新建对话
+ * 新建对话（多会话「新话题」：bot 真正开新段，上下文互不污染）
  */
 async function handleNewConversation() {
-  reset()
-  // 重新初始化会话并加载消息
-  await loadMessages()
+  await startNewConversation()
+}
+
+/**
+ * 历史「加载更多」/ 停止生成 接线
+ */
+function handleLoadMore() {
+  loadMoreMessages()
+}
+
+function handleStopStream() {
+  cancelStream()
+}
+
+/**
+ * 历史会话下拉：切回某段旧线程
+ */
+async function handleSwitchHistory(id: number | string) {
+  await setActiveThread(Number(id))
 }
 
 // 监听 selectedBotId 变化，重置状态

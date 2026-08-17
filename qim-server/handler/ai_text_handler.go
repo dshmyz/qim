@@ -209,6 +209,16 @@ func dataURLTooLarge(dataURL string) bool {
 }
 
 // TranslateImage 图片翻译（AI 视觉识别 + 翻译）
+// @Summary 图片翻译
+// @Description 上传图片地址，视觉模型识别图中文字并翻译为目标语言
+// @Tags AI
+// @Accept json
+// @Produce json
+// @Param request body TranslateImageRequest true "图片翻译请求"
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误或图片无可翻译文字"
+// @Failure 500 {object} AIResponse "服务器错误"
+// @Router /api/v1/ai/translate/image [post]
 func (h *AIHandler) TranslateImage(c *gin.Context) {
 	var req TranslateImageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -267,14 +277,14 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 
 注意：如果图片中确实没有文字，translated_text 必须为空字符串。不要编造文字。`, aiprompt.CurrentTimeLine(), langName)
 
-	messages_input := []ai.Message{
+	messages := []ai.Message{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: "请识别这张图片中的文字并翻译成" + langName, ImageURL: dataURL},
 	}
 
 	// 通过路由选择视觉 Provider / 模型（与群聊引用图片等视觉路径一致），
 	// 不传 Override，由 ModelRouter 按「视觉理解」路由解析即可。
-	result, err := h.aiService.GetCompletion(ai.TaskTypeVision, messages_input)
+	result, err := h.aiService.GetCompletion(ai.TaskTypeVision, messages)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片翻译失败: " + err.Error()})
 		return
@@ -340,6 +350,17 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 // DescribeImage 图片识别/描述（AI 视觉理解）。
 // 复用图片翻译同一套视觉链路：extractImageURL（支持消息 content JSON）+ imageToDataURL
 // （存储→base64 data URL，5MB 护栏）+「视觉理解」路由（TaskTypeVision）门控。
+// prompt 组装与模型回复解析下沉 service.DescribeImage，handler 仅做校验与响应。
+// @Summary 图片识别/描述
+// @Description 视觉模型识别/描述图片内容，支持自定义识别指令
+// @Tags AI
+// @Accept json
+// @Produce json
+// @Param request body DescribeImageRequest true "图片识别请求"
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误或未配置视觉路由"
+// @Failure 500 {object} AIResponse "服务器错误"
+// @Router /api/v1/ai/describe-image [post]
 func (h *AIHandler) DescribeImage(c *gin.Context) {
 	var req DescribeImageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -371,40 +392,13 @@ func (h *AIHandler) DescribeImage(c *gin.Context) {
 		return
 	}
 
-	instruction := strings.TrimSpace(req.Instruction)
-	if instruction == "" {
-		instruction = "识别图片内容并详细描述"
-	}
-
-	systemPrompt := fmt.Sprintf(`%s
-
-你是一个图片识别助手。请基于图片内容完成用户指定的任务（识别/描述/提取信息等）。
-请严格按以下 JSON 格式输出，不要包含任何其他内容：
-{"description": "对图片的识别/描述结果"}
-
-注意：只输出图片中实际存在的信息，不要编造。`, aiprompt.CurrentTimeLine())
-
-	messages_input := []ai.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: instruction, ImageURL: dataURL},
-	}
-
-	// 通过路由选择视觉 Provider / 模型，与图片翻译一致不传 Override
-	result, err := h.aiService.GetCompletion(ai.TaskTypeVision, messages_input)
+	description, err := service.DescribeImage(h.aiService, req.Instruction, dataURL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "图片识别失败: " + err.Error()})
 		return
 	}
 
-	// 解析 JSON 格式响应，提取描述；未按 JSON 返回时直接取全文（识别/描述可容忍自由文本）
-	var parsed struct {
-		Description string `json:"description"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(result)), &parsed); err != nil || parsed.Description == "" {
-		parsed.Description = strings.TrimSpace(result)
-	}
-
-	if parsed.Description == "" {
+	if description == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "未能识别图片内容"})
 		return
 	}
@@ -413,12 +407,22 @@ func (h *AIHandler) DescribeImage(c *gin.Context) {
 		"code":    200,
 		"message": "success",
 		"data": gin.H{
-			"description": parsed.Description,
+			"description": description,
 		},
 	})
 }
 
 // TranslateText 翻译文本
+// @Summary 翻译文本
+// @Description 将文本翻译为目标语言
+// @Tags AI
+// @Accept json
+// @Produce json
+// @Param request body TranslateTextRequest true "翻译请求"
+// @Success 200 {object} AIResponse "成功响应"
+// @Failure 400 {object} AIResponse "参数错误"
+// @Failure 500 {object} AIResponse "服务器错误"
+// @Router /api/v1/ai/translate [post]
 func (h *AIHandler) TranslateText(c *gin.Context) {
 	var req TranslateTextRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

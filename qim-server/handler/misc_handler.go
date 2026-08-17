@@ -16,12 +16,17 @@ import (
 
 func GetBots(c *gin.Context) {
 	db := database.GetDB()
+	userID, _ := c.Get("user_id")
+	var uid uint
+	if v, ok := userID.(uint); ok {
+		uid = v
+	}
 
 	var bots []model.Bot
-	// 返回：系统 Bot + 模板 Bot + 已审批通过的用户自建 Bot
+	// 可见范围：系统 bot + 模板 bot 全局可见；自定义 bot 仅创建者本人可见（与 BotUsableByUser 一致）。
 	db.Where(
-		"(creator_id = 0 AND is_active = ?) OR (is_template = ? AND is_active = ? AND approval_status = ?) OR (approval_status = ? AND is_active = ?)",
-		true, true, true, "approved", "approved", true,
+		"is_active = ? AND (creator_id = 0 OR is_template = ? OR creator_id = ?)",
+		true, true, uid,
 	).Find(&bots)
 
 	response.Success(c, bots)

@@ -74,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import Viewer from 'viewerjs'
 import 'viewerjs/dist/viewer.css'
 import type { Message, User } from '../../types'
@@ -329,9 +329,28 @@ onUnmounted(() => {
   destroyImageViewer()
 })
 
-watch(() => props.messages, () => {
+// 图片查看器只关心「图片集合」是否变化：仅在图片消息增删时刷新 viewer。
+// 不能对 messages 深监听——流式 AI 回复的每个 chunk 都会替换 messages 数组，
+// 每帧触发 viewer.update() → initList() 为列表里每张图新建 <img> 并重设 src
+// （viewerjs navbar 缩略图），导致聊天内图片在流式期间被反复请求。
+// 用「id+url 签名」代替：纯文本流式更新不改变签名，不触发 viewer 重建。
+const imageSignature = computed(() => {
+  const sigs: string[] = []
+  for (const msg of props.messages) {
+    if (msg.type !== 'image') continue
+    let url = msg.content
+    try {
+      const data = JSON.parse(msg.content)
+      if (data?.url) url = data.url
+    } catch { /* content 非 JSON，直接用原文 */ }
+    sigs.push(`${msg.id}:${url}`)
+  }
+  return sigs.join('|')
+})
+
+watch(imageSignature, () => {
   updateImageViewer()
-}, { deep: true })
+})
 </script>
 
 <style scoped>

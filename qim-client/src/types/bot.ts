@@ -60,6 +60,10 @@ export interface BotMessage {
   content: string
   timestamp: Date
   isStreaming?: boolean
+  // 该条回复标记为 AI 调用失败（后端以 StreamChunk.Error 帧推送），气泡走失败样式并提供重试
+  isError?: boolean
+  // 用户消息发送失败（网络/HTTP 错误）：气泡走失败样式并提供重发
+  isFailed?: boolean
   // Bot 回复命中笔记时的知识来源（标题/分数）
   knowledge_sources?: AISource[]
 }

@@ -2,7 +2,10 @@ package middleware
 
 import (
 	"strings"
+	"time"
 
+	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 
@@ -33,6 +36,41 @@ func AuthMiddleware(secret string, userSvc *service.UserService) gin.HandlerFunc
 		if tokenString == "" {
 			response.Unauthorized(c, "未提供认证令牌")
 			c.Abort()
+			return
+		}
+
+		// 用户长期令牌（qusr_…）：供 qim CLI / qim-mcp 等以本人身份调用用户 API。
+		// 按 sha256 查 UserToken（软删除即撤销），注入与 JWT 相同的 user_id/username/roles。
+		// 必须在 JWT 解析前判断，否则非 JWT 的 qusr_ 串会被当成无效 JWT 直接拒绝。
+		if strings.HasPrefix(tokenString, "qusr_") {
+			db := database.GetDB()
+			var ut model.UserToken
+			if err := db.Where("token_hash = ?", HashBotToken(tokenString)).First(&ut).Error; err != nil {
+				response.Unauthorized(c, "认证令牌无效")
+				c.Abort()
+				return
+			}
+
+			var user model.User
+			if err := db.First(&user, ut.UserID).Error; err != nil {
+				response.Unauthorized(c, "认证令牌无效")
+				c.Abort()
+				return
+			}
+
+			now := time.Now()
+			db.Model(&model.UserToken{}).Where("id = ?", ut.ID).Update("last_used_at", now)
+
+			c.Set("user_id", ut.UserID)
+			c.Set("username", user.Username)
+			c.Set("token_type", "user_token")
+
+			roleNames, err := userSvc.GetUserRoles(ut.UserID)
+			if err != nil {
+				roleNames = []string{}
+			}
+			c.Set("roles", roleNames)
+			c.Next()
 			return
 		}
 

@@ -223,7 +223,7 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 		// 触发范围：auto/smart/keyword 等启用模式；off / mention_only 维持现状不回复。
 		// video/audio 仅跳过（无法解析进上下文），同样不落入意图检测。
 		if e.smartReplyGraph != nil && isDirectMediaType(msg.Type) {
-			if decideDirectMediaReply(aiConfig, antiSpamBlocked) && (msg.Type == "image" || msg.Type == "file") {
+			if decideDirectMediaReply(aiConfig, content, antiSpamBlocked) && (msg.Type == "image" || msg.Type == "file") {
 				question := "请识别用户发送的这张图片，并结合上下文回复。"
 				if msg.Type == "file" {
 					question = "请阅读用户发送的这份文件的内容，并结合上下文回复。"
@@ -276,9 +276,21 @@ func isDirectMediaType(t string) bool {
 
 // decideDirectMediaReply 直接发媒体消息时群 AI 是否触发回复。
 // off / mention_only 维持现状不触发（mention_only 语义是"仅@触发"）；
-// 其余启用模式（auto/smart/keyword 等）触发，与 DecideGroupAIReply 的 Auto 判定保持一致。
-func decideDirectMediaReply(cfg *model.GroupAIConfig, antiSpamBlocked bool) bool {
-	return cfg.Enabled && !antiSpamBlocked && cfg.ReplyMode != "off" && cfg.ReplyMode != "mention_only"
+// 其余启用模式（auto/smart 等）触发，与 DecideGroupAIReply 的 Auto 判定保持一致。
+// 关键词门控与 DecideGroupAIReply 对齐：开启 TriggerKeywords 的群，直发媒体正文是
+// {"url":...} JSON，几乎不可能命中关键词，等效于不自动回复直发媒体--
+// 关键词模式的语义就是仅关键词命中的内容才唤起助手，媒体消息不得绕过。
+func decideDirectMediaReply(cfg *model.GroupAIConfig, content string, antiSpamBlocked bool) bool {
+	if !cfg.Enabled || antiSpamBlocked {
+		return false
+	}
+	if cfg.ReplyMode == "off" || cfg.ReplyMode == "mention_only" {
+		return false
+	}
+	if cfg.TriggerKeywords != "" && !groupAIKeywordMatches(content, cfg.TriggerKeywords) {
+		return false
+	}
+	return true
 }
 
 // selfQuoteMessageID 直接发图/发文件（不引用）时合成自引用：返回触发消息自身 ID，
@@ -727,6 +739,10 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 // 后卡片仍可见。kind 取 "带"（内置群管理工具）或 "外部"（外部 MCP 工具），用于区分日志。
 // execStream 可为 nil（无流式能力时）——此时直接走下面的非流式路径。
 func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint, kind string, exec func(context.Context, *service.SmartReplyContext, ai.ReActStepCallback) (string, error), execStream func(context.Context, *service.SmartReplyContext, ai.ReActStepCallback, func(ai.StreamChunk) error) (bool, error)) {
+	// AI 开始处理：先推开始事件供前端「思考中」占位（首个流式帧到达前）。
+	// 本函数仅在 messageSender 非 nil 时被调用（引擎装配保证），此处不再重复判空。
+	e.messageSender.NotifyReplyStarted(conversationID)
+
 	sendChunk, getMsg, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
 		log.Printf("[SmartReply] 创建流式消息失败: %v", err)

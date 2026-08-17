@@ -15,11 +15,27 @@ func NewBotService(db *gorm.DB) *BotService {
 	return &BotService{db: db}
 }
 
-func (s *BotService) GetBots() ([]model.Bot, error) {
+// BotUsableByUser 判断用户能否与某 bot 建立/继续 1:1（普通聊天窗口入口与回复路径共用）：
+// 系统/模板 bot（creator_id=0 或 is_template）→ 所有人可用；
+// 自定义 bot → 仅创建者本人（防止越权使用他人 bot、烧创建者自定义模型配额）。
+// 一律要求 is_active（停用即停嘴）。
+func BotUsableByUser(userID uint, bot *model.Bot) bool {
+	if !bot.IsActive {
+		return false
+	}
+	if bot.IsTemplate || bot.CreatorID == 0 {
+		return true
+	}
+	return bot.CreatorID == userID
+}
+
+func (s *BotService) GetBots(userID uint) ([]model.Bot, error) {
 	var bots []model.Bot
+	// 可见范围：系统 bot + 模板 bot 全局可见；自定义 bot 仅创建者本人可见（与 BotUsableByUser 一致）。
+	// 不再引用 approval_status 列：model.Bot 无此字段，旧 SQL 在新库会报 no such column。
 	err := s.db.Where(
-		"(creator_id = 0 AND is_active = ?) OR (is_template = ? AND is_active = ? AND approval_status = ?) OR (approval_status = ? AND is_active = ?)",
-		true, true, true, "approved", "approved", true,
+		"is_active = ? AND (creator_id = 0 OR is_template = ? OR creator_id = ?)",
+		true, true, userID,
 	).Find(&bots).Error
 	return bots, err
 }

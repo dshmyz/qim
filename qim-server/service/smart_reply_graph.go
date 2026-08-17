@@ -286,31 +286,40 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 	if err := g.prepareInput(input); err != nil {
 		return nil, err
 	}
+	// 被引用图片的任务路由与降级判定须在 buildHistoryMessages 之前：
+	// 降级会把 input.Quoted 从图片改写为失败提示语，先建历史再降级会导致
+	// 降级文本进不了上下文、图片 base64 仍随 MultiContent 发给纯文本模型。
+	taskType := g.resolveQuotedImageTaskType(input)
 	historyMessages := g.buildHistoryMessages(input)
-	// 被引用图片时走视觉任务类型（多模态），否则常规对话。
-	// 若未显式配置视觉路由，TaskTypeVision 会回退到 defaultTask（纯文本 chat 模型），
-	// 把图片 base64 发给它必然 400。此时把被引用图片降级为 QuotedFailed 提示语并在
-	// 常规对话任务下走完，让 AI 诚实说明"当前模型不支持看图"，而不触发模型调用错误。
-	taskType := ai.TaskTypeChat
-	if input.Quoted != nil && input.Quoted.Kind == QuotedImage {
-		if g.aiService.HasVisionRoute() {
-			taskType = ai.TaskTypeVision
-		} else {
-			logger.WithModule("SmartReplyGraph").Info("引用图片降级：未配置视觉路由",
-				"userID", input.UserID, "convID", input.ConversationID)
-			refPrefix := "你引用了"
-			if input.IsSelfQuote {
-				refPrefix = "用户发送了"
-			}
-			input.Quoted = &QuotedContext{
-				Kind: QuotedFailed,
-				Name: input.Quoted.Name,
-				Text: fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但当前配置的模型不支持查看图片。请如实说明你看不到图片，可请对方把图片里的关键信息用文字发出来。", input.Quoted.Name),
-			}
-		}
-	}
 	chatModel := NewEinoChatModel(g.aiService, taskType, input.UserID)
 	return chatModel.Stream(ctx, historyMessages)
+}
+
+// resolveQuotedImageTaskType 处理被引用图片的任务路由与降级。
+// 配置了视觉路由 -> TaskTypeVision（多模态识别）；否则 TaskTypeVision 会回退到
+// defaultTask（纯文本 chat 模型），把图片 base64 发给它必然 400，此时把被引用图片
+// 降级为 QuotedFailed 提示语并在常规对话任务下走完，让 AI 诚实说明"当前模型不支持
+// 看图"，而不触发模型调用错误。流式路径（ExecuteStream）与带工具路径
+// （ExecuteWithTools/Stream，经 preparedHistory）共用，避免带工具路径丢图直接 400。
+func (g *SmartReplyGraph) resolveQuotedImageTaskType(input *SmartReplyContext) ai.TaskType {
+	if input.Quoted == nil || input.Quoted.Kind != QuotedImage {
+		return ai.TaskTypeChat
+	}
+	if g.aiService.HasVisionRoute() {
+		return ai.TaskTypeVision
+	}
+	logger.WithModule("SmartReplyGraph").Info("引用图片降级：未配置视觉路由",
+		"userID", input.UserID, "convID", input.ConversationID)
+	refPrefix := "你引用了"
+	if input.IsSelfQuote {
+		refPrefix = "用户发送了"
+	}
+	input.Quoted = &QuotedContext{
+		Kind: QuotedFailed,
+		Name: input.Quoted.Name,
+		Text: fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但当前配置的模型不支持查看图片。请如实说明你看不到图片，可请对方把图片里的关键信息用文字发出来。", input.Quoted.Name),
+	}
+	return ai.TaskTypeChat
 }
 
 // groupAssistantToolWhitelist 群聊助手可用的工具白名单：只含群聊相关工具，
@@ -363,7 +372,7 @@ func (g *SmartReplyGraph) toolsetToolNames(t SmartReplyToolset) []string {
 // feedback 为可选的每步工具执行回调（variadic，nil 即不回调），供调用方收集工具调用
 // 记录做卡片展示；与外部工具路径共用同一 MultiStep 钩子（ai.ReActStepCallback）。
 func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartReplyContext, t SmartReplyToolset, feedback ...ai.ReActStepCallback) (string, error) {
-	historyMessages, err := g.preparedHistory(input, t)
+	historyMessages, taskType, err := g.preparedHistory(input, t)
 	if err != nil {
 		return "", err
 	}
@@ -373,7 +382,7 @@ func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartRepl
 		onStep = feedback[0]
 	}
 	return g.aiService.GetCompletionWithToolsMultiStep(
-		ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx, g.toolsetToolNames(t),
+		taskType, einoMessagesToAIMessages(historyMessages), callerCtx, g.toolsetToolNames(t),
 		ai.MaxReActSteps, onStep,
 	)
 }
@@ -395,13 +404,13 @@ func (g *SmartReplyGraph) HasExternalTools() bool {
 // (streamed=false, err=ai.ErrStreamingToolsNotSupported)，调用方降级到非流式 ExecuteWithTools。
 // onStep 与 onChunk 均有意义：工具事件走 onStep（卡片），答案逐 token 走 onChunk。
 func (g *SmartReplyGraph) ExecuteWithToolsStream(ctx context.Context, input *SmartReplyContext, t SmartReplyToolset, onStep ai.ReActStepCallback, onChunk func(chunk ai.StreamChunk) error) (streamed bool, err error) {
-	historyMessages, err := g.preparedHistory(input, t)
+	historyMessages, taskType, err := g.preparedHistory(input, t)
 	if err != nil {
 		return false, err
 	}
 	callerCtx := &ai.CallerContext{UserID: input.UserID}
 	err = g.aiService.GetCompletionWithToolsStreamMultiStep(
-		ctx, ai.TaskTypeChat, einoMessagesToAIMessages(historyMessages), callerCtx, g.toolsetToolNames(t),
+		ctx, taskType, einoMessagesToAIMessages(historyMessages), callerCtx, g.toolsetToolNames(t),
 		ai.MaxReActSteps, onStep, onChunk,
 	)
 	if errors.Is(err, ai.ErrStreamingToolsNotSupported) {
@@ -412,18 +421,21 @@ func (g *SmartReplyGraph) ExecuteWithToolsStream(ctx context.Context, input *Sma
 
 // preparedHistory 补齐输入上下文并构造历史消息；外部工具集追加输出组织指引
 // （见 externalToolOutputGuideMessage）。两种流式/非流式路径共用同一准备骨架。
-func (g *SmartReplyGraph) preparedHistory(input *SmartReplyContext, t SmartReplyToolset) ([]*schema.Message, error) {
+// 返回值附带任务类型：被引用图片同样经 resolveQuotedImageTaskType 路由/降级，
+// 避免带工具路径以 TaskTypeChat 把图片 base64 发给纯文本模型直接 400。
+func (g *SmartReplyGraph) preparedHistory(input *SmartReplyContext, t SmartReplyToolset) ([]*schema.Message, ai.TaskType, error) {
 	if err := g.prepareInput(input); err != nil {
-		return nil, err
+		return nil, ai.TaskTypeChat, err
 	}
 	// 带工具路径：声明本次携带了工具，供 buildSystemPrompt 注入能力边界（有工具=如实执行；无工具=诚实说明）。
 	input.HasTools = true
 	input.AllowedTools = g.toolsetToolNames(t)
+	taskType := g.resolveQuotedImageTaskType(input)
 	history := g.buildHistoryMessages(input)
 	if t == ToolsetExternal {
 		history = append(history, externalToolOutputGuideMessage())
 	}
-	return history, nil
+	return history, taskType, nil
 }
 
 // prepareInput 补齐 SmartReplyContext 的群/用户/待办/成员/知识库/记忆等上下文，

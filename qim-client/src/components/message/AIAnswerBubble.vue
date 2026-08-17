@@ -87,10 +87,12 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
   color: white;
 }
 .ai-answer-bubble.im:not(.self) {
-  background: transparent;
+  background: var(--message-bubble-bg);
   color: var(--text-color);
-  border: 1px solid color-mix(in srgb, var(--border-color), transparent 60%);
   border-bottom-left-radius: 4px;
+}
+.message-item.ai:not(.private-chat) .ai-answer-bubble.im:not(.self) {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.06) 0%, rgba(118, 75, 162, 0.06) 100%);
 }
 
 /* botchat 变体：气泡壳交给 BotChatView 的 .message-bubble（其内嵌 .ai-answer-bubble），仅保留正文排版 */

@@ -287,25 +287,8 @@ export function useChat() {
         return
       }
       
-      // 检查是否为机器人会话
-      const currentConv = currentConversation.value
-      const isBotConversation = currentConv && (currentConv.type === 'bot' || currentConv.isBot)
-      
-      if (isBotConversation) {
-        await handleStreamMessage(
-          conversationId,
-          requestData,
-          messageData,
-          miniAppData,
-          newsData,
-          messages,
-          storage,
-          serverUrl,
-          getToken,
-          showMessage
-        )
-      } else {
-        const response = await request(
+      // 统一走 REST 发送（bot 会话也走 REST，bot 回复由 WS streaming 推送）
+      const response = await request(
           `/api/v1/conversations/${conversationId}/messages`,
           {
             method: 'POST',
@@ -335,7 +318,7 @@ export function useChat() {
           }
           
           messages.value.push(newMessage)
-          
+
           const conversationIndex = conversations.value.findIndex(
             c => c.id.toString() === conversationId
           )
@@ -367,7 +350,6 @@ export function useChat() {
           
           messages.value.push(failedMessage)
         }
-      }
     } catch (error) {
       console.error('发送消息失败:', error)
       showMessage({ message: '消息发送失败，请重试', type: 'error' })

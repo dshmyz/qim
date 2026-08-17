@@ -34,7 +34,7 @@
       </div>
       <div class="conversation-info">
         <div class="conversation-name">
-          {{ conversation.name }}
+          <span class="conversation-name-text">{{ conversation.name }}</span>
           <span v-if="conversation.type === 'group' && conversation.members" class="member-count">
             ({{ conversation.members.length }}人)
           </span>
@@ -380,19 +380,30 @@ const getUnreadCount = (conversation: Conversation): number => {
   min-width: 0;
 }
 
+/* 名字 + 徽标（AI机器人/成员数）同行：名字可截断（flex ellipsis），badge flex-shrink:0 常显 */
 .conversation-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.conversation-name-text {
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-color, #333);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .member-count {
   font-size: var(--font-size-xxs);
   color: var(--text-secondary, #999);
   font-weight: normal;
+  flex-shrink: 0;
 }
 
 .conversation-preview {

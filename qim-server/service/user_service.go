@@ -240,10 +240,15 @@ func (s *UserService) GetSystemUserID() uint {
 	return 0
 }
 
-// GetDefaultAIAssistant 获取或创建默认 AI 助手用户（用于单聊/通用场景）
+// GetDefaultAIAssistant 获取系统内置 AI 助手用户（用于单聊/通用场景）。
+// 只认非模板的系统内置 assistant（is_template=false, creator_id=0）——模板是创建样板，
+// 不参与会话；此前按「第一个 assistant」会挑到模板 AI助手，让模板顶替了内置对端。
 func (s *UserService) GetDefaultAIAssistant() (*model.User, error) {
 	var existingBot model.Bot
-	err := s.db.Where("type = ? AND group_id IS NULL", model.BotTypeAssistant).First(&existingBot).Error
+	err := s.db.Where(
+		"type = ? AND group_id IS NULL AND is_template = ? AND creator_id = ?",
+		model.BotTypeAssistant, false, 0,
+	).Order("id ASC").First(&existingBot).Error
 	if err == nil && existingBot.VirtualUserID != nil {
 		var user model.User
 		if err := s.db.First(&user, *existingBot.VirtualUserID).Error; err == nil {

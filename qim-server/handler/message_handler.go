@@ -737,6 +737,10 @@ func broadcastNewMessage(msg *model.Message, excludeUserID uint, conv *model.Con
 	}
 }
 
+// StreamMessage [DEPRECATED 2026-09-30] 仅用于 BotChatView SSE 流，待迁移到 REST + WS streaming 后移除。
+// 主窗口 bot 1:1 已改为走 REST SendMessage + WS streaming（与群AI/分身同一通道），
+// 此端点因缺少 image/file 路由、per-conversation 串行、工具调用等能力而被替代。
+// TODO: 2026-09-30 后删除此函数及对应路由。
 func StreamMessage(c *gin.Context) {
 	uid, ok := getUserIDFromContext(c)
 	if !ok {
@@ -815,18 +819,29 @@ func StreamMessage(c *gin.Context) {
 		var botConv model.BotConversation
 		if err := db.Where("conversation_id = ?", convID).First(&botConv).Error; err != nil {
 			logger.WithModule("StreamMessage").Error("查找机器人会话关联失败", "error", err)
+			// Error 帧下发原因而非静默 return：旧数据中 bot 删除后可能残留 1:1 会话与配对行，
+			// 静默失败会让前端流式占位气泡停在空白（用户只看到一条空消息）。
+			msg := "该会话已失效（助手已删除），无法回复。"
+			responseChan <- ai.StreamChunk{Content: msg, Error: &msg}
 			return
 		}
 
 		var bot model.Bot
 		if err := db.First(&bot, botConv.BotID).Error; err != nil {
 			logger.WithModule("StreamMessage").Error("查找机器人信息失败", "error", err)
+			// 同上：bot 被软删后配对行仍在时走到这里，须告知用户而非吞掉。
+			msg := "该助手已被删除，无法回复。"
+			responseChan <- ai.StreamChunk{Content: msg, Error: &msg}
 			return
 		}
 
-		// 检查机器人是否已启用（审批通过）
-		if !bot.IsActive {
-			logger.WithModule("StreamMessage").Error("机器人未启用", "botID", botConv.BotID)
+		// 访问门控：与 CreateBotConversation / handleBotMessage 同一判定（BotUsableByUser）。
+		// 停用 bot -> 不回复；非创建者访问他人自定义 bot -> 不回复（防越权烧创建者配额）。
+		// 以 Error 帧下发原因，前端可见失败态而非静默断流。
+		if !service.BotUsableByUser(uid, &bot) {
+			logger.WithModule("StreamMessage").Error("机器人不可用（停用或非创建者）", "botID", botConv.BotID, "userID", uid)
+			msg := "机器人未启用或仅创建者可用，无法回复。"
+			responseChan <- ai.StreamChunk{Content: msg, Error: &msg}
 			return
 		}
 
@@ -845,8 +860,13 @@ func StreamMessage(c *gin.Context) {
 		}
 		systemPrompt = di.GlobalContainer.PromptManager.BuildSystemPrompt(service.SceneBotChat, promptCtx)
 
+		// 上下文窗口取「最近 20 条」而非最早 20 条：原 ASC+Limit 会拿到会话开头的 20 条，
+		// 长会话下 AI 反而丢失最近上下文（越聊越失忆）。先 DESC 取最近 N 条，再反转为时间正序喂给模型。
 		var messages []model.Message
-		db.Where("conversation_id = ?", convID).Order("created_at ASC").Limit(20).Find(&messages)
+		db.Where("conversation_id = ?", convID).Order("created_at DESC").Limit(20).Find(&messages)
+		for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+			messages[i], messages[j] = messages[j], messages[i]
+		}
 
 		logger.WithModule("StreamMessage").Info("加载历史消息",
 			"conversationID", convID,
@@ -855,7 +875,17 @@ func StreamMessage(c *gin.Context) {
 			"virtualUserID", bot.VirtualUserID,
 		)
 
-		systemUserID := service.NewUserService(db).GetSystemUserID()
+		// 解析 bot 回复的发送者身份：优先 bot 自身虚拟用户；缺失时兜底默认 AI 助手
+		// （GetDefaultAIAssistant），绝不能兜底到系统账号（GetSystemUserID）——那是
+		// 群发系统通知用的广播身份，bot 会话冒充它会在单聊里与广播通知串号。
+		userSvc := service.NewUserService(db)
+		systemUserID := userSvc.GetSystemUserID()
+		botSenderID := systemUserID
+		if bot.VirtualUserID != nil {
+			botSenderID = *bot.VirtualUserID
+		} else if aiUser, err := userSvc.GetDefaultAIAssistant(); err == nil && aiUser != nil {
+			botSenderID = aiUser.ID
+		}
 
 		var aiMessages []ai.Message
 		aiMessages = append(aiMessages, ai.Message{
@@ -865,7 +895,7 @@ func StreamMessage(c *gin.Context) {
 
 		for _, msg := range messages {
 			role := "user"
-			if msg.SenderID == systemUserID || (bot.VirtualUserID != nil && msg.SenderID == *bot.VirtualUserID) {
+			if msg.SenderID == systemUserID || msg.SenderID == botSenderID {
 				role = "assistant"
 			}
 			aiMessages = append(aiMessages, ai.Message{
@@ -902,14 +932,13 @@ func StreamMessage(c *gin.Context) {
 		if err != nil {
 			logger.WithModule("StreamMessage").Error("AI API 调用失败", "error", err)
 			errorMsg := "抱歉，AI 服务暂时不可用，请稍后再试。"
-			responseChan <- ai.StreamChunk{Content: errorMsg}
+			// 以 Error 帧推送失败态（前端据此渲染失败样式并可重试），而非把错误文本伪装成正常回答；
+			// 错误回复仍作为 bot 消息持久化，历史回放与离线加载保持一致可见。
+			responseChan <- ai.StreamChunk{Content: errorMsg, Error: &errorMsg}
 			fullResponse = errorMsg
 		}
 
-		senderID := service.NewUserService(db).GetSystemUserID()
-		if bot.VirtualUserID != nil {
-			senderID = *bot.VirtualUserID
-		}
+		senderID := botSenderID
 
 		botReply := model.Message{
 			ConversationID: uint(convIDUint),

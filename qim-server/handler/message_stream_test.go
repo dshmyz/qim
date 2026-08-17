@@ -90,3 +90,40 @@ func TestStreamMessagePersistsBotReplyBeforeFinishing(t *testing.T) {
 	require.Equal(t, botReply.ID, *updatedConv.LastMessageID)
 	require.NotNil(t, updatedConv.LastMessageAt)
 }
+
+// 残留会话（bot 已删除但配对行/会话仍在）必须以 Error 帧告知用户，
+// 而不是静默 return 让前端流式占位气泡停在空白（历史 bug：用户只看到一条空消息）。
+func TestStreamMessageDeletedBotRepliesErrorFrame(t *testing.T) {
+	router, db, _, _, conv := setupStreamMessageTest(t)
+
+	// 场景 1：配对行残留、bot 本体已软删 -> 应收到「助手已被删除」Error 帧
+	var bot model.Bot
+	require.NoError(t, db.First(&bot, "name = ?", "Writing Bot").Error)
+	require.NoError(t, db.Delete(&bot).Error) // 软删（model.Bot 带 DeletedAt），配对行保留
+
+	body := bytes.NewBufferString(`{"type":"text","content":"？"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/1/messages/stream", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), "该助手已被删除")
+	require.Contains(t, w.Body.String(), `"error"`)
+
+	// 场景 2：配对行也不存在（DeleteBot 清理后的残留会话）-> 应收到「会话已失效」Error 帧
+	require.NoError(t, db.Where("conversation_id = ?", conv.ID).Delete(&model.BotConversation{}).Error)
+
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/1/messages/stream", bytes.NewBufferString(`{"type":"text","content":"？"}`))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	require.Equal(t, http.StatusOK, w2.Code)
+	require.Contains(t, w2.Body.String(), "该会话已失效")
+
+	// 两种失败场景都不应落库任何 bot 回复（区别于 AI 调用失败会落错误提示回复）
+	var assistantReplies int64
+	require.NoError(t, db.Model(&model.Message{}).Where("conversation_id = ? AND origin = ?", conv.ID, "assistant").Count(&assistantReplies).Error)
+	require.Zero(t, assistantReplies)
+}

@@ -13,6 +13,12 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 let lastSaveTime = 0
 const SAVE_THROTTLE = 500 // ms
 
+// AI 回复开始（ai_reply_started）到回复消息落库之间的「思考中」占位安全超时：
+// 前端靠非本人 new_message（流式首帧/完整回复/系统提示）清除占位，此兜底防止
+// 事件丢失导致某会话永久卡在思考态。
+const AI_THINKING_TIMEOUT = 90_000 // ms
+const aiThinkingTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
 function mergeByConversationId(existing: Conversation[], incoming: Conversation[]) {
   const merged = new Map<string, Conversation>()
   for (const conversation of [...existing, ...incoming]) {
@@ -64,6 +70,7 @@ export const useChatStore = defineStore('chat', () => {
   const hasMoreMessages = ref<Map<string, boolean>>(new Map())
   const messagePage = ref<Map<string, number>>(new Map())
   const readUsersMap = ref<Map<string, MessageReadInfo>>(new Map())
+  const aiThinking = ref<Map<string, boolean>>(new Map())
 
   // 计算属性
   const currentConversation = computed(() => {
@@ -224,6 +231,33 @@ export const useChatStore = defineStore('chat', () => {
     return readUsersMap.value
   }
 
+  // AI 回复「思考中」占位状态：收到 ai_reply_started 置 true（并挂 90s 兜底计时），
+  // 回复消息/系统提示到达（isAiThinking=false）或兜底超时置 false。
+  function setAiThinking(conversationId: string, thinking: boolean) {
+    if (thinking) {
+      aiThinking.value = new Map(aiThinking.value).set(conversationId, true)
+      const prev = aiThinkingTimers.get(conversationId)
+      if (prev) clearTimeout(prev)
+      aiThinkingTimers.set(conversationId, setTimeout(() => {
+        aiThinkingTimers.delete(conversationId)
+        setAiThinking(conversationId, false)
+      }, AI_THINKING_TIMEOUT))
+    } else {
+      const prev = aiThinkingTimers.get(conversationId)
+      if (prev) clearTimeout(prev)
+      aiThinkingTimers.delete(conversationId)
+      if (aiThinking.value.has(conversationId)) {
+        const next = new Map(aiThinking.value)
+        next.delete(conversationId)
+        aiThinking.value = next
+      }
+    }
+  }
+
+  function isAiThinking(conversationId: string): boolean {
+    return aiThinking.value.get(conversationId) === true
+  }
+
   // 业务逻辑方法
   function pinConversation(id: string, is_pinned: boolean) {
     const index = conversations.value.findIndex(c => sameConversationId(c.id, id))
@@ -257,6 +291,7 @@ export const useChatStore = defineStore('chat', () => {
       conversations.value = [...conversations.value]
       messages.value.delete(id)
       drafts.value.delete(id)
+      setAiThinking(id, false)
       saveToStorage(conversations.value)
     }
   }
@@ -426,6 +461,7 @@ export const useChatStore = defineStore('chat', () => {
     hasMoreMessages,
     messagePage,
     readUsersMap,
+    aiThinking,
     // 计算属性
     currentConversation,
     currentMessages,
@@ -453,6 +489,8 @@ export const useChatStore = defineStore('chat', () => {
     getPage,
     setReadUsersMap,
     getReadUsersMap,
+    setAiThinking,
+    isAiThinking,
     // 业务逻辑方法
     pinConversation,
     muteConversation,

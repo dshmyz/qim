@@ -339,7 +339,10 @@
         <div v-else-if="systemConfigStore.enableAI && selectedAppId === 'ai_assistant'" class="right-content">
           <Suspense timeout="0">
             <template #default>
-              <AIAssistantApp @back="selectedAppId = ''" />
+              <AIAssistantApp
+                :workbench-reset-key="workbenchResetKey"
+                @back="selectedAppId = ''"
+              />
             </template>
             <template #fallback>
               <ContentSkeleton type="settings" />
@@ -664,7 +667,9 @@
   />
 
   <!-- AI 悬浮球 -->
-  <FloatingAIBall />
+  <!-- AI 工作台（Q2 快速入口）：应用视图的 ai_assistant 分支嵌在 activeOption==='apps' 块内，
+       必须成对设置 selectedAppId + activeOption，否则从主列表（activeOption='recent'）点菜单项不生效 -->
+  <FloatingAIBall @open-workspace="openAIWorkbench" />
 
   <!-- AI 侧边栏面板（全局） -->
   <AISidebarPanel
@@ -1797,6 +1802,12 @@ const connectWebSocket = () => {
     'message_deleted': handleMessageDeleted,
     'message_updated': handleMessageUpdated,
     'ai_tool_call': handleToolCall,
+    'ai_reply_started': (data: any) => {
+      // AI 回复开始处理：置「思考中」占位；回复消息（流式首帧/完整回复/系统提示）
+      // 到达或 90s 安全超时后由 setAiThinking(false) 清除。
+      const cid = data?.conversation_id
+      if (cid != null) chatStore.setAiThinking(String(cid), true)
+    },
     'sync_hint': async (data: any) => {
       // 服务端缓冲区溢出时发送 sync_hint，触发离线消息增量拉取补偿
       logger.log('[WS] 收到 sync_hint，开始离线消息补偿:', data?.reason)
@@ -2176,6 +2187,12 @@ const handleNewMessage = async (msg: any) => {
   const conversationId = data.conversation_id.toString()
 
   const newMessage = processMessage(data, conversationId)
+
+  // AI 回复开始产出：任何非本人回复消息（流式首帧/完整回复/系统提示）到达即清除
+  // 「思考中」占位。本人消息不清除，避免多消息交错时过早熄灭占位。
+  if (newMessage && !newMessage.isSelf) {
+    chatStore.setAiThinking(conversationId, false)
+  }
 
   // 流式期间工具调用经 ai_tool_call 独立事件累积；若本帧（流式 chunk / finish 的
   // new_message）未携带 tool_calls，保留已在 store 中累积的记录，避免 overlay 清空卡片。
@@ -2755,6 +2772,17 @@ const focusEventId = ref<number | string>('')
 // 应用逻辑（使用 useAppLogic composable，共享 selectedAppId 等状态）
 const appLogic = useAppLogic({ selectedAppId, recentApps, currentUserApp, showMiniAppList, externalCustomApps: customApps })
 const { openApp, openUserApp, openExternalApp, loadBuiltInApps: loadAppCategories, builtInApps } = appLogic
+
+// 悬浮球「AI 工作台」入口：每次点击自增，驱动 AIAssistantApp 回到工作台仪表盘。
+// 若已处于 AI 应用内（如 bot 聊天子视图），仅重设 selectedAppId/activeOption 不会重置其
+// 内部 showChatView，用户会看到「没反应」；key 变化让应用 watch 后 backToDashboard()。
+const workbenchResetKey = ref(0)
+
+function openAIWorkbench() {
+  openApp('ai_assistant')
+  activeOption.value = 'apps'
+  workbenchResetKey.value++
+}
 
 // 创建新笔记
 

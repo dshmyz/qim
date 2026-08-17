@@ -28,7 +28,12 @@
       @load-more="emit('load-more')"
       @scroll="handleMessageListScroll"
       @recall-edit="(originalContent: string) => emit('recall-edit', originalContent)"
-    />
+    >
+      <!-- AI 思考中占位：ai_reply_started 置位后、首个回复消息到达前显示 -->
+      <template #thinking-indicator>
+        <ThinkingIndicator v-if="aiThinking" />
+      </template>
+    </MessageListView>
 
     <!-- 群成员侧边栏 -->
     <MemberSidebar
@@ -51,6 +56,8 @@ import { computed, ref } from 'vue'
 import type { Conversation, Message, User } from '../../types'
 import MessageListView from './MessageListView.vue'
 import MemberSidebar from './MemberSidebar.vue'
+import ThinkingIndicator from '../shared/ThinkingIndicator.vue'
+import { useChatStore } from '../../stores/chat'
 import { getAvatarUrl } from '../../utils/avatar'
 
 /** MemberSidebar 组件内部使用的 Member 类型 */
@@ -127,6 +134,14 @@ const memberSearchQueryLocal = computed({
 
 const showMemberSidebar = computed(() => {
   return props.conversation?.type === 'group' || props.conversation?.type === 'discussion'
+})
+
+const chatStore = useChatStore()
+
+/** 当前会话是否处于 AI 回复「思考中」（由 ai_reply_started 事件置位） */
+const aiThinking = computed(() => {
+  const id = props.conversation?.id
+  return id != null && chatStore.isAiThinking(String(id))
 })
 
 /** 将 User[] 映射为 Member[]，适配 MemberSidebar 的类型要求（保留名片展示所需字段） */

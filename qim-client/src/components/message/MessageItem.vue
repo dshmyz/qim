@@ -828,11 +828,8 @@ const convertUrlsToLinks = (text: string): string => {
   color: #fef08a !important;
 }
 
-/* AI 消息样式 - 私聊中不生效 */
-.message-item.ai:not(.private-chat) .message-bubble {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.06) 0%, rgba(118, 75, 162, 0.06) 100%);
-  border: 1px solid rgba(102, 126, 234, 0.15);
-}
+/* AI 消息样式 - 已迁移至 AIAnswerBubble.vue（.ai-answer-bubble.im:not(.self)），
+   群聊紫蓝渐变 / 私聊 --message-bubble-bg 统一由气泡组件自身控制 */
 
 .message-item.ai .message-sender {
   display: flex;

@@ -361,3 +361,20 @@ func (s *WebSocketMessageSender) SendToolCallEvent(conversationID uint, msgID ui
 	jsonMsg, _ := json.Marshal(wsMsg)
 	s.hub.SendToConversation(conversationID, 0, jsonMsg)
 }
+
+// NotifyReplyStarted 在 AI 回复开始处理时推一条 ai_reply_started WS 事件
+// （type=ai_reply_started），前端据此在首个流式帧/回复消息到达前显示「思考中」。
+// 不落库、无副作用：AI 报错不会留空消息，前端靠回复消息或安全超时清除占位。
+func (s *WebSocketMessageSender) NotifyReplyStarted(conversationID uint) {
+	if s.hub == nil {
+		return
+	}
+	wsMsg := ws.WSMessage{
+		Type: "ai_reply_started",
+		Data: gin.H{
+			"conversation_id": conversationID,
+		},
+	}
+	jsonMsg, _ := json.Marshal(wsMsg)
+	s.hub.SendToConversation(conversationID, 0, jsonMsg)
+}

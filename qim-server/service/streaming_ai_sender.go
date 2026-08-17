@@ -39,6 +39,9 @@ type StreamingAISender interface {
 	// SendToolCallEvent 把一条工具调用作为独立 WS 事件推给会话（type=ai_tool_call），
 	// 前端按 message_id 把卡片关联到对应流式 AI 消息。实时推送与 Extra 持久化分离。
 	SendToolCallEvent(conversationID uint, msgID uint, record ToolCallRecord)
+	// NotifyReplyStarted 在 AI 回复开始处理时推一条 ai_reply_started WS 事件，
+	// 前端据此在首个流式帧/回复消息到达前显示「思考中」。不落库，无副作用。
+	NotifyReplyStarted(conversationID uint)
 }
 
 // NewToolCallFeedback 构造带工具回复的 ReAct 进度回调（群 @AI、专属机器人等带工具路径共用）。
