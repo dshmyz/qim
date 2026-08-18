@@ -685,6 +685,31 @@
                 }
             }
         },
+        "/api/v1/client/versions/distribution/users": {
+            "get": {
+                "description": "从 WebSocket Hub 内存枚举指定版本（空=全部）的在线用户，供管理后台版本分布钻取",
+                "tags": [
+                    "版本管理"
+                ],
+                "summary": "获取指定版本在线用户",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "版本号；空则返回全部在线用户",
+                        "name": "version",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "在线用户列表",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/notes/{id}/access": {
             "patch": {
                 "description": "打开后笔记向量化进分身知识库集合，关闭后移除该笔记向量",
@@ -742,6 +767,76 @@
                     },
                     "500": {
                         "description": "服务器错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/notes/{id}/format": {
+            "post": {
+                "description": "将笔记内容整理为规范 Markdown；超长笔记只处理前 10000 字符并返回 truncated 标记",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "笔记"
+                ],
+                "summary": "AI 格式化笔记内容",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "笔记ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "格式化结果",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "content": {
+                                                    "type": "string"
+                                                },
+                                                "truncated": {
+                                                    "type": "boolean"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "无效ID/内容疑似乱码",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "笔记不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "503": {
+                        "description": "AI 服务未配置",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
                         }

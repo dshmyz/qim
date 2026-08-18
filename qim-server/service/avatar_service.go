@@ -246,7 +246,8 @@ func (s *AvatarService) GenerateReplyWithImageSources(userID uint, conversationI
 		imageName = name
 	}
 	ctx := context.Background()
-	return graph.ExecuteWithImageSources(ctx, userID, conversationID, triggerMessage, dataURL, imageName, config)
+	// 自动图片回复（worker 触发，非用户主动）：不置 BypassScope，严格范围策略照常生效
+	return graph.ExecuteWithImageSources(ctx, userID, conversationID, triggerMessage, dataURL, imageName, config, false)
 }
 
 // GenerateReplyBatchWithImageSources 供分身对「合并窗口内连发的一批消息」生成一条合并回复。
@@ -293,7 +294,8 @@ func (s *AvatarService) GenerateReplyBatchWithImageSources(userID uint, conversa
 	}
 
 	ctx := context.Background()
-	return graph.ExecuteBatchWithImagesSources(ctx, userID, conversationID, orderTexts, imageURLs, imageNames, config)
+	// 自动批量图片回复（worker 触发，非用户主动）：不置 BypassScope，严格范围策略照常生效
+	return graph.ExecuteBatchWithImagesSources(ctx, userID, conversationID, orderTexts, imageURLs, imageNames, config, false)
 }
 
 // PreviewReply 预览回复

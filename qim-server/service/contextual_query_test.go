@@ -66,16 +66,35 @@ func TestFetchRecentHistoryForQuery(t *testing.T) {
 	}
 
 	// 排除触发消息（content+sender 匹配）
-	hist := fetchRecentHistoryForQuery(db, 7, 1, "触发消息")
+	hist, err := fetchRecentHistoryForQuery(db, 7, 1, "触发消息")
+	require.NoError(t, err)
 	assert.NotContains(t, hist, "触发消息", "触发消息本身应被排除，避免 query 自引用")
 	assert.Contains(t, hist, "Alice: 第一条")
 	assert.Contains(t, hist, "Bob: 第二条")
 	assert.NotContains(t, hist, "图片消息", "非 text/markdown 消息不应进入历史")
 
 	// 无 dedupe 参数时保留全部文本
-	hist2 := fetchRecentHistoryForQuery(db, 7, 1, "")
+	hist2, err := fetchRecentHistoryForQuery(db, 7, 1, "")
+	require.NoError(t, err)
 	assert.Contains(t, hist2, "触发消息")
 
 	// 时间正序：第一条在第二条之前
 	assert.True(t, strings.Index(hist2, "第一条") < strings.Index(hist2, "第二条"), "历史应按时间正序")
+}
+
+// TestFetchRecentHistoryForQuery_ReturnsErrorOnDBFailure 数据库查询失败时必须显式返回 error，
+// 不能静默吞掉后返回空历史——否则上下文感知检索在 DB 故障时会"假装没有历史"继续工作，
+// 多轮追问召回必然失败且无从排查。
+func TestFetchRecentHistoryForQuery_ReturnsErrorOnDBFailure(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "alice", Nickname: "Alice", PasswordHash: "h"}).Error)
+	require.NoError(t, db.Create(&model.Message{ConversationID: 7, SenderID: 1, Type: "text", Content: "第一条"}).Error)
+
+	// 关闭底层连接使后续查询必然报错
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+
+	_, err = fetchRecentHistoryForQuery(db, 7, 1, "")
+	require.Error(t, err, "DB 查询失败时应显式返回 error，而非静默返回空历史")
 }

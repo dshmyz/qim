@@ -101,6 +101,17 @@ const noteFormatMaxRunes = 10000
 
 // FormatNote AI 格式化笔记内容为规范 Markdown：清理页眉页脚/页号/错乱换行，
 // 规范化标题/列表/表格/代码块，保留原文语义。前端确认预览后调用 PUT 覆盖保存。
+// @Summary AI 格式化笔记内容
+// @Description 将笔记内容整理为规范 Markdown；超长笔记只处理前 10000 字符并返回 truncated 标记
+// @Tags 笔记
+// @Accept json
+// @Produce json
+// @Param id path int true "笔记ID"
+// @Success 200 {object} response.Response{data=object{content=string,truncated=bool}} "格式化结果"
+// @Failure 400 {object} response.Response "无效ID/内容疑似乱码"
+// @Failure 404 {object} response.Response "笔记不存在"
+// @Failure 503 {object} response.Response "AI 服务未配置"
+// @Router /notes/{id}/format [post]
 func FormatNote(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	noteIDStr := c.Param("id")

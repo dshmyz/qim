@@ -531,6 +531,12 @@ async function handleAiFormat() {
 
 async function handleFormatConfirm() {
   if (!selectedNote.value || !formatResult.value) return
+  // 后端对超长笔记只格式化了前一部分（noteFormatMaxRunes=10000 截断），
+  // 此时整篇覆盖会把剩余内容永久删除——拒绝保存并提示分段格式化
+  if (formatResult.value.truncated) {
+    QMessage.warning('笔记超过 10000 字，AI 只格式化了前一部分。为避免丢失剩余内容，请分段格式化后再替换')
+    return
+  }
   const ok = await updateNote(selectedNote.value.id, {
     title: selectedNote.value.title,
     content: formatResult.value.content,

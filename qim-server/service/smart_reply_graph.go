@@ -533,7 +533,15 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 		if dedupe == "" {
 			dedupe = input.Message // 排除触发消息本身，避免 query 自引用
 		}
-		query := contextualQuery(fetchRecentHistoryForQuery(g.db, input.ConversationID, input.UserID, dedupe), input.Message, 4)
+		query := ""
+		history, herr := fetchRecentHistoryForQuery(g.db, input.ConversationID, input.UserID, dedupe)
+		if herr != nil {
+			// 历史查询失败不阻断回复：降级为空历史并记日志（避免"假装没有历史"且可排查）
+			logger.WithModule("diag").Warn("[Diag] 群助手历史查询失败，跳过上下文检索前缀",
+				"conv", input.ConversationID, "error", herr.Error())
+			history = ""
+		}
+		query = contextualQuery(history, input.Message, 4)
 		if query == "" && input.Group != nil && input.Group.Name != "" {
 			query = input.Group.Name
 		}
@@ -1235,7 +1243,15 @@ func (g *SmartReplyGraph) retrieveGroupKnowledge(input *SmartReplyContext) {
 		if dedupe == "" {
 			dedupe = input.Message
 		}
-		query := contextualQuery(fetchRecentHistoryForQuery(g.db, input.ConversationID, input.UserID, dedupe), input.Message, 4)
+		query := ""
+		history, herr := fetchRecentHistoryForQuery(g.db, input.ConversationID, input.UserID, dedupe)
+		if herr != nil {
+			// 历史查询失败不阻断回复：降级为空历史并记日志
+			logger.WithModule("diag").Warn("[Diag] 群助手历史查询失败，跳过上下文检索前缀",
+				"conv", input.ConversationID, "error", herr.Error())
+			history = ""
+		}
+		query = contextualQuery(history, input.Message, 4)
 		if query == "" && input.Group.Name != "" {
 			query = input.Group.Name
 		}

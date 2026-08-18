@@ -467,7 +467,9 @@ func (c *streamingAvatarProvider) ChatStreamWithContext(ctx context.Context, mes
 
 // TestAvatarReplyGraph_ExecuteWithImageSources 验证分身图片触发消息走多模态生成：
 // 1) 生成的回复能经 fake provider 返回；2) 透传给模型的最后一条 user 消息携带图片 data URL。
-// 图片路径忽略知识范围外静默（能看图就回，看不了由 worker 跳过），此处用 out-of-scope 配置验证仍回复。
+// 该路径是分身对图片的「自动回复」（worker 触发，非用户主动）：即便 ReplyOutOfScope=false
+// 也能看图回（图片路径不因范围外静默而跳过），但 system prompt 必须走严格范围策略，
+// 不得因 BypassScope 放宽到"资料不足可自由发挥"。
 func TestAvatarReplyGraph_ExecuteWithImageSources(t *testing.T) {
 	db := setupServiceTestDB(t)
 	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
@@ -490,7 +492,8 @@ func TestAvatarReplyGraph_ExecuteWithImageSources(t *testing.T) {
 	require.NoError(t, g.BuildGraph())
 
 	const dataURL = "data:image/png;base64,cccc"
-	reply, _, err := g.ExecuteWithImageSources(context.Background(), 1, 1, `{"id":1,"url":"/files/x.png"}`, dataURL, "cat.png", &cfg)
+	// 自动图片回复：bypassScope=false，范围外策略照常生效（严格）
+	reply, _, err := g.ExecuteWithImageSources(context.Background(), 1, 1, `{"id":1,"url":"/files/x.png"}`, dataURL, "cat.png", &cfg, false)
 	require.NoError(t, err)
 	assert.Equal(t, "识别到图片：一只猫", reply, "分身应返回多模态图片识别的回复")
 
@@ -503,6 +506,58 @@ func TestAvatarReplyGraph_ExecuteWithImageSources(t *testing.T) {
 	}
 	assert.Equal(t, dataURL, lastUser.ImageURL, "分身图片路径应把 base64 data URL 作为 ImageURL 交给模型")
 	assert.Contains(t, lastUser.Content, "cat.png", "分身图片路径应提示模型识别该图片")
+
+	// 自动图片回复不置 BypassScope：system prompt 必须是严格范围策略
+	var system ai.Message
+	for _, m := range capProv.lastMessages {
+		if m.Role == "system" {
+			system = m
+		}
+	}
+	require.NotEmpty(t, system.Content, "应存在 system prompt")
+	assert.Contains(t, system.Content, "回答必须严格基于上方提供的资料", "自动图片回复应走严格范围策略")
+	assert.NotContains(t, system.Content, "请明确说明资料不足并给出你的理解", "自动图片回复不应被 BypassScope 放宽")
+}
+
+// TestAvatarReplyGraph_ExecuteBatchWithImagesSources_AutoStrictScope 分身对「合并窗口内连发
+// 的一批消息」（含图片）的自动批量回复同样不置 BypassScope：ReplyOutOfScope=false 时
+// system prompt 走严格范围策略，与用户主动触发的草稿路径（宽松）区分开。
+func TestAvatarReplyGraph_ExecuteBatchWithImagesSources_AutoStrictScope(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{
+		UserID:             1,
+		Enabled:            true,
+		Name:               "分身",
+		KnowledgeScopeJSON: `{}`,
+		ReplyStrategyJSON:  `{"replyOutOfScope":false}`,
+	}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	capProv := &capturingAvatarProvider{}
+	capProv.reply = "识别到一批消息"
+	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	aiSvc.SetProviderForTesting("fake-avatar", capProv)
+
+	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
+	require.NoError(t, g.BuildGraph())
+
+	const dataURL = "data:image/png;base64,cccc"
+	reply, _, err := g.ExecuteBatchWithImagesSources(context.Background(), 1, 1,
+		[]string{"1.在吗"}, []string{dataURL}, []string{"a.png"}, &cfg, false)
+	require.NoError(t, err)
+	assert.Equal(t, "识别到一批消息", reply, "分身应返回批量消息的合并回复")
+
+	var system ai.Message
+	for _, m := range capProv.lastMessages {
+		if m.Role == "system" {
+			system = m
+		}
+	}
+	require.NotEmpty(t, system.Content, "应存在 system prompt")
+	assert.Contains(t, system.Content, "回答必须严格基于上方提供的资料", "自动批量图片回复应走严格范围策略")
+	assert.NotContains(t, system.Content, "请明确说明资料不足并给出你的理解", "自动批量图片回复不应被 BypassScope 放宽")
 }
 
 // TestExecuteWithImageSources_FailNoSilentFalse 图片生成失败时（模型不支持视觉/调用报错）应返回错误，
@@ -518,7 +573,7 @@ func TestExecuteWithImageSources_ModelError(t *testing.T) {
 	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
 	require.NoError(t, g.BuildGraph())
 
-	_, _, err := g.ExecuteWithImageSources(context.Background(), 1, 1, `{"id":1}`, "data:image/png;base64,dddd", "x.png", &cfg)
+	_, _, err := g.ExecuteWithImageSources(context.Background(), 1, 1, `{"id":1}`, "data:image/png;base64,dddd", "x.png", &cfg, false)
 	// aiSvc 未配置 provider → GetCompletion 返回未配置错误，图片路径应如实上抛，由 worker 跳过
 	assert.Error(t, err, "模型不可用时应返回错误而非静默假回复")
 }
@@ -677,7 +732,7 @@ func TestAvatarReplyGraph_ExecuteBatchWithImagesSources(t *testing.T) {
 	reply, _, err := g.ExecuteBatchWithImagesSources(
 		context.Background(), 1, 1,
 		[]string{"第一句", "第二句"}, []string{img1, img2}, []string{"猫.png", "狗.png"},
-		&cfg,
+		&cfg, false, // 自动批量回复：不置 BypassScope
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "识别到两张图：猫和狗", reply, "分身批量路径应返回多模态合并回复")
@@ -700,7 +755,7 @@ func TestAvatarReplyGraph_ExecuteBatchWithImagesSources(t *testing.T) {
 	reply2, _, err2 := g.ExecuteBatchWithImagesSources(
 		context.Background(), 1, 1,
 		[]string{"对方发来了一张/多张图片，请识别其内容并结合对话回复。"}, []string{img1}, []string{"猫.png"},
-		&cfg,
+		&cfg, false,
 	)
 	require.NoError(t, err2)
 	assert.Equal(t, "看图回复", reply2, "批内全图也应走多模态生成")
@@ -722,7 +777,7 @@ func TestAvatarReplyGraph_ExecuteBatch_ModelError(t *testing.T) {
 	_, _, err := g.ExecuteBatchWithImagesSources(
 		context.Background(), 1, 1,
 		[]string{"第一句"}, []string{"data:image/png;base64,aaa"}, []string{"x.png"},
-		&cfg,
+		&cfg, false,
 	)
 	assert.Error(t, err, "批量多模态模型不可用时应返回错误")
 }
@@ -820,4 +875,23 @@ func TestAvatarMemoryEnabled(t *testing.T) {
 	assert.False(t, model.AvatarConfig{KnowledgeScopeJSON: `{"memory":false}`}.MemoryEnabled())
 	assert.True(t, model.AvatarConfig{KnowledgeScopeJSON: `{"memory":true}`}.MemoryEnabled())
 	assert.True(t, model.AvatarConfig{KnowledgeScopeJSON: `{broken`}.MemoryEnabled(), "损坏 JSON 按启用处理")
+}
+
+// TestGetConversationHistory_ReturnsErrorOnDBFailure 历史查询失败时必须显式返回 error，
+// 由调用方（prepare）降级为空历史并记日志——不能静默吞掉，否则 DB 故障时分身
+// 会"假装没有历史"继续回复，多轮追问断链且无从排查。
+func TestGetConversationHistory_ReturnsErrorOnDBFailure(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "qim", Nickname: "QIM", PasswordHash: "h"}).Error)
+	require.NoError(t, db.Create(&model.Message{ConversationID: 7, SenderID: 1, Type: "text", Content: "第一条"}).Error)
+
+	// 关闭底层连接使后续查询必然报错
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+
+	g := &AvatarReplyGraph{db: db}
+	_, err = g.getConversationHistory(7, 10, "在吗", nil)
+	require.Error(t, err, "历史查询失败时应显式返回 error，而非静默返回空历史")
 }

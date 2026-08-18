@@ -49,18 +49,21 @@ func contextualQuery(history, trigger string, recent int) string {
 // fetchRecentHistoryForQuery 拉取会话最近若干条文本消息拼成 "sender: content" 行（时间正序），
 // 供上下文感知检索构造查询。排除触发消息本身（content+sender 都匹配才排除，避免误删同名消息）。
 // 单条内容按 truncateRunes 截断，防止把超长消息整条塞进 query 膨胀 embedding 输入。
-func fetchRecentHistoryForQuery(db *gorm.DB, conversationID, senderID uint, originalContent string) string {
+// DB 查询失败时显式返回 error，由调用方降级为空历史——不静默吞掉，避免检索"假装没有历史"。
+func fetchRecentHistoryForQuery(db *gorm.DB, conversationID, senderID uint, originalContent string) (string, error) {
 	if db == nil || conversationID == 0 {
-		return ""
+		return "", nil
 	}
 	var messages []model.Message
-	db.Where("conversation_id = ? AND type IN ?", conversationID, []string{"text", "markdown"}).
+	if err := db.Where("conversation_id = ? AND type IN ?", conversationID, []string{"text", "markdown"}).
 		Preload("Sender").
 		Order("created_at DESC").
 		Limit(6).
-		Find(&messages)
+		Find(&messages).Error; err != nil {
+		return "", fmt.Errorf("上下文检索历史查询失败: %w", err)
+	}
 	if len(messages) == 0 {
-		return ""
+		return "", nil
 	}
 	// 反转为时间正序
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
@@ -77,5 +80,5 @@ func fetchRecentHistoryForQuery(db *gorm.DB, conversationID, senderID uint, orig
 		}
 		lines = append(lines, fmt.Sprintf("%s: %s", name, truncateRunes(m.Content, 300)))
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, "\n"), nil
 }

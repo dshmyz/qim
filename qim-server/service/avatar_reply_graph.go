@@ -269,15 +269,17 @@ func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, 
 // ai.Message.ImageURL），由 GetCompletion 以 OpenAI image_url 数组格式交给视觉模型识别；
 // 2) 忽略 SkipReply（图片消息走视觉识别，不因"知识范围外"而静默，与"尽力而为失败则跳过"
 // 的降级语义配合——能看图就回，看不了/模型不支持则由 worker 跳过）。
+// bypassScope 控制范围策略是否放宽：仅用户主动触发的路径（"帮我回复"图片草稿）传 true；
+// 分身对图片的自动回复（worker 触发）必须传 false，让严格范围策略照常生效。
 // 返回与 ExecuteWithSources 同构：回复 + 命中的知识来源。
-func (g *AvatarReplyGraph) ExecuteWithImageSources(ctx context.Context, userID uint, conversationID uint, message string, imageURL string, imageName string, preloaded *model.AvatarConfig) (string, []KnowledgeSource, error) {
+func (g *AvatarReplyGraph) ExecuteWithImageSources(ctx context.Context, userID uint, conversationID uint, message string, imageURL string, imageName string, preloaded *model.AvatarConfig, bypassScope bool) (string, []KnowledgeSource, error) {
 	input := &AvatarReplyContext{
 		Message:        message,
 		ConversationID: conversationID,
 		UserID:         userID,
 	}
-	// 图片识别：用户主动触发，忽略范围外静默（prompt 范围策略按宽松渲染）
-	input.BypassScope = true
+	// 图片识别：用户主动触发时忽略范围外静默（prompt 范围策略按宽松渲染）；自动回复不置位
+	input.BypassScope = bypassScope
 
 	// 复用上下文组装（笔记/群知识/记忆/任务/历史/范围外判定），与 Execute 一致
 	if err := g.prepare(ctx, input, preloaded); err != nil {
@@ -305,7 +307,8 @@ func (g *AvatarReplyGraph) ExecuteWithImageSources(ctx context.Context, userID u
 // 入参 videoURLs 为批内每张图片的 data URL（顺序与 orderTexts 对应，两个 slice 长度一致），
 // 由 AvatarService 在调用本方法前用 groupDocSvc.ImageURLForContext 逐图读取；读图在调用方
 // 完成并返回错误时 worker 整批跳过。返回回复 + 命中的知识来源。
-func (g *AvatarReplyGraph) ExecuteBatchWithImagesSources(ctx context.Context, userID uint, conversationID uint, orderTexts []string, imageURLs []string, imageNames []string, preloaded *model.AvatarConfig) (string, []KnowledgeSource, error) {
+// bypassScope 控制范围策略是否放宽：批量自动回复（worker 触发）必须传 false。
+func (g *AvatarReplyGraph) ExecuteBatchWithImagesSources(ctx context.Context, userID uint, conversationID uint, orderTexts []string, imageURLs []string, imageNames []string, preloaded *model.AvatarConfig, bypassScope bool) (string, []KnowledgeSource, error) {
 	// 把批内文本拼成一条合并 prompt：带序号并提示这是对方连发的一组消息
 	lines := make([]string, 0, len(orderTexts))
 	seq := 1
@@ -320,8 +323,8 @@ func (g *AvatarReplyGraph) ExecuteBatchWithImagesSources(ctx context.Context, us
 		ConversationID: conversationID,
 		UserID:         userID,
 	}
-	// 批内图片识别：用户主动触发，忽略范围外静默（prompt 范围策略按宽松渲染）
-	input.BypassScope = true
+	// 批内图片识别：自动回复不置位 BypassScope，严格范围策略照常生效
+	input.BypassScope = bypassScope
 
 	// 复用上下文组装（笔记/群知识/记忆/任务/历史/范围外判定），与单条图文路径一致
 	if err := g.prepare(ctx, input, preloaded); err != nil {
@@ -597,7 +600,14 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 		historyEnabled = *input.KnowledgeScope.ConversationHistory
 	}
 	if historyEnabled && input.ConversationID > 0 {
-		history = g.getConversationHistory(input.ConversationID, g.historyLimit(), input.Message, input.HistoryBefore)
+		var herr error
+		history, herr = g.getConversationHistory(input.ConversationID, g.historyLimit(), input.Message, input.HistoryBefore)
+		if herr != nil {
+			// 历史查询失败不阻断回复：降级为空历史并记日志（避免"假装没有历史"且可排查）
+			logger.WithModule("diag").Warn("[Diag] 分身历史查询失败，跳过历史注入",
+				"conv", input.ConversationID, "error", herr.Error())
+			history = ""
+		}
 	}
 	input.History = history
 	// 检索 query：最近 4 行对话 + 当前提问，让笔记/群知识/记忆的 embedding 携带话题上下文
@@ -805,7 +815,7 @@ func buildCustomProviderExtraParams(maxTokens int, temperature float64) map[stri
 // needReplyForOutOfScope 已废弃：范围外静默已改为硬门控（无知识命中即 SkipReply），
 // 不再需要 LLM 二次判断。保留此函数已无调用点，故移除。
 
-func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int, triggerMessage string, before *time.Time) string {
+func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int, triggerMessage string, before *time.Time) (string, error) {
 	// 不再一刀切排除 avatar 自回复：近期（selfTurnWindow 内）的 avatar 自回复保留作
 	// 多轮指代锚点（用户可能追问”你刚说的”），只滤掉远期自回复（自我复制污染源）。
 	// 为此多取一段（limit+1），在内存里丢弃远期自回复 + 触发消息后仍尽量满足 limit。
@@ -817,9 +827,13 @@ func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int
 		query = query.Where("created_at < ?", *before)
 	}
 	var messages []model.Message
-	query.Order("created_at DESC").
+	if err := query.Order("created_at DESC").
 		Limit(limit + 8).
-		Find(&messages)
+		Find(&messages).Error; err != nil {
+		// 不静默吞掉：DB 故障时分身应知道历史没取到（调用方降级为空历史并记日志），
+		// 而不是"假装没有历史"继续回复导致多轮追问断链。
+		return "", fmt.Errorf("分身历史查询失败: %w", err)
+	}
 
 	// 在 Go 侧筛掉远期自身回复；近期自身回复保留（最多 recentAIMessagesLimit 条，
 	// 超出按远期折叠——接入 ai.recent_ai_messages_limit，后台可调防自我复制上限）。
@@ -857,14 +871,14 @@ func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int
 	aggregateAvatarFilter(int(selfFiltered), keptAvatar, int(selfFiltered)-keptAvatar)
 
 	if len(messages) == 0 {
-		return ""
+		return "", nil
 	}
 
 	// 触发消息本身已在 prompt 中以"对方说：{Message}"呈现，这里按 DESC 取到的最新一条若与之相同则剔除，避免模型重复见到
 	if triggerMessage != "" && messages[0].Content == triggerMessage {
 		messages = messages[1:]
 		if len(messages) == 0 {
-			return ""
+			return "", nil
 		}
 	}
 
@@ -893,7 +907,7 @@ func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int
 		parts = append(parts, fmt.Sprintf("%s: %s", sender.Nickname, truncateRunes(msg.Content, 800)))
 	}
 
-	return strings.Join(parts, "\n")
+	return strings.Join(parts, "\n"), nil
 }
 
 // avatarLengthHint 将回复长度偏好枚举映射为提示词文本

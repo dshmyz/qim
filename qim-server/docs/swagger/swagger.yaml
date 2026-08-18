@@ -576,6 +576,22 @@ paths:
       summary: CLI 版本查询
       tags:
       - CLI
+  /api/v1/client/versions/distribution/users:
+    get:
+      description: 从 WebSocket Hub 内存枚举指定版本（空=全部）的在线用户，供管理后台版本分布钻取
+      parameters:
+      - description: 版本号；空则返回全部在线用户
+        in: query
+        name: version
+        type: string
+      responses:
+        "200":
+          description: 在线用户列表
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: 获取指定版本在线用户
+      tags:
+      - 版本管理
   /api/v1/notes/{id}/access:
     patch:
       consumes:
@@ -616,6 +632,49 @@ paths:
           schema:
             $ref: '#/definitions/response.Response'
       summary: 切换笔记「允许分身读取」状态
+      tags:
+      - 笔记
+  /notes/{id}/format:
+    post:
+      consumes:
+      - application/json
+      description: 将笔记内容整理为规范 Markdown；超长笔记只处理前 10000 字符并返回 truncated 标记
+      parameters:
+      - description: 笔记ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 格式化结果
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  properties:
+                    content:
+                      type: string
+                    truncated:
+                      type: boolean
+                  type: object
+              type: object
+        "400":
+          description: 无效ID/内容疑似乱码
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 笔记不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+        "503":
+          description: AI 服务未配置
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: AI 格式化笔记内容
       tags:
       - 笔记
 securityDefinitions:
