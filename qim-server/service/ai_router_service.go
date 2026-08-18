@@ -16,9 +16,6 @@ import (
 // Type 为 json，Value 存放 ai.RouterConfig 序列化后的 JSON。
 const RouterConfigKey = "ai_router"
 
-// ErrUnknownRouterProvider 当路由中的 provider 未在后台登记的 AI 供应商中出现时返回。
-var ErrUnknownRouterProvider = errors.New("路由引用了未配置的 AI 供应商")
-
 // AIRouterService 负责「AI 模型路由」（任务类型 → provider/model）的 DB 持久化与运行时热更。
 // 语义：DB 覆盖优先——存在 ai_router 覆盖时使用 DB 值；否则回退到 config.yaml 的默认路由。
 //
@@ -109,67 +106,68 @@ func (s *AIRouterService) GetEffectiveRouter() (*ai.RouterConfig, []model.AIProv
 }
 
 // SaveRouter 将路由保存到 SystemConfig(ai_router, json)，并热更新到传入的 AIService。
-// rc 中每个 route 的 provider 必须是已配置且启用的 AI 供应商 name（小写匹配），否则拒绝。
-func (s *AIRouterService) SaveRouter(aiService *ai.AIService, rc *ai.RouterConfig) error {
+//
+// 校验语义与运行时对齐（运行时对未配置 provider 的路由会自动回退到已配置 provider）：
+//   - provider 为空的路由直接忽略；
+//   - 引用未配置供应商的路由：跳过（不写入），收集警告返回，不阻塞其余有效路由的保存；
+//   - model 不再做硬校验——模型由 provider 在运行时校验，已登记 models 仅作前端下拉候选
+//     （前端模型框允许自由输入自定义模型，硬校验会误拦）。
+// 全部路由都被跳过时不写入（避免用空路由覆盖既有配置）。
+func (s *AIRouterService) SaveRouter(aiService *ai.AIService, rc *ai.RouterConfig) (warnings []string, err error) {
 	if rc == nil {
-		return errors.New("路由配置不能为空")
+		return nil, errors.New("路由配置不能为空")
 	}
 	if rc.Routes == nil {
 		rc.Routes = make(map[ai.TaskType]ai.Route)
 	}
 
-	// 校验：provider 必须存在于已配置供应商 name（小写匹配）；默认任务无需 provider。
+	// provider 合法集：已启用供应商 name（小写匹配）+ 运行时 provider 池。
+	// 运行时池纳入：DB 无已启用供应商时，AIService 回退 config.yaml 供应商作为兜底
+	//（见 ReloadProvidersFromDB），这些 provider 运行时可用却不在 DB 登记表里，
+	// 不并入会导致纯 config.yaml 部署下默认路由（如 openai）保存被误拒。
 	providers, err := s.providerSvc.GetProviders()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	providerSet := map[string]bool{}
-	knownModelByProvider := map[string]map[string]bool{}
 	for _, p := range providers {
 		if !p.Enabled || p.Name == "" {
 			continue
 		}
-		key := strings.ToLower(p.Name)
-		providerSet[key] = true
-		knownModelByProvider[key] = map[string]bool{}
-		for _, m := range p.Models {
-			knownModelByProvider[key][m] = true
-		}
+		providerSet[strings.ToLower(p.Name)] = true
 	}
-
-	// 运行时池子也纳入校验：DB 无已启用供应商时，AIService 回退 config.yaml 供应商
-	// 作为兜底（见 ReloadProvidersFromDB），这些 provider 运行时可用却不在 DB 登记表里，
-	// 不并入会导致纯 config.yaml 部署下默认路由（如 openai）保存被误拒。
 	if aiService != nil {
 		for _, name := range aiService.ProviderNames() {
 			providerSet[name] = true
 		}
 	}
 
+	valid := make(map[ai.TaskType]ai.Route, len(rc.Routes))
 	for taskType, route := range rc.Routes {
 		if route.Provider == "" {
 			continue
 		}
 		if !providerSet[strings.ToLower(route.Provider)] {
-			return fmt.Errorf("%w: %q（任务 %q）", ErrUnknownRouterProvider, route.Provider, taskType)
+			warnings = append(warnings, fmt.Sprintf("任务 %q 引用了未配置的供应商 %q，该路由已跳过", taskType, route.Provider))
+			continue
 		}
-		// 模型名若在该供应商已登记模型里，须精确匹配（防选错）；未登记则放行（允许自由输入）。
-		if route.Model != "" {
-			if models := knownModelByProvider[strings.ToLower(route.Provider)]; models != nil && len(models) > 0 && !models[route.Model] {
-				return fmt.Errorf("供应商 %q 未登记模型 %q（任务 %q），请先到「AI 供应商」添加该模型", route.Provider, route.Model, taskType)
-			}
-		}
+		valid[taskType] = route
 	}
+
+	if len(valid) == 0 {
+		return warnings, errors.New("没有可保存的有效路由（引用的供应商均未配置）")
+	}
+	rc.Routes = valid
 
 	data, err := json.Marshal(rc)
 	if err != nil {
-		return fmt.Errorf("序列化路由配置失败: %w", err)
+		return nil, fmt.Errorf("序列化路由配置失败: %w", err)
 	}
 
 	if err := s.upsertConfig(aiService, RouterConfigKey, string(data)); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return warnings, nil
 }
 
 // ClearRouter 清除 DB 路由覆盖，使运行回到 config.yaml 默认路由，并热更新传入的 AIService。

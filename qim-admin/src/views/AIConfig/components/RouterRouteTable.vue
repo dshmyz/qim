@@ -52,7 +52,7 @@
       </template>
     </el-table-column>
 
-    <el-table-column label="Fallback（备用模型）" min-width="220">
+    <el-table-column label="Fallback（备用供应商）" min-width="220">
       <template #default="{ row }">
         <el-select
           v-model="row.route.fallback"
@@ -60,14 +60,14 @@
           filterable
           allow-create
           default-first-option
-          placeholder="可多选，留空表示无 fallback"
+          placeholder="可多选备用供应商，留空表示无 fallback"
           style="width: 100%"
         >
           <el-option
-            v-for="m in modelsFor(row.route.provider)"
-            :key="m"
-            :label="m"
-            :value="m"
+            v-for="p in providerList"
+            :key="p.name"
+            :label="p.name"
+            :value="p.name"
           />
         </el-select>
       </template>

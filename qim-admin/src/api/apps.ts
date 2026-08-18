@@ -8,6 +8,10 @@ export interface CreateAppParams {
   category: string
   url: string
   openType: 'in-app' | 'external'
+  isGlobal?: boolean
+  scopeType?: string
+  scopeValue?: string
+  availableOrgIDs?: string
 }
 
 export interface UpdateAppParams {
@@ -17,6 +21,7 @@ export interface UpdateAppParams {
   url?: string
   openType?: 'in-app' | 'external'
   status?: 'active' | 'inactive'
+  isGlobal?: boolean
   scopeType?: string
   scopeValue?: string
   availableOrgIDs?: string

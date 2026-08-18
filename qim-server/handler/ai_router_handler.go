@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"log"
 	"strings"
 
@@ -114,17 +113,18 @@ func SaveAIRouter(c *gin.Context) {
 	}
 
 	rc := &ai.RouterConfig{DefaultTask: req.DefaultTask, Routes: req.Routes}
-	if err := routerSvc().SaveRouter(di.GlobalContainer.AIService, rc); err != nil {
+	warnings, err := routerSvc().SaveRouter(di.GlobalContainer.AIService, rc)
+	if err != nil {
 		log.Printf("[AIRouterHandler] save router failed: %v", err)
-		if errors.Is(err, service.ErrUnknownRouterProvider) {
-			response.BadRequest(c, err.Error())
-			return
-		}
 		response.InternalServerError(c, "保存路由失败: "+err.Error())
 		return
 	}
 
-	response.Success(c, gin.H{"usingDb": true})
+	message := "路由已保存"
+	if len(warnings) > 0 {
+		message = "路由已保存，但部分路由被跳过：" + strings.Join(warnings, "；")
+	}
+	response.SuccessWithMessage(c, message, gin.H{"usingDb": true, "warnings": warnings})
 }
 
 // ClearAIRouter 清除 DB 路由覆盖，回到 config.yaml 默认路由。

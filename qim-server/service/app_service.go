@@ -209,7 +209,20 @@ func (s *AppService) UpdateApp(app *model.App) error {
 	return s.db.WithContext(ctx).Save(app).Error
 }
 
-func (s *AppService) DeleteApp(appID, userID uint) error {
+// DeleteApp 删除应用：非管理员只能删除自己的应用，管理员可删除任意应用（含他人的个人应用与全局应用）。
+// 应用不存在或无权删除时返回 gorm.ErrRecordNotFound。
+func (s *AppService) DeleteApp(appID, userID uint, isAdmin bool) error {
 	ctx := context.Background()
-	return s.db.WithContext(ctx).Where("id = ? AND user_id = ?", appID, userID).Delete(&model.App{}).Error
+	query := s.db.WithContext(ctx).Where("id = ?", appID)
+	if !isAdmin {
+		query = query.Where("user_id = ?", userID)
+	}
+	result := query.Delete(&model.App{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }

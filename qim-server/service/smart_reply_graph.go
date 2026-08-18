@@ -335,7 +335,7 @@ func (g *SmartReplyGraph) resolveQuotedImageTaskType(input *SmartReplyContext) a
 	input.Quoted = &QuotedContext{
 		Kind: QuotedFailed,
 		Name: input.Quoted.Name,
-		Text: fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但当前配置的模型不支持查看图片。请如实说明你看不到图片，可请对方把图片里的关键信息用文字发出来。", input.Quoted.Name),
+		Text: fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但你当前无法查看图片。请如实向对方说明你看不到这张图片，并请对方用文字描述图片内容；不要总结或复述之前的对话。若对方引用图片的同时还提出了其他问题，请照常回答。回答尽量简短（一两句），先直接给出结论。\n\n回复示例：「我看不到这张图片（当前模型不支持看图），请把图片里的关键信息用文字发出来。」", input.Quoted.Name),
 	}
 	return ai.TaskTypeChat
 }
@@ -357,6 +357,20 @@ func externalToolOutputGuideMessage() *schema.Message {
 			"不要罗列工具名或过程，" +
 			"不要加『如需进一步查询，请随时告知』之类的客套结尾，" +
 			"不要在回答开头再次称呼/点名提问用户（用户姓名已由界面单独展示）。",
+	}
+}
+
+// externalToolTriggerGuideMessage 外部工具 ReAct 路径的调用触发指引。
+// 与上面的输出组织指引配套，只作用于外部工具路径：把 buildSystemPrompt 里泛化的
+// 「你可以调用工具、先确认是否适合」升级为「该用就用」，减少模型凭记忆/注入上下文
+// 硬答而跳过工具的倾向（外部工具多为实时/外部数据查询，凭记忆答必然失真）。
+func externalToolTriggerGuideMessage() *schema.Message {
+	return &schema.Message{
+		Role: schema.System,
+		Content: "你有若干外部工具可调用（系统提示中已列出）。当用户的问题需要实时数据、外部信息、具体计算，" +
+			"或某个工具能直接完成的动作时，应主动调用对应工具获取真实结果，不要仅凭你的记忆或注入的上下文自行回答。" +
+			"若问题与工具能力无关（闲聊、观点、纯推理，或你已确认无需外部信息），则直接回答，不必调用工具。" +
+			"一次回答中可按需连续调用多个工具，无需每次先向用户确认。",
 	}
 }
 
@@ -451,6 +465,7 @@ func (g *SmartReplyGraph) preparedHistory(input *SmartReplyContext, t SmartReply
 	taskType := g.resolveQuotedImageTaskType(input)
 	history := g.buildHistoryMessages(input)
 	if t == ToolsetExternal {
+		history = append(history, externalToolTriggerGuideMessage())
 		history = append(history, externalToolOutputGuideMessage())
 	}
 	return history, taskType, nil
@@ -1083,10 +1098,12 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 				foldedFar = append(foldedFar, content)
 			}
 		} else if msg.SenderID == input.UserID {
-			// 当前用户自己的消息，标为"我"
+			// 当前用户自己的消息，标为「当前用户」而非「我」：模型会把「我」误认成助手自己，
+			// 总结历史时把用户的消息说成「我说了…」。改为「当前用户」与系统提示词
+			// 「👤 当前提问用户」呼应，归属清晰。
 			result = append(result, &schema.Message{
 				Role:    schema.User,
-				Content: fmt.Sprintf("[我]: %s", content),
+				Content: fmt.Sprintf("[当前用户]: %s", content),
 			})
 		} else {
 			result = append(result, &schema.Message{

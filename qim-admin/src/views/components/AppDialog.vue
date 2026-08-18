@@ -154,6 +154,7 @@ const handleSubmit = async () => {
           category: form.category,
           url: form.url,
           openType: form.openType,
+          isGlobal: form.isGlobal,
           scopeType: form.scopeType,
           scopeValue: form.scopeValue || undefined,
           availableOrgIDs: form.availableOrgIDs || undefined,
@@ -165,6 +166,10 @@ const handleSubmit = async () => {
           category: form.category,
           url: form.url,
           openType: form.openType,
+          isGlobal: form.isGlobal,
+          scopeType: form.scopeType,
+          scopeValue: form.scopeValue || undefined,
+          availableOrgIDs: form.availableOrgIDs || undefined,
         })
       }
       emit('saved')

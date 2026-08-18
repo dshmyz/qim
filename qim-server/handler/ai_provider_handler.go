@@ -155,7 +155,10 @@ func UpdateAIProvider(c *gin.Context) {
 		updates["api_key"] = *req.APIKey
 	}
 	if req.Models != nil {
-		updates["models"] = req.Models
+		// models 列类型是 StringArray（JSON text，带 driver.Valuer）。map 直写裸 []string
+		// 时 GORM 无法正确序列化（创建走结构体字段正常、更新走 map 会报错/写坏），
+		// 须显式转成 StringArray 复用其 Valuer。
+		updates["models"] = model.StringArray(req.Models)
 	}
 	if req.Priority != nil {
 		updates["priority"] = *req.Priority

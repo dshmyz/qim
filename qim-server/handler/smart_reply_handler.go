@@ -154,7 +154,10 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 	}
 
 	// 异步把发送者本人的消息择要写入其记忆库（分身越用越懂主人）。不阻塞主流程。
-	e.maybeRememberSenderMessage(userID, conversationID, content)
+	// 仅文本类消息参与记忆形成：图片/文件等媒体的 content 是 JSON，反射只会空转一轮 LLM。
+	if msg.Type == "text" || msg.Type == "markdown" {
+		e.maybeRememberSenderMessage(userID, conversationID, content)
+	}
 
 	log.Printf("[SmartReply] 开始处理消息: userID=%d convID=%d content=%s", userID, conversationID, content[:min(50, len(content))])
 
@@ -214,7 +217,8 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 
 		// 群级记忆写入：群 AI 启用且未显式关闭学习时，异步把值得记的群消息择要写入本群记忆库。
 		// LearnEnabled 为 opt-out：默认学习（GetAIConfig 默认 true），仅显式 false 才停写。
-		if aiConfig.Enabled && aiConfig.LearnEnabled {
+		// 仅文本类消息参与记忆形成（媒体消息 content 是 JSON，反射空转一轮 LLM）。
+		if aiConfig.Enabled && aiConfig.LearnEnabled && (msg.Type == "text" || msg.Type == "markdown") {
 			e.maybeRememberGroupMessage(group.ID, conversationID, content)
 		}
 

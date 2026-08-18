@@ -79,8 +79,8 @@ func TestLengthRule(t *testing.T) {
 
 func TestReplyRules(t *testing.T) {
 	rules := ReplyRules()
-	if len(rules) != 3 {
-		t.Fatalf("应返回 3 条通用规则, got %d: %v", len(rules), rules)
+	if len(rules) != 4 {
+		t.Fatalf("应返回 4 条通用规则, got %d: %v", len(rules), rules)
 	}
 	joined := strings.Join(rules, "|")
 	if !strings.Contains(joined, "优先使用知识库中的内容回答") {
@@ -91,5 +91,8 @@ func TestReplyRules(t *testing.T) {
 	}
 	if !strings.Contains(joined, "@") {
 		t.Errorf("缺 @ 提及约束规则: %v", rules)
+	}
+	if !strings.Contains(joined, "说话人") {
+		t.Errorf("缺消息归属规则: %v", rules)
 	}
 }

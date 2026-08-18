@@ -73,7 +73,8 @@ func TestAIRouter_SaveThenGet_RoundTrip(t *testing.T) {
 			ai.TaskTypeChat: {Provider: "volc", Model: "deepseek-v4-flash"},
 		},
 	}
-	require.NoError(t, svc.SaveRouter(aiSvc, rc))
+	_, saveErr := svc.SaveRouter(aiSvc, rc)
+	require.NoError(t, saveErr)
 
 	got, providers, err := svc.GetEffectiveRouter()
 	require.NoError(t, err)
@@ -87,8 +88,42 @@ func TestAIRouter_SaveThenGet_RoundTrip(t *testing.T) {
 	assert.True(t, has)
 }
 
-// 路由引用了未配置的供应商，应当被拒绝
-func TestAIRouter_SaveRouter_RejectsUnknownProvider(t *testing.T) {
+// 路由引用了未配置的供应商：该路由被跳过并返回警告，其余有效路由正常保存。
+func TestAIRouter_SaveRouter_SkipsUnknownProviderWithWarning(t *testing.T) {
+	db := setupAIRouterTestDB(t)
+	svc := NewAIRouterService(db)
+	svc.SetDefaultRouterFunc(defaultRouterForTest)
+
+	require.NoError(t, db.Create(&model.AIProvider{
+		Name:    "volc",
+		APIType: "openai",
+		Models:  model.StringArray{"deepseek-v4-flash"},
+		Enabled: true,
+	}).Error)
+
+	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	rc := &ai.RouterConfig{
+		DefaultTask: ai.TaskTypeChat,
+		Routes: map[ai.TaskType]ai.Route{
+			ai.TaskTypeChat:   {Provider: "volc", Model: "deepseek-v4-flash"},
+			ai.TaskTypeDigest: {Provider: "not-exist", Model: "gpt-4o"},
+		},
+	}
+	warnings, err := svc.SaveRouter(aiSvc, rc)
+	require.NoError(t, err)
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], "not-exist")
+
+	// 有效路由已保存，无效路由被跳过
+	got, _, err := svc.GetEffectiveRouter()
+	require.NoError(t, err)
+	assert.Equal(t, "volc", got.Routes[ai.TaskTypeChat].Provider)
+	_, hasInvalid := got.Routes[ai.TaskTypeDigest]
+	assert.False(t, hasInvalid, "无效路由不应被写入")
+}
+
+// 全部路由都引用未配置供应商时，不应覆盖既有配置
+func TestAIRouter_SaveRouter_AllUnknown_NoWrite(t *testing.T) {
 	db := setupAIRouterTestDB(t)
 	svc := NewAIRouterService(db)
 	svc.SetDefaultRouterFunc(defaultRouterForTest)
@@ -100,13 +135,9 @@ func TestAIRouter_SaveRouter_RejectsUnknownProvider(t *testing.T) {
 			ai.TaskTypeChat: {Provider: "not-exist", Model: "gpt-4o"},
 		},
 	}
-	err := svc.SaveRouter(aiSvc, rc)
+	_, err := svc.SaveRouter(aiSvc, rc)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrUnknownRouterProvider)
 
-	// 校验失败不应写入 DB
-	_, err = svc.GetDBRouter()
-	require.NoError(t, err)
 	has, err := svc.HasDBRouter()
 	require.NoError(t, err)
 	assert.False(t, has)
@@ -130,15 +161,16 @@ func TestAIRouter_SaveRouter_AcceptsConfigProviderWhenDBEmpty(t *testing.T) {
 		},
 	}
 	// 修复前：openai 不在 DB -> ErrUnknownRouterProvider；修复后：池子含 openai -> 放行
-	require.NoError(t, svc.SaveRouter(aiSvc, rc))
+	_, saveErr := svc.SaveRouter(aiSvc, rc)
+	require.NoError(t, saveErr)
 
 	got, _, err := svc.GetEffectiveRouter()
 	require.NoError(t, err)
 	assert.Equal(t, "openai", got.Routes[ai.TaskTypeChat].Provider)
 }
 
-// 供应商启用了但 model 未登记，若其 models 非空则拒绝；models 为空允许自由输入
-func TestAIRouter_SaveRouter_ModelValidation(t *testing.T) {
+// model 不再做硬校验：已登记/未登记（自定义输入）均可保存，模型由 provider 运行时校验。
+func TestAIRouter_SaveRouter_ModelFreeInput(t *testing.T) {
 	db := setupAIRouterTestDB(t)
 	svc := NewAIRouterService(db)
 	svc.SetDefaultRouterFunc(defaultRouterForTest)
@@ -152,22 +184,25 @@ func TestAIRouter_SaveRouter_ModelValidation(t *testing.T) {
 
 	aiSvc := ai.NewAIService(&ai.AIConfig{})
 
-	// 未登记该 provider 的 model → 拒绝
-	err := svc.SaveRouter(aiSvc, &ai.RouterConfig{
-		DefaultTask: ai.TaskTypeChat,
-		Routes: map[ai.TaskType]ai.Route{
-			ai.TaskTypeChat: {Provider: "volc", Model: "wrong-model"},
-		},
-	})
-	require.Error(t, err)
-
 	// 已登记的 model → 通过
-	require.NoError(t, svc.SaveRouter(aiSvc, &ai.RouterConfig{
+	warnings, err := svc.SaveRouter(aiSvc, &ai.RouterConfig{
 		DefaultTask: ai.TaskTypeChat,
 		Routes: map[ai.TaskType]ai.Route{
 			ai.TaskTypeChat: {Provider: "volc", Model: "deepseek-v4-flash"},
 		},
-	}))
+	})
+	require.NoError(t, err)
+	assert.Empty(t, warnings)
+
+	// 未登记（自定义）model → 也通过（运行时由 provider 校验）
+	warnings, err = svc.SaveRouter(aiSvc, &ai.RouterConfig{
+		DefaultTask: ai.TaskTypeChat,
+		Routes: map[ai.TaskType]ai.Route{
+			ai.TaskTypeChat: {Provider: "volc", Model: "my-custom-model"},
+		},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, warnings)
 }
 
 // ClearRouter 清除 DB 覆盖后，应回到 config.yaml 默认
@@ -184,12 +219,13 @@ func TestAIRouter_Clear_RevertsToDefault(t *testing.T) {
 	}).Error)
 
 	aiSvc := ai.NewAIService(&ai.AIConfig{})
-	require.NoError(t, svc.SaveRouter(aiSvc, &ai.RouterConfig{
+	_, saveErr := svc.SaveRouter(aiSvc, &ai.RouterConfig{
 		DefaultTask: ai.TaskTypeChat,
 		Routes: map[ai.TaskType]ai.Route{
 			ai.TaskTypeChat: {Provider: "volc", Model: "deepseek-v4-flash"},
 		},
-	}))
+	})
+	require.NoError(t, saveErr)
 
 	require.NoError(t, svc.ClearRouter(aiSvc))
 

@@ -12,7 +12,6 @@ import (
 // DescribeImage 用视觉模型识别/描述图片（/ai/describe-image 端点的业务层实现）。
 // handler 完成参数校验、图片读取与「视觉理解」路由门控后调用本函数；
 // 默认指令、system prompt 组装与模型 JSON 回复解析属于业务逻辑，收敛在 service 层。
-// 模型未按 JSON 格式返回时直接取全文（识别/描述场景可容忍自由文本）。
 func DescribeImage(aiSvc *ai.AIService, instruction, dataURL string) (string, error) {
 	instruction = strings.TrimSpace(instruction)
 	if instruction == "" {
@@ -38,11 +37,29 @@ func DescribeImage(aiSvc *ai.AIService, instruction, dataURL string) (string, er
 		return "", err
 	}
 
+	return parseDescribeResult(result), nil
+}
+
+// parseDescribeResult 从模型回复中提取描述文本。
+// 模型有时把 JSON 包在 ```json 代码围栏里或带前言/尾注，直接 Unmarshal 会失败、
+// 把整段 JSON 当描述吐出来（弹窗里显示一坨 JSON）。整段试解失败后用
+// extractJSONObject 抽取第一个 {...} 再试（磨掉 markdown 围栏/前言，与
+// avatar_trigger_service / rerank 同一抽取函数）；仍未按 JSON 返回时直接取全文
+//（识别/描述场景可容忍自由文本）。
+func parseDescribeResult(result string) string {
 	var parsed struct {
 		Description string `json:"description"`
 	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(result)), &parsed); err != nil || parsed.Description == "" {
-		parsed.Description = strings.TrimSpace(result)
+	raw := strings.TrimSpace(result)
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		if sub := extractJSONObject(raw); sub != "" {
+			if err2 := json.Unmarshal([]byte(sub), &parsed); err2 == nil && parsed.Description != "" {
+				return parsed.Description
+			}
+		}
 	}
-	return parsed.Description, nil
+	if parsed.Description == "" {
+		return raw
+	}
+	return parsed.Description
 }

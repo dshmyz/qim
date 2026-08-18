@@ -5,9 +5,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
-	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
-	"github.com/dshmyz/qim/qim-server/pkg/logger"
-	"github.com/dshmyz/qim/qim-server/pkg/productname"
 	"math"
 	"regexp"
 	"strings"
@@ -174,62 +171,4 @@ func (k *KnowledgeService) BuildKnowledgeContext(query string) string {
 	}
 
 	return context
-}
-
-// AnswerWithKnowledge 基于知识库回答问题
-func (k *KnowledgeService) AnswerWithKnowledge(query string, userID uint) (string, error) {
-	if k.aiService == nil || !k.aiService.IsConfigured() {
-		return "", fmt.Errorf("AI 服务未配置")
-	}
-
-	// 先搜索知识库
-	knowledgeCtx := k.BuildKnowledgeContext(query)
-
-	systemPrompt := fmt.Sprintf(`%s
-
-你是 %s 企业即时通讯系统的智能助手。请根据以下信息回答问题。
-
-回答规则：
-- 优先使用知识库中的内容回答
-- 如果知识库中有相关内容，基于该内容给出准确答案，并引用来源
-- 如果知识库中没有相关内容，使用你的通用知识回答，但明确说明"以下回答基于通用知识，建议核实"
-- 回答要简洁、专业、准确
-- 使用中文回答`, aiprompt.CurrentTimeLine(), productname.Name)
-
-	if knowledgeCtx != "" {
-		systemPrompt += "\n\n" + knowledgeCtx
-	}
-
-	messages := []ai.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: query},
-	}
-
-	answer, err := k.aiService.GetCompletion(ai.TaskTypeChat, messages)
-	if err != nil {
-		logger.WithModule("KnowledgeService").Error("AI 回答失败", "error", err)
-		return "", err
-	}
-
-	return answer, nil
-}
-
-// GetKnowledgeStats 获取知识库统计信息
-func (k *KnowledgeService) GetKnowledgeStats() map[string]interface{} {
-	db := database.GetDB()
-
-	var totalNotes int64
-	db.Model(&model.Note{}).Count(&totalNotes)
-
-	var activeNotes int64
-	db.Model(&model.Note{}).Where("deleted_at IS NULL").Count(&activeNotes)
-
-	var userCount int64
-	db.Model(&model.Note{}).Distinct("user_id").Count(&userCount)
-
-	return map[string]interface{}{
-		"total_notes":  totalNotes,
-		"active_notes": activeNotes,
-		"user_count":   userCount,
-	}
 }

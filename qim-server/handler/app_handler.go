@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // containsRole 检查角色列表中是否包含指定角色
@@ -22,6 +24,19 @@ func containsRole(roles []string, role string) bool {
 		}
 	}
 	return false
+}
+
+// hasSystemAdminRole 从请求上下文判断当前用户是否具备 system_admin 角色
+func hasSystemAdminRole(c *gin.Context) bool {
+	roles, exists := c.Get("roles")
+	if !exists {
+		return false
+	}
+	roleList, ok := roles.([]string)
+	if !ok {
+		return false
+	}
+	return containsRole(roleList, "system_admin")
 }
 
 // appFrontend 是返回给前端的 App 结构，字段使用 camelCase，
@@ -431,33 +446,27 @@ func UpdateApp(c *gin.Context) {
 	} else {
 		globalApp, err2 := appSvc.GetGlobalApp(uint(appID))
 		if err2 != nil {
-			response.NotFound(c, "应用不存在")
-			return
-		}
-		app = globalApp
-
-		roles, exists := c.Get("roles")
-		if !exists {
-			response.Forbidden(c, "无权限更新此应用")
-			return
-		}
-
-		roleList, ok := roles.([]string)
-		if !ok || !containsRole(roleList, "system_admin") {
-			response.Forbidden(c, "无权限更新此应用")
-			return
+			// 非全局应用：他人的个人应用仅系统管理员可编辑
+			if !hasSystemAdminRole(c) {
+				response.NotFound(c, "应用不存在")
+				return
+			}
+			app, err2 = appSvc.GetApp(uint(appID))
+			if err2 != nil {
+				response.NotFound(c, "应用不存在")
+				return
+			}
+		} else {
+			app = globalApp
+			if !hasSystemAdminRole(c) {
+				response.Forbidden(c, "无权限更新此应用")
+				return
+			}
 		}
 	}
 
 	if req.IsGlobal != nil && *req.IsGlobal != app.IsGlobal {
-		roles, exists := c.Get("roles")
-		if !exists {
-			response.Forbidden(c, "只有管理员才能修改应用的全局状态")
-			return
-		}
-
-		roleList, ok := roles.([]string)
-		if !ok || !containsRole(roleList, "system_admin") {
+		if !hasSystemAdminRole(c) {
 			response.Forbidden(c, "只有管理员才能修改应用的全局状态")
 			return
 		}
@@ -487,13 +496,7 @@ func UpdateApp(c *gin.Context) {
 
 	// 如果请求修改权限范围字段，需要检查管理员权限
 	if req.ScopeType != nil || req.ScopeValue != nil || req.AvailableOrgIDs != nil {
-		roles, exists := c.Get("roles")
-		if !exists {
-			response.Forbidden(c, "只有管理员才能修改应用的权限范围")
-			return
-		}
-		roleList, ok := roles.([]string)
-		if !ok || !containsRole(roleList, "system_admin") {
+		if !hasSystemAdminRole(c) {
 			response.Forbidden(c, "只有管理员才能修改应用的权限范围")
 			return
 		}
@@ -527,7 +530,11 @@ func DeleteApp(c *gin.Context) {
 	}
 
 	appSvc := di.GlobalContainer.AppService
-	if err := appSvc.DeleteApp(uint(appID), userID.(uint)); err != nil {
+	if err := appSvc.DeleteApp(uint(appID), userID.(uint), hasSystemAdminRole(c)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.NotFound(c, "应用不存在或无权删除")
+			return
+		}
 		response.InternalServerError(c, "删除应用失败")
 		return
 	}

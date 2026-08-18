@@ -866,7 +866,7 @@ func (s *MessageService) handleBotImageMessage(userID, convID uint, bot model.Bo
 			"convID", convID, "fileID", file.ID, "fileName", file.Name)
 		aiMessages = append(aiMessages, ai.Message{
 			Role:    "user",
-			Content: fmt.Sprintf("用户发送了一张图片消息「%s」，但当前配置的模型不支持查看图片。请如实说明你看不到图片，可请对方把图片里的关键信息用文字发出来。", file.Name),
+			Content: fmt.Sprintf("用户发送了一张图片消息「%s」，但当前配置的模型不支持查看图片。请如实向对方说明你看不到这张图片，并请对方用文字描述图片内容；不要总结或复述之前的对话。回答尽量简短（一两句），先直接给出结论。\n\n回复示例：「我看不到这张图片（当前模型不支持看图），请把图片里的关键信息用文字发出来。」", file.Name),
 		})
 	}
 

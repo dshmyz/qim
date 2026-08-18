@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/compose"
-	"github.com/cloudwego/eino/schema"
 )
 
 // compileGraph compiles an Eino graph with a one-time value merge registration.
@@ -122,77 +120,4 @@ type PipelineNode interface {
 type LambdaNode[In, Out any] struct {
 	name string
 	fn   any // compose.Lambda function
-}
-
-// PromptBuilder helps construct system/user prompt pairs.
-type PromptBuilder struct {
-	role       string
-	rules      []string
-	params     map[string]string
-	userPrefix string
-}
-
-func NewPromptBuilder(role string) *PromptBuilder {
-	return &PromptBuilder{
-		role:   role,
-		params: make(map[string]string),
-	}
-}
-
-func (b *PromptBuilder) AddRule(rule string) *PromptBuilder {
-	b.rules = append(b.rules, rule)
-	return b
-}
-
-func (b *PromptBuilder) AddRules(rules ...string) *PromptBuilder {
-	b.rules = append(b.rules, rules...)
-	return b
-}
-
-func (b *PromptBuilder) SetParam(key, value string) *PromptBuilder {
-	b.params[key] = value
-	return b
-}
-
-func (b *PromptBuilder) SetUserPrefix(prefix string) *PromptBuilder {
-	b.userPrefix = prefix
-	return b
-}
-
-func (b *PromptBuilder) BuildSystem() string {
-	var sb strings.Builder
-	sb.WriteString(b.role)
-	sb.WriteString("\n\n")
-
-	if len(b.rules) > 0 {
-		sb.WriteString("【规则】\n")
-		for _, r := range b.rules {
-			sb.WriteString(r)
-			sb.WriteString("\n")
-		}
-		sb.WriteString("\n")
-	}
-
-	for k, v := range b.params {
-		sb.WriteString(fmt.Sprintf("【%s】%s\n", k, v))
-	}
-
-	return sb.String()
-}
-
-func (b *PromptBuilder) BuildUser(content string) string {
-	var sb strings.Builder
-	if b.userPrefix != "" {
-		sb.WriteString(b.userPrefix)
-		sb.WriteString("\n\n")
-	}
-	sb.WriteString(content)
-	return sb.String()
-}
-
-func (b *PromptBuilder) ToMessages(userContent string) []*schema.Message {
-	return []*schema.Message{
-		{Role: schema.System, Content: b.BuildSystem()},
-		{Role: schema.User, Content: b.BuildUser(userContent)},
-	}
 }

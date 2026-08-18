@@ -1,31 +1,43 @@
-# QIM Server 配置文件
+# QIM Server 配置文件（完整参数参考）
 #
-# 环境变量说明:
-# - JWT_SECRET: JWT密钥（与下方 jwt.secret 等价，环境变量优先），建议设置为随机字符串
-# - ENCRYPTION_KEY: 加密密钥（与下方 security.encryption_key 等价，环境变量优先），用于加密用户自选模型的 API Key
-# - QIM_ADMIN_USERNAME: 管理员用户名（默认: admin）
-# - QIM_ADMIN_PASSWORD: 管理员密码（默认: admin123）
-# - LOG_DIR / LOG_LEVEL: 日志目录与级别（优先于下方 log 配置）
+# 本文件列出所有可配置项。带具体值的为常用项；不常用或未启用的项（备用 provider、
+# S3 存储、MySQL 块、轮转参数等）以注释形式给出完整字段，需要时取消注释即可用。
 #
-# 注意：首次启动时会自动创建管理员账户，建议在生产环境中修改默认密码
+# ── 环境变量（环境变量优先于 config.yaml 对应项）────────────────────
+#   PORT                         服务端口（覆盖 server.port）
+#   JWT_SECRET                   JWT 密钥（覆盖 jwt.secret），生产环境必须设置
+#   ENCRYPTION_KEY               AES-256-GCM 加密密钥（覆盖 security.encryption_key）
+#   DB_PATH                      SQLite 数据库路径（覆盖 database.path）
+#   LOG_DIR / LOG_LEVEL          日志目录 / 级别（覆盖 log.dir / log.level）
+#   AI_PROVIDER                  AI 默认 provider（覆盖 chat 路由的 provider）
+#   AI_OPENAI_API_KEY / AI_OPENAI_MODEL
+#   AI_BAIDU_API_KEY / AI_BAIDU_SECRET_KEY / AI_BAIDU_MODEL
+#   AI_ALIBABA_API_KEY / AI_ALIBABA_API_SECRET / AI_ALIBABA_MODEL
+#   AI_TENCENT_SECRET_ID / AI_TENCENT_SECRET_KEY / AI_TENCENT_MODEL
+#   AI_BYTEDANCE_API_KEY / AI_BYTEDANCE_MODEL
+#   AI_ANTHROPIC_API_KEY / AI_ANTHROPIC_MODEL / AI_ANTHROPIC_BASE_URL
+#   QIM_STATIC_UPLOADS_DIR / QIM_STATIC_MINIAPPS_DIR   静态资源目录覆盖
+#   QIM_ADMIN_USERNAME / QIM_ADMIN_PASSWORD            管理员初始账号（默认 admin / admin123）
+#
+# 注意：首次启动时会自动创建管理员账户，建议在生产环境中修改默认密码。
 
 # 服务器配置
 server:
   port: "8080"
-  mode: "release"  # debug / release / test
+  mode: "release"  # debug / release / test（release 下未设置 JWT_SECRET 将拒绝启动）
 
-# 数据初始化策略（不同环境可有不同策略）
+# 数据初始化策略（不同环境可有不同策略；未配置时按 mode 回退默认）
 data_init:
   preset_data: true       # 预置数据（系统用户、管理员、内置应用、文件上传配置）
   bot_templates: true     # Bot 模板（系统助手、AI助手）
-  test_data: false        # 测试数据（测试用户、部门、会话、频道等）
+  test_data: false        # 测试数据（测试用户、部门、会话、频道等；debug 默认 true）
   seed_force: false       # 是否强制重新初始化（演示环境可设为 true）
 
 # JWT 配置
 jwt:
-  secret: "${QIM_JWT_SECRET:change-me-to-random-string}"
-  expire: 7200  # 秒
-  refresh_expire_days: 7
+  secret: "${QIM_JWT_SECRET:change-me-to-random-string}"  # 生产环境务必替换
+  expire: 7200                 # 令牌有效期（秒）
+  refresh_expire_days: 7       # 刷新令牌有效期（天）
 
 # 加密密钥：AES-256-GCM 加密用户自选模型的 API Key（存库前加密、读取时解密）。
 # 环境变量 ENCRYPTION_KEY 始终优先于此配置。
@@ -37,9 +49,13 @@ security:
 
 # 数据库配置
 database:
-  type: "sqlite"  # sqlite / mysql / postgresql
-  path: "./qim.db"
-  # MySQL/PostgreSQL 配置示例:
+  type: "sqlite"   # sqlite / mysql / postgresql
+  path: "./qim.db" # SQLite 数据库文件路径
+  # 连接池配置（所有数据库类型通用）：
+  # max_open_conns: 100      # 最大打开连接数
+  # max_idle_conns: 10       # 最大空闲连接数
+  # max_lifetime: 3600       # 连接最长存活时间（秒）
+  # MySQL/PostgreSQL 配置（type 改为 mysql / postgresql 时生效）：
   # host: "localhost"
   # port: 3306
   # username: "root"
@@ -51,11 +67,11 @@ database:
 log:
   dir: "./logs"
   level: "info"        # debug / info / warn / error
-  # 以下为轮转策略默认值（不填则自动使用下述值，无需显式配置）：
-  # max_size_mb: 100
-  # max_backups: 14
-  # max_age_days: 30
-  # compress: true
+  # 以下为轮转策略（lumberjack）默认值，不填则自动使用：
+  # max_size_mb: 100    # 单文件最大体积（MB），达到后轮转；<=0 用 lumberjack 默认 100
+  # max_backups: 14     # 保留的旧文件份数；0 表示保留全部（仍受 max_age_days 限制）
+  # max_age_days: 30    # 旧文件最大保留天数；0 表示不按天数清理
+  # compress: true      # 是否 gzip 压缩归档的旧文件
 
 # 多节点配置
 cluster:
@@ -63,7 +79,7 @@ cluster:
   nodes: []
   # - "http://node1:8080"
   # - "http://node2:8080"
-  scheme: "http"
+  scheme: "http"       # 节点间通信协议：http / https
 
 # 节点间认证：NodeAuthMiddleware 使用该密钥校验节点间内部接口请求（Header: Node-Secret）
 # 注意：node.secret 仅从配置文件读取，不支持环境变量覆盖。
@@ -89,39 +105,87 @@ ai:
   # 路由配置：管理后台可在线修改，此处仅填初始值
   # 完整任务类型：chat / intent_recognition / analysis / embedding / search / digest / vision
   # （tool_calling 无运行时调用点，工具调用走 chat 路由，不配置独立路由）
+  # 每个路由可配 provider + model + fallback（主 provider 不可用时依次尝试的备用 provider 名列表）
   router:
     default_task: "chat"
     routes:
       chat:
         provider: "openai"
         model: "gpt-3.5-turbo"
+        fallback: []          # 可选：备用 provider 名列表，如 ["deepseek", "anthropic"]
       embedding:
         provider: "openai"
         model: "text-embedding-ada-002"
+      # 以下任务未配置时回退到 default_task，可按需补全：
+      # intent_recognition:
+      #   provider: "openai"
+      #   model: "..."
+      # analysis:
+      #   provider: "openai"
+      #   model: "..."
+      # search:
+      #   provider: "openai"
+      #   model: "..."
+      # digest:
+      #   provider: "openai"
+      #   model: "..."
+      # vision:                    # 视觉任务（图片识别）；未配置时图片会降级为"看不到图"
+      #   provider: "openai"
+      #   model: "gpt-4o"
 
   # 通用配置
   max_tokens: 1000
   temperature: 0.7
 
-  # Provider 配置：未配置 api_key 的 provider 不会初始化，管理后台可添加更多 provider
+  # Provider 配置：未配置 api_key 的 provider 不会初始化，管理后台可添加更多 provider。
+  # 常用：openai / anthropic / deepseek；其余按需启用。
   openai:
     api_key: "your-openai-api-key"
     model: "gpt-3.5-turbo"
     base_url: "https://api.openai.com/v1"
+    embedding_base_url: ""   # 可选：独立的 embedding 服务地址（与对话模型不同网关时用）
 
   anthropic:
     api_key: ""
     model: "claude-sonnet-4-20250514"
     base_url: "https://api.anthropic.com/v1"
 
-  # 其他 provider 未列出的字段均为空，可通过管理后台启用：
-  # baidu / alibaba / tencent / bytedance / deepseek
+  # 以下 provider 未启用，需要时取消注释并填入凭证（字段名与官方命名一致）：
+  # 百度文心一言
+  # baidu:
+  #   api_key: ""
+  #   secret_key: ""
+  #   model: "ERNIE-Bot-4.0"
+  #   base_url: "https://aip.baidubce.com"
+  # 阿里通义千问
+  # alibaba:
+  #   api_key: ""
+  #   api_secret: ""
+  #   model: "qwen-plus"
+  #   base_url: "https://dashscope.aliyuncs.com/api/v1"
+  # 腾讯混元大模型
+  # tencent:
+  #   secret_id: ""
+  #   secret_key: ""
+  #   model: "hunyuan-pro"
+  #   base_url: "https://hunyuan.tencentcloudapi.com"
+  # 字节跳动豆包
+  # bytedance:
+  #   api_key: ""
+  #   model: "doubao-pro-1.0"
+  #   base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  # DeepSeek（结构与 openai 相同）
+  # deepseek:
+  #   api_key: ""
+  #   model: "deepseek-chat"
+  #   base_url: "https://api.deepseek.com/v1"
 
 # CORS 配置
 cors:
   allowed_origins:
     - "http://localhost:5173"
     - "http://localhost:3000"
+  allow_credentials: true   # 是否允许携带凭证（与 allowed_origins: "*" 互斥，见注释）
 
 # WebSocket 配置：与 CORS 类似，控制 WS 握手时允许的来源
 ws:
@@ -131,7 +195,7 @@ ws:
 
 # 向量数据库配置（用于 RAG 和知识图谱）
 vector:
-  path: "./vector.db"
+  path: "./data/gracedb"
 
 # 外部 MCP 客户端网关配置（管理员在管理后台配置外部 MCP Server 连接）
 # SSRF 防护默认开启：仅允许公网 http/https 地址，禁止 localhost/私网 IP。
@@ -140,7 +204,7 @@ vector:
 mcp:
   allow_private: false
 
-# 静态资源路径配置（未配置时使用默认值，也可用环境变量覆盖）
+# 静态资源路径配置（未配置时使用默认值，也可用环境变量 QIM_STATIC_* 覆盖）
 static:
-  uploads_dir: "uploads"
-  miniapps_dir: "static/miniapps"
+  uploads_dir: "uploads"         # 上传文件根目录
+  miniapps_dir: "static/miniapps" # 内置小程序根目录
