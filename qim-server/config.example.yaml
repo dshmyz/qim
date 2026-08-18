@@ -2,6 +2,7 @@
 #
 # 环境变量说明:
 # - JWT_SECRET: JWT密钥（与下方 jwt.secret 等价，环境变量优先），建议设置为随机字符串
+# - ENCRYPTION_KEY: 加密密钥（与下方 security.encryption_key 等价，环境变量优先），用于加密用户自选模型的 API Key
 # - QIM_ADMIN_USERNAME: 管理员用户名（默认: admin）
 # - QIM_ADMIN_PASSWORD: 管理员密码（默认: admin123）
 # - LOG_DIR / LOG_LEVEL: 日志目录与级别（优先于下方 log 配置）
@@ -25,6 +26,14 @@ jwt:
   secret: "${QIM_JWT_SECRET:change-me-to-random-string}"
   expire: 7200  # 秒
   refresh_expire_days: 7
+
+# 加密密钥：AES-256-GCM 加密用户自选模型的 API Key（存库前加密、读取时解密）。
+# 环境变量 ENCRYPTION_KEY 始终优先于此配置。
+# 生成方法：openssl rand -base64 24（恰好 32 字符）
+# 警告：密钥一旦使用就不要再改动，否则已加密存储的 API Key 将全部无法解密！
+# 留空时每次启动随机生成密钥，已加密数据重启后无法解密——生产环境务必配置。
+security:
+  encryption_key: ""
 
 # 数据库配置
 database:
