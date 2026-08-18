@@ -126,6 +126,7 @@
                   :content="msg.content"
                   :is-streaming="Boolean(msg.isStreaming)"
                   variant="botchat"
+                  :suppress-streaming-images="true"
                   :knowledge-sources="msg.knowledge_sources"
                 />
                 <span v-else v-html="previewTextToHtml(msg.content)"></span>

@@ -978,6 +978,7 @@ function registerIPC() {
     })
 
     authWindow.setMenu(null)
+    authWindow.maximize()
 
     authWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
       console.error('页面加载失败:', errorCode, errorDescription, validatedURL)

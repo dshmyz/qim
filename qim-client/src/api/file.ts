@@ -129,10 +129,11 @@ export const fileApi = {
   },
 
   // 批量操作
+  // 注意：后端 BatchOperation 绑定字段名为 operation（binding:"required"），不是 action
   batchOperation(fileIds: number[], action: string, extra?: Record<string, any>) {
     return api.post<{ code: number }>('/api/v1/files/batch', {
       file_ids: fileIds,
-      action,
+      operation: action,
       ...extra
     })
   },
@@ -147,6 +148,11 @@ export const fileApi = {
   // 获取文件统计
   getStats() {
     return api.get<{ code: number; data: Record<string, any> }>('/api/v1/files/stats')
+  },
+
+  // 获取存储用量与配额（字节）
+  getStorageUsage() {
+    return api.get<{ code: number; data: { used: number; quota: number } }>('/api/v1/files/storage-usage')
   },
 
   // 初始化分片上传
@@ -195,9 +201,12 @@ export const folderApi = {
     return api.put<{ code: number; data: FolderItem }>(`/api/v1/folders/${folderId}`, data)
   },
 
-  // 删除文件夹
-  deleteFolder(folderId: number) {
-    return api.delete<{ code: number }>(`/api/v1/folders/${folderId}`)
+  // 删除文件夹（recursive=true 时级联删除子文件夹及其中文件）
+  deleteFolder(folderId: number, recursive = false) {
+    return api.delete<{ code: number }>(
+      `/api/v1/folders/${folderId}`,
+      recursive ? { params: { recursive: true } } : undefined
+    )
   },
 
   // 获取文件夹内文件

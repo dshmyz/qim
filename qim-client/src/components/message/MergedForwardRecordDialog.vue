@@ -63,6 +63,7 @@
                   v-else-if="message.type === 'share'"
                   :content="message.content"
                   :share-data="recordMessageData(message)"
+                  :author-name="message.senderName || ''"
                 />
                 <MiniAppMessage
                   v-else-if="message.type === 'miniApp' || message.type === 'mini-app'"

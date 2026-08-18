@@ -13,6 +13,7 @@
         v-if="chartData.length > 0"
         :data="chartData"
         height="280px"
+        @item-click="handleItemClick"
       />
       <el-empty v-else description="暂无版本分布数据" :image-size="80" />
     </div>
@@ -34,8 +35,9 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
 })
 
-defineEmits<{
+const emit = defineEmits<{
   'refresh': []
+  'view-users': [version: string]
 }>()
 
 const chartData = computed(() =>
@@ -44,6 +46,10 @@ const chartData = computed(() =>
     value: item.count,
   }))
 )
+
+function handleItemClick(item: { name: string; value: number }) {
+  emit('view-users', item.name)
+}
 </script>
 
 <style scoped>

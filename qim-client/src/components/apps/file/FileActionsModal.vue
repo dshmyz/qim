@@ -40,16 +40,12 @@
     <div v-if="activeTab === 'move'" class="form-section">
       <div class="form-group">
         <label for="move-folder-select">目标文件夹</label>
-        <select
+        <FolderTreeSelect
           id="move-folder-select"
           v-model="targetFolderId"
-          class="form-input"
-        >
-          <option :value="null">根目录</option>
-          <option v-for="folder in folders" :key="folder.id" :value="folder.id">
-            {{ folder.name }}
-          </option>
-        </select>
+          :options="options"
+          :exclude-ids="file?.folder_id ? [file.folder_id] : []"
+        />
         <p v-if="file" class="current-location">
           当前位置：{{ currentFolderName }}
         </p>
@@ -71,19 +67,23 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
-import { fileApi, type FileItem, type FolderItem } from '../../../api/file'
+import { fileApi, type FileItem } from '../../../api/file'
 import QMessage from '../../../utils/qmessage'
 import ModalContainer from '../../shared/ModalContainer.vue'
+import FolderTreeSelect from './FolderTreeSelect.vue'
+import type { FolderOption } from '../../../composables/useFolderTree'
 
 interface Props {
   visible: boolean
   file?: FileItem | null
-  folders?: FolderItem[]
+  options?: FolderOption[]
+  initialTab?: 'rename' | 'move'
 }
 
 const props = withDefaults(defineProps<Props>(), {
   file: null,
-  folders: () => []
+  options: () => [],
+  initialTab: 'rename'
 })
 
 const emit = defineEmits<{
@@ -104,10 +104,9 @@ const renameInputRef = ref<HTMLInputElement | null>(null)
 
 // 根据当前文件信息计算原文件夹名称
 const currentFolderName = computed(() => {
-  if (!props.file) return '根目录'
-  if (props.file.folder_id === null) return '根目录'
-  const folder = props.folders.find(f => f.id === props.file?.folder_id)
-  return folder?.name ?? '根目录'
+  if (!props.file || props.file.folder_id === null) return '根目录'
+  const opt = props.options.find(o => o.folder.id === props.file?.folder_id)
+  return opt?.folder.name ?? '根目录'
 })
 
 // 模态框标题根据当前tab动态变化
@@ -131,14 +130,14 @@ const canSubmit = computed(() => {
   return true
 })
 
-// 监听 visible 变化，重置表单
+// 监听 visible 变化，重置表单（activeTab 取调用方指定的初始 tab：右键「移动」直接落到移动页）
 watch(() => props.visible, async (newVal) => {
   if (newVal) {
-    activeTab.value = 'rename'
+    activeTab.value = props.initialTab
     newName.value = props.file?.name ?? ''
     targetFolderId.value = props.file?.folder_id ?? null
     await nextTick()
-    renameInputRef.value?.focus()
+    if (props.initialTab === 'rename') renameInputRef.value?.focus()
   }
 })
 

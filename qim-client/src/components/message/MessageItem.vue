@@ -57,7 +57,8 @@
               <span>{{ message.quotedMessage.sender?.name || message.quotedMessage.name || '未知用户' }}</span>
             </div>
             <div class="quoted-message-preview-content">
-              {{ quotedMessageSummary }}
+              <StickyNoteMini v-if="quotedStickyPayload" :payload="quotedStickyPayload" />
+              <template v-else>{{ quotedMessageSummary }}</template>
             </div>
           </div>
 
@@ -87,6 +88,7 @@
             :content="message.content"
             :is-streaming="Boolean(message.isStreaming)"
             :is-self="isSelf"
+            :suppress-streaming-images="true"
             :tool-calls="message.tool_calls"
             :knowledge-sources="message.knowledge_sources"
             :avatar-sources="message.origin === 'avatar' ? message.sources : undefined"
@@ -118,6 +120,7 @@
             :content="message.content"
             :share-data="shareData"
             :is-self="isSelf"
+            :author-name="message.sender?.name || ''"
           />
 
           <!-- 小程序消息 -->
@@ -185,6 +188,7 @@ import TextMessage from './TextMessage.vue'
 import ImageMessage from './ImageMessage.vue'
 import FileMessage from './FileMessage.vue'
 import ShareMessage from './ShareMessage.vue'
+import StickyNoteMini from './StickyNoteMini.vue'
 import MiniAppMessage from './MiniAppMessage.vue'
 import NewsMessage from './NewsMessage.vue'
 import SystemMessage from './SystemMessage.vue'
@@ -200,6 +204,7 @@ import { escapeHTML } from '../../utils/sanitize'
 import { useMessageReminder } from '../../composables/useMessageReminder'
 import { useSystemConfigStore } from '../../stores/systemConfig'
 import { resolveMessageDisplay } from '../../utils/messageDisplay'
+import { parseStickyShare } from '../../utils/stickyShare'
 import { buildSenderBadge } from '../../utils/user'
 
 const props = withDefaults(defineProps<{
@@ -254,6 +259,11 @@ const cardActionData = computed(() => {
 const quotedMessageSummary = computed(() => props.message.quotedMessage
   ? resolveMessageDisplay(props.message.quotedMessage).summary
   : '')
+
+// 引用的消息是便签分享时，气泡上方显示便签色卡而非文本摘要
+const quotedStickyPayload = computed(() => props.message.quotedMessage
+  ? parseStickyShare(props.message.quotedMessage.content || '')
+  : null)
 
 const miniAppData = computed(() => {
   if (messageDisplay.value.kind !== 'miniApp') return props.message.miniAppData

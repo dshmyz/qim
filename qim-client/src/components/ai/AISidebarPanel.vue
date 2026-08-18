@@ -1,6 +1,13 @@
 <template>
   <Transition name="slide">
-    <div v-if="visible" class="ai-sidebar-panel" :class="{ expanded: isExpanded }">
+    <div
+      v-if="visible"
+      class="ai-sidebar-panel"
+      :class="{ expanded: isExpanded, resizing: isResizing }"
+      :style="{ width: panelWidth + 'px' }"
+    >
+      <!-- 左缘拖拽手柄：按住左右拖动调整面板宽度（320–720px，拖拽时关闭宽度过渡） -->
+      <div class="resize-handle" title="拖拽调整宽度" @mousedown.prevent="startResize"></div>
       <!-- Header -->
       <div class="ai-sidebar-header">
         <div class="ai-sidebar-title">
@@ -8,12 +15,18 @@
           <span>AI 助手</span>
         </div>
         <div class="ai-sidebar-header-actions">
-          <button class="icon-btn" :title="isExpanded ? '缩小' : '放大'" @click="isExpanded = !isExpanded">
+          <button class="icon-btn" :title="isExpanded ? '缩小' : '放大'" @click="toggleExpand">
             <i :class="isExpanded ? 'fas fa-compress' : 'fas fa-expand'"></i>
           </button>
-          <button class="icon-btn" :title="confirmClear ? '再次点击确认' : '清空对话'" @click="handleClearClick">
+          <button
+            class="icon-btn"
+            :class="{ confirming: confirmClear }"
+            :title="confirmClear ? '再次点击清空' : '清空对话'"
+            @click="handleClearClick"
+            @mouseleave="confirmClear = false"
+          >
             <i :class="confirmClear ? 'fas fa-check' : 'fas fa-trash-alt'"></i>
-            <span v-if="confirmClear" class="confirm-hint">确认?</span>
+            <span v-if="confirmClear" class="confirm-hint">确认清空?</span>
           </button>
           <button class="icon-btn" title="关闭" @click="emit('close')">
             <i class="fas fa-times"></i>
@@ -90,10 +103,10 @@
         <!-- Thinking / Streaming indicator -->
         <div v-if="isStreaming" class="ai-msg assistant">
           <div class="ai-msg-bubble streaming">
-            <div v-if="!streamingContent" class="thinking-dots">
-              <span></span><span></span><span></span>
+            <div v-if="!streamingContent" class="thinking-indicator-wrap">
+              <ThinkingIndicator />
             </div>
-            <div v-else class="ai-msg-content" v-html="renderMd(streamingContent) + '<span class=stream-cursor>▌</span>'"></div>
+            <div v-else class="ai-msg-content" v-html="renderMd(streamingContent, true) + '<span class=stream-cursor>▌</span>'"></div>
           </div>
         </div>
       </div>
@@ -144,6 +157,7 @@ import { sanitizeMarkdown } from '../../utils/sanitize'
 import { useAIStream } from '../../composables/useAIStream'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
 import { previewTextToHtml, emojiToHtml } from '../../utils/emoji'
+import ThinkingIndicator from '../shared/ThinkingIndicator.vue'
 
 interface Props {
   visible: boolean
@@ -174,7 +188,37 @@ const confirmClear = ref(false)
 const showScrollBtn = ref(false)
 const isExpanded = ref(false)
 const contextLinked = ref(true)
-let clearTimer: ReturnType<typeof setTimeout> | null = null
+
+// ── 面板宽度（JS 驱动）：默认 360，放大切 680，拖拽手柄在 320–720 间自由调整 ──
+const panelWidth = ref(360)
+const isResizing = ref(false)
+let dragStartX = 0
+let dragStartWidth = 360
+
+const toggleExpand = () => {
+  isExpanded.value = !isExpanded.value
+  panelWidth.value = isExpanded.value ? 680 : 360
+}
+
+const onResizeMove = (e: MouseEvent) => {
+  const maxW = Math.min(720, window.innerWidth - 40)
+  panelWidth.value = Math.min(maxW, Math.max(320, dragStartWidth - (e.clientX - dragStartX)))
+}
+
+const onResizeUp = () => {
+  isResizing.value = false
+  document.removeEventListener('mousemove', onResizeMove)
+  document.removeEventListener('mouseup', onResizeUp)
+}
+
+const startResize = (e: MouseEvent) => {
+  isExpanded.value = false
+  dragStartX = e.clientX
+  dragStartWidth = panelWidth.value
+  isResizing.value = true
+  document.addEventListener('mousemove', onResizeMove)
+  document.addEventListener('mouseup', onResizeUp)
+}
 
 const { stream, abort } = useAIStream()
 
@@ -235,7 +279,9 @@ const onKeydown = (e: KeyboardEvent) => {
 onMounted(() => document.addEventListener('keydown', onKeydown))
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown)
-  if (clearTimer) clearTimeout(clearTimer)
+  // 拖拽中卸载的兜底清理（正常路径由 onResizeUp 配对移除）
+  document.removeEventListener('mousemove', onResizeMove)
+  document.removeEventListener('mouseup', onResizeUp)
 })
 
 // ── 发送消息 ──
@@ -327,10 +373,11 @@ const handleStop = () => {
 }
 
 // ── 清空（二次确认）──
+// 确认态不再 3s 自动复位（慢速双击会超时导致「点了没反应」），
+// 改为鼠标移出按钮自动取消（@mouseleave），确认期间按钮变红提示。
 const handleClearClick = () => {
   if (!confirmClear.value) {
     confirmClear.value = true
-    clearTimer = setTimeout(() => { confirmClear.value = false }, 3000)
     return
   }
   if (isStreaming.value) abort()
@@ -338,7 +385,6 @@ const handleClearClick = () => {
   streamingContent.value = ''
   isStreaming.value = false
   confirmClear.value = false
-  if (clearTimer) { clearTimeout(clearTimer); clearTimer = null }
 }
 
 // ── 复制 ──
@@ -352,7 +398,7 @@ const copyMessage = (idx: number) => {
 }
 
 // ── Markdown 渲染 ──
-const renderMd = (text: string): string => {
+const renderMd = (text: string, streaming = false): string => {
   if (!text) return ''
   try {
     // 将工具执行状态行转为小字样式
@@ -361,9 +407,16 @@ const renderMd = (text: string): string => {
       '<span class="status-line">$1</span>'
     )
     const result = marked.parse(processed, { async: false }) as string
+    const sanitized = sanitizeMarkdown(result)
+    // 流式中抑制 <img>：markdown 图片 → 占位符、表情不转 Twemoji（原生字形），
+    // 使流式气泡内不存在 <img> 元素——消除 v-html 每 chunk 重建 img 导致的图片反复加载；
+    // 流式结束（streaming=false）的终态渲染才一次性出图。
+    if (streaming) {
+      return sanitized.replace(/<img\b[^>]*>/g, '<span class="md-img-placeholder">图片</span>')
+    }
     // 消毒后再把 emoji 转成 Twemoji 图片（自托管资产，不依赖系统 emoji 字体），
     // 与主消息渲染一致：Linux 无 emoji 字体时也能正常显示，而非方框/乱码。
-    return emojiToHtml(sanitizeMarkdown(result))
+    return emojiToHtml(sanitized)
   } catch {
     return text.replace(/\n/g, '<br>')
   }
@@ -383,7 +436,7 @@ const autoResize = () => {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 360px;
+  /* 宽度由 JS 驱动（panelWidth）：默认 360 / 放大 680 / 左缘拖拽 320–720 */
   display: flex;
   flex-direction: column;
   background: var(--card-bg, #fff);
@@ -397,6 +450,26 @@ const autoResize = () => {
 .ai-sidebar-panel.expanded {
   width: 680px;
   max-width: calc(100vw - 40px);
+}
+
+/* 拖拽中关闭宽度过渡，跟随鼠标即时反馈 */
+.ai-sidebar-panel.resizing {
+  transition: none;
+}
+
+/* 左缘拖拽手柄（覆盖在 border 上，隐藏式命中区域） */
+.resize-handle {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 10;
+}
+.resize-handle:hover,
+.ai-sidebar-panel.resizing .resize-handle {
+  background: color-mix(in srgb, var(--primary-color, #6366f1) 15%, transparent);
 }
 
 /* Slide transition */
@@ -415,7 +488,7 @@ const autoResize = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 28px 16px 12px;
   border-bottom: 1px solid var(--border-color, #e5e7eb);
 }
 
@@ -434,14 +507,14 @@ const autoResize = () => {
 
 .ai-sidebar-header-actions {
   display: flex;
-  gap: 4px;
+  gap: 6px;
 }
 
 .icon-btn {
-  height: 28px;
+  height: 32px;
   width: auto;
-  min-width: 28px;
-  padding: 0 6px;
+  min-width: 34px;
+  padding: 0 8px;
   border: none;
   background: transparent;
   border-radius: 6px;
@@ -455,9 +528,21 @@ const autoResize = () => {
   transition: all 0.15s;
 }
 
+/* hover/active 用主色系反馈：不依赖 --hover-color（默认主题下是 #f8faff 近白，浅色面板上不可见） */
 .icon-btn:hover {
-  background: var(--hover-color, #f3f4f6);
-  color: var(--text-color, #1f2937);
+  background: color-mix(in srgb, var(--primary-color, #6366f1) 12%, transparent);
+  color: var(--primary-color, #6366f1);
+}
+
+.icon-btn:active {
+  background: color-mix(in srgb, var(--primary-color, #6366f1) 24%, transparent);
+  color: var(--primary-color, #6366f1);
+}
+
+/* 清空二次确认态：变红提示「再次点击即清空」，鼠标移出自动取消 */
+.icon-btn.confirming {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
 }
 
 .confirm-hint {
@@ -741,27 +826,10 @@ const autoResize = () => {
   padding: 0 4px;
 }
 
-/* Thinking dots */
-.thinking-dots {
-  display: flex;
-  gap: 4px;
+/* Thinking indicator（复用共享 ThinkingIndicator：三点脉冲动画）。
+   气泡自身已带 padding，覆盖组件内部 padding 避免撑高（对齐 ChatBody/BotChatView 的做法） */
+.thinking-indicator-wrap :deep(.thinking-indicator) {
   padding: 4px 0;
-}
-
-.thinking-dots span {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-secondary, #9ca3af);
-  animation: thinking 1.4s infinite ease-in-out;
-}
-
-.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
-.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes thinking {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-6px); opacity: 1; }
 }
 
 /* Markdown content */
@@ -770,6 +838,21 @@ const autoResize = () => {
   height: 16px;
   vertical-align: middle;
   margin: 0 1px;
+}
+
+/* 流式中 markdown 图片占位符：抑制 <img> 期间预留图片位置，避免终态出图时布局跳变 */
+.ai-msg-content :deep(.md-img-placeholder) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  height: 72px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-color), transparent 92%);
+  color: color-mix(in srgb, var(--text-color), transparent 42%);
+  font-size: 0.85em;
+  vertical-align: middle;
 }
 
 .ai-msg-content :deep(p) { margin: 0 0 8px; }

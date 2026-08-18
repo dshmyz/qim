@@ -22,6 +22,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/golang-lru/v2"
+	"gorm.io/gorm"
 )
 
 const defaultMaxUploadSize = 500 * 1024 * 1024 // 500MB default
@@ -256,6 +257,18 @@ func UploadFile(c *gin.Context) {
 	now := time.Now()
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 
+	// 个人存储配额检查（读取/保存文件之前拦截，超限不浪费 IO 与存储）
+	fileSvc := di.GlobalContainer.FileService
+	if fileSvc != nil {
+		used, err := fileSvc.GetStorageUsage(uid)
+		if err == nil {
+			if quota, qerr := fileSvc.GetUserQuota(uid); qerr == nil && used+file.Size > quota {
+				response.BadRequest(c, fmt.Sprintf("存储空间不足：已用 %s / 配额 %s", formatBytes(used), formatBytes(quota)))
+				return
+			}
+		}
+	}
+
 	// 复用公共"读取+校验+存储"函数
 	// 受信任的管理员分发来源（version / client_update）跳过类型校验，
 	// 允许发布 .exe 等 CLI/MCP/客户端安装包；此来源已在上方强制要求 system_admin 权限。
@@ -285,6 +298,22 @@ func UploadFile(c *gin.Context) {
 	}
 
 	svc := di.GlobalContainer.FileService
+
+	// folder_id 可选：上传到指定文件夹（缺省或非法时落根）
+	var folderID *uint
+	if fidStr := c.PostForm("folder_id"); fidStr != "" {
+		if fid, err := strconv.ParseUint(fidStr, 10, 64); err == nil && fid > 0 {
+			folderID = new(uint)
+			*folderID = uint(fid)
+		}
+	}
+	if folderID != nil {
+		if _, err := svc.GetFolder(uid, *folderID); err != nil {
+			response.BadRequest(c, "目标文件夹不存在或无权限")
+			return
+		}
+	}
+
 	fileRecord := model.File{
 		Name:         saved.SafeName,
 		OriginalName: saved.SafeName,
@@ -293,6 +322,7 @@ func UploadFile(c *gin.Context) {
 		MimeType:     saved.MimeType,
 		UserID:       uid,
 		Source:       source,
+		FolderID:     folderID,
 		CreatedAt:    time.Now(),
 	}
 	if err := svc.CreateFile(&fileRecord); err != nil {
@@ -572,6 +602,43 @@ func GetStarredFiles(c *gin.Context) {
 	})
 }
 
+// GetStorageUsage 查询当前用户的存储用量与配额（侧栏容量条数据源）
+func GetStorageUsage(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	uid, _ := userID.(uint)
+
+	svc := di.GlobalContainer.FileService
+	if svc == nil {
+		response.InternalServerError(c, "文件服务未初始化")
+		return
+	}
+	used, err := svc.GetStorageUsage(uid)
+	if err != nil {
+		response.InternalServerError(c, "查询存储用量失败")
+		return
+	}
+	quota, err := svc.GetUserQuota(uid)
+	if err != nil {
+		response.InternalServerError(c, "查询存储配额失败")
+		return
+	}
+	response.Success(c, gin.H{"used": used, "quota": quota})
+}
+
+// formatBytes 人类可读的字节大小
+func formatBytes(b int64) string {
+	switch {
+	case b >= 1024*1024*1024:
+		return fmt.Sprintf("%.1f GB", float64(b)/(1024*1024*1024))
+	case b >= 1024*1024:
+		return fmt.Sprintf("%.1f MB", float64(b)/(1024*1024))
+	case b >= 1024:
+		return fmt.Sprintf("%.1f KB", float64(b)/1024)
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
+
 func GetFileStats(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	uid := userID.(uint)
@@ -684,7 +751,10 @@ func UpdateFolder(c *gin.Context) {
 			response.BadRequest(c, "不能将文件夹移动到自己下面")
 			return
 		}
-		if *req.ParentID != 0 {
+		if *req.ParentID == 0 {
+			// 0 视为移回根目录：显式置 NULL（map 更新不会自动转换，否则写入 0 会成树中不可见孤儿）
+			updates["parent_id"] = gorm.Expr("NULL")
+		} else {
 			_, parentErr := svc.GetFolder(userID.(uint), *req.ParentID)
 			if parentErr != nil {
 				response.BadRequest(c, "父文件夹不存在或无权限")
@@ -694,8 +764,8 @@ func UpdateFolder(c *gin.Context) {
 				response.BadRequest(c, "不能将文件夹移动到其子文件夹下")
 				return
 			}
+			updates["parent_id"] = *req.ParentID
 		}
-		updates["parent_id"] = *req.ParentID
 	}
 	if req.SortOrder != nil {
 		updates["sort_order"] = *req.SortOrder
@@ -982,6 +1052,19 @@ func CreateFolder(c *gin.Context) {
 	}
 
 	svc := di.GlobalContainer.FileService
+
+	// parent_id 归一化：0 视为根目录（与 UpdateFolder 语义一致，避免写入 0 成树中不可见孤儿）
+	if req.ParentID != nil && *req.ParentID == 0 {
+		req.ParentID = nil
+	}
+	// 校验父文件夹存在且属于当前用户（GetFolder 走 user_id+scope 三元组过滤）
+	if req.ParentID != nil {
+		if _, err := svc.GetFolder(userID.(uint), *req.ParentID); err != nil {
+			response.BadRequest(c, "父文件夹不存在或无权限")
+			return
+		}
+	}
+
 	folder := &model.Folder{
 		UserID:   userID.(uint),
 		Name:     req.Name,

@@ -228,7 +228,7 @@ const handleMessageListScroll = () => emit('scroll')
   margin-left: 12px;
 }
 .thinking-message-sender {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   color: var(--text-secondary);
   margin-bottom: 2px;
 }

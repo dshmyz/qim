@@ -2,10 +2,13 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 
+	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/pkg/upload"
 	"github.com/dshmyz/qim/qim-server/service"
@@ -237,6 +240,21 @@ func CompleteUpload(c *gin.Context) {
 	if chunkService == nil {
 		response.InternalServerError(c, "分片服务未初始化")
 		return
+	}
+
+	// 存储配额检查：合并前确认个人已用 + 本文件大小不超配额（分片已上传但未合并，此时拦截不产生文件记录）
+	uid := userID.(uint)
+	db := database.GetDB()
+	var task model.UploadTask
+	if err := db.Where("upload_id = ? AND user_id = ?", req.UploadID, uid).First(&task).Error; err == nil {
+		if fileSvc := di.GlobalContainer.FileService; fileSvc != nil {
+			if used, err := fileSvc.GetStorageUsage(uid); err == nil {
+				if quota, qerr := fileSvc.GetUserQuota(uid); qerr == nil && used+task.FileSize > quota {
+					response.BadRequest(c, fmt.Sprintf("存储空间不足：已用 %s / 配额 %s", formatBytes(used), formatBytes(quota)))
+					return
+				}
+			}
+		}
 	}
 
 	file, err := chunkService.CompleteUpload(userID.(uint), req.UploadID)

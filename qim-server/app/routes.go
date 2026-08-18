@@ -503,6 +503,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.GET("/files", handler.GetFiles)
 			authed.GET("/files/starred", handler.GetStarredFiles)
 			authed.GET("/files/stats", handler.GetFileStats)
+			authed.GET("/files/storage-usage", handler.GetStorageUsage)
 			authed.POST("/files/batch", handler.BatchOperation)
 			authed.PUT("/files/:id", handler.UpdateFile)
 			authed.PUT("/files/:id/star", handler.ToggleStar)
@@ -694,6 +695,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				adminRoutes.GET("/client/versions/distribution", func(c *gin.Context) {
 					c.Set("hub", hub)
 					handler.GetVersionDistribution(c)
+				})
+				adminRoutes.GET("/client/versions/distribution/users", func(c *gin.Context) {
+					c.Set("hub", hub)
+					handler.GetVersionUsers(c)
 				})
 
 				// CLI 版本管理（复用 VersionService，app_type="cli"）

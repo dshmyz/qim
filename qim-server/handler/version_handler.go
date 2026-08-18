@@ -243,6 +243,31 @@ func GetVersionDistribution(c *gin.Context) {
 	response.Success(c, stats)
 }
 
+// GetVersionUsers 返回指定版本的在线客户端用户明细（管理后台"版本分布→查看具体人"）。
+// @Summary 获取指定版本在线用户
+// @Description 从 WebSocket Hub 内存枚举指定版本（空=全部）的在线用户，供管理后台版本分布钻取
+// @Tags 版本管理
+// @Param version query string false "版本号；空则返回全部在线用户"
+// @Success 200 {object} response.Response "在线用户列表"
+// @Router /api/v1/client/versions/distribution/users [get]
+func GetVersionUsers(c *gin.Context) {
+	hubVal, exists := c.Get("hub")
+	if !exists {
+		response.InternalServerError(c, "WebSocket Hub 未初始化")
+		return
+	}
+	hub, ok := hubVal.(*ws.Hub)
+	if !ok {
+		response.InternalServerError(c, "WebSocket Hub 类型错误")
+		return
+	}
+	users := hub.GetVersionUsers(c.Query("version"))
+	if users == nil {
+		users = []ws.VersionUser{}
+	}
+	response.Success(c, users)
+}
+
 // ========== CLI 版本管理 (Admin) ==========
 
 func cliVersionToFrontend(v model.ClientVersion) gin.H {

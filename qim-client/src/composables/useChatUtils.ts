@@ -1,6 +1,5 @@
 import type { Message } from '../types'
-import { sanitizeMarkdown } from '../utils/sanitize'
-import { emojiToHtml } from '../utils/emoji'
+import { renderMarkdown as renderUnifiedMarkdown } from './useMarkdownRender'
 
 /**
  * 聊天工具函数 composable
@@ -181,43 +180,12 @@ export function useChatUtils() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
-  // 渲染 Markdown
-  const renderMarkdown = (content: string): string => {
-    // 简单的 Markdown 渲染
-    let html = content
-
-    // 标题
-    html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>')
-    html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>')
-    html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>')
-
-    // 粗体
-    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-
-    // 斜体
-    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
-
-    // 代码块
-    html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-
-    // 行内代码
-    html = html.replace(/`(.*?)`/g, '<code>$1</code>')
-
-    // 列表
-    html = html.replace(/^- (.*$)/gm, '<li>$1</li>')
-    html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
-
-    // 链接
-    html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
-
-    // 换行
-    html = html.replace(/\n/g, '<br>')
-
-    // 使用 DOMPurify 进行消毒，防止 XSS 攻击
-    // 消毒后再把 emoji 转成一等 Twemoji 图片（自托管资产，不依赖系统 emoji 字体），
-    // 与频道渲染 channelMarkdown 一致：Linux 无 emoji 字体时也能正常显示，而非方框/乱码。
-    return emojiToHtml(sanitizeMarkdown(html))
-  }
+  // 渲染 Markdown（含 emoji → Twemoji）
+  // 委托统一渲染管道 useMarkdownRender.renderMarkdown（marked → 消毒 → emoji/classic →
+  // 笔记内链与代码块占位恢复全在这一处）。此前这里是手写正则渲染器，代码块在隔离前就
+  // 被标题/粗斜体/链接/换行正则污染（内部换行变 <br>、# 变 <h1>、行内码嵌套进 <pre>），
+  // 属与 useMarkdownRender 占位泄漏同类的地雷，已废弃改接。
+  const renderMarkdown = (content: string): string => renderUnifiedMarkdown(content, { withEmoji: true })
 
   return {
     formatTime,

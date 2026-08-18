@@ -20,6 +20,13 @@ export interface MarkdownRenderOpts {
   decodeMention?: boolean
   /** 渲染后把表情字符/经典标记替换为 <img>（IM 气泡需要，BotChat/NoteEditor 不需要） */
   withEmoji?: boolean
+  /**
+   * 流式中抑制图片（须与 streaming 同时为真才生效）：
+   * markdown ![]() 图片 → 占位符、表情不转 <img>（原生字形），使流式气泡内不存在任何
+   * <img> 元素——消除 v-html 每 chunk 整段 innerHTML 重建导致的 img 销毁重建/图片反复加载。
+   * 流式结束的终态渲染（streaming=false）才一次性出图，每张图只创建一次、加载一次。
+   */
+  suppressImages?: boolean
 }
 
 /**
@@ -104,10 +111,20 @@ function extractNoteLinks(md: string): { text: string; titles: string[]; fences:
   // 2. 行内 code 占位（提取后再还原）
   // 3. 非 code 区域的 [[title]] → 占位符，标题原文存入 titles
   let text = md
-    .replace(FENCED_CODE_RE, (m) => {
+    .replace(FENCED_CODE_RE, (m, offset, full) => {
       const inner = m.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '')
       fences.push(inner)
-      return `${fences.length - 1}`
+      // 占位符自身也用围栏包裹：marked 会把该行渲染成独立 <pre><code> 块，
+      // 从而正确打断前文段落——CommonMark 允许围栏紧跟段落末行（无空行）中断段落，
+      // 但纯文本占位符行不会中断段落，会被 marked 并进上一段，恢复时匹配不到
+      // 独立 <p> 包裹、PUA 占位符泄漏成乱码（复现：代码块紧跟说明文字一行时）。
+      // 缩进对齐：匹配 m 从围栏开头 ``` 起、其行首缩进在替换时天然保留在匹配前，
+      // 因此开头围栏不再补缩进（否则缩进翻倍，如列表项 4 空格变 8 空格成缩进代码块）；
+      // 仅占位行与收尾围栏是新增行，需补上原缩进，使列表项内围栏整体结构一致、
+      // 占位符不逃出 <pre><code>（列表项内缩进围栏若占位行落到 0 列也会泄漏）。
+      const lineStart = full.lastIndexOf('\n', offset - 1) + 1
+      const indent = full.slice(lineStart, offset).match(/^[ \t]*/)?.[0] || ''
+      return `\`\`\`\n${indent}${fences.length - 1}\n${indent}\`\`\``
     })
     .replace(INLINE_CODE_RE, (m) => `${inlineCodes.push(m) - 1}`)
     .replace(NOTE_LINK_TEXT_RE, (_, title: string) => {
@@ -131,14 +148,21 @@ export function renderMarkdown(md: string, opts: MarkdownRenderOpts = {}): strin
   let html = typeof result === 'string' ? result : String(result)
   html = stripBetweenBlockWhitespace(html)
   // 使用 DOMPurify 进行消毒，防止 XSS 攻击
-  const sanitized = sanitizeMarkdown(html)
+  let sanitized = sanitizeMarkdown(html)
+  // 流式中抑制图片：markdown 图片 → 占位符；且跳过表情转 <img>（以原生字形显示）。
+  // 使流式气泡内不存在任何 <img> 元素，避免 v-html 每 chunk 重建 img 导致的图片反复加载；
+  // 流式结束（streaming=false）的终态渲染才一次性出图。仅当 suppressImages 显式开启。
+  const suppressImages = opts.streaming === true && opts.suppressImages === true
+  if (suppressImages) {
+    sanitized = sanitized.replace(/<img\b[^>]*>/g, '<span class="md-img-placeholder">图片</span>')
+  }
   // 需要时再把表情字符/经典标记替换为 <img>（占位符不受影响）
-  const emojiHtml = opts.withEmoji ? classicToHtml(emojiToHtml(sanitized)) : sanitized
+  const emojiHtml = opts.withEmoji && !suppressImages ? classicToHtml(emojiToHtml(sanitized)) : sanitized
   if (titles.length === 0 && fences.length === 0) return emojiHtml
 
-  // 围栏 code 原样恢复为 <pre><code>（内容转义；marked 会把占位符包进 <p>，
-  // 连同包裹一并替换，避免留下空 <p> 的排版空隙）
-  let finalHtml = emojiHtml.replace(/<p>(\d+)<\/p>/g, (_, n: string) => {
+  // 围栏 code 原样恢复为 <pre><code>（内容转义）。占位符以围栏形式由 marked
+  // 渲染成 <pre><code>占位\n</code></pre>，直接命中恢复；\s* 吸收 marked 追加的换行。
+  let finalHtml = emojiHtml.replace(/<pre><code[^>]*>(\d+)\s*<\/code><\/pre>/g, (_, n: string) => {
     const code = escapeHtmlAttr(fences[Number(n)])
     return `<pre><code>${code}</code></pre>`
   })

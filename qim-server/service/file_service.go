@@ -349,7 +349,25 @@ func (s *FileService) GetFileStats(userID uint) (*FileStats, error) {
 func (s *FileService) GetFolderTree(userID uint, parentID *uint) ([]model.Folder, error) {
 	ctx := context.Background()
 	var folders []model.Folder
-	query := s.legacyUserFolders(ctx, userID)
+
+	// 单条 EXISTS 子查询填充 has_children（懒加载展开依据）+ COUNT 子查询填充 file_count（树行计数）；
+	// 子查询带 scope 三元组隔离，防跨用户判定
+	query := s.legacyUserFolders(ctx, userID).Model(&model.Folder{}).Select(`folders.*,
+		EXISTS(
+			SELECT 1 FROM folders c
+			WHERE c.parent_id = folders.id
+			  AND c.deleted_at IS NULL
+			  AND c.user_id = folders.user_id
+			  AND c.scope_type = folders.scope_type
+			  AND c.scope_id = folders.scope_id
+		) AS has_children,
+		(
+			SELECT COUNT(*) FROM files f
+			WHERE f.folder_id = folders.id
+			  AND f.deleted_at IS NULL
+			  AND f.scope_type = folders.scope_type
+			  AND f.scope_id = folders.scope_id
+		) AS file_count`)
 
 	if parentID != nil {
 		query = query.Where("parent_id = ?", *parentID)
@@ -361,6 +379,9 @@ func (s *FileService) GetFolderTree(userID uint, parentID *uint) ([]model.Folder
 	return folders, err
 }
 
+// DefaultStorageQuota 个人文件存储默认配额：50GB（存量用户/配额为 0 时兜底）
+const DefaultStorageQuota int64 = 50 * 1024 * 1024 * 1024
+
 func (s *FileService) GetFolder(userID, folderID uint) (*model.Folder, error) {
 	ctx := context.Background()
 	var folder model.Folder
@@ -369,6 +390,28 @@ func (s *FileService) GetFolder(userID, folderID uint) (*model.Folder, error) {
 		return nil, err
 	}
 	return &folder, nil
+}
+
+// GetStorageUsage 统计个人空间已用字节数（scope_type='user' 的个人文件；软删除由 gorm 自动过滤）
+func (s *FileService) GetStorageUsage(userID uint) (int64, error) {
+	ctx := context.Background()
+	var used int64
+	err := s.db.WithContext(ctx).Model(&model.File{}).
+		Where("user_id = ? AND scope_type = ?", userID, "user").
+		Select("COALESCE(SUM(size), 0)").Scan(&used).Error
+	return used, err
+}
+
+// GetUserQuota 返回用户存储配额（字节）；未配置（<=0）时兜底默认 50GB
+func (s *FileService) GetUserQuota(userID uint) (int64, error) {
+	var user model.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return 0, err
+	}
+	if user.StorageQuota <= 0 {
+		return DefaultStorageQuota, nil
+	}
+	return user.StorageQuota, nil
 }
 
 func (s *FileService) UpdateFolder(userID, folderID uint, updates map[string]interface{}) (*model.Folder, error) {

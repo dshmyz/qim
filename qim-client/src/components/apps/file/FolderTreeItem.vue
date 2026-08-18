@@ -10,6 +10,7 @@
       @click="handleClick"
       @mouseenter="isHovered = true"
       @mouseleave="isHovered = false"
+      @contextmenu.prevent="$emit('contextmenu', folder, $event)"
     >
       <!-- 展开/收起箭头 -->
       <span
@@ -40,10 +41,25 @@
         {{ folder.name }}
       </span>
 
+      <!-- 直接子文件计数 -->
+      <span v-if="folder.fileCount !== undefined" class="folder-count" :title="`${folder.fileCount} 个文件`">
+        {{ folder.fileCount }}
+      </span>
+
       <!-- 操作按钮 -->
       <div class="folder-actions" v-if="isHovered">
         <button
-          class="folder-action-btn"
+          class="folder-action-btn folder-action-btn--rename"
+          title="重命名文件夹"
+          @click.stop="$emit('rename', folder)"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+        </button>
+        <button
+          class="folder-action-btn folder-action-btn--delete"
           title="删除文件夹"
           @click.stop="$emit('delete', folder)"
         >
@@ -68,7 +84,9 @@
           :loading-ids="loadingIds"
           @toggle="$emit('toggle', $event)"
           @select="$emit('select', $event)"
+          @rename="$emit('rename', $event)"
           @delete="$emit('delete', $event)"
+          @contextmenu="(f, e) => $emit('contextmenu', f, e)"
         />
       </div>
     </transition>
@@ -112,7 +130,9 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   (e: 'toggle', folder: FolderNode): void
   (e: 'select', folder: FolderNode): void
+  (e: 'rename', folder: FolderNode): void
   (e: 'delete', folder: FolderNode): void
+  (e: 'contextmenu', folder: FolderNode, event: MouseEvent): void
 }>()
 
 const isHovered = ref(false)
@@ -220,6 +240,19 @@ const handleToggle = () => {
   color: var(--primary-dark);
 }
 
+/* 直接子文件计数 */
+.folder-count {
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary);
+  opacity: 0.75;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+.folder-row--selected .folder-count {
+  color: var(--primary-color);
+}
+
 /* 操作按钮 */
 .folder-actions {
   display: flex;
@@ -242,7 +275,12 @@ const handleToggle = () => {
   transition: all var(--transition-base);
 }
 
-.folder-action-btn:hover {
+.folder-action-btn--rename:hover {
+  background-color: var(--primary-light);
+  color: var(--primary-color);
+}
+
+.folder-action-btn--delete:hover {
   background-color: var(--color-error-100);
   color: var(--color-error-500);
 }

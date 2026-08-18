@@ -39,6 +39,9 @@ const props = withDefaults(defineProps<{
   showThinking?: boolean
   /** 气泡壳变体：im = IM 消息气泡，botchat = 分身/AI 独立聊天气泡 */
   variant?: 'im' | 'botchat'
+  /** 流式中抑制 <img>（markdown 图片占位、表情原生字形），流式结束一次性出图——
+      消除 v-html 每 chunk 重建 img 导致的图片反复加载。仅目标视图显式开启，默认 false。 */
+  suppressStreamingImages?: boolean
   toolCalls?: ToolCallRecord[]
   knowledgeSources?: AISource[]
   avatarSources?: AISource[]
@@ -46,6 +49,7 @@ const props = withDefaults(defineProps<{
   isSelf: false,
   showThinking: true,
   variant: 'im',
+  suppressStreamingImages: false,
 })
 
 // 流式选项随 props 变化：content 变化的 ref 驱动 rerender
@@ -53,7 +57,12 @@ const content = computed(() => props.content)
 const isStreaming = computed(() => props.isStreaming)
 const { html, containerRef: bodyEl } = useMarkdownRender(
   content,
-  computed(() => ({ streaming: isStreaming.value, decodeMention: true, withEmoji: true }))
+  computed(() => ({
+    streaming: isStreaming.value,
+    decodeMention: true,
+    withEmoji: true,
+    suppressImages: props.suppressStreamingImages,
+  }))
 )
 </script>
 

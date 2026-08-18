@@ -1,7 +1,7 @@
 <template>
   <ModalContainer
     :visible="visible"
-    :title="isEditing ? '编辑文件夹' : '创建文件夹'"
+    :title="isEditing ? '重命名文件夹' : '创建文件夹'"
     width="480px"
     @close="handleClose"
     @cancel="handleClose"
@@ -18,18 +18,13 @@
         @keyup.enter="handleSubmit"
       />
     </div>
-    <div v-if="!isEditing" class="form-group">
+    <div v-if="!isEditing && fixedParentId === undefined" class="form-group">
       <label for="parent-folder-select">上级文件夹</label>
-      <select
+      <FolderTreeSelect
         id="parent-folder-select"
         v-model="parentFolderId"
-        class="form-input"
-      >
-        <option :value="null">根目录</option>
-        <option v-for="folder in folders" :key="folder.id" :value="folder.id">
-          {{ folder.name }}
-        </option>
-      </select>
+        :options="options"
+      />
     </div>
 
     <template #footer>
@@ -43,27 +38,35 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
-import { folderApi, type FolderItem } from '../../../api/file'
 import QMessage from '../../../utils/qmessage'
 import ModalContainer from '../../shared/ModalContainer.vue'
+import FolderTreeSelect from './FolderTreeSelect.vue'
+import { useFolderTree, type FolderNode, type FolderOption } from '../../../composables/useFolderTree'
 
 interface Props {
   visible: boolean
   isEditing?: boolean
-  folder?: FolderItem | null
-  folders?: FolderItem[]
+  folder?: FolderNode | null
+  options?: FolderOption[]
+  /** 固定父级（侧栏新建：跟随选中节点），有值时隐藏父级选择器 */
+  fixedParentId?: number | null
+  /** 父级选择器初始值（文件列表新建：默认当前所在文件夹，可改） */
+  initialParentId?: number | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isEditing: false,
   folder: null,
-  folders: () => []
+  options: () => [],
+  initialParentId: null
 })
 
 const emit = defineEmits<{
   close: []
   success: []
 }>()
+
+const { createFolder, renameFolder, error } = useFolderTree()
 
 const folderName = ref('')
 const parentFolderId = ref<number | null>(null)
@@ -75,10 +78,9 @@ watch(() => props.visible, async (newVal) => {
   if (newVal) {
     if (props.isEditing && props.folder) {
       folderName.value = props.folder.name
-      parentFolderId.value = props.folder.parent_id
     } else {
       folderName.value = ''
-      parentFolderId.value = null
+      parentFolderId.value = props.fixedParentId !== undefined ? props.fixedParentId : props.initialParentId
     }
     await nextTick()
     nameInputRef.value?.focus()
@@ -99,19 +101,19 @@ async function handleSubmit() {
   submitting.value = true
   try {
     if (props.isEditing && props.folder) {
-      await folderApi.updateFolder(props.folder.id, {
-        name: trimmedName
-      })
+      const ok = await renameFolder(props.folder.id, trimmedName)
+      if (!ok) throw new Error(error.value || '重命名失败')
       QMessage.success('文件夹名称已更新')
     } else {
-      await folderApi.createFolder(trimmedName, parentFolderId.value)
+      const parentId = props.fixedParentId !== undefined ? props.fixedParentId : parentFolderId.value
+      const ok = await createFolder(trimmedName, parentId)
+      if (!ok) throw new Error(error.value || '创建失败')
       QMessage.success('文件夹创建成功')
     }
     emit('success')
     emit('close')
-  } catch (error: any) {
-    const message = error?.response?.data?.message || '操作失败，请稍后重试'
-    QMessage.error(message)
+  } catch (e) {
+    QMessage.error(e instanceof Error ? e.message : '操作失败，请稍后重试')
   } finally {
     submitting.value = false
   }

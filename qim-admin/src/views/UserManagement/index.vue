@@ -70,6 +70,12 @@
         <StatusTag :status="row.accountStatus || 'active'" :map="userAccountStatusMap" />
       </template>
     </el-table-column>
+    <el-table-column label="存储配额" width="110">
+      <template #default="{ row }">
+        <span v-if="row.storage_quota">{{ (row.storage_quota / GB).toFixed(0) }} GB</span>
+        <span v-else class="text-muted">默认 50 GB</span>
+      </template>
+    </el-table-column>
     <el-table-column prop="createdAt" label="创建时间" width="180" />
     <el-table-column label="操作" width="340" fixed="right">
       <template #default="{ row }">
@@ -130,7 +136,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormRules } from 'element-plus'
 import DataTable from '@/components/data/DataTable.vue'
@@ -153,6 +159,9 @@ const userApi = {
   update: (id: number, data: Record<string, unknown>) => updateUser(id, data as any).then(() => {}),
   delete: (id: number) => deleteUser(id).then(() => {}),
 }
+
+// 存储配额换算：表单以 GB 编辑，后端以字节存储
+const GB = 1024 * 1024 * 1024
 
 const typedFields = userFields as EntityFormField[]
 
@@ -181,6 +190,7 @@ const entityFields = computed<RendererFormField[]>(() => [
     { label: '禁用', value: 'disabled' },
     { label: '封禁', value: 'banned' },
   ] },
+  { name: 'storage_quota', label: '存储配额(GB)', type: 'number', props: { min: 0, step: 1, placeholder: '默认 50' } },
 ])
 
 const userPresenceMap = {
@@ -210,14 +220,28 @@ const entityRules = computed<FormRules>(() => {
   return rules
 })
 
+// 编辑弹窗回填时把字节换算为 GB 展示
+watch(dialogVisible, (visible) => {
+  if (visible && dialogMode.value === 'edit' && formData.value.storage_quota != null) {
+    formData.value.storage_quota = Math.round((formData.value.storage_quota as number) / GB)
+  }
+})
+
 const handleUserSave = (data: Record<string, unknown>) => {
-  const allowedFields = ['username', 'password', 'nickname', 'email', 'phone', 'avatar', 'signature', 'accountStatus']
+  const allowedFields = ['username', 'password', 'nickname', 'email', 'phone', 'avatar', 'signature', 'accountStatus', 'storage_quota']
   const payload: Record<string, unknown> = {}
 
   for (const field of allowedFields) {
     if (data[field] !== undefined) {
       payload[field] = data[field]
     }
+  }
+
+  // 表单以 GB 输入，后端以字节存储
+  if (payload.storage_quota !== undefined && payload.storage_quota !== null && payload.storage_quota !== '') {
+    payload.storage_quota = Math.round((payload.storage_quota as number) * GB)
+  } else {
+    delete payload.storage_quota
   }
 
   if (dialogMode.value === 'edit' && payload.password === '') {

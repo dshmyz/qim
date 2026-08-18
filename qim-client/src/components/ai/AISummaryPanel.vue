@@ -53,7 +53,7 @@
             <span>{{ messagesCount }} 条消息</span>
             <span v-if="activeMembers.length > 0">参与者: {{ activeMembers.join(', ') }}</span>
           </div>
-          <div v-html="renderMarkdown(displaySummary)"></div>
+          <div ref="summaryRef" v-html="summaryHtml"></div>
           <div class="summary-actions">
             <button @click="copySummary">复制摘要</button>
             <button @click="exportSummary">导出 Markdown</button>
@@ -83,9 +83,8 @@
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useAIActions } from '../../composables/useAIActions'
 import { useNotes } from '../../composables/useNotes'
-import { marked } from 'marked'
-import { sanitizeMarkdown } from '../../utils/sanitize'
-import { emojiToHtml } from '../../utils/emoji'
+import { renderMarkdown } from '../../composables/useMarkdownRender'
+import { useCodeHighlight } from '../../composables/useCodeHighlight'
 import QMessage from '../../utils/qmessage'
 
 interface Props {
@@ -242,17 +241,12 @@ const saveToNote = async () => {
   }
 }
 
-const renderMarkdown = (text: string): string => {
-  try {
-    const result = marked.parse(text)
-    if (result instanceof Promise) return text
-    // 消毒后再把 emoji 转成 Twemoji 图片（自托管资产，不依赖系统 emoji 字体），
-    // 与主消息渲染一致：Linux 无 emoji 字体时也能正常显示，而非方框/乱码。
-    return emojiToHtml(sanitizeMarkdown(result as string))
-  } catch {
-    return text.replace(/\n/g, '<br>')
-  }
-}
+// 摘要正文统一走 renderMarkdown 管道（withEmoji 保留原 Twemoji 行为，顺带获得
+// 代码块正确渲染、笔记内链保护、宽容标题）。流式 partial-md 同样经此渲染。
+const summaryHtml = computed(() => renderMarkdown(displaySummary.value, { withEmoji: true }))
+// 摘要容器条件挂载（v-else-if），useCodeHighlight 同时监听容器挂载补亮。
+const summaryRef = ref<HTMLElement | null>(null)
+useCodeHighlight(summaryRef, summaryHtml)
 
 // ESC 关闭
 const onKeydown = (e: KeyboardEvent) => {

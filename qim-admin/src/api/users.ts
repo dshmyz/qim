@@ -18,6 +18,7 @@ export interface UpdateUserParams {
   avatar?: string
   signature?: string
   accountStatus?: 'active' | 'disabled' | 'banned'
+  storage_quota?: number // 文件存储配额（字节）
 }
 
 export const getUsers = (params: PaginationParams & { keyword?: string }): Promise<AxiosResponse<ApiResponse<PaginatedResponse<User>>>> => {

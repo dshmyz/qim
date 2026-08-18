@@ -152,13 +152,14 @@ func TestImageURLForContext_Missing(t *testing.T) {
 var _ QuotedDocumentReader = (*GroupDocumentService)(nil)
 
 // setupQuotedTestDB 构造 prepareInput 引用/自引用读取所需的 message + file + conversation 表（内存 SQLite）。
+// User 表供 Preload("Sender") 读取被引用文本消息的发送者名；无对应 user 行时 Sender 为空，属预期。
 func setupQuotedTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("连接数据库失败: %v", err)
 	}
-	if err := db.AutoMigrate(&model.Conversation{}, &model.Message{}, &model.File{}); err != nil {
+	if err := db.AutoMigrate(&model.Conversation{}, &model.Message{}, &model.File{}, &model.User{}); err != nil {
 		t.Fatalf("AutoMigrate 失败: %v", err)
 	}
 	return db
@@ -246,4 +247,273 @@ func TestPrepareInput_SelfQuoteFile(t *testing.T) {
 	assert.Contains(t, input.Quoted.Text, "用户发送的文件", "自引用措辞应为用户发送，got %q", input.Quoted.Text)
 	assert.Contains(t, input.Quoted.Text, body, "应注入文件正文")
 	assert.NotContains(t, input.Quoted.Text, "你引用了", "自引用不应出现引用措辞")
+}
+
+// TestParseQuotedShareData 分享消息 content JSON 解析：note/sticky 取 originalContent 正文，
+// file 解析文件 id（数字/数字字符串均可），message 仅转发文本类可注入原文，非 JSON/缺 type 判失败。
+func TestParseQuotedShareData(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		kind    string
+		body    string
+		fileID  uint
+		ok      bool
+	}{
+		{name: "note", content: `{"type":"note","name":"会议纪要","originalContent":"1. 发布 v2.0\n2. 修复引用 bug"}`, kind: "note", body: "1. 发布 v2.0\n2. 修复引用 bug", ok: true},
+		{name: "sticky", content: `{"type":"sticky","name":"买菜","originalContent":"土豆、西红柿","style":{"color":"yellow"}}`, kind: "sticky", body: "土豆、西红柿", ok: true},
+		{name: "sticky without body", content: `{"type":"sticky","name":"空便签"}`, kind: "sticky", body: "", ok: true},
+		{name: "file numeric id", content: `{"type":"file","id":42,"name":"方案.docx"}`, kind: "file", fileID: 42, ok: true},
+		{name: "file string id", content: `{"type":"file","id":"42","name":"方案.docx"}`, kind: "file", fileID: 42, ok: true},
+		{name: "file without id", content: `{"type":"file","name":"方案.docx"}`, kind: "file", fileID: 0, ok: true},
+		{name: "message forwarding text", content: `{"type":"message","name":"文本消息","originalMessage":{"type":"text","content":"你好世界"}}`, kind: "message", body: "你好世界", ok: true},
+		{name: "message forwarding image", content: `{"type":"message","name":"图片消息","originalMessage":{"type":"image","content":"{\"url\":\"/static/x.png\"}"}}`, kind: "message", body: "", ok: true},
+		{name: "not json", content: "hello", kind: "", ok: false},
+		{name: "json without type", content: `{"name":"x"}`, kind: "", ok: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, _, body, fileID, ok := parseQuotedShareData(tc.content)
+			assert.Equal(t, tc.ok, ok, "ok 判定不一致")
+			if !tc.ok {
+				return
+			}
+			assert.Equal(t, tc.kind, kind)
+			assert.Equal(t, tc.body, body)
+			assert.Equal(t, tc.fileID, fileID)
+		})
+	}
+}
+
+// TestPrepareInput_QuotedText 显式引用文本消息时，prepareInput 注入原文与发送者名，
+// 措辞主语为"你引用了"。不注入文件读取器也应生效（文本引用不依赖读取器）。
+func TestPrepareInput_QuotedText(t *testing.T) {
+	db := setupQuotedTestDB(t)
+	require.NoError(t, db.Create(&model.Conversation{ID: 1, Type: "group"}).Error)
+	require.NoError(t, db.Create(&model.User{ID: 1, Nickname: "张三"}).Error)
+
+	quotedMsg := &model.Message{ConversationID: 1, SenderID: 1, Type: "text", Content: "这个方案我觉得不行，成本太高了。"}
+	require.NoError(t, db.Create(quotedMsg).Error)
+
+	sg := newQuotedGraph(db, nil)
+	input := &SmartReplyContext{
+		Message:         "帮我看看这条",
+		UserID:          2,
+		ConversationID:  1,
+		IsAIMention:     true,
+		QuotedMessageID: &quotedMsg.ID,
+	}
+	require.NoError(t, sg.prepareInput(input))
+
+	require.NotNil(t, input.Quoted, "引用文本应产生被引用上下文")
+	assert.Equal(t, QuotedText, input.Quoted.Kind)
+	assert.Contains(t, input.Quoted.Text, "你引用了", "显式引用措辞应为你引用了，got %q", input.Quoted.Text)
+	assert.Contains(t, input.Quoted.Text, "张三", "应注入发送者名，got %q", input.Quoted.Text)
+	assert.Contains(t, input.Quoted.Text, "这个方案我觉得不行", "应注入原文，got %q", input.Quoted.Text)
+}
+
+// TestPrepareInput_QuotedShareNote 显式引用分享的笔记消息时，prepareInput 解析 content JSON
+// 注入笔记标题与正文（正文内嵌在分享消息里，不依赖文件读取器）。
+func TestPrepareInput_QuotedShareNote(t *testing.T) {
+	db := setupQuotedTestDB(t)
+	require.NoError(t, db.Create(&model.Conversation{ID: 1, Type: "group"}).Error)
+
+	quotedMsg := &model.Message{ConversationID: 1, SenderID: 1, Type: "share", Content: `{"type":"note","name":"发版计划","originalContent":"本周五发布 v2.0，先冻结需求。"}`}
+	require.NoError(t, db.Create(quotedMsg).Error)
+
+	sg := newQuotedGraph(db, nil)
+	input := &SmartReplyContext{
+		Message:         "这个计划靠谱吗",
+		UserID:          2,
+		ConversationID:  1,
+		IsAIMention:     true,
+		QuotedMessageID: &quotedMsg.ID,
+	}
+	require.NoError(t, sg.prepareInput(input))
+
+	require.NotNil(t, input.Quoted, "引用分享笔记应产生被引用上下文")
+	assert.Equal(t, QuotedText, input.Quoted.Kind)
+	assert.Contains(t, input.Quoted.Text, "发版计划", "应注入笔记标题，got %q", input.Quoted.Text)
+	assert.Contains(t, input.Quoted.Text, "本周五发布 v2.0", "应注入笔记正文，got %q", input.Quoted.Text)
+}
+
+// TestPrepareInput_QuotedUnsupportedType 引用不支持的类型的消息（小程序等）时，
+// 落 QuotedFailed 提示语而非静默当作无引用。
+func TestPrepareInput_QuotedUnsupportedType(t *testing.T) {
+	db := setupQuotedTestDB(t)
+	require.NoError(t, db.Create(&model.Conversation{ID: 1, Type: "group"}).Error)
+
+	quotedMsg := &model.Message{ConversationID: 1, SenderID: 1, Type: "miniApp", Content: `{"appId":"123","name":"天气"}`}
+	require.NoError(t, db.Create(quotedMsg).Error)
+
+	sg := newQuotedGraph(db, nil)
+	input := &SmartReplyContext{
+		Message:         "这个怎么样",
+		UserID:          2,
+		ConversationID:  1,
+		IsAIMention:     true,
+		QuotedMessageID: &quotedMsg.ID,
+	}
+	require.NoError(t, sg.prepareInput(input))
+
+	require.NotNil(t, input.Quoted, "不支持的引用类型应显式落 QuotedFailed")
+	assert.Equal(t, QuotedFailed, input.Quoted.Kind)
+	assert.Contains(t, input.Quoted.Text, "小程序", "提示语应指明被引用类型，got %q", input.Quoted.Text)
+}
+
+// TestPrepareInput_QuotedMissingMessage 被引用消息不存在/已删除时，落 QuotedFailed 诚实提示。
+func TestPrepareInput_QuotedMissingMessage(t *testing.T) {
+	db := setupQuotedTestDB(t)
+	require.NoError(t, db.Create(&model.Conversation{ID: 1, Type: "group"}).Error)
+
+	missingID := uint(999)
+	sg := newQuotedGraph(db, nil)
+	input := &SmartReplyContext{
+		Message:         "帮我看看",
+		UserID:          2,
+		ConversationID:  1,
+		IsAIMention:     true,
+		QuotedMessageID: &missingID,
+	}
+	require.NoError(t, sg.prepareInput(input))
+
+	require.NotNil(t, input.Quoted, "被引用消息缺失应显式落 QuotedFailed")
+	assert.Equal(t, QuotedFailed, input.Quoted.Kind)
+	assert.Contains(t, input.Quoted.Text, "不存在或已被删除", "提示语应说明缺失原因，got %q", input.Quoted.Text)
+}
+
+// TestParseQuotedMergedForward 合并转发 payload 解析：标题+子消息列表；
+// 非 JSON / messages 缺失或为空判失败。
+func TestParseQuotedMergedForward(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		title   string
+		items   int
+		ok      bool
+	}{
+		{name: "normal", content: `{"version":1,"title":"群聊记录","messages":[{"id":"1","type":"text","content":"你好","senderName":"张三","timestamp":1},{"id":"2","type":"image","content":"{}","senderName":"李四","timestamp":2}]}`, title: "群聊记录", items: 2, ok: true},
+		{name: "without title", content: `{"version":1,"title":"","messages":[{"id":"1","type":"text","content":"你好","senderName":"张三","timestamp":1}]}`, title: "", items: 1, ok: true},
+		{name: "empty messages", content: `{"version":1,"title":"x","messages":[]}`, ok: false},
+		{name: "missing messages", content: `{"version":1,"title":"x"}`, ok: false},
+		{name: "not json", content: "hello", ok: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			title, items, ok := parseQuotedMergedForward(tc.content)
+			assert.Equal(t, tc.ok, ok, "ok 判定不一致")
+			if !tc.ok {
+				return
+			}
+			assert.Equal(t, tc.title, title)
+			assert.Len(t, items, tc.items)
+		})
+	}
+}
+
+// TestPrepareInput_QuotedMergedForward 引用合并转发时，注入标题与子消息列表：
+// 文本直读原文、媒体给占位，且未解析的原始 JSON 不得泄漏进上下文。
+func TestPrepareInput_QuotedMergedForward(t *testing.T) {
+	db := setupQuotedTestDB(t)
+	require.NoError(t, db.Create(&model.Conversation{ID: 1, Type: "group"}).Error)
+
+	quotedMsg := &model.Message{
+		ConversationID: 1,
+		SenderID:       1,
+		Type:           "merged_forward",
+		Content:        `{"version":1,"title":"项目讨论","messages":[{"id":"1","type":"text","content":"明天发布","senderName":"张三","timestamp":1},{"id":"2","type":"image","content":"{\"url\":\"/static/x.png\"}","senderName":"李四","timestamp":2},{"id":"3","type":"file","content":"{\"id\":7}","senderName":"王五","timestamp":3}]}`,
+	}
+	require.NoError(t, db.Create(quotedMsg).Error)
+
+	sg := newQuotedGraph(db, nil)
+	input := &SmartReplyContext{
+		Message:         "这个转发的关键是什么",
+		UserID:          2,
+		ConversationID:  1,
+		IsAIMention:     true,
+		QuotedMessageID: &quotedMsg.ID,
+	}
+	require.NoError(t, sg.prepareInput(input))
+
+	require.NotNil(t, input.Quoted, "引用合并转发应产生被引用上下文")
+	assert.Equal(t, QuotedText, input.Quoted.Kind)
+	assert.Contains(t, input.Quoted.Text, "项目讨论", "应注入转发标题，got %q", input.Quoted.Text)
+	assert.Contains(t, input.Quoted.Text, "共 3 条消息", "应注明条数，got %q", input.Quoted.Text)
+	assert.Contains(t, input.Quoted.Text, "- 张三：明天发布", "文本子消息应直读原文，got %q", input.Quoted.Text)
+	assert.Contains(t, input.Quoted.Text, "[图片]", "图片子消息应给占位，got %q", input.Quoted.Text)
+	assert.Contains(t, input.Quoted.Text, "[文件]", "文件子消息应给占位，got %q", input.Quoted.Text)
+	assert.NotContains(t, input.Quoted.Text, `{"url"`, "原始 JSON 不得泄漏进上下文")
+}
+
+// TestPrepareInput_QuotedMergedForwardBroken 引用解析失败的合并转发时，落 QuotedFailed 诚实提示。
+func TestPrepareInput_QuotedMergedForwardBroken(t *testing.T) {
+	db := setupQuotedTestDB(t)
+	require.NoError(t, db.Create(&model.Conversation{ID: 1, Type: "group"}).Error)
+
+	quotedMsg := &model.Message{ConversationID: 1, SenderID: 1, Type: "merged_forward", Content: `{"version":1,"title":"x","messages":[]}`}
+	require.NoError(t, db.Create(quotedMsg).Error)
+
+	sg := newQuotedGraph(db, nil)
+	input := &SmartReplyContext{
+		Message:         "看看这个",
+		UserID:          2,
+		ConversationID:  1,
+		IsAIMention:     true,
+		QuotedMessageID: &quotedMsg.ID,
+	}
+	require.NoError(t, sg.prepareInput(input))
+
+	require.NotNil(t, input.Quoted)
+	assert.Equal(t, QuotedFailed, input.Quoted.Kind)
+	assert.Contains(t, input.Quoted.Text, "无法解析", "提示语应说明解析失败，got %q", input.Quoted.Text)
+}
+
+// TestPrepareInput_QuotedVideo 引用视频消息时提示语带上文件名；无文件名时退回无名字文案。
+func TestPrepareInput_QuotedVideo(t *testing.T) {
+	db := setupQuotedTestDB(t)
+	require.NoError(t, db.Create(&model.Conversation{ID: 1, Type: "group"}).Error)
+
+	quotedMsg := &model.Message{ConversationID: 1, SenderID: 1, Type: "video", Content: `{"url":"/static/demo.mp4","name":"演示视频.mp4"}`}
+	require.NoError(t, db.Create(quotedMsg).Error)
+
+	sg := newQuotedGraph(db, nil)
+	input := &SmartReplyContext{
+		Message:         "这个视频说什么了",
+		UserID:          2,
+		ConversationID:  1,
+		IsAIMention:     true,
+		QuotedMessageID: &quotedMsg.ID,
+	}
+	require.NoError(t, sg.prepareInput(input))
+
+	require.NotNil(t, input.Quoted)
+	assert.Equal(t, QuotedFailed, input.Quoted.Kind)
+	assert.Contains(t, input.Quoted.Text, "演示视频.mp4", "提示语应带文件名，got %q", input.Quoted.Text)
+	assert.Contains(t, input.Quoted.Text, "视频", "提示语应指明类型，got %q", input.Quoted.Text)
+}
+
+// TestPrepareInput_QuotedCrossConversation 引用其他会话的消息时拒绝注入内容，
+// 防伪造 WS 消息把别的会话内容带进 AI 上下文。
+func TestPrepareInput_QuotedCrossConversation(t *testing.T) {
+	db := setupQuotedTestDB(t)
+	require.NoError(t, db.Create(&model.Conversation{ID: 1, Type: "group"}).Error)
+	require.NoError(t, db.Create(&model.Conversation{ID: 2, Type: "group"}).Error)
+
+	quotedMsg := &model.Message{ConversationID: 2, SenderID: 1, Type: "text", Content: "别的群的秘密"}
+	require.NoError(t, db.Create(quotedMsg).Error)
+
+	sg := newQuotedGraph(db, nil)
+	input := &SmartReplyContext{
+		Message:         "这个怎么说",
+		UserID:          2,
+		ConversationID:  1,
+		IsAIMention:     true,
+		QuotedMessageID: &quotedMsg.ID,
+	}
+	require.NoError(t, sg.prepareInput(input))
+
+	require.NotNil(t, input.Quoted, "跨会话引用应显式落 QuotedFailed")
+	assert.Equal(t, QuotedFailed, input.Quoted.Kind)
+	assert.Contains(t, input.Quoted.Text, "不属于当前会话", "提示语应说明会话不符，got %q", input.Quoted.Text)
+	assert.NotContains(t, input.Quoted.Text, "别的群的秘密", "跨会话内容不得注入上下文")
 }

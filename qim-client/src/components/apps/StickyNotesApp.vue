@@ -1,5 +1,5 @@
 <template>
-  <div class="sticky-notes-app" :class="{ fullscreen: isFullscreen }">
+  <div class="sticky-notes-app">
     <AppHeader title="便签" @back="$emit('back')">
       <template #actions>
         <div class="header-right">
@@ -48,15 +48,40 @@
     <ModalContainer
       :visible="showNoteModal"
       :title="selectedNote ? '编辑便签' : '创建便签'"
+      width="640px"
       @close="closeNoteModal"
     >
-      <div class="sticky-note-form-group">
-        <label>标题</label>
-        <input type="text" class="sticky-note-form-input" v-model="formData.title" placeholder="便签标题">
+      <div class="sticky-note-preview-wrap">
+        <StickyNoteCard
+          :note="previewNote"
+          :index="0"
+          class="sticky-note-preview-card"
+        />
       </div>
       <div class="sticky-note-form-group">
-        <label>内容</label>
-        <textarea class="sticky-note-form-textarea" v-model="formData.content" placeholder="便签内容"></textarea>
+        <label for="sticky-note-title">标题</label>
+        <input
+          id="sticky-note-title"
+          ref="titleInputRef"
+          type="text"
+          class="sticky-note-form-input"
+          v-model="formData.title"
+          placeholder="便签标题"
+        >
+      </div>
+      <div class="sticky-note-form-group">
+        <div class="sticky-note-content-header">
+          <label for="sticky-note-content">内容</label>
+          <span class="sticky-note-form-counter">{{ formData.content.length }} 字</span>
+        </div>
+        <textarea
+          id="sticky-note-content"
+          ref="contentInputRef"
+          class="sticky-note-form-textarea"
+          v-model="formData.content"
+          placeholder="便签内容"
+          @input="autoResizeContent"
+        ></textarea>
       </div>
       <div class="sticky-note-form-group">
         <label>颜色</label>
@@ -67,123 +92,69 @@
             class="sticky-note-color-option"
             :class="{ active: formData.color === color.value }"
             :style="{ background: colorPreviewMap[color.value] }"
+            :title="color.name"
             @click="formData.color = color.value"
           ></div>
         </div>
       </div>
-      <div class="sticky-note-form-group">
-        <label>提醒时间</label>
-        <input 
-          type="datetime-local" 
-          class="sticky-note-form-input"
-          :value="formatReminderForInput(formData.reminder)"
-          @input="formData.reminder = ($event.target as HTMLInputElement).value"
-          placeholder="设置提醒时间"
-        >
+      <div class="sticky-note-form-grid">
+        <div class="sticky-note-form-group">
+          <label>纸张样式</label>
+          <select class="sticky-note-form-select" v-model="formData.paperStyle">
+            <option value="plain">普通纸张</option>
+            <option value="lined">横线纸张</option>
+            <option value="grid">网格纸张</option>
+            <option value="dotted">点阵纸张</option>
+          </select>
+        </div>
+        <div class="sticky-note-form-group">
+          <label>字体</label>
+          <select class="sticky-note-form-select" v-model="formData.fontFamily">
+            <option value="Arial, 'Microsoft YaHei', sans-serif">Arial</option>
+            <option value="'KaiTi', 'STKaiti', serif">楷体</option>
+            <option value="'SimSun', 'STSong', serif">宋体</option>
+            <option value="'SimHei', 'STHeiti', sans-serif">黑体</option>
+            <option value="'FangSong', 'STFangsong', serif">仿宋</option>
+            <option value="'Courier New', monospace">Courier New</option>
+          </select>
+        </div>
       </div>
       <div class="sticky-note-form-group">
         <label>标签</label>
-        <input 
-          type="text" 
-          class="sticky-note-form-input"
-          v-model="formData.tags"
-          placeholder="输入标签，用逗号分隔"
-        >
-        <p class="sticky-note-form-hint">示例：工作, 个人, 重要</p>
+        <div class="sticky-note-tag-input-wrap" @click="tagInputEl?.focus()">
+          <span v-for="(tag, index) in selectedTags" :key="tag" class="sticky-note-tag-chip">
+            {{ tag }}
+            <button type="button" class="remove-btn" title="删除标签" @click.stop="removeTag(index)">×</button>
+          </span>
+          <input
+            ref="tagInputEl"
+            class="sticky-note-tag-input"
+            v-model="tagInputText"
+            placeholder="输入标签后回车"
+            @keydown="handleTagInputKeydown"
+            @blur="addTagFromInput"
+          >
+        </div>
+        <p class="sticky-note-form-hint">回车或逗号生成标签，点击 × 删除</p>
       </div>
-      <div class="sticky-note-form-group">
-        <label>纸张样式</label>
-        <select class="sticky-note-form-select" v-model="formData.paperStyle">
-          <option value="plain">普通纸张</option>
-          <option value="lined">横线纸张</option>
-          <option value="grid">网格纸张</option>
-          <option value="dotted">点阵纸张</option>
-        </select>
-      </div>
-      <div class="sticky-note-form-group">
-        <label>字体</label>
-        <select class="sticky-note-form-select" v-model="formData.fontFamily">
-          <option value="Arial, 'Microsoft YaHei', sans-serif">Arial</option>
-          <option value="'KaiTi', 'STKaiti', serif">楷体</option>
-          <option value="'SimSun', 'STSong', serif">宋体</option>
-          <option value="'SimHei', 'STHeiti', sans-serif">黑体</option>
-          <option value="'FangSong', 'STFangsong', serif">仿宋</option>
-          <option value="'Courier New', monospace">Courier New</option>
-        </select>
-      </div>
-      
+
       <template #footer>
         <div class="modal-footer-left">
-          <button 
-            v-if="selectedNote" 
-            class="sticky-note-modal-btn sticky-note-ai-btn" 
-            @click="analyzeStickyNote"
-            title="AI 分析"
-          >
-            <i class="fas fa-magic"></i>
-          </button>
-          <button 
-            class="sticky-note-modal-btn sticky-note-fullscreen-btn" 
-            @click="toggleFullscreen"
-            :title="isFullscreen ? '退出全屏' : '全屏'"
-          >
-            <i :class="isFullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
-          </button>
+          <span class="sticky-note-shortcut-hint">Ctrl+Enter 保存 · Esc 关闭</span>
         </div>
         <div class="modal-footer-right">
           <button class="sticky-note-modal-btn sticky-note-cancel-btn" @click="closeNoteModal">取消</button>
-          <button class="sticky-note-modal-btn sticky-note-confirm-btn" @click="selectedNote ? updateStickyNote() : createStickyNote()">{{ selectedNote ? '更新' : '创建' }}</button>
+          <button class="sticky-note-modal-btn sticky-note-confirm-btn" @click="handleSave">{{ selectedNote ? '更新' : '创建' }}</button>
         </div>
       </template>
     </ModalContainer>
-    
-    <!-- AI 分析结果弹窗 -->
-    <div v-if="showAIAnalysis" class="ai-analysis-overlay" @click.self="showAIAnalysis = false">
-      <div class="ai-analysis-modal">
-        <div class="ai-analysis-header">
-          <h3>AI 分析结果</h3>
-          <button class="close-btn" @click="showAIAnalysis = false">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-        <div class="ai-analysis-body">
-          <div class="ai-section">
-            <h4>摘要</h4>
-            <p>{{ aiAnalysisResult?.summary || '暂无摘要' }}</p>
-          </div>
-          <div class="ai-section">
-            <h4>推荐标签</h4>
-            <div class="ai-tags">
-              <span 
-                v-for="tag in aiAnalysisResult?.tags || []" 
-                :key="tag" 
-                class="ai-tag"
-              >
-                {{ tag }}
-              </span>
-            </div>
-          </div>
-          <div class="ai-section" v-if="aiAnalysisResult?.action_items?.length">
-            <h4>行动项</h4>
-            <ul>
-              <li v-for="item in aiAnalysisResult.action_items" :key="item">{{ item }}</li>
-            </ul>
-          </div>
-        </div>
-        <div class="ai-analysis-footer">
-          <button class="ai-btn cancel" @click="showAIAnalysis = false">取消</button>
-          <button class="ai-btn confirm" @click="applyAIResult(aiAnalysisResult?.summary, aiAnalysisResult?.tags)">应用标签</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import QMessage from '../../utils/qmessage'
-import { showReminder } from '../../utils/notify'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { logger } from '../../utils/logger';
 import AppHeader from './AppHeader.vue'
@@ -202,16 +173,11 @@ const getToken = () => {
 // 便签应用相关状态
 const stickyNotes = ref<any[]>([])
 const showNoteModal = ref(false)
-const isFullscreen = ref(false)
 const selectedTag = ref<string | null>(null)
-const showAIAnalysis = ref(false)
-const aiAnalysisResult = ref<any>(null)
-const analyzingNote = ref<any>(null)
 const newNote = ref({
   title: '',
   content: '',
   color: 'yellow',
-  reminder: '',
   tags: '',
   paperStyle: 'plain',
   fontFamily: "Arial, 'Microsoft YaHei', sans-serif"
@@ -221,14 +187,18 @@ const formData = ref({
   title: '',
   content: '',
   color: 'yellow',
-  reminder: '',
-  tags: '',
   paperStyle: 'plain',
   fontFamily: "Arial, 'Microsoft YaHei', sans-serif"
 })
+// 已生成的标签 chips 与标签输入框临时文本
+const selectedTags = ref<string[]>([])
+const tagInputText = ref('')
+const tagInputEl = ref<HTMLInputElement | null>(null)
 const draggedNoteId = ref<string | null>(null)
 const searchQuery = ref('')
 const searchTimeout = ref<number | null>(null)
+const titleInputRef = ref<HTMLInputElement | null>(null)
+const contentInputRef = ref<HTMLTextAreaElement | null>(null)
 
 // 解析样式 JSON
 const parseStyle = (styleStr: string | undefined) => {
@@ -247,17 +217,6 @@ const parseStyle = (styleStr: string | undefined) => {
   }
 }
 
-const formatReminderForInput = (reminder: string): string => {
-  if (!reminder) return ''
-  const d = new Date(reminder)
-  if (isNaN(d.getTime())) return ''
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const hours = String(d.getHours()).padStart(2, '0')
-  const minutes = String(d.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hours}:${minutes}`
-}
 const serializeStyle = () => {
   return JSON.stringify({
     color: formData.value.color,
@@ -265,6 +224,16 @@ const serializeStyle = () => {
     fontFamily: formData.value.fontFamily
   })
 }
+
+// 实时预览便签：随表单输入即时渲染，所见即所得
+const previewNote = computed(() => ({
+  id: 'preview',
+  title: formData.value.title.trim() || '便签标题',
+  content: formData.value.content.trim() || '便签内容会显示在这里',
+  style: serializeStyle(),
+  tags: getFinalTags(),
+  created_at: new Date().toISOString()
+}))
 
 const noteColors = [
   { name: '黄色', value: 'yellow' },
@@ -306,16 +275,12 @@ const loadStickyNotes = async () => {
 const createStickyNote = async () => {
   try {
     const token = getToken()
-    const tagsArray = formData.value.tags
-      ? formData.value.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
-      : []
-    
+
     const response = await axios.post(`${serverUrl.value}/api/v1/notes`, {
       title: formData.value.title,
       content: formData.value.content,
       color: formData.value.color,
-      reminder: formData.value.reminder,
-      tags: tagsArray,
+      tags: JSON.stringify(getFinalTags()),
       type: 'sticky',
       style: serializeStyle()
     }, {
@@ -325,9 +290,6 @@ const createStickyNote = async () => {
       }
     })
     stickyNotes.value.push(response.data.data)
-    if (formData.value.reminder) {
-      setupReminder(response.data.data)
-    }
     closeNoteModal()
   } catch (error) {
     console.error('创建便签失败:', error)
@@ -339,16 +301,12 @@ const createStickyNote = async () => {
 const updateStickyNote = async () => {
   try {
     const token = getToken()
-    const tagsArray = formData.value.tags
-      ? formData.value.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
-      : []
-    
+
     const response = await axios.put(`${serverUrl.value}/api/v1/notes/${selectedNote.value.id}`, {
       title: formData.value.title,
       content: formData.value.content,
       color: formData.value.color,
-      reminder: formData.value.reminder,
-      tags: tagsArray,
+      tags: JSON.stringify(getFinalTags()),
       type: 'sticky',
       style: serializeStyle()
     }, {
@@ -360,9 +318,6 @@ const updateStickyNote = async () => {
     const index = stickyNotes.value.findIndex(note => note.id === selectedNote.value.id)
     if (index !== -1) {
       stickyNotes.value[index] = response.data.data
-      if (formData.value.reminder) {
-        setupReminder(response.data.data)
-      }
     }
     closeNoteModal()
   } catch (error) {
@@ -422,13 +377,63 @@ const showCreateNoteModal = () => {
     title: '',
     content: '',
     color: 'yellow',
-    reminder: '',
-    tags: '',
     paperStyle: 'plain',
     fontFamily: "Arial, 'Microsoft YaHei', sans-serif"
   }
+  selectedTags.value = []
+  tagInputText.value = ''
   selectedNote.value = null
   showNoteModal.value = true
+}
+
+// 将后端存储的标签（JSON 数组字符串或数组）转为标签数组
+const tagsToArray = (tags: any): string[] => {
+  if (Array.isArray(tags)) return tags.filter(Boolean)
+  if (typeof tags === 'string' && tags) {
+    try {
+      const parsed = JSON.parse(tags)
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : []
+    } catch {
+      // 兼容历史逗号分隔数据
+      return tags.split(/[,，、]/).map(t => t.trim()).filter(Boolean)
+    }
+  }
+  return []
+}
+
+// 把输入框文本生成一个标签 chip（去空、去重）
+const addTagFromInput = () => {
+  const text = tagInputText.value.trim()
+  if (!text) return
+  if (!selectedTags.value.includes(text)) {
+    selectedTags.value.push(text)
+  }
+  tagInputText.value = ''
+}
+
+const removeTag = (index: number) => {
+  selectedTags.value.splice(index, 1)
+}
+
+// 输入处理：回车/逗号/顿号生成标签；空输入框退格删除最后一个标签
+const handleTagInputKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Enter' || e.key === ',' || e.key === '，' || e.key === '、') {
+    e.preventDefault()
+    addTagFromInput()
+  } else if (e.key === 'Backspace' && !tagInputText.value && selectedTags.value.length > 0) {
+    removeTag(selectedTags.value.length - 1)
+  }
+}
+
+// 最终标签：已生成的 chips + 输入框残留文本（按逗号/顿号拆分），保存时兜底不丢
+const getFinalTags = (): string[] => {
+  const tags = [...selectedTags.value]
+  if (tagInputText.value.trim()) {
+    tagInputText.value.split(/[,，、]/).map(t => t.trim()).filter(Boolean).forEach(t => {
+      if (!tags.includes(t)) tags.push(t)
+    })
+  }
+  return tags
 }
 
 // 显示编辑便签模态框
@@ -439,11 +444,11 @@ const showEditNoteModal = (note: any) => {
     title: note.title,
     content: note.content,
     color: parsedStyle.color,
-    reminder: note.reminder || '',
-    tags: Array.isArray(note.tags) ? note.tags.join(', ') : note.tags || '',
     paperStyle: parsedStyle.paperStyle,
     fontFamily: parsedStyle.fontFamily
   }
+  selectedTags.value = tagsToArray(note.tags)
+  tagInputText.value = ''
   showNoteModal.value = true
 }
 
@@ -451,52 +456,51 @@ const showEditNoteModal = (note: any) => {
 const closeNoteModal = () => {
   showNoteModal.value = false
   selectedNote.value = null
-  isFullscreen.value = false
+  selectedTags.value = []
+  tagInputText.value = ''
   formData.value = {
     title: '',
     content: '',
     color: 'yellow',
-    reminder: '',
-    tags: '',
     paperStyle: 'plain',
     fontFamily: "Arial, 'Microsoft YaHei', sans-serif"
   }
 }
 
-// 全屏切换
-const toggleFullscreen = () => {
-  isFullscreen.value = !isFullscreen.value
+// 弹窗打开时自动聚焦标题，并恢复内容框高度
+watch(showNoteModal, async (visible) => {
+  if (!visible) return
+  await nextTick()
+  titleInputRef.value?.focus()
+  autoResizeContent()
+})
+
+// 内容输入框随内容自动增高
+const autoResizeContent = () => {
+  const el = contentInputRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 320)}px`
 }
 
-// AI 分析便签
-const analyzeStickyNote = async () => {
-  if (!selectedNote.value) return
-  
-  analyzingNote.value = selectedNote.value
-  try {
-    const response = await axios.post(
-      `${serverUrl.value}/api/v1/notes/${selectedNote.value.id}/analyze`,
-      {},
-      {
-        headers: { Authorization: `Bearer ${getToken()}` }
-      }
-    )
-    
-    if (response.data.code === 0) {
-      aiAnalysisResult.value = response.data.data
-      showAIAnalysis.value = true
-    }
-  } catch (error) {
-    QMessage.error('AI 分析失败')
+// 表单校验：标题/内容至少填一项
+const validateForm = (): boolean => {
+  if (!formData.value.title.trim() && !formData.value.content.trim()) {
+    QMessage.warning('请至少填写标题或内容')
+    titleInputRef.value?.focus()
+    return false
   }
+  return true
 }
 
-// 应用 AI 分析结果
-const applyAIResult = (summary: string, tags: string[]) => {
+// 保存入口：先校验再创建/更新
+const handleSave = () => {
+  if (!validateForm()) return
   if (selectedNote.value) {
-    formData.value.tags = JSON.stringify(tags)
+    updateStickyNote()
+  } else {
+    createStickyNote()
   }
-  showAIAnalysis.value = false
 }
 
 // 格式化日期
@@ -561,13 +565,13 @@ const forwardNoteToChat = (note: any) => {
 
 // 处理键盘快捷键
 const handleKeydown = (event: KeyboardEvent) => {
-  // 新建便签: Ctrl/Cmd + N
-  if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
+  // 新建便签: Ctrl/Cmd + N（弹窗打开时不响应，避免误触重置正在编辑的内容）
+  if ((event.ctrlKey || event.metaKey) && event.key === 'n' && !showNoteModal.value) {
     event.preventDefault()
     showCreateNoteModal()
   }
   // 聚焦搜索框: Ctrl/Cmd + F
-  if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+  if ((event.ctrlKey || event.metaKey) && event.key === 'f' && !showNoteModal.value) {
     event.preventDefault()
     const searchInput = document.querySelector('.search-input') as HTMLInputElement
     if (searchInput) {
@@ -578,14 +582,10 @@ const handleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && showNoteModal.value) {
     closeNoteModal()
   }
-  // 保存便签: Enter (在模态框中)
+  // 保存便签: Ctrl/Cmd + Enter (在模态框中)
   if (event.key === 'Enter' && event.ctrlKey && showNoteModal.value) {
     event.preventDefault()
-    if (selectedNote.value) {
-      updateStickyNote()
-    } else {
-      createStickyNote()
-    }
+    handleSave()
   }
 }
 
@@ -665,22 +665,6 @@ const allTags = computed(() => {
   return Array.from(tags)
 })
 
-// 设置提醒
-const setupReminder = (note: any) => {
-  const reminderTime = new Date(note.reminder).getTime()
-  const now = new Date().getTime()
-  
-  if (reminderTime > now) {
-    const timeUntilReminder = reminderTime - now
-    
-    setTimeout(() => {
-      // 显示提醒通知
-      showReminder('便签提醒', `${note.title}\n${note.content}`)
-      
-      // 可以在这里添加其他提醒方式，如声音、弹窗等
-    }, timeUntilReminder)
-  }
-}
 </script>
 
 <style scoped>
@@ -1021,22 +1005,6 @@ const setupReminder = (note: any) => {
   }
 }
 
-/* 全屏模式 */
-.sticky-notes-app.fullscreen {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1000;
-  background: var(--content-bg);
-}
-
-.sticky-notes-app.fullscreen .sticky-notes-header,
-.sticky-notes-app.fullscreen .sticky-notes-grid {
-  display: none;
-}
-
 /* 弹窗 footer 布局 */
 .modal-footer-left,
 .modal-footer-right {
@@ -1046,176 +1014,6 @@ const setupReminder = (note: any) => {
 
 .modal-footer-left {
   margin-right: auto;
-}
-
-.sticky-note-ai-btn {
-  background: linear-gradient(135deg, var(--primary-color), var(--color-primary-600)) !important;
-  border-color: transparent !important;
-  color: white !important;
-}
-
-.sticky-note-ai-btn:hover {
-  opacity: 0.9;
-}
-
-.sticky-note-fullscreen-btn {
-  background: var(--btn-bg) !important;
-}
-
-.sticky-note-fullscreen-btn:hover {
-  background: var(--primary-light) !important;
-  color: var(--primary-color);
-}
-
-/* AI 分析弹窗 */
-.ai-analysis-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1001;
-}
-
-.ai-analysis-modal {
-  background: var(--card-bg);
-  border-radius: var(--radius-xl);
-  width: 90%;
-  max-width: 480px;
-  max-height: 80vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  box-shadow: var(--shadow-xl);
-  border: 1px solid var(--border-color);
-}
-
-.ai-analysis-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--spacing-4) var(--spacing-5);
-  border-bottom: 1px solid var(--border-color);
-  background: linear-gradient(135deg, var(--primary-color), var(--color-primary-600));
-}
-
-.ai-analysis-header h3 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
-  color: white;
-}
-
-.ai-analysis-header .close-btn {
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  color: white;
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-  padding: var(--spacing-2);
-  border-radius: var(--radius-md);
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.ai-analysis-body {
-  padding: var(--spacing-5);
-  overflow-y: auto;
-}
-
-.ai-section {
-  margin-bottom: var(--spacing-4);
-}
-
-.ai-section:last-child {
-  margin-bottom: 0;
-}
-
-.ai-section h4 {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-color);
-  margin: 0 0 var(--spacing-2) 0;
-}
-
-.ai-section p {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  margin: 0;
-  padding: var(--spacing-3);
-  background: var(--content-bg);
-  border-radius: var(--radius-md);
-}
-
-.ai-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-2);
-}
-
-.ai-tag {
-  font-size: var(--font-size-sm);
-  padding: var(--spacing-2) var(--spacing-3);
-  background: var(--primary-light);
-  color: var(--primary-color);
-  border-radius: var(--radius-full);
-}
-
-.ai-section ul {
-  margin: 0;
-  padding-left: var(--spacing-5);
-}
-
-.ai-section li {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  line-height: 1.8;
-}
-
-.ai-analysis-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-3);
-  padding: var(--spacing-4) var(--spacing-5);
-  border-top: 1px solid var(--border-color);
-}
-
-.ai-btn {
-  padding: var(--spacing-2) var(--spacing-5);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-  transition: all var(--transition-base);
-}
-
-.ai-btn.cancel {
-  background: var(--btn-bg);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-}
-
-.ai-btn.cancel:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-}
-
-.ai-btn.confirm {
-  background: linear-gradient(135deg, var(--primary-color), var(--color-primary-600));
-  color: white;
-  border: none;
-}
-
-.ai-btn.confirm:hover {
-  opacity: 0.9;
 }
 </style>
 
@@ -1413,5 +1211,113 @@ const setupReminder = (note: any) => {
   color: white;
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+/* 实时预览卡片 */
+.sticky-note-preview-wrap {
+  margin-bottom: 20px;
+  pointer-events: none;
+}
+
+.sticky-note-preview-wrap .sticky-note {
+  min-height: 120px;
+  cursor: default;
+}
+
+/* 表单两列布局 */
+.sticky-note-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+  align-items: start;
+}
+
+/* 内容字数统计 */
+.sticky-note-content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.sticky-note-form-counter {
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary);
+  opacity: 0.75;
+}
+
+/* 标签 chips 输入 */
+.sticky-note-tag-input-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: var(--bg-color);
+  transition: all 0.3s ease;
+  cursor: text;
+}
+
+.sticky-note-tag-input-wrap:focus-within {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.sticky-note-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 10px;
+  background: var(--primary-light);
+  color: var(--primary-color);
+  border-radius: 12px;
+  font-size: var(--font-size-xxs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sticky-note-tag-chip .remove-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+}
+
+.sticky-note-tag-chip .remove-btn:hover {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.sticky-note-tag-input {
+  flex: 1;
+  min-width: 90px;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 2px 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+/* 快捷键提示 */
+.sticky-note-shortcut-hint {
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary);
+  opacity: 0.75;
+  align-self: center;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+
+@media (max-width: 768px) {
+  .sticky-note-form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

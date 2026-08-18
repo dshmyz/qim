@@ -29,6 +29,7 @@ export interface User {
   signature?: string
   status: 'online' | 'offline' // 连接状态（系统自动维护）
   accountStatus?: 'active' | 'disabled' | 'banned' // 账号状态（管理员维护）
+  storage_quota?: number // 文件存储配额（字节）
   roles?: string[]
   role?: string
   createdAt: string

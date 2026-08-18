@@ -39,15 +39,18 @@ export function useFilePagination() {
   const error = ref<string | null>(null)
 
   /**
-   * 加载文件列表
+   * 拉取指定页文件
+   * @param page 页码
+   * @param mode replace=整页替换；append=追加下一页（无限滚动）
+   * @returns 是否成功
    */
-  const loadFiles = async () => {
+  const fetchFiles = async (page: number, mode: 'replace' | 'append' = 'replace'): Promise<boolean> => {
     isLoading.value = true
     error.value = null
 
     try {
       const params: FileListParams = {
-        page: currentPage.value,
+        page,
         page_size: pageSize.value,
         folder_id: currentFolderId.value,
         search: searchQuery.value || undefined,
@@ -64,26 +67,57 @@ export function useFilePagination() {
 
       if (response.data.code === 0) {
         const data: FileListResponse = response.data.data
-        files.value = data.files
+        if (mode === 'append') {
+          files.value = [...files.value, ...data.files]
+        } else {
+          files.value = data.files
+        }
         total.value = data.total
-      } else {
+        return true
+      }
+      if (mode === 'replace') {
         files.value = []
         total.value = 0
       }
+      return false
     } catch (e) {
       error.value = e instanceof Error ? e.message : '加载文件失败'
-      files.value = []
-      total.value = 0
+      if (mode === 'replace') {
+        files.value = []
+        total.value = 0
+      }
       QMessage.error('加载文件失败，请稍后重试')
+      return false
     } finally {
       isLoading.value = false
     }
   }
 
   /**
-   * 刷新当前页
+   * 加载文件列表（整页替换）
    */
-  const refresh = async () => {
+  const loadFiles = async (): Promise<void> => {
+    await fetchFiles(currentPage.value, 'replace')
+  }
+
+  /**
+   * 加载下一页并追加（无限滚动）
+   */
+  const loadMore = async (): Promise<void> => {
+    if (isLoading.value) return
+    const nextPage = currentPage.value + 1
+    currentPage.value = nextPage
+    const ok = await fetchFiles(nextPage, 'append')
+    if (!ok) {
+      currentPage.value = nextPage - 1
+    }
+  }
+
+  /**
+   * 刷新（回到第 1 页整页加载；删除/移动/星标等变更后回到顶部，行为可预期）
+   */
+  const refresh = async (): Promise<void> => {
+    currentPage.value = 1
     await loadFiles()
   }
 
@@ -255,21 +289,51 @@ export function useFilePagination() {
    */
   const batchMove = async (fileIds: number[], targetFolderId: number | null) => {
     try {
-      const response = await fileApi.batchOperation(fileIds, 'move', { folder_id: targetFolderId })
-      if (response.data.code === 0) {
-        QMessage.success(`已移动 ${fileIds.length} 个文件`)
-        await refresh()
-        return true
+      if (targetFolderId === null) {
+        // 移至根目录：批量接口要求非空目标文件夹，退化为逐个 update
+        for (const id of fileIds) {
+          await fileApi.updateFile(id, { folder_id: null })
+        }
+      } else {
+        // 后端 BatchOperation 绑定 target_folder_id
+        const response = await fileApi.batchOperation(fileIds, 'move', { target_folder_id: targetFolderId })
+        if (response.data.code !== 0) {
+          QMessage.error('批量移动失败')
+          return false
+        }
       }
-      return false
+      QMessage.success(`已移动 ${fileIds.length} 个文件`)
+      await refresh()
+      return true
     } catch (e) {
       QMessage.error('批量移动失败')
       return false
     }
   }
 
+  /**
+   * 批量星标 / 取消星标
+   */
+  const batchToggleStar = async (fileIds: number[], starred: boolean) => {
+    try {
+      const response = await fileApi.batchOperation(fileIds, starred ? 'star' : 'unstar')
+      if (response.data.code === 0) {
+        QMessage.success(starred ? `已星标 ${fileIds.length} 个文件` : `已取消 ${fileIds.length} 个文件的星标`)
+        await refresh()
+        return true
+      }
+      return false
+    } catch (e) {
+      QMessage.error('批量星标操作失败')
+      return false
+    }
+  }
+
   // 计算总页数
   const totalPages = computed(() => Math.ceil(total.value / pageSize.value))
+
+  // 是否还有更多页（供无限滚动判断）
+  const hasMore = computed(() => files.value.length < total.value)
 
   // 计算是否有文件
   const hasFiles = computed(() => files.value.length > 0)
@@ -304,10 +368,12 @@ export function useFilePagination() {
 
     // 计算属性
     totalPages,
+    hasMore,
     hasFiles,
 
     // 方法
     loadFiles,
+    loadMore,
     refresh,
     changePage,
     changePageSize,
@@ -323,6 +389,7 @@ export function useFilePagination() {
     deleteFile,
     toggleFileStar,
     batchDelete,
-    batchMove
+    batchMove,
+    batchToggleStar
   }
 }

@@ -29,6 +29,8 @@ type User struct {
 	LastOnline       *time.Time     `json:"last_online"`
 	IP               string         `json:"ip" gorm:"size:50"`
 	TwoFactorEnabled bool           `json:"two_factor_enabled" gorm:"default:false"`
+	// StorageQuota 个人文件存储配额（字节），默认 50GB；管理员可在用户管理中调整
+	StorageQuota     int64          `json:"storage_quota" gorm:"not null;default:53687091200"`
 	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`
 	DeletedAt        gorm.DeletedAt `json:"-" gorm:"index"`
@@ -271,6 +273,11 @@ type Folder struct {
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+	// HasChildren 是否为懒加载展开提供箭头依据（仅查询填充，不落库）
+	// 注意：必须是 gorm:"->"（只读）而非 gorm:"-"（忽略）——"-" 连查询扫描都会跳过，EXISTS 列永远读不到
+	HasChildren bool `json:"has_children" gorm:"->"`
+	// FileCount 直接子文件数（仅查询填充，不落库；树行计数展示）
+	FileCount int64 `json:"file_count" gorm:"->"`
 }
 
 // 笔记

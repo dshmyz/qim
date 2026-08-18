@@ -39,6 +39,14 @@ export interface VersionDistribution {
   count: number
 }
 
+// 版本分布钻取：某版本在线用户明细（来源 ws.Hub.GetVersionUsers）
+export interface VersionDistributionUser {
+  user_id: number
+  username: string
+  version: string
+  platform: string
+}
+
 export interface CreateVersionParams {
   version: string
   platform: 'windows' | 'macos' | 'linux'

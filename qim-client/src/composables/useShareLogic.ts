@@ -259,6 +259,12 @@ export function useShareLogic(
         name: shareName,
         content: shareContent,
         originalContent: primaryShareData.content,
+        // 便签分享携带样式/标签/创建时间，聊天内还原便签外观；旧消息无此字段，渲染端回退默认
+        ...(shareType.value === 'sticky' ? {
+          style: shareData.value.style,
+          tags: shareData.value.tags,
+          created_at: shareData.value.created_at
+        } : {}),
         originalMessage: shareType.value === 'message' ? primaryShareData : undefined
       }
 

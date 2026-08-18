@@ -784,6 +784,7 @@ func CreateNote(c *gin.Context) {
 		Color   string `json:"color"`
 		Type    string `json:"type"`
 		Style   string `json:"style"`
+		Tags    string `json:"tags"` // JSON 数组字符串，如 "[\"工作\",\"个人\"]"
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -813,6 +814,7 @@ func CreateNote(c *gin.Context) {
 		Content: req.Content,
 		Type:    req.Type,
 		Style:   style,
+		Tags:    req.Tags,
 	}
 	noteSvc.CreateNote(&note)
 
@@ -838,6 +840,7 @@ func UpdateNote(c *gin.Context) {
 		Color   string `json:"color"`
 		Type    string `json:"type"`
 		Style   string `json:"style"`
+		Tags    string `json:"tags"` // JSON 数组字符串，如 "[\"工作\",\"个人\"]"
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -855,6 +858,9 @@ func UpdateNote(c *gin.Context) {
 	note.Title = req.Title
 	note.Content = req.Content
 	note.Type = req.Type
+	if req.Tags != "" {
+		note.Tags = req.Tags
+	}
 
 	style := note.Style
 	if style == "" {

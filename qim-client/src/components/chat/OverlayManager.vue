@@ -115,7 +115,6 @@ interface Props {
   activeMiniApp: MiniAppData | null
   getFileIcon: (fileName: string) => string
   formatFileSize: (size: number) => string
-  renderMarkdown: (content: string) => string
   formatTime: (timestamp: number) => string
 }
 

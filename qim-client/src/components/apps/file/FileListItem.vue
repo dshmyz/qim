@@ -12,6 +12,9 @@
     <!-- 文件图标 -->
     <div class="file-icon">
       <i :class="getFileIcon(file.mime_type)" :style="{ color: getFileIconColor(file.mime_type) }"></i>
+      <span v-if="isSelected" class="file-selected-badge">
+        <i class="fas fa-check"></i>
+      </span>
     </div>
 
     <!-- 文件名 -->
@@ -230,11 +233,29 @@ function handleDelete() {
 }
 
 .file-icon {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: var(--font-size-xl);
   padding: 10px 8px;
+}
+
+.file-selected-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .file-name-wrap {

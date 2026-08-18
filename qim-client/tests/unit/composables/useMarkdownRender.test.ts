@@ -74,4 +74,28 @@ describe('useMarkdownRender note-link XSS 防护', () => {
     expect(html).toContain('<pre><code>code</code></pre>')
     expect(html).toContain('data-note-title="标题"')
   })
+
+  it('代码块紧跟说明文字一行（无空行）仍打断段落渲染为 <pre><code>', () => {
+    // 回归：围栏紧跟段落末行、中间只有单个 \n 时，占位符不得并进上一段 <p> 泄漏成乱码
+    const html = renderMarkdown('比如你可以这样发：\n```bash\necho hi\n```')
+    expect(html).toContain('<pre><code>echo hi</code></pre>')
+    expect(html).toContain('<p>比如你可以这样发：</p>')
+    expect(html).not.toMatch(/\d+/)
+  })
+
+  it('列表项内缩进围栏（2 空格）正确恢复为 <pre><code>', () => {
+    // 回归：列表项内缩进围栏占位行落到 0 列会把围栏提前切断、占位符逃出泄漏
+    const html = renderMarkdown('- 常见写法：\n  ```\n  GOPROXY=https://goproxy.cn,direct\n  ```')
+    // 恢复保留围栏内原文（含原行首缩进），与既有 extractNoteLinks 恢复行为一致
+    expect(html).toContain('<pre><code>  GOPROXY=https://goproxy.cn,direct')
+    expect(html).not.toMatch(/\d+/)
+  })
+
+  it('有序列表项内 4 空格缩进围栏（含语言标记）正确恢复且不泄漏', () => {
+    // 回归：缩进对齐——开头围栏不重复补缩进（否则缩进翻倍成缩进代码块），
+    // 占位行/收尾围栏补上原缩进，列表项内整体结构一致
+    const html = renderMarkdown('1.  权限说明：\n    ```xml\n    <key>screenshot</key>\n    ```')
+    expect(html).toContain('<pre><code>    &lt;key&gt;screenshot&lt;/key&gt;')
+    expect(html).not.toMatch(/\d+/)
+  })
 })

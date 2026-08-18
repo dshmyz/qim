@@ -174,6 +174,8 @@ func AdminUpdateUser(c *gin.Context) {
 		Avatar        *string `json:"avatar"`
 		Signature     *string `json:"signature"`
 		AccountStatus *string `json:"accountStatus"`
+		// StorageQuota 存储配额（字节）；<0 拒绝，0 表示恢复默认（50GB）
+		StorageQuota *int64 `json:"storage_quota"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误")
@@ -188,6 +190,12 @@ func AdminUpdateUser(c *gin.Context) {
 			response.BadRequest(c, "无效的账号状态")
 			return
 		}
+	}
+
+	// 配额不允许为负
+	if req.StorageQuota != nil && *req.StorageQuota < 0 {
+		response.BadRequest(c, "无效的存储配额")
+		return
 	}
 
 	db := database.GetDB()
@@ -214,6 +222,9 @@ func AdminUpdateUser(c *gin.Context) {
 	}
 	if req.AccountStatus != nil {
 		user.AccountStatus = *req.AccountStatus
+	}
+	if req.StorageQuota != nil {
+		user.StorageQuota = *req.StorageQuota
 	}
 
 	if err := db.Save(&user).Error; err != nil {

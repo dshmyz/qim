@@ -14,7 +14,10 @@
           {{ typeLabel }}
         </span>
       </div>
-      <div class="quoted-message-preview__text">
+      <div v-if="stickyPayload" class="quoted-message-preview__sticky">
+        <StickyNoteMini :payload="stickyPayload" />
+      </div>
+      <div v-else class="quoted-message-preview__text">
         {{ displayContent }}
       </div>
     </div>
@@ -32,6 +35,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { resolveMessageDisplay } from '../../utils/messageDisplay'
+import { parseStickyShare } from '../../utils/stickyShare'
+import StickyNoteMini from '../message/StickyNoteMini.vue'
 
 export interface QuotedMessage {
   id: string
@@ -67,6 +72,9 @@ const senderName = computed(() => {
 })
 
 const messageDisplay = computed(() => resolveMessageDisplay(props.quotedMessage))
+
+// 引用内容是便签分享消息时，用便签色卡替代纯文本摘要
+const stickyPayload = computed(() => parseStickyShare(props.quotedMessage.content || ''))
 
 const typeLabel = computed(() => {
   const typeMap: Partial<Record<typeof messageDisplay.value.kind, string>> = {

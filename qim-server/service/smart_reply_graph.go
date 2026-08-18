@@ -63,16 +63,17 @@ const (
 	QuotedNone   QuotedKind = ""       // 无被引用对象（未引用或引用非文件/图片）
 	QuotedFile   QuotedKind = "file"   // 成功读到被引用文件正文
 	QuotedImage  QuotedKind = "image"  // 成功读到被引用图片（可多模态识别）
+	QuotedText   QuotedKind = "text"   // 成功读到被引用文本/分享正文（原文直接注入）
 	QuotedFailed QuotedKind = "failed" // 读取失败/类型不支持/过大/缺信息，Text 为提示语
 )
 
-// QuotedContext 被引用对象（文件正文 / 图片）的上下文注入。
-// Name 为可读名称（文件名等），Text 为注入 prompt 的成句内容（含提示语），
+// QuotedContext 被引用对象（文件正文 / 图片 / 文本原文）的上下文注入。
+// Name 为可读名称（文件名/发送者名等），Text 为注入 prompt 的成句内容（含提示语），
 // ImageURL 仅 QuotedImage 时非空（base64 data URL）。三者按 Kind 取用。
 type QuotedContext struct {
 	Kind     QuotedKind
 	Name     string
-	Text     string // file: 「被引用文件「x」的内容：…」；image/failed: 提示语成句
+	Text     string // file: 「被引用文件「x」的内容：…」；text: 「你引用了「x」的消息：…」；image/failed: 提示语成句
 	ImageURL string // image: base64 data URL
 }
 
@@ -87,9 +88,9 @@ type SmartReplyContext struct {
 	AssistantName   string
 	Intent          *ai.MessageIntent
 	// QuotedMessageID 用户 @AI 文本消息所引用的消息 ID（可能为 nil）。
-	// 引用了一条文件/图片消息时，AI 可借此读取其内容作为上下文。
+	// 引用了一条消息时，AI 可借此读取其内容（文件正文/图片/文本/分享）作为上下文。
 	QuotedMessageID *uint
-	// Quoted 被引用对象（文件正文 / 图片 / 读取失败）的上下文注入，nil 表示无被引用内容。
+	// Quoted 被引用对象（文件正文 / 图片 / 文本原文 / 读取失败）的上下文注入，nil 表示无被引用内容。
 	// 由 prepareInput 按被引用消息类型与成败设值；判别联合见 QuotedContext。
 	Quoted *QuotedContext
 	// IsSelfQuote 直接发图/发文件（不引用）时由 handler 合成自引用，QuotedMessageID 指向触发消息自身。
@@ -536,11 +537,15 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 	input.KnowledgeCtx = knowledgeCtx
 	input.MemoryCtx = memoryCtx
 
-	// 被引用对象：@AI 消息引用了消息时，若被引用的是文件/图片消息则尝试读取其内容注入上下文。
-	// 仅对 @AI 提及（IsAIMention）场景生效。所有边界（非文件/图片、解析失败、过大、为空、缺 id）
-	// 都显式落成 QuotedFailed 提示语，让 AI 诚实说明"看不了"，而不是假装读取——不依赖大模型自行识别。
-	// 成功时按内容类型设 QuotedFile(正文) / QuotedImage(data URL)，失败统一设 QuotedFailed，成功/失败互斥。
-	if input.IsAIMention && input.QuotedMessageID != nil && g.quotedFile != nil {
+	// 被引用对象：@AI 消息引用了消息时，按被引用消息类型尝试读取其内容注入上下文。
+	// 仅对 @AI 提及（IsAIMention）场景生效。支持的类型：文件（读正文）、图片（多模态）、
+	// 文本/markdown（原文直接注入）、分享（笔记/便签正文、分享文件正文、转发的文本消息）、
+	// 合并转发（子消息列表展开注入）。
+	// 所有边界（消息不存在、跨会话、解析失败、过大、为空、缺 id、类型不支持）都显式落成
+	// QuotedFailed 提示语，让 AI 诚实说明"看不了"，而不是假装读取——不依赖大模型自行识别。
+	// 成功时按内容类型设 QuotedFile(正文) / QuotedImage(data URL) / QuotedText(文本原文)，
+	// 失败统一设 QuotedFailed，成功/失败互斥。
+	if input.IsAIMention && input.QuotedMessageID != nil {
 		warn := func(t QuotedKind, name, msg string) {
 			input.Quoted = &QuotedContext{Kind: t, Name: name, Text: msg}
 		}
@@ -559,7 +564,24 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 			imageInstruction = "请识别其内容并结合上下文回复"
 		}
 		var quoted model.Message
-		if err := g.db.First(&quoted, *input.QuotedMessageID).Error; err == nil && quoted.Type == "file" {
+		if err := g.db.Preload("Sender").First(&quoted, *input.QuotedMessageID).Error; err != nil {
+			// 被引用消息不存在/已删除：显式告知而非当作无引用
+			warn(QuotedFailed, "该消息", "📄 "+refPrefix+"一条消息，但该消息不存在或已被删除，无法读取内容。请如实说明你看不到这条消息。")
+			return nil
+		}
+		// 被引用消息必须属于当前会话：引用数据来自客户端 WS 消息，不校验会话
+		// 会让伪造消息把其他会话的内容注入 AI 上下文。
+		if quoted.ConversationID != input.ConversationID {
+			warn(QuotedFailed, "该消息", "📄 "+refPrefix+"一条消息，但该消息不属于当前会话，无法读取内容。请如实说明你看不到这条消息。")
+			return nil
+		}
+
+		switch quoted.Type {
+		case "file":
+			// 文件：读正文注入。读取器未注入（安全降级）时维持原样不注入。
+			if g.quotedFile == nil {
+				break
+			}
 			quotedName := nameOfQuoted(quoted.Content)
 			fileID := parseQuotedFileID(quoted.Content)
 			if fileID == 0 {
@@ -581,28 +603,152 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 				// 类型不支持 / 解析失败 / 存储读取失败：显式告知 AI，让它诚实回复"读不了"
 				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条文件消息「%s」，但该文件无法读取正文（类型不在可读取范围：txt/md/csv/json/pdf/docx/xlsx/pptx，或存在其他读取/解析错误）。请说明你无法读取该文件内容，可建议对方转成上述格式或上传到群知识库。", quotedName))
 			}
-		} else if err == nil && (quoted.Type == "image" || quoted.Type == "video" || quoted.Type == "audio") {
-			quotedName := nameOfQuoted(quoted.Content)
-			if quoted.Type == "image" {
-				// 图片：走多模态路径，成功则注入 base64 data URL，失败降级为"看不了"。
-				fileID := parseQuotedFileID(quoted.Content)
-				if fileID == 0 {
-					warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但其内容缺少可解析的图片信息，无法读取。请如实说明你看不到该图片，可请对方重新发送。", quotedName))
-				} else if name, dataURL, derr := g.quotedFile.ImageURLForContext(fileID); derr == nil && dataURL != "" {
-					logger.WithModule("SmartReplyGraph").Info("引用图片读取成功",
-						"fileID", fileID, "name", name, "dataURLLen", len(dataURL))
-					warn(QuotedImage, name, fmt.Sprintf("📷 "+refPrefix+"一张图片「%s」，%s。", name, imageInstruction))
-					input.Quoted.ImageURL = dataURL
-				} else if errors.Is(derr, ErrQuotedImageTooLarge) {
-					warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但其体积过大（超过 5MB），无法读入上下文。请如实说明你看不到该图片，可建议对方压缩后重新发送。", quotedName))
-				} else {
-					// 读取失败 / 存储读取失败 / reader 未实现多模态：显式告知 AI 看不到图，诚实回复。
-					warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但该图片当前无法读入上下文（读取失败或图片不可用）。请如实说明你看不到该图片，可建议对方重新发送。", quotedName))
-				}
-			} else {
-				// 引用的是视频/语音消息：当前不支持解析，显式告知而不是当作无引用
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条%s消息，但该类型目前无法解析其内容进上下文。请如实说明你无法读取该%s。", mediaTypeName(quoted.Type), mediaTypeName(quoted.Type)))
+		case "image":
+			// 图片：走多模态路径，成功则注入 base64 data URL，失败降级为"看不了"。
+			// 读取器未注入（安全降级）时维持原样不注入。
+			if g.quotedFile == nil {
+				break
 			}
+			quotedName := nameOfQuoted(quoted.Content)
+			fileID := parseQuotedFileID(quoted.Content)
+			if fileID == 0 {
+				warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但其内容缺少可解析的图片信息，无法读取。请如实说明你看不到该图片，可请对方重新发送。", quotedName))
+			} else if name, dataURL, derr := g.quotedFile.ImageURLForContext(fileID); derr == nil && dataURL != "" {
+				logger.WithModule("SmartReplyGraph").Info("引用图片读取成功",
+					"fileID", fileID, "name", name, "dataURLLen", len(dataURL))
+				warn(QuotedImage, name, fmt.Sprintf("📷 "+refPrefix+"一张图片「%s」，%s。", name, imageInstruction))
+				input.Quoted.ImageURL = dataURL
+			} else if errors.Is(derr, ErrQuotedImageTooLarge) {
+				warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但其体积过大（超过 5MB），无法读入上下文。请如实说明你看不到该图片，可建议对方压缩后重新发送。", quotedName))
+			} else {
+				// 读取失败 / 存储读取失败 / reader 未实现多模态：显式告知 AI 看不到图，诚实回复。
+				warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但该图片当前无法读入上下文（读取失败或图片不可用）。请如实说明你看不到该图片，可建议对方重新发送。", quotedName))
+			}
+		case "video", "audio":
+			// 视频/语音消息：内容无法解析进上下文，但可带上文件名让 AI 知道引的是什么。
+			mt := mediaTypeName(quoted.Type)
+			if quotedName := parseQuotedFileName(quoted.Content); quotedName != "" {
+				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条%s消息「%s」，但该类型目前无法解析其内容进上下文。请如实说明你无法读取该%s。", mt, quotedName, mt))
+			} else {
+				warn(QuotedFailed, mt, fmt.Sprintf("📄 "+refPrefix+"一条%s消息，但该类型目前无法解析其内容进上下文。请如实说明你无法读取该%s。", mt, mt))
+			}
+		case "text", "markdown":
+			// 文本/markdown：原文直接注入（mention token 与历史注入一致保留，不剥离）。
+			senderName := "对方"
+			if quoted.Sender.Nickname != "" {
+				senderName = quoted.Sender.Nickname
+			} else if quoted.Sender.Username != "" {
+				senderName = quoted.Sender.Username
+			}
+			body := strings.TrimSpace(quoted.Content)
+			if body == "" {
+				warn(QuotedFailed, senderName, fmt.Sprintf("💬 "+refPrefix+"「%s」的一条消息，但其内容为空，请如实说明。", senderName))
+			} else {
+				warn(QuotedText, senderName, fmt.Sprintf("💬 "+refPrefix+"「%s」的消息：\n%s", senderName, truncateQuotedFileText(body)))
+			}
+		case "share":
+			// 分享消息：content 是 JSON（客户端 useShareLogic 的 shareDataObj）。
+			// note/sticky 正文在 originalContent；file 带文件 id 可复用文件读取链路；
+			// message 转发文本时 originalMessage 内嵌原文，图片/文件等转发内容无法直接解析。
+			shareKind, shareName, shareBody, shareFileID, parseOK := parseQuotedShareData(quoted.Content)
+			if !parseOK {
+				warn(QuotedFailed, nameOfQuoted(quoted.Content), "📄 "+refPrefix+"一条分享消息，但其内容格式无法解析，无法读取。请如实说明你无法读取该分享内容，可请对方重新发送。")
+				break
+			}
+			if shareName == "" {
+				shareName = "分享内容"
+			}
+			switch shareKind {
+			case "file":
+				if shareFileID == 0 {
+					warn(QuotedFailed, shareName, fmt.Sprintf("📄 "+refPrefix+"一条分享文件消息「%s」，但其内容缺少可解析的文件信息，无法读取正文。请如实说明你无法读取该文件，可请对方直接发送文件。", shareName))
+				} else if g.quotedFile == nil {
+					warn(QuotedFailed, shareName, fmt.Sprintf("📄 "+refPrefix+"一条分享文件消息「%s」，但当前无法读取文件正文（读取能力未开启）。请如实说明你无法读取该文件，可请对方把关键内容用文字发出来。", shareName))
+				} else if name, text, err := g.quotedFile.ExtractTextForContext(shareFileID); err == nil {
+					text = truncateQuotedFileText(text)
+					if text != "" {
+						warn(QuotedFile, name, fmt.Sprintf("📄 "+refPrefix+"分享的文件「%s」的内容：\n%s", name, text))
+					} else {
+						warn(QuotedFailed, shareName, fmt.Sprintf("📄 "+refPrefix+"一条分享文件消息「%s」，但其内容为空或无法提取出文字，请如实说明。", shareName))
+					}
+				} else {
+					warn(QuotedFailed, shareName, fmt.Sprintf("📄 "+refPrefix+"一条分享文件消息「%s」，但该文件无法读取正文。请如实说明你无法读取该文件内容，可建议对方直接发送文件。", shareName))
+				}
+			case "note", "sticky":
+				// 笔记/便签：正文内嵌在分享 JSON 里，直接注入。
+				label := "笔记"
+				if shareKind == "sticky" {
+					label = "便签"
+				}
+				if shareBody == "" {
+					warn(QuotedFailed, shareName, fmt.Sprintf("📝 "+refPrefix+"一条%s「%s」，但其内容为空，请如实说明。", label, shareName))
+				} else {
+					warn(QuotedText, shareName, fmt.Sprintf("📝 "+refPrefix+"一条%s「%s」的内容：\n%s", label, shareName, truncateQuotedFileText(shareBody)))
+				}
+			case "message":
+				// 转发的消息：仅文本类可注入原文，其余类型诚实说明读不了。
+				if shareBody == "" {
+					warn(QuotedFailed, shareName, fmt.Sprintf("💬 "+refPrefix+"一条转发的消息「%s」，但其内容无法解析进上下文。请如实说明你无法读取该内容，可请对方把关键信息用文字发出来。", shareName))
+				} else {
+					warn(QuotedText, shareName, fmt.Sprintf("💬 "+refPrefix+"转发的消息：\n%s", shareBody))
+				}
+			default:
+				// 未知分享类型：显式告知读不了。
+				warn(QuotedFailed, shareName, fmt.Sprintf("📄 "+refPrefix+"一条分享消息「%s」，但其类型暂不支持解析进上下文。请如实说明你无法读取该内容。", shareName))
+			}
+		case "merged_forward":
+			// 合并转发：payload 内嵌子消息列表（客户端 createMergedForwardPayload 的产物），
+			// 文本类直读原文、媒体/其他类型给占位，避免把未解析的原始 JSON 灌进上下文。
+			title, items, parseOK := parseQuotedMergedForward(quoted.Content)
+			if !parseOK {
+				warn(QuotedFailed, "该消息", "📤 "+refPrefix+"一条合并转发消息，但其内容格式无法解析，无法读取。请如实说明你无法读取该转发内容。")
+				break
+			}
+			forwardName := title
+			if forwardName == "" {
+				forwardName = "合并转发"
+			}
+			var b strings.Builder
+			fmt.Fprintf(&b, "📤 %s一条合并转发「%s」，共 %d 条消息：\n", refPrefix, forwardName, len(items))
+			const maxForwardItems = 20
+			const maxForwardChars = 6000
+			for i, it := range items {
+				if i >= maxForwardItems || b.Len() >= maxForwardChars {
+					fmt.Fprintf(&b, "…其余 %d 条已省略\n", len(items)-i)
+					break
+				}
+				sender := strings.TrimSpace(it.SenderName)
+				if sender == "" {
+					sender = "未知用户"
+				}
+				switch it.Type {
+				case "text", "markdown":
+					body := strings.TrimSpace(it.Content)
+					if body == "" {
+						body = "[空消息]"
+					}
+					fmt.Fprintf(&b, "- %s：%s\n", sender, truncateQuotedFileText(body))
+				case "image":
+					fmt.Fprintf(&b, "- %s：[图片]\n", sender)
+				case "file":
+					fmt.Fprintf(&b, "- %s：[文件]\n", sender)
+				case "video":
+					fmt.Fprintf(&b, "- %s：[视频]\n", sender)
+				case "audio":
+					fmt.Fprintf(&b, "- %s：[语音]\n", sender)
+				case "share":
+					fmt.Fprintf(&b, "- %s：[分享]\n", sender)
+				case "merged_forward":
+					fmt.Fprintf(&b, "- %s：[合并转发]\n", sender)
+				default:
+					fmt.Fprintf(&b, "- %s：[%s]\n", sender, mediaTypeName(it.Type))
+				}
+			}
+			warn(QuotedText, forwardName, strings.TrimRight(b.String(), "\n"))
+		default:
+			// 其他类型（小程序/资讯/系统等）：当前不支持解析，显式告知而不是当作无引用。
+			quotedName := nameOfQuoted(quoted.Content)
+			warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条%s消息，但该类型目前无法解析其内容进上下文。请如实说明你无法读取该%s。", mediaTypeName(quoted.Type), mediaTypeName(quoted.Type)))
 		}
 	}
 
@@ -639,6 +785,75 @@ func parseQuotedFileName(content string) string {
 	return payload.Name
 }
 
+// shareMessageData 分享消息 content JSON 中可注入 AI 上下文的字段。
+// 结构对应客户端 useShareLogic 的 shareDataObj：type/name/content/originalContent/originalMessage。
+type shareMessageData struct {
+	Kind string `json:"type"` // note/sticky/file/message（客户端分享类型）
+	// ID 分享文件时为文件 id（数字或数字字符串）；其余分享类型不取用。
+	ID json.Number `json:"id"`
+	// Name 可读名称（文件名/笔记标题等），用于提示语展示。
+	Name string `json:"name"`
+	// OriginalContent 便签/笔记正文；转发文本消息时为原文（此时以 originalMessage 为准）。
+	OriginalContent string `json:"originalContent"`
+	// OriginalMessage 分享「消息」时内嵌的原始消息（含 type/content），用于判别转发的是文本还是图片/文件。
+	OriginalMessage *struct {
+		Type    string `json:"type"`
+		Content string `json:"content"`
+	} `json:"originalMessage"`
+}
+
+// parseQuotedShareData 解析分享消息 content JSON，按分享类型取可注入字段。
+// 返回：kind（note/sticky/file/message，解析失败为 ""）、name（可读名称）、
+// body（可直接注入的正文：便签/笔记原文或转发的文本消息原文；其余类型为空串）、
+// fileID（kind=file 时的文件 id，0 表示缺失/非法）、ok（JSON 解析成功且 type 非空）。
+func parseQuotedShareData(content string) (kind string, name string, body string, fileID uint, ok bool) {
+	var payload shareMessageData
+	if err := json.Unmarshal([]byte(content), &payload); err != nil || payload.Kind == "" {
+		return "", "", "", 0, false
+	}
+	switch payload.Kind {
+	case "note", "sticky":
+		body = strings.TrimSpace(payload.OriginalContent)
+	case "file":
+		if id, err := payload.ID.Int64(); err == nil && id > 0 {
+			fileID = uint(id)
+		}
+	case "message":
+		// 仅转发文本类消息可注入原文；图片/文件等转发的消息内容无法直接解析
+		if om := payload.OriginalMessage; om != nil && (om.Type == "text" || om.Type == "markdown") {
+			body = strings.TrimSpace(om.Content)
+		}
+	}
+	return payload.Kind, payload.Name, body, fileID, true
+}
+
+// quotedMergedForwardItem 合并转发 payload 的子消息条目（结构对应客户端 utils/mergedForward.ts 的 MergedForwardItem）。
+type quotedMergedForwardItem struct {
+	Type       string `json:"type"`
+	Content    string `json:"content"`
+	SenderName string `json:"senderName"`
+}
+
+// quotedMergedForward 合并转发 payload：客户端 createMergedForwardPayload 的产物，
+// messages 内嵌转发时各子消息的原文。
+type quotedMergedForward struct {
+	Title    string                    `json:"title"`
+	Messages []quotedMergedForwardItem `json:"messages"`
+}
+
+// parseQuotedMergedForward 解析合并转发消息 content JSON；结构不匹配
+// （非 JSON / messages 缺失或为空）返回 ok=false。
+func parseQuotedMergedForward(content string) (title string, items []quotedMergedForwardItem, ok bool) {
+	var payload quotedMergedForward
+	if err := json.Unmarshal([]byte(content), &payload); err != nil {
+		return "", nil, false
+	}
+	if len(payload.Messages) == 0 {
+		return "", nil, false
+	}
+	return payload.Title, payload.Messages, true
+}
+
 // nameOfQuoted 取被引用消息的可展示名称：优先取 Content 里解析出的文件名，取不到则回退为原始 Content（最多截 80 字符），保证提示语里至少有个可辨识的占位。
 func nameOfQuoted(content string) string {
 	if name := parseQuotedFileName(content); name != "" {
@@ -663,6 +878,16 @@ func mediaTypeName(t string) string {
 		return "视频"
 	case "audio":
 		return "语音"
+	case "share":
+		return "分享"
+	case "miniApp":
+		return "小程序"
+	case "news":
+		return "资讯"
+	case "system":
+		return "系统"
+	case "merged_forward":
+		return "合并转发"
 	default:
 		return "消息"
 	}
@@ -714,6 +939,14 @@ func buildContextBlocks(input *SmartReplyContext) []*schema.Message {
 			result = append(result, &schema.Message{
 				Role:    schema.Assistant,
 				Content: "我已读到被引用的文件内容。",
+			})
+		case QuotedText:
+			// 成功读到被引用文本（文本消息/笔记/便签原文）：注入内容并确认已读到，
+			// 措辞用"内容"而非文件专用的"文件内容"。
+			result = append(result, buildQuotedContextMessage(input.Quoted))
+			result = append(result, &schema.Message{
+				Role:    schema.Assistant,
+				Content: "我已读到被引用的内容。",
 			})
 		case QuotedFailed:
 			// 读不到：如实告知，不假装读到

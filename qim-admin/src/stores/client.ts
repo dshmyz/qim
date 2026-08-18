@@ -7,6 +7,8 @@ export const useClientStore = defineStore('client', () => {
   const versions = ref<ClientVersion[]>([])
   const distribution = ref<VersionDistribution[]>([])
   const loading = ref(false)
+  // 分布图独立 loading：轮询刷新不应反复触发版本表格的 loading 闪烁
+  const distributionLoading = ref(false)
 
   async function loadVersions() {
     loading.value = true
@@ -54,12 +56,12 @@ export const useClientStore = defineStore('client', () => {
   }
 
   async function loadDistribution() {
-    loading.value = true
+    distributionLoading.value = true
     try {
       const { data } = await getVersionDistribution()
       distribution.value = data.data
     } finally {
-      loading.value = false
+      distributionLoading.value = false
     }
   }
 
@@ -67,6 +69,7 @@ export const useClientStore = defineStore('client', () => {
     versions,
     distribution,
     loading,
+    distributionLoading,
     loadVersions,
     addVersion,
     editVersion,

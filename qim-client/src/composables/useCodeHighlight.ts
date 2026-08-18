@@ -13,8 +13,11 @@ export function useCodeHighlight(
   containerRef: Ref<HTMLElement | null>,
   trigger: Ref<string>
 ): void {
+  // 同时监听 trigger 与 containerRef：触发值变化发生在容器挂载之前（如 v-else-if 条件挂载、
+  // 一次性到达的摘要）时，仅 watch trigger 会漏掉——容器挂载时引用从 null 变为元素，
+  // 二次触发补亮；已高亮的块由 dataset.highlighted 守卫跳过，不会重复处理。
   watch(
-    trigger,
+    [trigger, containerRef],
     () => {
       nextTick(() => {
         if (!containerRef.value) return

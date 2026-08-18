@@ -1,7 +1,7 @@
 <template>
   <div
     class="sticky-note"
-    :class="[colorClass, paperStyleClass]"
+    :class="[`sticky-mini-${colorClass}`, `sticky-mini-paper-${paperStyleClass}`]"
     :style="noteStyle"
     :data-note-id="note.id"
     @click="$emit('click', note)"
@@ -99,7 +99,9 @@ const rotationSeed = computed(() => {
 })
 
 const noteStyle = computed(() => ({
-  '--note-rotation': `${rotationSeed.value}deg`
+  '--note-rotation': `${rotationSeed.value}deg`,
+  // 纸张纹理纵向起点：随卡片顶部留白（标题区）下移，与全局纸张类配合
+  '--paper-start': '36px'
 }))
 
 const parsedTags = computed(() => {
@@ -238,93 +240,8 @@ const formattedDate = computed(() => {
   transform: rotate(8deg) scale(1.05);
 }
 
-/* 颜色系统 - 柔和渐变 */
-.sticky-note.yellow {
-  background: linear-gradient(145deg, #fff9c4 0%, #fff59d 100%);
-}
-.sticky-note.yellow .sticky-note-title { color: #5d4037; }
-.sticky-note.yellow .sticky-note-content { color: #6d4c41; }
-.sticky-note.yellow .sticky-note-date { color: #a1887f; }
-.sticky-note.yellow .sticky-note-tag { background: rgba(93, 64, 55, 0.12); color: #5d4037; }
-
-.sticky-note.blue {
-  background: linear-gradient(145deg, #e1f5fe 0%, #b3e5fc 100%);
-}
-.sticky-note.blue .sticky-note-title { color: #0d47a1; }
-.sticky-note.blue .sticky-note-content { color: #1565c0; }
-.sticky-note.blue .sticky-note-date { color: #42a5f5; }
-.sticky-note.blue .sticky-note-tag { background: rgba(13, 71, 161, 0.1); color: #0d47a1; }
-
-.sticky-note.green {
-  background: linear-gradient(145deg, #e8f5e9 0%, #c8e6c9 100%);
-}
-.sticky-note.green .sticky-note-title { color: #1b5e20; }
-.sticky-note.green .sticky-note-content { color: #2e7d32; }
-.sticky-note.green .sticky-note-date { color: #66bb6a; }
-.sticky-note.green .sticky-note-tag { background: rgba(27, 94, 32, 0.1); color: #1b5e20; }
-
-.sticky-note.red {
-  background: linear-gradient(145deg, #fce4ec 0%, #f8bbd0 100%);
-}
-.sticky-note.red .sticky-note-title { color: #880e4f; }
-.sticky-note.red .sticky-note-content { color: #ad1457; }
-.sticky-note.red .sticky-note-date { color: #e91e63; }
-.sticky-note.red .sticky-note-tag { background: rgba(136, 14, 79, 0.1); color: #880e4f; }
-
-.sticky-note.purple {
-  background: linear-gradient(145deg, #f3e5f5 0%, #e1bee7 100%);
-}
-.sticky-note.purple .sticky-note-title { color: #4a148c; }
-.sticky-note.purple .sticky-note-content { color: #6a1b9a; }
-.sticky-note.purple .sticky-note-date { color: #ab47bc; }
-.sticky-note.purple .sticky-note-tag { background: rgba(74, 20, 140, 0.1); color: #4a148c; }
-
-.sticky-note.pink {
-  background: linear-gradient(145deg, #fce4ec 0%, #f8bbd0 100%);
-}
-.sticky-note.pink .sticky-note-title { color: #880e4f; }
-.sticky-note.pink .sticky-note-content { color: #ad1457; }
-.sticky-note.pink .sticky-note-date { color: #e91e63; }
-.sticky-note.pink .sticky-note-tag { background: rgba(136, 14, 79, 0.1); color: #880e4f; }
-
-/* 纸张样式 */
-.sticky-note.lined {
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 19px,
-    rgba(0, 0, 0, 0.08) 19px,
-    rgba(0, 0, 0, 0.08) 20px
-  );
-  background-size: 100% 20px;
-  background-position: 0 36px;
-}
-
-.sticky-note.grid {
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 19px,
-      rgba(0, 0, 0, 0.06) 19px,
-      rgba(0, 0, 0, 0.06) 20px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 19px,
-      rgba(0, 0, 0, 0.06) 19px,
-      rgba(0, 0, 0, 0.06) 20px
-    );
-  background-size: 20px 20px;
-  background-position: 0 36px, 0 0;
-}
-
-.sticky-note.dotted {
-  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.15) 1px, transparent 1px);
-  background-size: 18px 18px;
-  background-position: 0 44px;
-}
+/* 颜色系统/纸张纹理/暗色适配见全局 assets/styles/sticky-note-colors.css（单源）。
+   模板已挂 sticky-mini-* / sticky-mini-paper-* 全局类，此处不再重复定义 */
 
 /* 头部 */
 .sticky-note-header {
@@ -415,6 +332,8 @@ const formattedDate = computed(() => {
   word-break: break-word;
   white-space: pre-wrap;
   opacity: 0.88;
+  /* 墨色随全局色板 --sticky-ink（颜色类已抽到全局） */
+  color: var(--sticky-ink, #6d4c41);
 }
 
 /* 标签 */
@@ -454,74 +373,6 @@ const formattedDate = computed(() => {
   opacity: 0.85;
 }
 
-/* 暗色主题适配 */
-[data-theme="elegant-dark"] .sticky-note.yellow {
-  background: linear-gradient(145deg, #4a4520 0%, #3d3a18 100%);
-}
-[data-theme="elegant-dark"] .sticky-note.yellow .sticky-note-title { color: #fff9c4; }
-[data-theme="elegant-dark"] .sticky-note.yellow .sticky-note-content { color: #e6d98a; }
-[data-theme="elegant-dark"] .sticky-note.yellow .sticky-note-date { color: #a1887f; }
-[data-theme="elegant-dark"] .sticky-note.yellow .sticky-note-tag { background: rgba(255, 249, 196, 0.12); color: #fff9c4; }
-
-[data-theme="elegant-dark"] .sticky-note.blue {
-  background: linear-gradient(145deg, #1a3a4a 0%, #15303d 100%);
-}
-[data-theme="elegant-dark"] .sticky-note.blue .sticky-note-title { color: #b3e5fc; }
-[data-theme="elegant-dark"] .sticky-note.blue .sticky-note-content { color: #81d4fa; }
-[data-theme="elegant-dark"] .sticky-note.blue .sticky-note-date { color: #42a5f5; }
-[data-theme="elegant-dark"] .sticky-note.blue .sticky-note-tag { background: rgba(179, 229, 252, 0.12); color: #b3e5fc; }
-
-[data-theme="elegant-dark"] .sticky-note.green {
-  background: linear-gradient(145deg, #1b3a1e 0%, #153018 100%);
-}
-[data-theme="elegant-dark"] .sticky-note.green .sticky-note-title { color: #c8e6c9; }
-[data-theme="elegant-dark"] .sticky-note.green .sticky-note-content { color: #a5d6a7; }
-[data-theme="elegant-dark"] .sticky-note.green .sticky-note-date { color: #66bb6a; }
-[data-theme="elegant-dark"] .sticky-note.green .sticky-note-tag { background: rgba(200, 230, 201, 0.12); color: #c8e6c9; }
-
-[data-theme="elegant-dark"] .sticky-note.red {
-  background: linear-gradient(145deg, #3a1a24 0%, #301520 100%);
-}
-[data-theme="elegant-dark"] .sticky-note.red .sticky-note-title { color: #f8bbd0; }
-[data-theme="elegant-dark"] .sticky-note.red .sticky-note-content { color: #f48fb1; }
-[data-theme="elegant-dark"] .sticky-note.red .sticky-note-date { color: #e91e63; }
-[data-theme="elegant-dark"] .sticky-note.red .sticky-note-tag { background: rgba(248, 187, 208, 0.12); color: #f8bbd0; }
-
-[data-theme="elegant-dark"] .sticky-note.purple {
-  background: linear-gradient(145deg, #2a1a3a 0%, #221530 100%);
-}
-[data-theme="elegant-dark"] .sticky-note.purple .sticky-note-title { color: #e1bee7; }
-[data-theme="elegant-dark"] .sticky-note.purple .sticky-note-content { color: #ce93d8; }
-[data-theme="elegant-dark"] .sticky-note.purple .sticky-note-date { color: #ab47bc; }
-[data-theme="elegant-dark"] .sticky-note.purple .sticky-note-tag { background: rgba(225, 190, 231, 0.12); color: #e1bee7; }
-
-[data-theme="elegant-dark"] .sticky-note.pink {
-  background: linear-gradient(145deg, #3a1a28 0%, #301520 100%);
-}
-[data-theme="elegant-dark"] .sticky-note.pink .sticky-note-title { color: #f8bbd0; }
-[data-theme="elegant-dark"] .sticky-note.pink .sticky-note-content { color: #f48fb1; }
-[data-theme="elegant-dark"] .sticky-note.pink .sticky-note-date { color: #e91e63; }
-[data-theme="elegant-dark"] .sticky-note.pink .sticky-note-tag { background: rgba(248, 187, 208, 0.12); color: #f8bbd0; }
-
-[data-theme="elegant-dark"] .sticky-note.lined {
-  background-image: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 19px,
-    rgba(255, 255, 255, 0.06) 19px,
-    rgba(255, 255, 255, 0.06) 20px
-  );
-}
-
-[data-theme="elegant-dark"] .sticky-note.grid {
-  background-image:
-    repeating-linear-gradient(0deg, transparent, transparent 19px, rgba(255,255,255,0.04) 19px, rgba(255,255,255,0.04) 20px),
-    repeating-linear-gradient(90deg, transparent, transparent 19px, rgba(255,255,255,0.04) 19px, rgba(255,255,255,0.04) 20px);
-}
-
-[data-theme="elegant-dark"] .sticky-note.dotted {
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
-}
 
 [data-theme="elegant-dark"] .sticky-note-action,
 [data-theme="elegant-dark"] .sticky-note-delete {

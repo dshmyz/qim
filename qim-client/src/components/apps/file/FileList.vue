@@ -27,7 +27,15 @@
       <div v-else class="file-table" :style="gridStyle">
         <!-- 表头 -->
         <div class="file-table-header" :style="gridStyle">
-          <div class="header-cell header-icon"></div>
+          <div class="header-cell header-icon">
+            <input
+              type="checkbox"
+              class="select-all-checkbox"
+              :checked="allPageSelected"
+              :title="allPageSelected ? '取消全选' : '全选当前页'"
+              @change="handleSelectAllToggle"
+            />
+          </div>
           <div class="header-cell header-name">文件名</div>
           <div class="header-cell header-type">类型</div>
           <div class="header-cell header-size">大小</div>
@@ -115,6 +123,17 @@ const emit = defineEmits<{
 
 const selectedFileIds = ref<Set<number>>(new Set())
 const scrollContainerRef = ref<HTMLElement | null>(null)
+
+// 当前页是否已全选（驱动表头复选框）
+const allPageSelected = computed(() => {
+  return props.files.length > 0 && props.files.every(f => selectedFileIds.value.has(f.id))
+})
+
+function handleSelectAllToggle(event: Event) {
+  const checked = (event.target as HTMLInputElement).checked
+  selectedFileIds.value = checked ? new Set(props.files.map(f => f.id)) : new Set()
+  emit('selection-change', selectedFileIds.value)
+}
 
 const columnMinWidths = [40, 120, 60, 60, 130, 40, 160]
 
@@ -220,7 +239,6 @@ defineExpose({
   display: grid;
   gap: 0;
   padding: 0 16px;
-  background: var(--hover-color);
   font-size: var(--font-size-xxs);
   font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
@@ -239,6 +257,14 @@ defineExpose({
 
 .header-icon {
   justify-content: center;
+}
+
+.select-all-checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--primary-color, #4f6ef7);
+  cursor: pointer;
 }
 
 .header-actions {

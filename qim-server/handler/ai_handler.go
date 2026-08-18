@@ -538,9 +538,9 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 	allowedTools := sidebarAllowedTools
 
 	streamSSE(c, func(writeChunk func(string) error) error {
-		if err := writeChunk("🤔 正在思考...\n\n"); err != nil {
-			return err
-		}
+		// 注意：不再把「🤔 正在思考...」写进流内容——该文字会随回复一起落库、永久残留在
+		// 侧边栏每条回复顶部。思考态改由前端组件 ThinkingIndicator（三点动画）在首个实
+		// 际内容 chunk 到达前渲染，内容到达即自然替换，与主窗口/ BotChatView 保持一致。
 
 		// 每步工具执行后实时推送进度（仅终态；进行态由前端工具卡片处理）
 		onStep := func(step int, toolCallID, phase, toolName string, args map[string]interface{}, result interface{}, err error) {

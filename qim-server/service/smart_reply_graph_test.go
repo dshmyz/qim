@@ -47,6 +47,29 @@ func TestBuildContextBlocks_FailureOnly(t *testing.T) {
 	_ = roles
 }
 
+// TestBuildContextBlocks_QuotedText 引用文本/分享正文（Quoted.Kind=QuotedText）时，产出「已读到」应答，
+// 且措辞为「被引用的内容」而非文件专用的「被引用的文件内容」。
+func TestBuildContextBlocks_QuotedText(t *testing.T) {
+	blocks := buildContextBlocks(&SmartReplyContext{
+		Quoted: &QuotedContext{Kind: QuotedText, Name: "张三", Text: "💬 你引用了「张三」的消息：\nhello"},
+	})
+
+	roles, contents := flattenRoles(blocks)
+	if !anyContains(contents, "我已读到被引用的内容") {
+		t.Fatalf("文本场景应包含「已读到」应答，got contents=%v", contents)
+	}
+	if anyContains(contents, "文件内容") {
+		t.Fatalf("文本场景不应复用文件措辞，got contents=%v", contents)
+	}
+	if !anyContains(contents, "hello") {
+		t.Fatalf("文本场景应注入原文，got contents=%v", contents)
+	}
+	if anyContains(contents, "未能读取") {
+		t.Fatalf("文本场景不应出现「未能读取」应答，got contents=%v", contents)
+	}
+	_ = roles
+}
+
 // TestBuildContextBlocks_None 两者皆空时，不产出任何被引用文件相关的上下文消息块。
 func TestBuildContextBlocks_None(t *testing.T) {
 	blocks := buildContextBlocks(&SmartReplyContext{})

@@ -1,7 +1,7 @@
 import type { ApiResponse, Version, PaginationParams, PaginatedResponse } from '@/types'
 import { request } from '@/utils/request'
 import type { AxiosResponse } from 'axios'
-import type { VersionDistribution } from '@/types/client'
+import type { VersionDistribution, VersionDistributionUser } from '@/types/client'
 
 export const getVersions = (params?: PaginationParams & { platform?: string }): Promise<AxiosResponse<ApiResponse<PaginatedResponse<Version>>>> => {
   return request({
@@ -46,6 +46,14 @@ export const getVersionDistribution = (): Promise<AxiosResponse<ApiResponse<Vers
   return request({
     url: '/v1/client/versions/distribution',
     method: 'get',
+  })
+}
+
+export const getVersionDistributionUsers = (version?: string): Promise<AxiosResponse<ApiResponse<VersionDistributionUser[]>>> => {
+  return request({
+    url: '/v1/client/versions/distribution/users',
+    method: 'get',
+    params: version ? { version } : undefined,
   })
 }
 

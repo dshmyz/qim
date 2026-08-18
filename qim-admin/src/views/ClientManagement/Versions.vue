@@ -23,8 +23,9 @@
           <el-col :span="8">
             <VersionDistributionChart
               :distribution="clientStore.distribution"
-              :loading="clientStore.loading"
+              :loading="clientStore.distributionLoading"
               @refresh="handleLoadDistribution"
+              @view-users="handleViewUsers"
             />
           </el-col>
         </el-row>
@@ -175,14 +176,38 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 版本分布·在线用户对话框 -->
+    <el-dialog
+      v-model="usersDialogVisible"
+      :title="`在线用户 — ${currentUsersVersion}`"
+      width="560px"
+      destroy-on-close
+    >
+      <el-table :data="versionUsers" v-loading="usersLoading" stripe border style="width: 100%" max-height="420">
+        <el-table-column prop="username" label="用户名" min-width="140" show-overflow-tooltip />
+        <el-table-column label="平台" width="110">
+          <template #default="{ row }">
+            <el-tag size="small" :type="platformTagType(row.platform)">{{ platformLabel(row.platform) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="version" label="版本" width="130" />
+      </el-table>
+      <div v-if="!usersLoading && versionUsers.length === 0" style="text-align: center; color: #909399; padding: 12px 0">
+        该版本暂无在线用户
+      </div>
+      <template #footer>
+        <el-button @click="usersDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useClientStore } from '@/stores/client'
-import type { ClientVersion, CreateVersionParams, UpdateVersionParams } from '@/types/client'
+import type { ClientVersion, CreateVersionParams, UpdateVersionParams, VersionDistributionUser } from '@/types/client'
 import VersionTable from './components/VersionTable.vue'
 import VersionDistributionChart from './components/VersionDistributionChart.vue'
 import VersionFormDialog from './components/VersionFormDialog.vue'
@@ -194,10 +219,14 @@ import {
   updateCLIVersion,
   deleteCLIVersion,
   toggleCLIVersionStatus,
+  getVersionDistributionUsers,
 } from '@/api/versions'
 
 const clientStore = useClientStore()
 const activeTab = ref('client')
+
+// 版本分布轮询定时器（见 onMounted / onUnmounted）
+let pollTimer: number | undefined
 
 // ==================== 客户端版本 ====================
 const clientDialogVisible = ref(false)
@@ -210,6 +239,18 @@ onMounted(async () => {
     clientStore.loadVersions(),
     clientStore.loadDistribution(),
   ])
+  // 版本分布是"当前在线设备"快照，30s 轮询保持图表随在线变化自动更新
+  pollTimer = window.setInterval(() => {
+    if (activeTab.value === 'client') {
+      clientStore.loadDistribution()
+    }
+  }, 30_000)
+})
+
+onUnmounted(() => {
+  if (pollTimer !== undefined) {
+    window.clearInterval(pollTimer)
+  }
 })
 
 function handleCreateClient() {
@@ -273,6 +314,47 @@ async function handleLoadDistribution() {
     await clientStore.loadDistribution()
   } catch (error: unknown) {
     ElMessage.error(error instanceof Error ? error.message : '加载失败')
+  }
+}
+
+// ==================== 版本分布·在线用户钻取 ====================
+const usersDialogVisible = ref(false)
+const currentUsersVersion = ref('')
+const versionUsers = ref<VersionDistributionUser[]>([])
+const usersLoading = ref(false)
+
+const PLATFORM_LABELS: Record<string, string> = {
+  windows: 'Windows',
+  macos: 'macOS',
+  linux: 'Linux',
+}
+
+function platformLabel(platform: string): string {
+  return PLATFORM_LABELS[platform] || platform || '未知'
+}
+
+function platformTagType(platform: string): 'primary' | 'success' | 'warning' | 'info' {
+  switch (platform) {
+    case 'windows': return 'primary'
+    case 'macos': return 'success'
+    case 'linux': return 'warning'
+    default: return 'info'
+  }
+}
+
+// 点击饼图扇区：查看该版本（含"未知版本"=老客户端）当前在线用户
+async function handleViewUsers(version: string) {
+  currentUsersVersion.value = version
+  versionUsers.value = []
+  usersDialogVisible.value = true
+  usersLoading.value = true
+  try {
+    const res = await getVersionDistributionUsers(version)
+    versionUsers.value = (res.data as any)?.data || []
+  } catch (e: any) {
+    ElMessage.error(e.message || '加载用户失败')
+  } finally {
+    usersLoading.value = false
   }
 }
 

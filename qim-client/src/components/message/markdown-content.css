@@ -153,3 +153,18 @@
   font-size: 0.85em;
   margin-right: 1px;
 }
+
+/* 流式中 markdown 图片占位符：抑制 <img> 期间预留图片位置，避免终态出图时布局跳变 */
+.markdown-content .md-img-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  height: 72px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-color), transparent 92%);
+  color: color-mix(in srgb, var(--text-color), transparent 42%);
+  font-size: 0.85em;
+  vertical-align: middle;
+}

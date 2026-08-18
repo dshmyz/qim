@@ -10,9 +10,15 @@
   >
     <!-- 文件预览区域 -->
     <div class="file-preview">
-      <!-- 图片缩略图 -->
+      <!-- 图片缩略图：就绪前不渲染 img（空 src 会显示裂图），加载中用占位 -->
       <div v-if="isImage(file.mime_type)" class="preview-thumbnail">
-        <img :src="thumbnailUrl" :alt="file.name" @error="handleImageError" />
+        <div v-if="imageError" class="preview-thumbnail__fallback">
+          <i :class="getFileIcon(file.mime_type)" :style="{ color: getFileIconColor(file.mime_type) }"></i>
+        </div>
+        <div v-else-if="!thumbnailUrl" class="preview-thumbnail__loading">
+          <i class="fas fa-spinner fa-spin"></i>
+        </div>
+        <img v-else :src="thumbnailUrl" :alt="file.name" @error="handleImageError" />
       </div>
 
       <!-- 其他文件类型图标 -->
@@ -23,6 +29,11 @@
       <!-- 星标标记 -->
       <div v-if="file.is_starred" class="star-badge">
         <i class="fas fa-star"></i>
+      </div>
+
+      <!-- 选中标记 -->
+      <div v-if="isSelected" class="selected-badge">
+        <i class="fas fa-check"></i>
       </div>
 
       <!-- 操作按钮 -->
@@ -252,6 +263,30 @@ function handleDelete() {
   object-fit: cover;
 }
 
+/* 缩略图加载中占位 */
+.preview-thumbnail__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--hover-color, #f2f4f7);
+  color: var(--text-secondary);
+  opacity: 0.7;
+  font-size: 22px;
+}
+
+/* 缩略图加载失败：文件类型图标 fallback */
+.preview-thumbnail__fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--hover-color, #f2f4f7);
+  font-size: 40px;
+}
+
 .preview-icon {
   position: absolute;
   top: 50%;
@@ -277,6 +312,23 @@ function handleDelete() {
   justify-content: center;
   font-size: var(--font-size-xxs);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.selected-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xxs);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
 }
 
 .file-actions {

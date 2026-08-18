@@ -12,10 +12,19 @@ interface Props {
   height?: string
 }
 
+interface ChartItem {
+  name: string
+  value: number
+}
+
 const props = withDefaults(defineProps<Props>(), {
   width: '100%',
   height: '300px'
 })
+
+const emit = defineEmits<{
+  'item-click': [item: ChartItem]
+}>()
 
 const chartRef = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
@@ -36,6 +45,10 @@ function initChart() {
   if (!chartRef.value) return
 
   chart = echarts.init(chartRef.value)
+  // 点击扇区回调；chart.on 在 setOption 之间持续生效，只需注册一次
+  chart.on('click', (params: any) => {
+    emit('item-click', { name: params.name, value: params.value })
+  })
   updateChart()
 }
 

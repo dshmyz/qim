@@ -183,7 +183,6 @@
       :active-mini-app="activeMiniApp"
       :get-file-icon="getFileIcon"
       :format-file-size="formatFileSize"
-      :render-markdown="renderMarkdown"
       :format-time="formatTime"
       @close-user-profile="closeUserProfile"
       @send-private-message="(id) => { emit('openChat', id); closeUserProfile() }"
@@ -357,7 +356,7 @@ const canCall = computed(() => {
 // 初始化 composables
 const { getToken, request } = useChatRequest(serverUrl.value)
 const { remind } = useMessageReminder(serverUrl.value)
-const { formatTime, getFileIcon, formatFileSize, renderMarkdown } = useChatUtils()
+const { formatTime, getFileIcon, formatFileSize } = useChatUtils()
 const { $message, showConfirmDialog, confirmDialogTitle, confirmDialogMessage, openConfirmDialog, closeConfirmDialog, handleConfirmAction } = useChatState()
 
 // 实时通信 store 和连接管理器
