@@ -14,7 +14,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/dshmyz/qim/qim-server/pkg/pdf"
 )
 
 // maxDocumentSize 文档解析的单文件大小上限（20MB）
@@ -206,12 +206,12 @@ func (p *DocumentParser) parseText(filePath string) (string, error) {
 	return string(data), nil
 }
 
-// parsePDF 使用 ledongthuc/pdf 提取 PDF 文本内容
+// parsePDF 使用内置的 pkg/pdf（原 ledongthuc/pdf fork，含 GBK 系解码修复）提取 PDF 文本内容
 func (p *DocumentParser) parsePDF(filePath string) (string, error) {
 	// 预处理：很多真实 PDF（尤其知网/万方下载的论文）在末尾 %%EOF 之后还残留一段
 	// 元数据/扫描尾块（如 WebFastLoad<FileProperty>...</FileProperty>）。而
-	// ledongthuc/pdf 只读文件最后 100 字节并要求以 %%EOF 结尾（read.go 的 HasSuffix
-	// 校验），尾部带数据就会误报 "not a PDF file: missing %%EOF"。
+	// pkg/pdf（原 ledongthuc/pdf）只读文件最后 100 字节并要求以 %%EOF 结尾（read.go 的
+	// HasSuffix 校验），尾部带数据就会误报 "not a PDF file: missing %%EOF"。
 	// 这里先把文件截断到最后一个 %%EOF 处，再交给 pdf.Open 解析。
 	if err := p.trimPDFTrailingData(filePath); err != nil {
 		return "", err

@@ -15,7 +15,6 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
@@ -147,15 +146,10 @@ require (
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/text v0.37.0
 	golang.org/x/tools v0.45.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	modernc.org/libc v1.72.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-// 仓库内 fork：ledongthuc/pdf 原生解析对知网/万方中文论文（Type0 字体 + GBK-EUC-H
-// 具名编码 + 无 ToUnicode）输出 U+FFFD 乱码。本地副本修复 getEncoder（ToUnicode
-// 优先 + GBK 系编码解码），改动见 third_party/ledongthuc/pdf/gbk_patch.go。
-replace github.com/ledongthuc/pdf => ./third_party/ledongthuc/pdf

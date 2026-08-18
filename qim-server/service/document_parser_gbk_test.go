@@ -16,7 +16,7 @@ import (
 //
 // 这类 PDF 是 ledongthuc/pdf 原生解析的乱码重灾区：解码器不识别 GBK-EUC-H
 // 具名编码时会把 2 字节 GBK 码按裸字节处理，正文变成 U+FFFD 乱码。本 fixture
-// 用于钉住仓库内 fork 的解码修复（见 third_party/ledongthuc/pdf/gbk_patch.go）。
+// 用于钉住仓库内 fork 的解码修复（见 pkg/pdf/gbk_patch.go，原 third_party）。
 // xref 偏移由函数在组装时计算，避免手写偏移随内容改动漂移。
 func buildGBKType0PDF(t *testing.T) []byte {
 	t.Helper()
@@ -54,7 +54,7 @@ func buildGBKType0PDF(t *testing.T) []byte {
 // TestParsePDF_GBKType0Font_DecodesChinese 验证对「Type0 字体 + GBK-EUC-H 具名编码
 // + 无 ToUnicode」的知网/万方类 PDF，原生解析能按 GBK 正确还原中文，而非输出
 // U+FFFD 乱码。该场景是 ledongthuc/pdf 原生解析的历史乱码根因（getEncoder 对
-// GBK-EUC-H 等具名编码不识别），修复见 third_party/ledongthuc/pdf/gbk_patch.go。
+// GBK-EUC-H 等具名编码不识别），修复见 pkg/pdf/gbk_patch.go（原 third_party）。
 func TestParsePDF_GBKType0Font_DecodesChinese(t *testing.T) {
 	p := NewDocumentParser()
 	// 关闭 anydoc，确保走原生解析路径，钉住 fork 内的解码修复
