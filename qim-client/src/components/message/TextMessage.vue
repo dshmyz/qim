@@ -1,25 +1,32 @@
 <template>
   <div class="message-bubble text-message" :class="{ self: isSelf }" @click="handleClick">
-    <template v-for="(seg, i) in segments" :key="i">
-      <span
-        v-if="seg.type === 'mention'"
-        class="at-mention-chip"
-        :class="{ 'at-mention-chip--all': seg.userId === 'all' }"
-        :data-user-id="seg.userId"
-      >{{ seg.text }}</span>
-      <TaskRefCard
-        v-else-if="seg.type === 'task_ref'"
-        :task-id="seg.taskId"
-        :conversation-id="seg.conversationId"
-        @click="handleTaskClick"
-      />
-      <span v-else v-html="seg.html"></span>
-    </template>
+    <div ref="contentEl" class="text-content" :class="{ 'is-collapsed': collapsed }">
+      <template v-for="(seg, i) in segments" :key="i">
+        <span
+          v-if="seg.type === 'mention'"
+          class="at-mention-chip"
+          :class="{ 'at-mention-chip--all': seg.userId === 'all' }"
+          :data-user-id="seg.userId"
+        >{{ seg.text }}</span>
+        <TaskRefCard
+          v-else-if="seg.type === 'task_ref'"
+          :task-id="seg.taskId"
+          :conversation-id="seg.conversationId"
+          @click="handleTaskClick"
+        />
+        <span v-else v-html="seg.html"></span>
+      </template>
+    </div>
+    <button
+      v-if="canCollapse"
+      class="text-expand-btn"
+      @click.stop="collapsed = !collapsed"
+    >{{ collapsed ? '▾ 展开全文' : '▴ 收起' }}</button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUpdated, ref } from 'vue'
 import { escapeHTML, sanitizeHTML } from '../../utils/sanitize'
 import { parseContent } from '../../utils/mentions'
 import { emojiToHtml, classicToHtml } from '../../utils/emoji'
@@ -169,6 +176,27 @@ const handleClick = (event: MouseEvent) => {
     // 暂不处理，保持默认行为
   }
 }
+
+// 长文本折叠：按渲染后高度判定是否溢出（大量换行同样触发），折叠阈值只定义在
+// CSS 一处（.text-content.is-collapsed 的 max-height），JS 不重复魔法数字。
+const contentEl = ref<HTMLElement | null>(null)
+const collapsed = ref(true)
+const canCollapse = ref(false)
+
+const measure = () => {
+  const el = contentEl.value
+  if (el) canCollapse.value = el.scrollHeight > el.clientHeight + 1
+}
+
+let resizeObserver: ResizeObserver | null = null
+onMounted(() => {
+  measure()
+  // 窗口缩放改宽度、设置里字号滑块改 max-height 都会改变溢出状态，重测
+  resizeObserver = new ResizeObserver(() => measure())
+  if (contentEl.value) resizeObserver.observe(contentEl.value)
+})
+onUpdated(() => { measure() })
+onBeforeUnmount(() => { resizeObserver?.disconnect() })
 </script>
 
 <style scoped>
@@ -181,6 +209,23 @@ const handleClick = (event: MouseEvent) => {
   line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+/* 长文本折叠：折叠到约 20 行（行高 1.6）。不溢出的内容 max-height 是 no-op，无副作用 */
+.text-content.is-collapsed {
+  max-height: calc(var(--font-size-sm) * 1.6 * 20);
+  overflow: hidden;
+}
+
+.text-expand-btn {
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  color: var(--primary-color, #2563eb);
 }
 
 :deep(.at-mention-chip) {
