@@ -18,6 +18,7 @@ type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	JWT      JWTConfig
+	Security SecurityConfig
 	Log      LogConfig
 	Cluster  ClusterConfig
 	Storage  StorageConfig
@@ -161,6 +162,13 @@ type JWTConfig struct {
 	RefreshExpireDays int    `yaml:"refresh_expire_days"`
 }
 
+// SecurityConfig 安全相关配置：encryption_key 用于 AES-GCM 加密用户自选模型的 API Key
+//（存库前加密、读取时解密）。环境变量 ENCRYPTION_KEY 始终优先于此配置；
+// 两者都未设置时每次启动随机生成密钥，已加密数据重启后无法解密。
+type SecurityConfig struct {
+	EncryptionKey string `yaml:"encryption_key"`
+}
+
 type DatabaseConfig struct {
 	Type         string `yaml:"type"`
 	Path         string `yaml:"path"`
@@ -177,6 +185,7 @@ type DatabaseConfig struct {
 type yamlConfig struct {
 	Server   ServerConfig   `yaml:"server"`
 	JWT      JWTConfig      `yaml:"jwt"`
+	Security SecurityConfig `yaml:"security"`
 	DB       DatabaseConfig `yaml:"database"`
 	Log      LogConfig      `yaml:"log"`
 	Cluster  ClusterConfig  `yaml:"cluster"`
@@ -220,6 +229,11 @@ func Load() *Config {
 	secret := os.Getenv("JWT_SECRET")
 	if secret != "" {
 		cfg.JWT.Secret = secret
+	}
+
+	// 加密密钥：环境变量 ENCRYPTION_KEY 优先于 config.yaml 的 security.encryption_key
+	if encKey := os.Getenv("ENCRYPTION_KEY"); encKey != "" {
+		cfg.Security.EncryptionKey = encKey
 	}
 
 	dbPath := os.Getenv("DB_PATH")
@@ -373,6 +387,7 @@ func Load() *Config {
 		Server:   cfg.Server,
 		Database: cfg.DB,
 		JWT:      cfg.JWT,
+		Security: cfg.Security,
 		Log:      cfg.Log,
 		Cluster:  cfg.Cluster,
 		Storage:  cfg.Storage,

@@ -28,7 +28,7 @@ func setupAIConfigTestDB(t *testing.T) *gorm.DB {
 func initEncryptionKeyForTest(t *testing.T) {
 	// utils.InitEncryptionKey 在测试环境用固定 key，这里只需确保 encryptionKey 非 nil
 	// 通过直接调用一次确保初始化（测试环境下用空 ENCRYPTION_KEY 也能正常工作）
-	utils.InitEncryptionKey()
+	utils.InitEncryptionKey("")
 }
 
 // UpdateConfig 传空 apiKey 时应保留原密钥，不覆盖为空

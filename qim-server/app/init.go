@@ -515,8 +515,9 @@ func InitApp() (*config.Config, *gorm.DB, *ws.Hub) {
 		Compress:   cfg.Log.Compress,
 	})
 
-	// 初始化加密密钥（AI Config 等功能依赖）
-	utils.InitEncryptionKey()
+	// 初始化加密密钥（AI Config 等功能依赖）：config.yaml 的 security.encryption_key，
+	// 环境变量 ENCRYPTION_KEY 优先（已在 config.Load 内并入 cfg.Security.EncryptionKey）
+	utils.InitEncryptionKey(cfg.Security.EncryptionKey)
 
 	// 初始化数据库
 	db := database.Init(cfg)

@@ -12,8 +12,15 @@ import (
 
 var encryptionKey []byte
 
-func InitEncryptionKey() {
-	key := os.Getenv("ENCRYPTION_KEY")
+// InitEncryptionKey 初始化 AES-256-GCM 加密密钥。优先级：
+//  1. configured（来自 config.yaml 的 security.encryption_key，经 Load 已并入 ENCRYPTION_KEY 环境变量覆盖）
+//  2. ENCRYPTION_KEY 环境变量（向后兼容：测试/旧部署直接设环境变量的场景）
+//  3. 随机生成——每次启动变化，已加密的数据重启后将无法解密
+func InitEncryptionKey(configured string) {
+	key := configured
+	if key == "" {
+		key = os.Getenv("ENCRYPTION_KEY")
+	}
 	if key == "" {
 		// 生成随机密钥，每次启动都会变化（已加密的数据将无法解密）
 		b := make([]byte, 32)
@@ -21,7 +28,7 @@ func InitEncryptionKey() {
 			panic("无法生成随机加密密钥: " + err.Error())
 		}
 		key = base64.StdEncoding.EncodeToString(b)[:32]
-		fmt.Println("警告: 未设置 ENCRYPTION_KEY 环境变量，使用随机密钥。已加密的数据在重启后将无法解密。")
+		fmt.Println("警告: 未设置 ENCRYPTION_KEY 环境变量/security.encryption_key 配置，使用随机密钥。已加密的数据在重启后将无法解密。")
 	}
 	encryptionKey = []byte(key)[:32]
 }

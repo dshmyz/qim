@@ -21,7 +21,7 @@ import (
 // （provider 不存在 → CreateProviderByName 直接报错）时应回退系统默认并正常回复，
 // 兑现「回退系统默认…不阻断回复」契约。
 func TestAvatarReplyGraph_CustomProviderFallbackToSystem(t *testing.T) {
-	utils.InitEncryptionKey()
+	utils.InitEncryptionKey("")
 	db := setupServiceTestDB(t)
 	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}, &model.AIConfig{}))
 	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)

@@ -193,7 +193,7 @@ func TestAvatarReplyGraphTaskDoesNotBypassOutOfScopeGate(t *testing.T) {
 }
 
 func TestAvatarReplyGraphResolveCustomModel(t *testing.T) {
-	utils.InitEncryptionKey()
+	utils.InitEncryptionKey("")
 	db := setupServiceTestDB(t)
 	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}, &model.AIConfig{}))
 

@@ -32,7 +32,7 @@ func TestParseBotConfigModelSource(t *testing.T) {
 // TestResolveUserAIConfigProvider 验证 bot/分身共用的自选 provider 解析：
 // 按 configID+userID 取配置，校验启用态与归属，构建出 provider 名 + ProviderConfig。
 func TestResolveUserAIConfigProvider(t *testing.T) {
-	utils.InitEncryptionKey()
+	utils.InitEncryptionKey("")
 	db := setupServiceTestDB(t)
 	require.NoError(t, db.Migrator().CreateTable(&model.AIConfig{}))
 

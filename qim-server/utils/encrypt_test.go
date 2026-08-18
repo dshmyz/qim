@@ -7,7 +7,7 @@ import (
 
 func TestEncryptDecrypt(t *testing.T) {
 	os.Setenv("ENCRYPTION_KEY", "test-key-32-chars-for-encryption!!")
-	InitEncryptionKey()
+	InitEncryptionKey("")
 
 	originalKey := "sk-test-api-key-12345"
 
@@ -32,7 +32,7 @@ func TestEncryptDecrypt(t *testing.T) {
 
 func TestDecryptInvalidKey(t *testing.T) {
 	os.Setenv("ENCRYPTION_KEY", "test-key-32-chars-for-encryption!!")
-	InitEncryptionKey()
+	InitEncryptionKey("")
 
 	_, err := DecryptAPIKey("invalid-base64")
 	if err == nil {
