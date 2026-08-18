@@ -71,7 +71,7 @@ func TestCreateApproval_AvatarSnapshot(t *testing.T) {
 	applicant := &model.User{Username: "u1", Nickname: "李四", PasswordHash: "x"}
 	require.NoError(t, db.Create(applicant).Error)
 
-	config := &model.AvatarConfig{UserID: applicant.ID, Name: "我的分身"}
+	config := &model.AvatarConfig{UserID: applicant.ID, Name: "AI分身"}
 	require.NoError(t, db.Create(config).Error)
 
 	err := svc.CreateApproval(model.ApprovalTypeAvatar, config.ID, applicant.ID)
@@ -81,7 +81,7 @@ func TestCreateApproval_AvatarSnapshot(t *testing.T) {
 	require.NoError(t, db.Where("target_type = ? AND target_id = ?", model.ApprovalTypeAvatar, config.ID).
 		First(&approval).Error)
 
-	assert.Equal(t, "我的分身", approval.TargetName)
+	assert.Equal(t, "AI分身", approval.TargetName)
 	assert.Equal(t, "用户分身功能", approval.TargetDescription)
 	assert.Equal(t, "李四", approval.CreatorName)
 }

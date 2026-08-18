@@ -11,7 +11,7 @@ import (
 type AvatarConfig struct {
 	ID      uint   `json:"id" gorm:"primarykey"`
 	UserID  uint   `json:"user_id" gorm:"uniqueIndex;not null"`
-	Name    string `json:"name" gorm:"size:100;default:'我的分身'"`
+	Name    string `json:"name" gorm:"size:100;default:'AI分身'"`
 	Enabled bool   `json:"enabled" gorm:"default:false"`
 
 	// ActivateByDefault：无显式会话级 session 时，分身是否默认在该会话激活。

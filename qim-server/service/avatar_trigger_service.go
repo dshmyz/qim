@@ -148,6 +148,22 @@ func (s *AvatarTriggerService) LLMShouldReply(config model.AvatarConfig, message
 		return false, 0, "AI 服务未初始化", nil
 	}
 
+	// 分身代表的是主人本人：prompt 里的身份用主人的真实展示名（Nickname→Username），
+	// 而非分身显示名，避免「你是AI分身的AI分身」式拗口表述。查不到用户时回退分身名保持可读。
+	ownerName := ""
+	if s.db != nil {
+		var owner model.User
+		if err := s.db.Select("nickname", "username").First(&owner, config.UserID).Error; err == nil {
+			ownerName = owner.Nickname
+			if ownerName == "" {
+				ownerName = owner.Username
+			}
+		}
+	}
+	if ownerName == "" {
+		ownerName = config.Name
+	}
+
 	prompt := fmt.Sprintf(`你是%s的AI分身。判断以下消息是否需要你代表%s回复。
 
 考虑因素：
@@ -160,7 +176,7 @@ func (s *AvatarTriggerService) LLMShouldReply(config model.AvatarConfig, message
 confidence 为你对此判断的把握程度。
 
 消息：%s
-发送者：%s`, config.Name, config.Name, message, senderName)
+发送者：%s`, ownerName, ownerName, message, senderName)
 
 	aiMessages := []ai.Message{{Role: "user", Content: prompt}}
 	var result string

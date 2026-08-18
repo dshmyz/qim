@@ -735,7 +735,7 @@ func (s *ApprovalService) EnableAvatar(userID uint, adminID uint) error {
 	if err != nil {
 		config = model.AvatarConfig{
 			UserID:          userID,
-			Name:            "我的分身",
+			Name:            "AI分身",
 			Enabled:         true,
 			UseSystemConfig: true,
 		}

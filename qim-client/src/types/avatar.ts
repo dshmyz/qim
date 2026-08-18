@@ -90,7 +90,7 @@ export interface CreateAvatarConfigRequest {
 }
 
 export const DEFAULT_AVATAR_CONFIG: CreateAvatarConfigRequest = {
-  name: '我的分身',
+  name: 'AI分身',
   useSystemConfig: true,
   modelConfigId: null,
   triggerRules: {

@@ -834,7 +834,7 @@ CREATE TABLE IF NOT EXISTS `upload_tasks` (
 CREATE TABLE IF NOT EXISTS `avatar_configs` (
   `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `user_id` INT UNSIGNED NOT NULL UNIQUE,
-  `name` VARCHAR(100) DEFAULT '我的分身',
+  `name` VARCHAR(100) DEFAULT 'AI分身',
   `enabled` BOOLEAN DEFAULT FALSE,
   `auto_learned_persona` TEXT,
   `custom_persona_addon` TEXT,

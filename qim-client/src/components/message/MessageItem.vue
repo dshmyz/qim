@@ -29,7 +29,8 @@
         </div>
 
         <div v-if="(conversationType === 'group' || conversationType === 'discussion') && !isSelf && isAIMessage" class="message-sender">
-          <span v-if="message.origin === 'avatar'">{{ message.avatar_name || message.sender.name || '未知用户' }}</span>
+          <!-- 分身消息名字头用主人的真实名，归因（由谁的分身回复）交给底部 AvatarReplyBadge -->
+          <span v-if="message.origin === 'avatar'">{{ message.sender.name || message.avatar_name || '未知用户' }}</span>
           <span v-else><i class="fas fa-robot"></i> {{ message.ai_assistant_name || 'AI 助手' }}</span>
         </div>
         <div v-if="isAIMessage && message.origin === 'assistant' && !isSelf && conversationType !== 'group' && conversationType !== 'discussion'" class="message-sender">

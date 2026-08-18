@@ -833,7 +833,7 @@ CREATE INDEX IF NOT EXISTS `idx_upload_tasks_deleted_at` ON `upload_tasks`(`dele
 CREATE TABLE IF NOT EXISTS `avatar_configs` (
   `id` INTEGER PRIMARY KEY AUTOINCREMENT,
   `user_id` INTEGER NOT NULL UNIQUE,
-  `name` VARCHAR(100) DEFAULT '我的分身',
+  `name` VARCHAR(100) DEFAULT 'AI分身',
   `enabled` INTEGER DEFAULT 0,
   `auto_learned_persona` TEXT,
   `custom_persona_addon` TEXT,

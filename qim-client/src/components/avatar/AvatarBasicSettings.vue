@@ -58,7 +58,7 @@
 
     <div class="setting-item">
       <label>分身名称</label>
-      <input :value="modelValue.name" @input="handleNameInput" class="form-input" placeholder="我的分身" maxlength="20" />
+      <input :value="modelValue.name" @input="handleNameInput" class="form-input" placeholder="AI分身" maxlength="20" />
       <span class="setting-hint">其他人在私聊中看到的分身名称</span>
     </div>
 
