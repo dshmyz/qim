@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"gorm.io/gorm"
@@ -92,9 +93,30 @@ type AvatarLearnTask struct {
 // AvatarKnowledgeScope 分身知识范围配置
 type AvatarKnowledgeScope struct {
 	ConversationHistory *bool `json:"conversationHistory"` // nil=未设置→按默认 true（保留对话历史）；显式 false=关闭
+	Memory              *bool `json:"memory"`              // nil=未设置→按默认 true（启用分身记忆）；显式 false=关闭
 	KnowledgeDocs       bool  `json:"knowledgeDocs"`
 	Notes               bool  `json:"notes"`
 	Tasks               bool  `json:"tasks"`
+}
+
+// MemoryEnabled 解析知识范围配置中的记忆开关：Memory nil（存量配置未设置）按默认启用。
+// 供「回复召回」与「后台学习写入」共用同一判定，保证"关掉记忆 = 既不读也不学"的一致性
+// （避免只关召回、后台还在偷偷攒记忆，重开后冒出一堆用户没预料到的记忆）。
+func (s AvatarKnowledgeScope) MemoryEnabled() bool {
+	return s.Memory == nil || *s.Memory
+}
+
+// MemoryEnabled 解析分身配置 KnowledgeScopeJSON 中的记忆开关（存量为空或解析失败按启用处理，
+// 不因配置损坏阻断学习/召回）。内部委托给 AvatarKnowledgeScope.MemoryEnabled，判定逻辑单源。
+func (c AvatarConfig) MemoryEnabled() bool {
+	if c.KnowledgeScopeJSON == "" {
+		return true
+	}
+	var scope AvatarKnowledgeScope
+	if err := json.Unmarshal([]byte(c.KnowledgeScopeJSON), &scope); err != nil {
+		return true
+	}
+	return scope.MemoryEnabled()
 }
 
 // AvatarTriggerRules 分身触发规则

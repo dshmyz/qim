@@ -432,7 +432,7 @@ function buildEditorKeymap(shortcuts?: Record<string, EditorShortcutConf>) {
     customKeymap.push({ key: editorShortcuts.code.accelerator, run: () => { insertFormat('`', '`'); return true } })
   }
   if (editorShortcuts.codeBlock?.enabled) {
-    customKeymap.push({ key: editorShortcuts.codeBlock.accelerator, run: () => { insertFormat('```\n', '\n```'); return true } })
+    customKeymap.push({ key: editorShortcuts.codeBlock.accelerator, run: () => { insertBlock('```\n', '\n```'); return true } })
   }
   if (editorShortcuts.blockquote?.enabled) {
     customKeymap.push({ key: editorShortcuts.blockquote.accelerator, run: () => { insertLinePrefix('> '); return true } })
@@ -536,6 +536,29 @@ function insertFormat(prefix: string, suffix: string) {
   view.focus()
 }
 
+/**
+ * 块级格式插入（代码块等围栏语法）：保证围栏独立成行。
+ * 光标前方（行首到光标）有非空白内容时先拆行——否则 ``` 与前半句同行，
+ * markdown 渲染器不认它是围栏，整段排版错乱（光标在行中/行尾点代码块的
+ * 历史乱码根因）。
+ */
+function insertBlock(prefix: string, suffix: string) {
+  if (!editorView.value) return
+  const view = editorView.value
+  const { from, to } = view.state.selection.main
+  const selectedText = view.state.sliceDoc(from, to)
+  const line = view.state.doc.lineAt(from)
+  const lineHead = line.text.slice(0, from - line.from)
+  // 行首到光标只有空白（行首/空行/缩进后）时围栏可独立成行，无需拆行
+  const leadingBreak = lineHead.trim() === '' ? '' : '\n'
+
+  view.dispatch({
+    changes: { from, to, insert: leadingBreak + prefix + selectedText + suffix },
+    selection: { anchor: from + leadingBreak.length + prefix.length, head: from + leadingBreak.length + prefix.length + selectedText.length },
+  })
+  view.focus()
+}
+
 function insertLink() {
   if (!editorView.value) return
   const view = editorView.value
@@ -590,7 +613,7 @@ function handleThemeChange(e: MediaQueryListEvent) {
   })
 }
 
-defineExpose({ insertFormat, insertLink, insertLinePrefix, insertTable })
+defineExpose({ insertFormat, insertBlock, insertLink, insertLinePrefix, insertTable })
 
 let themeQuery: MediaQueryList | null = null
 

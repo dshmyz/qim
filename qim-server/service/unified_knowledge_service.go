@@ -144,7 +144,7 @@ func (s *UnifiedKnowledgeService) Search(query string, groupID uint, limit int) 
 			for _, sn := range snippets {
 				_titles = append(_titles, sn.Title)
 			}
-			logger.WithModule("UnifiedKnowledge").Info("检索命中", "query", query, "source", "auto", "count", len(snippets), "titles", _titles)
+			logger.WithModule("diag").Info("检索命中", "query", query, "source", "auto", "count", len(snippets), "titles", _titles)
 			return snippets
 		}
 
@@ -218,7 +218,7 @@ func (s *UnifiedKnowledgeService) BuildContextWithSources(query string, groupID 
 
 	// 诊断：本 query 最终产出到徽章的知识来源数量。为 0 即"知识上下文存在但徽章空"的信号，
 	// 借此与"检索未命中 / 被 reranker 滤掉 / 全部低于门槛"区分开。
-	logger.WithModule("UnifiedKnowledge").Info("上下文与徽章产出",
+	logger.WithModule("diag").Info("上下文与徽章产出",
 		"query", query, "snippet_count", len(snippets), "badge_sources", len(sources))
 
 	return strings.Join(parts, "\n\n"), sources
@@ -271,20 +271,30 @@ func (s *UnifiedKnowledgeService) selectTopKnowledge(floor float64, limit int, s
 // filterByReranker 依相关性判定结果过滤片段。判定器 nil 或判定"拿不准/失败"时保留，
 // 仅"明确不相关"（relevant=false 且 confident=true）被过滤。并发安全：逐条独立判定，
 // 结果按原序稳定输出。ai.knowledge_llm_rerank=0 时跳过判定（保留全部），供后台一键关闭。
+// 委托给包级 filterSnippetsByReranker（分身路径共用同一判定逻辑），透传本实例的超时预算。
 func (s *UnifiedKnowledgeService) filterByReranker(query string, snippets []KnowledgeSnippet) []KnowledgeSnippet {
-	if s == nil || s.reranker == nil || len(snippets) == 0 {
+	if s == nil {
 		return snippets
 	}
-	if s.thresholdSvc != nil && s.thresholdSvc.GetInt("ai.knowledge_llm_rerank", 1) == 0 {
-		logger.WithModule("UnifiedKnowledge").Info("知识检索：LLM 校验已关闭，走纯阈值模式", "query", query, "count", len(snippets))
+	return filterSnippetsByReranker(s.reranker, s.thresholdSvc, s.rerankJudgeTimeout, query, snippets)
+}
+
+// filterSnippetsByReranker 依相关性判定结果过滤片段（群助手/Bot 与分身共用）。
+// 判定器 nil 或判定"拿不准/失败"时保留，仅"明确不相关"（relevant=false 且 confident=true）
+// 被过滤；结果按原序稳定输出。ai.knowledge_llm_rerank=0 时跳过判定（保留全部），供后台一键关闭。
+// timeout 为校验阶段总超时上限（0 时回退包级默认 15s），LLM 判定是串行的，预算耗尽即
+// 停止发起新判定并保留剩余片段（宁可多留不可阻塞）。
+func filterSnippetsByReranker(reranker KnowledgeReranker, thresholdSvc *AiThresholdService, timeout time.Duration, query string, snippets []KnowledgeSnippet) []KnowledgeSnippet {
+	if reranker == nil || len(snippets) == 0 {
+		return snippets
+	}
+	if thresholdSvc != nil && thresholdSvc.GetInt("ai.knowledge_llm_rerank", 1) == 0 {
+		logger.WithModule("diag").Info("知识检索：LLM 校验已关闭，走纯阈值模式", "query", query, "count", len(snippets))
 		return snippets
 	}
 
-	// 校验阶段整体加超时上限。LLM 判定是串行的（每条一次调用，最多 limit*3 条），
-	// 单次调用虽受 provider 的 HTTP 超时兜底（~120s），多条累加会拖住整条回复。预算耗尽即
-	// 停止发起新判定并保留剩余未判片段（宁可多留不可阻塞），GetCompletion 非流式暂未透传 ctx，
-	// 故在逐条间的 ctx.Err() 检查处提前退出。预算取字段值，0 时回退包级默认 15s。
-	timeout := s.rerankJudgeTimeout
+	// 校验阶段整体加超时上限。单次调用虽受 provider 的 HTTP 超时兜底（~120s），
+	// 多条累加会拖住整条回复。GetCompletion 非流式暂未透传 ctx，故在逐条间的 ctx.Err() 检查处提前退出。
 	if timeout <= 0 {
 		timeout = rerankJudgeTimeout
 	}
@@ -294,12 +304,12 @@ func (s *UnifiedKnowledgeService) filterByReranker(query string, snippets []Know
 	filtered := make([]KnowledgeSnippet, 0, len(snippets))
 	for i, snip := range snippets {
 		if judgeCtx.Err() != nil {
-			logger.WithModule("UnifiedKnowledge").Warn("知识检索：LLM 校验超时，停止判定并保留剩余片段",
+			logger.WithModule("diag").Warn("知识检索：LLM 校验超时，停止判定并保留剩余片段",
 				"query", query, "judged", i, "count", len(snippets))
 			filtered = append(filtered, snippets[i:]...)
 			break
 		}
-		relevant, confident, err := s.reranker.Relevant(judgeCtx, query, snip)
+		relevant, confident, err := reranker.Relevant(judgeCtx, query, snip)
 		if err != nil || !confident {
 			// 判定失败或拿不准 → 保留，避免误杀相关文档
 			filtered = append(filtered, snip)
@@ -310,12 +320,12 @@ func (s *UnifiedKnowledgeService) filterByReranker(query string, snippets []Know
 			continue
 		}
 		// 明确不相关 → 过滤
-		logger.WithModule("UnifiedKnowledge").Info("知识检索：LLM 判定不相关，已过滤",
+		logger.WithModule("diag").Info("知识检索：LLM 判定不相关，已过滤",
 			"query", query, "title", snip.Title, "score", snip.Score)
 	}
 
 	if len(filtered) != len(snippets) {
-		logger.WithModule("UnifiedKnowledge").Info("知识检索：LLM 校验完成",
+		logger.WithModule("diag").Info("知识检索：LLM 校验完成",
 			"query", query, "before", len(snippets), "after", len(filtered))
 	}
 	return filtered

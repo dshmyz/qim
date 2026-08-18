@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dshmyz/gracedb/pkg/types"
+
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
@@ -90,29 +92,57 @@ func (s *NoteVectorService) VectorizeNote(userID, noteID uint, title, content st
 	return nil
 }
 
-// SearchNotes 在用户笔记中搜索相关内容
+// SearchNotes 在用户笔记中搜索相关内容（语义 + 词法 FTS 混合检索，与群知识库同款）。
+//
+// 两路召回后按排名融合（RRF）：向量余弦补语义相近但词面不同，FTS 精确命中中文专有名词/
+// 缩写（人名、项目代号）等向量召回的短板。分数经 hybridDisplayScores 还原为 0-1 展示语义
+// （语义命中保持余弦，FTS 独占命中归一化 BM25 至 0.5-0.8），保证上层 0.3 硬下限依然成立。
+// 任一路失败（Embed 报错/FTS 未索引）都降级为另一路，不阻断检索。
 func (s *NoteVectorService) SearchNotes(userID uint, query string, topK int) ([]SearchResult, error) {
 	ctx := context.Background()
 	collectionName := fmt.Sprintf("user_notes_%d", userID)
+	if topK <= 0 {
+		topK = 5
+	}
+	// 多拉候选便于 RRF 融合后仍有足够结果
+	fetchK := topK * 3
 
-	// 生成查询向量
+	// 语义腿：向量检索（余弦）。Embed 失败仅丢语义腿，不阻断词法腿。
+	var semantic []types.ScoredEmbedding
 	queryVector, err := s.aiService.Embed(query)
-	if err != nil {
-		return nil, fmt.Errorf("生成查询向量失败: %w", err)
+	if err == nil {
+		semantic, _ = s.vectorSvc.Search(ctx, collectionName, queryVector, fetchK)
 	}
 
-	// 搜索
-	scoredResults, err := s.vectorSvc.Search(ctx, collectionName, queryVector, topK)
-	if err != nil {
-		return nil, fmt.Errorf("搜索笔记失败: %w", err)
+	// 词法腿：中文 FTS 检索。集合尚未建 FTS 索引时 SearchFTSWithContent 报错 → 降级纯语义。
+	var fts []types.ScoredEmbedding
+	if s.vectorSvc != nil && s.vectorSvc.GetDB() != nil {
+		if f, ferr := s.vectorSvc.GetDB().SearchFTSWithContent(collectionName, query, fetchK); ferr == nil {
+			fts = f
+		}
 	}
 
-	// 转换结果
-	var results []SearchResult
-	for _, se := range scoredResults {
+	var merged []types.ScoredEmbedding
+	switch {
+	case len(semantic) == 0 && len(fts) == 0:
+		// 双路皆空：Embed 或向量检索失败时留痕（此前透传错误被调用方吞掉，无法排查）
+		if err != nil {
+			logger.WithModule("diag").Warn("笔记检索双路无结果",
+				"userID", userID, "query", query, "embedErr", err)
+		}
+		return nil, nil
+	case len(semantic) == 0:
+		merged = hybridDisplayScores(fts, nil, fts)
+	case len(fts) == 0:
+		merged = semantic
+	default:
+		merged = hybridDisplayScores(mergeRRF(semantic, fts, topK), semantic, fts)
+	}
+
+	results := make([]SearchResult, 0, len(merged))
+	for _, se := range merged {
 		results = append(results, ScoredEmbeddingToSearchResult(se))
 	}
-
 	return results, nil
 }
 

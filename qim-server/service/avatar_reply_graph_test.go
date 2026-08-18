@@ -64,11 +64,10 @@ func TestAvatarReplyGraphPrepareOutOfScopeSkip(t *testing.T) {
 	assert.True(t, in4.SkipReply, "无知识/记忆命中时，Tasks 不构成范围内依据，范围外硬静默")
 }
 
-// TestAvatarReplyGraphPrepare_MemoryThreshold
-// 分身记忆参与范围外静默判定，但需过相关度阈值（≥0.5）：
-// - 无关问题 → Recall 低分噪音 → hasKnowledge=false → 静默
-// - 相关问题 → Recall 高分记忆 → hasKnowledge=true → 回复
-func TestAvatarReplyGraphPrepare_MemoryThreshold(t *testing.T) {
+// TestAvatarReplyGraphPrepare_MemoryInjection
+// 记忆只按召回门槛（默认 0.5）过滤注入：低分噪音记忆不进 prompt（避免"被记忆干扰"），
+// 高分记忆注入作辅助上下文；但记忆不再单独放行范围外——笔记/群知识为空时一律静默。
+func TestAvatarReplyGraphPrepare_MemoryInjection(t *testing.T) {
 	db := setupServiceTestDB(t)
 	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
 	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
@@ -91,17 +90,57 @@ func TestAvatarReplyGraphPrepare_MemoryThreshold(t *testing.T) {
 
 	g := &AvatarReplyGraph{db: db, memorySvc: memSvc}
 
-	// case1: 无关问题 → Recall 低分（<0.5）→ 静默
+	// case1: 无关问题 → Recall 低分（<0.5）→ 不注入 + 静默
 	in1 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "hi"}
 	require.NoError(t, g.prepare(context.Background(), in1, nil))
-	assert.NotEmpty(t, in1.MemoryContext, "无关问题也可能 Recall 到记忆（低分）")
-	assert.True(t, in1.SkipReply, "低分记忆（<0.5）不应绕过范围外静默")
+	assert.Empty(t, in1.MemoryContext, "低分记忆（<0.5）不应注入 prompt")
+	assert.True(t, in1.SkipReply, "低分记忆被滤掉后无知识命中，范围外静默")
 
-	// case2: 相同内容查询 → Recall 高分 → 回复
+	// case2: 相同内容查询 → Recall 高分 → 注入作辅助上下文，但不再放行范围外
 	in2 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "项目截止日期是3月15日"}
 	require.NoError(t, g.prepare(context.Background(), in2, nil))
-	assert.NotEmpty(t, in2.MemoryContext, "相关问题应 Recall 到高分记忆")
-	assert.False(t, in2.SkipReply, "高分记忆应绕过范围外静默——用户在问相关问题")
+	assert.NotEmpty(t, in2.MemoryContext, "相关问题应 Recall 到高分记忆并注入")
+	assert.True(t, in2.SkipReply, "记忆命中不再放行范围外——笔记/群知识为空时应静默")
+}
+
+// TestAvatarReplyGraphPrepare_MemoryToggle 验证分身记忆开关：
+// Memory=false 时跳过召回（高分也不注入）；nil/未设置时按默认启用（高分注入）。
+// 无论开关如何，记忆都不再单独放行范围外（笔记/群知识为空时一律 SkipReply）。
+func TestAvatarReplyGraphPrepare_MemoryToggle(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{
+		UserID:             1,
+		Enabled:            true,
+		Name:               "分身",
+		KnowledgeScopeJSON: `{"memory":false}`,
+		ReplyStrategyJSON:  `{"replyOutOfScope":false}`,
+	}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	gdb, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	require.NoError(t, err)
+	defer gdb.Close()
+	vecSvc := &VectorService{db: gdb}
+	memSvc := NewAvatarMemoryService(vecSvc, nil)
+	require.NoError(t, memSvc.Remember(1, 99, "项目截止日期是3月15日，目前进度正常", 4))
+
+	g := &AvatarReplyGraph{db: db, memorySvc: memSvc}
+
+	// case1: Memory=false → 高分查询也不注入记忆
+	in1 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "项目截止日期是3月15日"}
+	require.NoError(t, g.prepare(context.Background(), in1, &cfg))
+	assert.Empty(t, in1.MemoryContext, "Memory=false 时应跳过记忆召回，高分也不注入")
+	assert.True(t, in1.SkipReply, "记忆关闭且无笔记/群知识，范围外静默")
+
+	// case2: Memory 未设置（nil）→ 默认启用，高分记忆注入（但记忆不再单独放行）
+	cfg2 := model.AvatarConfig{UserID: 1, Enabled: true, Name: "分身",
+		KnowledgeScopeJSON: `{}`, ReplyStrategyJSON: `{"replyOutOfScope":false}`}
+	in2 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "项目截止日期是3月15日"}
+	require.NoError(t, g.prepare(context.Background(), in2, &cfg2))
+	assert.NotEmpty(t, in2.MemoryContext, "Memory 未设置时应默认启用并注入高分记忆")
+	assert.True(t, in2.SkipReply, "记忆命中不再放行范围外——无笔记/群知识时应静默")
 }
 
 func TestAvatarReplyGraphPrepareTaskContext(t *testing.T) {
@@ -250,6 +289,105 @@ func TestAvatarReplyGraphNeedReplyForOutOfScope(t *testing.T) {
 			assert.Equal(t, tc.wantSkip, in.SkipReply, "case=%s: SkipReply 判定不符", tc.name)
 		})
 	}
+}
+
+// TestAvatarReplyGraphPrepare_KnowledgeFloor 验证分身路径接入知识硬下限：
+// ai.knowledge_score_threshold（默认 0.3）过滤低分笔记命中——低分命中不注入、
+// 不进"依据"徽章，也不构成"范围内"放行（配合范围外静默 → SkipReply）。
+func TestAvatarReplyGraphPrepare_KnowledgeFloor(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}, &model.SystemConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{
+		UserID:             1,
+		Enabled:            true,
+		Name:               "分身",
+		KnowledgeScopeJSON: `{"notes":true}`,
+		ReplyStrategyJSON:  `{"replyOutOfScope":false}`,
+	}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	// 真实笔记向量服务：gracedb + fakeEmbedder + 伪嵌入 provider（与 newFakeNoteService 同构）
+	gdb, err := gracedb.Open(t.TempDir()+"/vec", gracedb.WithEmbedder(fakeEmbedder{}))
+	require.NoError(t, err)
+	defer gdb.Close()
+	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	aiSvc.SetProviderForTesting("fake-embed", embedFakeProvider{})
+	noteVecSvc := &NoteVectorService{vectorSvc: &VectorService{db: gdb}, aiService: aiSvc}
+	require.NoError(t, noteVecSvc.VectorizeNote(1, 1, "项目文档", "项目截止日期是3月15日，目前进度正常"))
+	got, err := noteVecSvc.SearchNotes(1, "项目截止日期是3月15日", 3)
+	require.NoError(t, err)
+	require.NotEmpty(t, got, "笔记应可召回")
+
+	// case1: 默认下限 0.3 → 命中进上下文，构成范围内 → 不静默
+	g1 := &AvatarReplyGraph{db: db, noteSvc: noteVecSvc}
+	in1 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "项目截止日期是3月15日"}
+	require.NoError(t, g1.prepare(context.Background(), in1, &cfg))
+	assert.NotEmpty(t, in1.NoteContext, "过下限的笔记应注入")
+	assert.False(t, in1.SkipReply, "笔记命中应构成范围内，不静默")
+
+	// case2: 硬下限拉到超过任何余弦分 → 同一条笔记被滤掉 → 不注入不进徽章且范围外静默
+	// （直接种 SystemConfig 行绕过 BatchUpdate 的范围校验，值取 1.5 保证高于任意余弦相似度）
+	require.NoError(t, db.Create(&model.SystemConfig{ConfigKey: "ai.knowledge_score_threshold", Value: "1.5", Type: "number"}).Error)
+	g2 := &AvatarReplyGraph{db: db, noteSvc: noteVecSvc, thresholdSvc: NewAiThresholdService(db)}
+	in2 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "项目截止日期是3月15日"}
+	require.NoError(t, g2.prepare(context.Background(), in2, &cfg))
+	assert.Empty(t, in2.NoteContext, "低于硬下限的笔记不应注入")
+	assert.Empty(t, in2.Sources, "低于硬下限的命中不进“依据”徽章")
+	assert.True(t, in2.SkipReply, "笔记被硬下限滤掉后无知识命中，范围外静默")
+}
+
+// TestAvatarReplyGraph_RenderScopePolicy 验证范围策略与 replyOutOfScope/BypassScope 联动：
+// 严格（范围外静默）→ 渲染"严格基于上方资料"；宽松（范围外也回/草稿·图片路径）→ 保留"给出你的理解"。
+func TestAvatarReplyGraph_RenderScopePolicy(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{
+		UserID:             1,
+		Enabled:            true,
+		Name:               "分身",
+		KnowledgeScopeJSON: `{}`,
+		ReplyStrategyJSON:  `{"replyOutOfScope":false}`,
+	}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	g := NewAvatarReplyGraph(newFakeAvatarAIService("x"), db, nil, nil, nil)
+	require.NoError(t, g.BuildGraph())
+
+	renderAll := func(in *AvatarReplyContext) string {
+		t.Helper()
+		msgs, err := g.renderPrompt(context.Background(), in)
+		require.NoError(t, err)
+		var sb strings.Builder
+		for _, m := range msgs {
+			sb.WriteString(m.Content)
+		}
+		return sb.String()
+	}
+
+	// strict：ReplyOutOfScope=false 且非宽松路径 → 严格策略，不含"给出你的理解"
+	in := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "你好"}
+	require.NoError(t, g.prepare(context.Background(), in, &cfg))
+	joined := renderAll(in)
+	assert.Contains(t, joined, "严格基于上方", "范围外静默时应渲染严格策略")
+	assert.NotContains(t, joined, "给出你的理解", "严格策略不应允许自由发挥")
+	assert.Contains(t, joined, "没有相关资料", "严格策略应指导资料不足时明说")
+
+	// relaxed：ReplyOutOfScope=true → 宽松策略
+	require.NoError(t, db.Model(&model.AvatarConfig{}).Where("user_id = ?", 1).
+		Update("reply_strategy_json", `{"replyOutOfScope":true}`).Error)
+	in2 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "你好"}
+	require.NoError(t, g.prepare(context.Background(), in2, nil))
+	joined2 := renderAll(in2)
+	assert.Contains(t, joined2, "给出你的理解", "范围外也回时应渲染宽松策略")
+	assert.NotContains(t, joined2, "严格基于上方", "宽松策略不应渲染严格文本")
+
+	// bypass：ReplyOutOfScope=false 但 BypassScope=true（草稿/图片路径）→ 宽松
+	in3 := &AvatarReplyContext{UserID: 1, ConversationID: 99, Message: "你好", BypassScope: true}
+	require.NoError(t, g.prepare(context.Background(), in3, &cfg))
+	joined3 := renderAll(in3)
+	assert.Contains(t, joined3, "给出你的理解", "草稿/图片路径应渲染宽松策略")
 }
 
 func TestBuildCustomProviderExtraParams(t *testing.T) {
@@ -495,18 +633,19 @@ func TestAvatarReplyGraph_ExecuteStream_HistoryAnchored(t *testing.T) {
 		}
 	}
 
-	// 取透传给模型的 user 消息，断言历史已锚定到目标
-	var userMsg ai.Message
+	// 取透传给模型的 user 消息（消息块结构：知识/历史各自成块 + 最后"对方说"），
+	// 拼合全部 user 消息后断言历史已锚定到目标
+	var joined string
 	for _, m := range capProv.lastMessages {
 		if m.Role == "user" {
-			userMsg = m
+			joined += m.Content
 		}
 	}
-	require.NotEmpty(t, userMsg.Content, "应有 user 消息携带 prompt")
-	assert.Contains(t, userMsg.Content, "对方说：看下这份报价", "草稿应以目标消息为回复对象")
-	assert.Contains(t, userMsg.Content, "Bob: 早上好", "目标之前的历史应保留")
-	assert.Contains(t, userMsg.Content, "QIM: 早，资料发你", "目标之前的历史应保留")
-	assert.NotContains(t, userMsg.Content, "收到，明天回复你", "目标之后的消息不应混入历史（否则模型答非所问）")
+	require.NotEmpty(t, joined, "应有 user 消息携带 prompt")
+	assert.Contains(t, joined, "对方说：看下这份报价", "草稿应以目标消息为回复对象")
+	assert.Contains(t, joined, "Bob: 早上好", "目标之前的历史应保留")
+	assert.Contains(t, joined, "QIM: 早，资料发你", "目标之前的历史应保留")
+	assert.NotContains(t, joined, "收到，明天回复你", "目标之后的消息不应混入历史（否则模型答非所问）")
 }
 
 // TestAvatarReplyGraph_ExecuteBatchWithImagesSources 验证分身「合并窗口连发一批消息」走批量多模态生成：
@@ -586,4 +725,99 @@ func TestAvatarReplyGraph_ExecuteBatch_ModelError(t *testing.T) {
 		&cfg,
 	)
 	assert.Error(t, err, "批量多模态模型不可用时应返回错误")
+}
+
+// TestSelectTopByScore 宽召回后的收敛逻辑：过滤低于下限的噪音 → 分数降序 → 取前 K。
+// 分身笔记/群知识注入共用，防止宽召回后把整库知识塞进 prompt。
+func TestSelectTopByScore(t *testing.T) {
+	snips := []KnowledgeSnippet{
+		{Title: "A", Score: 0.9},
+		{Title: "B", Score: 0.5},
+		{Title: "C", Score: 0.2}, // 低于下限 → 过滤
+		{Title: "D", Score: 0.7},
+		{Title: "E", Score: 0.95},
+	}
+	got := selectTopByScore(snips, 0.3, 3)
+	require.Len(t, got, 3, "应取前 3")
+	assert.Equal(t, "E", got[0].Title, "应分数降序")
+	assert.Equal(t, "A", got[1].Title)
+	assert.Equal(t, "D", got[2].Title)
+	assert.NotContains(t, []string{"C"}, got[0].Title+"", "低于下限的应被过滤")
+
+	// k 大于候选数 → 全取（floor 只滤掉 0.2 的 C，剩 4 条）
+	got2 := selectTopByScore(snips, 0.3, 10)
+	assert.Len(t, got2, 4, "低于下限的被过滤后仅剩 4 条")
+
+	// 全低于下限 → 空
+	assert.Empty(t, selectTopByScore(snips, 0.99, 3))
+
+	// 空输入
+	assert.Empty(t, selectTopByScore(nil, 0.3, 3))
+}
+
+// TestAvatarReplyGraph_ExecuteWithSources 验证自动回复主路径（非图片）：
+// 走 renderPrompt 消息块拼装 + GetCompletion（不再经 Eino 编译图）；
+// 命中范围外静默时不调用模型、返回空回复。
+func TestAvatarReplyGraph_ExecuteWithSources(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "qim", Nickname: "QIM", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{
+		UserID:             1,
+		Enabled:            true,
+		Name:               "分身",
+		KnowledgeScopeJSON: `{"knowledgeDocs":true,"notes":true}`,
+		ReplyStrategyJSON:  `{"replyOutOfScope":true}`, // 范围外也回，验证消息块送达模型
+	}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	capProv := &capturingAvatarProvider{}
+	capProv.reply = "回复内容"
+	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	aiSvc.SetProviderForTesting("fake-avatar", capProv)
+
+	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
+
+	// case1: 正常回复，消息块送达模型
+	reply, sources, err := g.ExecuteWithSources(context.Background(), 1, 99, "你好", &cfg)
+	require.NoError(t, err)
+	assert.Equal(t, "回复内容", reply)
+	assert.Nil(t, sources, "无知识命中时来源为空")
+
+	var joined string
+	for _, m := range capProv.lastMessages {
+		joined += m.Role + ": " + m.Content + "\n"
+	}
+	assert.Contains(t, joined, "system: 你是QIM的AI分身", "system 消息应拼装")
+	assert.Contains(t, joined, "对方说：你好", "最后一条 user 消息应为提问")
+	// 无知识/历史命中时，不应出现上下文块及其确认对
+	assert.NotContains(t, joined, "收到笔记信息", "无笔记命中时不应有笔记块")
+	assert.NotContains(t, joined, "已了解对话历史。", "无历史时不应有历史块确认对")
+
+	// case2: 范围外静默 → 不调用模型
+	cfg2 := model.AvatarConfig{UserID: 1, Enabled: true, Name: "分身",
+		KnowledgeScopeJSON: `{}`, ReplyStrategyJSON: `{"replyOutOfScope":false}`}
+	capProv.lastMessages = nil
+	reply2, sources2, err2 := g.ExecuteWithSources(context.Background(), 1, 99, "在吗", &cfg2)
+	require.NoError(t, err2)
+	assert.Empty(t, reply2, "范围外静默应返回空回复")
+	assert.Empty(t, sources2)
+	assert.Nil(t, capProv.lastMessages, "范围外静默不应调用模型")
+}
+
+// TestAvatarMemoryEnabled 记忆开关判定的单测：nil（存量未设置）默认启用；
+// AvatarConfig 解析 JSON 后与 scope 方法一致；损坏 JSON 按启用处理（不阻断）。
+func TestAvatarMemoryEnabled(t *testing.T) {
+	// scope 级
+	assert.True(t, model.AvatarKnowledgeScope{}.MemoryEnabled(), "Memory nil 默认启用")
+	f := false
+	assert.False(t, model.AvatarKnowledgeScope{Memory: &f}.MemoryEnabled(), "显式 false 关闭")
+	tr := true
+	assert.True(t, model.AvatarKnowledgeScope{Memory: &tr}.MemoryEnabled(), "显式 true 启用")
+
+	// config 级（解析 JSON）
+	assert.True(t, model.AvatarConfig{}.MemoryEnabled(), "空配置默认启用")
+	assert.False(t, model.AvatarConfig{KnowledgeScopeJSON: `{"memory":false}`}.MemoryEnabled())
+	assert.True(t, model.AvatarConfig{KnowledgeScopeJSON: `{"memory":true}`}.MemoryEnabled())
+	assert.True(t, model.AvatarConfig{KnowledgeScopeJSON: `{broken`}.MemoryEnabled(), "损坏 JSON 按启用处理")
 }

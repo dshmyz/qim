@@ -33,6 +33,9 @@
         <button class="tb-btn labeled" @click="$emit('analyze')" :disabled="analyzing" title="AI 分析 (生成摘要和标签)">
           <i :class="analyzing ? 'fas fa-spinner fa-spin' : 'fas fa-magic'"></i><span>AI 分析</span>
         </button>
+        <button class="tb-btn labeled" @click="$emit('ai-format')" :disabled="formatting" title="AI 格式化 (整理为 Markdown)">
+          <i :class="formatting ? 'fas fa-spinner fa-spin' : 'fas fa-wand-magic-sparkles'"></i><span>AI 格式化</span>
+        </button>
         <button class="tb-btn labeled" @click="$emit('share')" title="分享笔记">
           <i class="fas fa-share-alt"></i><span>分享</span>
         </button>
@@ -59,18 +62,6 @@
           title="仅预览"
         >
           <i class="fas fa-eye"></i><span>预览</span>
-        </button>
-        <div class="toolbar-divider"></div>
-        <button
-          :class="['tb-btn', 'labeled', { active: fullscreen }]"
-          @click="$emit('toggle-fullscreen')"
-          :title="fullscreen ? '退出全屏 (F11)' : '全屏 (F11)'"
-        >
-          <i :class="fullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
-        </button>
-        <div class="toolbar-divider"></div>
-        <button class="tb-btn" @click="$emit('show-shortcuts')" title="快捷键帮助 (?)">
-          <i class="fas fa-keyboard"></i>
         </button>
       </div>
     </div>
@@ -113,7 +104,7 @@
         <button class="tb-btn" @click="$emit('format', '`', '`')" title="行内代码 (Ctrl+Shift+C)">
           <i class="fas fa-code"></i>
         </button>
-        <button class="tb-btn" @click="$emit('format', '```\n', '\n```')" title="代码块 (Ctrl+Shift+B)">
+        <button class="tb-btn" @click="$emit('insert-code-block')" title="代码块 (Ctrl+Shift+B)">
           <i class="fas fa-file-code"></i>
         </button>
         <button class="tb-btn" @click="$emit('insert-link')" title="链接 (Ctrl+K)">
@@ -124,6 +115,19 @@
         </button>
         <button class="tb-btn" @click="$emit('insert-table')" title="插入表格">
           <i class="fas fa-table"></i>
+        </button>
+      </div>
+      <div class="toolbar-divider"></div>
+      <div class="toolbar-section">
+        <button
+          :class="['tb-btn', 'labeled', { active: fullscreen }]"
+          @click="$emit('toggle-fullscreen')"
+          :title="fullscreen ? '退出全屏 (F11)' : '全屏 (F11)'"
+        >
+          <i :class="fullscreen ? 'fas fa-compress' : 'fas fa-expand'"></i>
+        </button>
+        <button class="tb-btn" @click="$emit('show-shortcuts')" title="快捷键帮助 (?)">
+          <i class="fas fa-keyboard"></i>
         </button>
       </div>
     </div>
@@ -139,6 +143,7 @@ const props = defineProps<{
   saving?: boolean
   saveStatus?: AutoSaveStatus
   analyzing?: boolean
+  formatting?: boolean
   fullscreen?: boolean
   aiAccessible?: boolean
 }>()
@@ -147,8 +152,10 @@ defineEmits<{
   'update:mode': [mode: 'edit' | 'split' | 'preview']
   format: [prefix: string, suffix: string]
   'insert-link': []
+  'insert-code-block': []
   save: []
   analyze: []
+  'ai-format': []
   import: []
   export: []
   share: []
@@ -222,6 +229,9 @@ const saveStatusTitle = computed(() => {
   display: flex;
   align-items: center;
   gap: 2px;
+  /* 窗口过窄时按钮换行而非溢出被裁：按钮均有 nowrap + min-width，不换行会溢出
+     到容器外被外层裁掉（用户反馈窄窗口下按钮「消失」） */
+  flex-wrap: wrap;
 }
 
 .toolbar-section {

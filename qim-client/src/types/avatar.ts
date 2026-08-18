@@ -28,6 +28,7 @@ export interface AvatarConfig {
 
 export interface AvatarKnowledgeScope {
   conversationHistory: boolean
+  memory: boolean // 分身长期记忆
   knowledgeDocs: boolean
   notes: boolean
   tasks: boolean
@@ -103,6 +104,7 @@ export const DEFAULT_AVATAR_CONFIG: CreateAvatarConfigRequest = {
   },
   knowledgeScope: {
     conversationHistory: true,
+    memory: true,
     knowledgeDocs: false,
     notes: false,
     tasks: false

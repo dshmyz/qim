@@ -50,6 +50,7 @@
             :saving="saving"
             :save-status="saveStatus"
             :analyzing="analyzing"
+            :formatting="formatting"
             :fullscreen="isFullscreen"
             :ai-accessible="selectedNote.ai_accessible !== false"
             @update:ai-accessible="toggleAiAccess(selectedNote.id, $event)"
@@ -57,6 +58,7 @@
             @insert-link="handleInsertLink"
             @save="handleSave"
             @analyze="handleAnalyze"
+            @ai-format="handleAiFormat"
             @import="triggerImport"
             @export="handleExport"
             @share="handleShare"
@@ -64,6 +66,7 @@
             @toggle-fullscreen="toggleFullscreen"
             @show-shortcuts="showShortcutsHelp = true"
             @insert-table="noteEditorRef?.insertTable()"
+            @insert-code-block="noteEditorRef?.insertBlock('```\n', '\n```')"
           />
           <NoteEditor
             ref="noteEditorRef"
@@ -95,6 +98,15 @@
       :result="analysisResult"
       @close="showAnalysisModal = false"
       @confirm="handleAnalysisConfirm"
+    />
+
+    <AiFormatModal
+      :visible="showFormatModal"
+      :original="selectedNote?.content || ''"
+      :formatted="formatResult?.content || ''"
+      :truncated="formatResult?.truncated"
+      @close="showFormatModal = false"
+      @confirm="handleFormatConfirm"
     />
 
     <UniversalContextMenu menuId="note-card" :items="noteContextMenuItems" />
@@ -158,6 +170,7 @@ import NoteToolbar from './notes/NoteToolbar.vue'
 import NoteEditor from './notes/NoteEditor.vue'
 import NoteTagFilter from './notes/NoteTagFilter.vue'
 import AIAnalysisModal from './notes/AIAnalysisModal.vue'
+import AiFormatModal from './notes/AiFormatModal.vue'
 import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
 import { useNotes } from '../../composables/useNotes'
 import { useAutoSave } from '../../composables/useAutoSave'
@@ -166,7 +179,7 @@ import { openMenu } from '../../composables/useUI'
 import type { ContextMenuItem } from '../shared/context-menu-types'
 import QMessage from '../../utils/qmessage'
 import QMessageBox from '../../utils/qmessagebox'
-import type { Note, AIAnalyzeResult } from '../../types/note'
+import type { Note, AIAnalyzeResult, NoteFormatResult } from '../../types/note'
 import mammoth from 'mammoth'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -180,6 +193,7 @@ const {
   updateNote,
   deleteNote,
   analyzeNote,
+  formatNote,
   updateNoteTags,
   updateNoteSummary,
   exportNote,
@@ -196,6 +210,9 @@ const editorMode = ref<'edit' | 'split' | 'preview'>('edit')
 const analyzing = ref(false)
 const showAnalysisModal = ref(false)
 const analysisResult = ref<AIAnalyzeResult | null>(null)
+const formatting = ref(false)
+const showFormatModal = ref(false)
+const formatResult = ref<NoteFormatResult | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const isFullscreen = ref(false)
 const noteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
@@ -496,6 +513,36 @@ async function handleAnalyze() {
     showAnalysisModal.value = true
   } else {
     QMessage.error(notesError.value || 'AI 分析失败，请稍后重试')
+  }
+}
+
+async function handleAiFormat() {
+  if (!selectedNote.value) return
+  formatting.value = true
+  const result = await formatNote(selectedNote.value.id)
+  formatting.value = false
+  if (result) {
+    formatResult.value = result
+    showFormatModal.value = true
+  } else {
+    QMessage.error(notesError.value || 'AI 格式化失败，请稍后重试')
+  }
+}
+
+async function handleFormatConfirm() {
+  if (!selectedNote.value || !formatResult.value) return
+  const ok = await updateNote(selectedNote.value.id, {
+    title: selectedNote.value.title,
+    content: formatResult.value.content,
+    tags: selectedNote.value.tags
+  })
+  if (ok) {
+    // v-model:content 双向绑定，改 content 即同步编辑器
+    selectedNote.value.content = formatResult.value.content
+    showFormatModal.value = false
+    QMessage.success('已替换为格式化内容')
+  } else {
+    QMessage.error(notesError.value || '保存失败')
   }
 }
 

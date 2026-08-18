@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
-	"github.com/cloudwego/eino/components/prompt"
-	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 	"gorm.io/gorm"
 )
@@ -47,14 +47,15 @@ type AvatarReplyContext struct {
 	// CustomProvider 非 nil 表示分身配置了「使用自定义模型」（!UseSystemConfig && ModelConfigID）。
 	// 命中时回复生成走该 provider（图外临时创建），绕开编译图内固定使用系统配置的 model 节点。
 	CustomProvider *customProvider
+	// BypassScope 置位表示本条回复是用户主动触发的宽松路径（草稿"帮我回复"/图片识别），
+	// 不受「知识范围外」策略约束：prompt 范围策略按宽松渲染，即便命中范围外也正常生成。
+	BypassScope bool
 }
 
 // 用户自选模型在回复阶段的临时描述统一由 ai_config_service.go 的 customProvider 承担
 // （与 resolveUserAIConfigProvider 共用），此处不再单独定义 customModelProvider 以免重复漂移。
 
 type AvatarReplyGraph struct {
-	runnable    compose.Runnable[*AvatarReplyContext, string]
-	template    prompt.ChatTemplate // 供 ExecuteStream 在图外渲染消息后直接流式
 	aiService   *ai.AIService
 	db          *gorm.DB
 	noteSvc     *NoteVectorService
@@ -62,6 +63,8 @@ type AvatarReplyGraph struct {
 	groupDocSvc *GroupDocumentService
 	// thresholdSvc 阈值读取服务；nil 时记忆召回门槛用默认 0.5（向后兼容）。
 	thresholdSvc *AiThresholdService
+	// reranker 知识相关性二次判定器（与群助手/Bot 共用 LLMReranker）；nil 时不做判定（保留全部）。
+	reranker KnowledgeReranker
 }
 
 func NewAvatarReplyGraph(
@@ -77,7 +80,13 @@ func NewAvatarReplyGraph(
 		noteSvc:     noteSvc,
 		memorySvc:   memorySvc,
 		groupDocSvc: groupDocSvc,
+		reranker:    NewLLMReranker(aiService),
 	}
+}
+
+// SetReranker 替换相关性判定器（测试注入 mock 用）。传 nil 可关闭判定，走纯阈值模式。
+func (g *AvatarReplyGraph) SetReranker(r KnowledgeReranker) {
+	g.reranker = r
 }
 
 // SetThresholdService 注入阈值读取服务；nil 时记忆召回门槛用默认 0.5。
@@ -93,59 +102,60 @@ func (g *AvatarReplyGraph) memoryRecallThreshold() float64 {
 	return 0.5
 }
 
-func (g *AvatarReplyGraph) BuildGraph() error {
-	graph := compose.NewGraph[*AvatarReplyContext, string]()
-
-	graph.AddLambdaNode("to_template_vars", g.createTemplateVarsNode())
-
-	template := prompt.FromMessages(
-		schema.FString,
-		&schema.Message{Role: schema.System, Content: `你是{UserName}的AI分身，需要以TA的身份回复消息。
-
-{TimeInfo}
-{PersonaSection}
-{SupplementSection}
-【回复要求】
-- 以第一人称回复，就像你就是这个人
-- 保持自然的对话风格
-- {LengthHint}
-- 回答必须优先基于上方【相关笔记知识】【群知识库】【相关记忆】等资料；若资料不足以回答，请明确说明资料不足并给出你的理解，切勿假装引用或编造。`},
-		&schema.Message{Role: schema.User, Content: `{ContextSection}
-对方说：{Message}
-
-请以{UserName}的身份回复：`},
-	)
-	graph.AddChatTemplateNode("prompt", template)
-	g.template = template
-
-	graph.AddChatModelNode("model", NewEinoChatModelNoTools(g.aiService, ai.TaskTypeChat, 0))
-
-	graph.AddLambdaNode("format", g.createFormatReplyNode())
-
-	graph.AddEdge(compose.START, "to_template_vars")
-	graph.AddEdge("to_template_vars", "prompt")
-	graph.AddEdge("prompt", "model")
-	graph.AddEdge("model", "format")
-	graph.AddEdge("format", compose.END)
-
-	ctx := context.Background()
-	runnable, err := graph.Compile(ctx, compose.WithGraphName("AvatarReply"))
-	if err != nil {
-		return fmt.Errorf("编译 Graph 失败: %w", err)
+// knowledgeScoreFloor 返回知识来源硬下限：低于此分数的笔记/群知识召回视为噪音，
+// 不注入 prompt、不进"依据"徽章、也不计入范围判定。未注入阈值服务时回退默认 0.3。
+func (g *AvatarReplyGraph) knowledgeScoreFloor() float64 {
+	if g.thresholdSvc != nil {
+		return g.thresholdSvc.GetFloat("ai.knowledge_score_threshold", 0.3)
 	}
-	g.runnable = runnable
+	return 0.3
+}
 
+// selectTopByScore 过滤 + 排序 + 取前 K：先滤掉低于下限的噪音，再按分数降序，取前 k 条。
+// 供分身笔记/群知识注入共用——宽召回（TopK 大于最终注入数）后必须收敛到 Top-K，
+// 否则 rerank 通过的低分命中会一股脑塞进 prompt。纯函数，便于单测。
+func selectTopByScore(snippets []KnowledgeSnippet, floor float64, k int) []KnowledgeSnippet {
+	out := make([]KnowledgeSnippet, 0, len(snippets))
+	for _, s := range snippets {
+		if s.Score >= floor {
+			out = append(out, s)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
+	if len(out) > k {
+		out = out[:k]
+	}
+	return out
+}
+
+// historyLimit 返回注入 prompt 的会话历史条数上限：接入 ai.context_history_limit 配置
+// （后台可调），未注入阈值服务时回退默认 10（与分身历史默认一致）。
+func (g *AvatarReplyGraph) historyLimit() int {
+	if g.thresholdSvc != nil {
+		return g.thresholdSvc.GetInt("ai.context_history_limit", 10)
+	}
+	return 10
+}
+
+// recentAIMessagesLimit 返回上下文中保留的近期 AI 回复条数上限（防自我复制）：
+// 接入 ai.recent_ai_messages_limit 配置（后台可调），未注入阈值服务时回退默认 5。
+func (g *AvatarReplyGraph) recentAIMessagesLimit() int {
+	if g.thresholdSvc != nil {
+		return g.thresholdSvc.GetInt("ai.recent_ai_messages_limit", 5)
+	}
+	return 5
+}
+
+// BuildGraph 兼容保留（空操作）：分身回复图已不再使用 Eino 编译图——消息块在 renderPrompt
+// 代码级拼装（与群助手 buildHistoryMessages 同构），无需预编译，也消除了"编译图模板"与
+// "图外渲染"两套 prompt 拼装的分叉。保留签名以兼容 avatar_service 初始化/重建流程与测试。
+func (g *AvatarReplyGraph) BuildGraph() error {
 	return nil
 }
 
-func (g *AvatarReplyGraph) createTemplateVarsNode() *compose.Lambda {
-	return compose.InvokableLambda(func(ctx context.Context, input *AvatarReplyContext) (map[string]any, error) {
-		return g.buildTemplateVars(input), nil
-	})
-}
-
-// buildTemplateVars 构造模板变量（图内节点与 ExecuteStream 图外渲染共用，避免双套拼装逻辑）
-func (g *AvatarReplyGraph) buildTemplateVars(input *AvatarReplyContext) map[string]any {
+// buildSystemPrompt 构造分身 system 消息（人设 + 补充说明 + 回复要求 + 范围策略行）。
+// 原模板变量拼装逻辑（buildTemplateVars）收敛于此，供 renderPrompt 拼装消息块使用。
+func (g *AvatarReplyGraph) buildSystemPrompt(input *AvatarReplyContext) string {
 	config := input.Config
 
 	timeInfo := aiprompt.CurrentTimeLine()
@@ -160,50 +170,37 @@ func (g *AvatarReplyGraph) buildTemplateVars(input *AvatarReplyContext) map[stri
 		supplementSection = "【补充说明】\n" + config.CustomPersonaAddon + "\n\n"
 	}
 
-	contextParts := []string{}
-	if input.NoteContext != "" {
-		contextParts = append(contextParts, input.NoteContext)
-	}
-	if input.GroupKnowledge != "" {
-		contextParts = append(contextParts, input.GroupKnowledge)
-	}
-	if input.MemoryContext != "" {
-		contextParts = append(contextParts, input.MemoryContext)
-	}
-	if input.TaskContext != "" {
-		contextParts = append(contextParts, input.TaskContext)
-	}
-	if input.History != "" {
-		contextParts = append(contextParts, "【对话历史】\n"+input.History)
-	}
-	contextStr := strings.Join(contextParts, "\n\n")
-
-	lengthHint := avatarLengthHint(input.ReplyStrategy.MaxReplyLength)
-
-	log.Printf("[AvatarReplyGraph] 模板变量: UserName=%s PersonaLen=%d SupplementLen=%d ContextLen=%d HistoryLen=%d MessageLen=%d LengthHint=%s",
-		input.User.Nickname, len(personaSection), len(supplementSection), len(contextStr), len(input.History), len(input.Message), lengthHint)
+	// 范围策略行：ReplyOutOfScope=false（且非用户主动触发的宽松路径）时严格基于资料作答，
+	// 资料不足就明说不回，不再"给出理解"自由发挥——与"不回答知识范围外"的设置联动。
+	scopePolicy := scopePolicyLine(input.ReplyStrategy.ReplyOutOfScope || input.BypassScope)
 
 	userName := input.User.Nickname
 	if userName == "" {
 		userName = input.User.Username
 	}
 
-	return map[string]any{
-		"UserName":          userName,
-		"TimeInfo":          timeInfo,
-		"PersonaSection":    personaSection,
-		"SupplementSection": supplementSection,
-		"ContextSection":    contextStr,
-		"Message":           input.Message,
-		"LengthHint":        lengthHint,
-	}
+	return fmt.Sprintf(`你是%s的AI分身，需要以TA的身份回复消息。
+
+%s
+%s
+%s
+【回复要求】
+- 以第一人称回复，就像你就是这个人
+- 保持自然的对话风格
+- %s
+- 回答必须优先基于上方【相关笔记知识】【群知识库】【相关记忆】等资料。
+%s`, userName, timeInfo, personaSection, supplementSection, avatarLengthHint(input.ReplyStrategy.MaxReplyLength), scopePolicy)
 }
 
-func (g *AvatarReplyGraph) createFormatReplyNode() *compose.Lambda {
-	return compose.InvokableLambda(func(ctx context.Context, msg *schema.Message) (string, error) {
-		reply := msg.Content
-		return reply, nil
-	})
+// scopePolicyLine 按「是否回复知识范围外」渲染范围策略行：
+// 宽松（范围外也回 / 用户主动触发的草稿·图片路径）→ 允许资料不足时给出理解；
+// 严格（范围外静默）→ 只准基于资料作答，资料不足直接说明，不自由发挥。
+// 与范围外静默门控（prepare 的 SkipReply 判定）联动，堵住"弱命中放行后模型乱发挥"。
+func scopePolicyLine(relaxed bool) string {
+	if relaxed {
+		return "- 若资料不足以回答，请明确说明资料不足并给出你的理解，切勿假装引用或编造。"
+	}
+	return "- 回答必须严格基于上方提供的资料；若资料不足以回答当前问题，请直接说明「我这边没有相关资料」，不要使用资料之外的信息作答。"
 }
 
 func (g *AvatarReplyGraph) Execute(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (string, error) {
@@ -218,10 +215,6 @@ func (g *AvatarReplyGraph) ExecuteWithSources(ctx context.Context, userID uint, 
 }
 
 func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, conversationID uint, message string, preloaded *model.AvatarConfig) (string, []KnowledgeSource, error) {
-	if g.runnable == nil {
-		return "", nil, fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
-	}
-
 	input := &AvatarReplyContext{
 		Message:        message,
 		ConversationID: conversationID,
@@ -233,32 +226,37 @@ func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, 
 		return "", nil, err
 	}
 	if input.SkipReply {
-		log.Printf("[AvatarReplyGraph] 命中不回复策略，跳过 LLM: userID=%d convID=%d", userID, conversationID)
+		logger.WithModule("diag").Info(fmt.Sprintf("[Diag] 分身命中不回复策略，跳过 LLM: userID=%d convID=%d", userID, conversationID))
 		return "", nil, nil
 	}
 
+	// 统一走 renderPrompt 消息块拼装 + 直连 GetCompletion（不再经 Eino 编译图，
+	// 与图片/草稿路径同一条 prompt 拼装逻辑，消除双套分叉）。
 	startTime := time.Now()
+	messageList, err := g.renderPrompt(ctx, input)
+	if err != nil {
+		return "", nil, err
+	}
+	aiMsgs := einoMessagesToAIMessages(messageList)
 	var reply string
-	var err error
 	if input.CustomProvider != nil {
-		// 自选模型：绕开编译图（其 model 节点固定走系统配置），图外渲染 prompt 后
-		// 用用户自选 provider 生成，与编译图行为一致（同一套模板变量 / 截断逻辑）。
-		reply, err = g.generateWithCustomProvider(ctx, input)
+		// 自选模型：用用户自选 provider 生成，与其它路径共用同一套消息块/截断逻辑。
+		reply, err = g.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, aiMsgs, input.CustomProvider.ProviderName, input.CustomProvider.Config)
 		if err != nil {
 			// 生成期失败（密钥失效/配额/网络错/provider 未配置）→ 回退系统默认，
 			// 兑现「回退系统默认…不阻断回复」契约——单条自定义配置出问题不应让分身整条不复回。
 			// 系统回退同样失败时才真正返回错误。
-			log.Printf("[AvatarReplyGraph] 自选模型生成失败，回退系统默认: userID=%d err=%v", input.UserID, err)
-			reply, err = g.runnable.Invoke(ctx, input)
+			logger.WithModule("diag").Warn(fmt.Sprintf("[Diag] 分身自选模型失败回退系统默认: userID=%d err=%v", input.UserID, err))
+			reply, err = g.aiService.GetCompletion(ai.TaskTypeChat, aiMsgs)
 		}
 	} else {
-		reply, err = g.runnable.Invoke(ctx, input)
+		reply, err = g.aiService.GetCompletion(ai.TaskTypeChat, aiMsgs)
 	}
 	if err != nil {
 		return "", nil, err
 	}
 
-	log.Printf("[AvatarReplyGraph] 生成回复耗时: %v", time.Since(startTime))
+	logger.WithModule("diag").Info(fmt.Sprintf("[Diag] 分身生成回复耗时: %v", time.Since(startTime)))
 
 	reply = truncateReply(input, reply)
 
@@ -266,18 +264,20 @@ func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, 
 }
 
 // ExecuteWithImageSources 供分身识别图片触发消息：读图成功后调用此方法生成回复。
-// 差异点：1) 不走编译图（其模板 User 消息为纯文本，无法携带图片），复用 buildTemplateVars +
-// template.Format 图外渲染；2) 把最后一条 user 消息替换为携带图片的 MultiContent 多模态消息
-// （text + base64 data URL，经 einoMessagesToAIMessages 提取为 ai.Message.ImageURL），
-// 由 GetCompletion 以 OpenAI image_url 数组格式交给视觉模型识别；3) 忽略 SkipReply（图片消息
-// 走视觉识别，不因"知识范围外"而静默，与"尽力而为失败则跳过"的降级语义配合——能看图就回，
-// 看不了/模型不支持则由 worker 跳过）。返回与 ExecuteWithSources 同构：回复 + 命中的知识来源。
+// 差异点：1) 走 renderPrompt 拼装的消息块，把最后一条 user 消息替换为携带图片的
+// MultiContent 多模态消息（text + base64 data URL，经 einoMessagesToAIMessages 提取为
+// ai.Message.ImageURL），由 GetCompletion 以 OpenAI image_url 数组格式交给视觉模型识别；
+// 2) 忽略 SkipReply（图片消息走视觉识别，不因"知识范围外"而静默，与"尽力而为失败则跳过"
+// 的降级语义配合——能看图就回，看不了/模型不支持则由 worker 跳过）。
+// 返回与 ExecuteWithSources 同构：回复 + 命中的知识来源。
 func (g *AvatarReplyGraph) ExecuteWithImageSources(ctx context.Context, userID uint, conversationID uint, message string, imageURL string, imageName string, preloaded *model.AvatarConfig) (string, []KnowledgeSource, error) {
 	input := &AvatarReplyContext{
 		Message:        message,
 		ConversationID: conversationID,
 		UserID:         userID,
 	}
+	// 图片识别：用户主动触发，忽略范围外静默（prompt 范围策略按宽松渲染）
+	input.BypassScope = true
 
 	// 复用上下文组装（笔记/群知识/记忆/任务/历史/范围外判定），与 Execute 一致
 	if err := g.prepare(ctx, input, preloaded); err != nil {
@@ -320,6 +320,9 @@ func (g *AvatarReplyGraph) ExecuteBatchWithImagesSources(ctx context.Context, us
 		ConversationID: conversationID,
 		UserID:         userID,
 	}
+	// 批内图片识别：用户主动触发，忽略范围外静默（prompt 范围策略按宽松渲染）
+	input.BypassScope = true
+
 	// 复用上下文组装（笔记/群知识/记忆/任务/历史/范围外判定），与单条图文路径一致
 	if err := g.prepare(ctx, input, preloaded); err != nil {
 		return "", nil, err
@@ -336,34 +339,58 @@ func (g *AvatarReplyGraph) ExecuteBatchWithImagesSources(ctx context.Context, us
 	return g.completeReply(input, einoMessagesToAIMessages(messageList))
 }
 
-// generateWithCustomProvider 用分身「自选模型」生成回复（非流式）。
-// 复用 renderPrompt 渲染 prompt（含模板变量拼装），再用用户自选 provider 完成一次对话。
-// 转换统一走 einoMessagesToAIMessages（含 MultiContent 图片提取），不再手拼纯文本 ai.Message。
-func (g *AvatarReplyGraph) generateWithCustomProvider(ctx context.Context, input *AvatarReplyContext) (string, error) {
-	messageList, err := g.renderPrompt(ctx, input)
-	if err != nil {
-		return "", err
-	}
-	return g.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, einoMessagesToAIMessages(messageList), input.CustomProvider.ProviderName, input.CustomProvider.Config)
-}
-
-// renderPrompt 渲染分身 prompt（buildTemplateVars + template.Format），图内/图外各路径共用；
-// 未编译（template 未设置）时返回明确错误。
+// renderPrompt 拼装分身 prompt 消息块（所有路径共用：自动回复/图片/草稿/自选模型）：
+// system 消息 + 每个非空知识来源独立成「user 上下文块 + assistant 确认对」（对齐群助手
+// buildContextBlocks），最后一条 user 消息为"对方说：{Message}"。成对出现避免连续 user
+// 消息（部分 provider 拒绝同角色连续消息），也让模型能区分"上下文"与"应答"，
+// 缓解长上下文 lost-in-the-middle。无需预编译，拼装失败时返回明确错误。
 func (g *AvatarReplyGraph) renderPrompt(ctx context.Context, input *AvatarReplyContext) ([]*schema.Message, error) {
-	if g.template == nil {
-		return nil, fmt.Errorf("Graph 未编译，请先调用 BuildGraph")
+	userName := input.User.Nickname
+	if userName == "" {
+		userName = input.User.Username
 	}
-	vars := g.buildTemplateVars(input)
-	messageList, err := g.template.Format(ctx, vars)
-	if err != nil {
-		return nil, fmt.Errorf("渲染分身 prompt 失败: %w", err)
+
+	msgs := []*schema.Message{
+		{Role: schema.System, Content: g.buildSystemPrompt(input)},
 	}
-	return messageList, nil
+
+	// 各知识来源块（含自带标题头）：非空才注入
+	blocks := []struct {
+		content string
+		ack     string
+	}{
+		{input.NoteContext, "收到笔记信息，我会优先参考。"},
+		{input.GroupKnowledge, "收到群知识库信息，我会优先参考。"},
+		{input.MemoryContext, "收到记忆信息，我会优先参考。"},
+		{input.TaskContext, "收到任务信息，我会优先参考。"},
+	}
+	for _, b := range blocks {
+		if b.content == "" {
+			continue
+		}
+		msgs = append(msgs,
+			&schema.Message{Role: schema.User, Content: b.content},
+			&schema.Message{Role: schema.Assistant, Content: b.ack},
+		)
+	}
+	// 历史单独成块（表头在此拼接，须先判空——表头本身非空会导致空历史也产出空块）
+	if input.History != "" {
+		msgs = append(msgs,
+			&schema.Message{Role: schema.User, Content: "【对话历史】\n" + input.History},
+			&schema.Message{Role: schema.Assistant, Content: "已了解对话历史。"},
+		)
+	}
+
+	msgs = append(msgs, &schema.Message{
+		Role:    schema.User,
+		Content: fmt.Sprintf("对方说：%s\n\n请以%s的身份回复：", input.Message, userName),
+	})
+	return msgs, nil
 }
 
 // completeReply 用整组 aiMessages 完成一次非流式生成并统一截断：自选模型走临时 provider、
 // 否则走系统配置。返回回复 + 命中的知识来源。注意：自选模型失败不在此回退系统默认——
-// executeWithSources 的「自选失败回退 runnable.Invoke」契约保留在调用方。
+// executeWithSources 的「自选失败回退系统」契约保留在调用方。
 func (g *AvatarReplyGraph) completeReply(input *AvatarReplyContext, aiMessages []ai.Message) (string, []KnowledgeSource, error) {
 	var reply string
 	var err error
@@ -394,32 +421,37 @@ func truncateReply(input *AvatarReplyContext, reply string) string {
 // 原文本保留，追加 instruct 指令文本，并携带 imageURL 的 base64 data URL（供视觉模型识别）。
 // 与 injectMultiImage 共用同一「user 消息替换」骨架。
 func injectSingleImage(messageList []*schema.Message, imageURL string, instruct string) []*schema.Message {
-	out := make([]*schema.Message, 0, len(messageList))
-	for _, m := range messageList {
+	out := make([]*schema.Message, len(messageList))
+	copy(out, messageList)
+	// 消息块结构下存在多个 user 消息（知识块 + 提问），图片必须注入最后一条 user（"对方说"），
+	// 而非首条知识块——倒序找最后一条 user 替换为携带图片的 MultiContent。
+	for i := len(out) - 1; i >= 0; i-- {
+		m := out[i]
 		if string(m.Role) != "user" {
-			out = append(out, m)
 			continue
 		}
 		imgText := "\n\n" + instruct
-		out = append(out, &schema.Message{
+		out[i] = &schema.Message{
 			Role:    schema.User,
 			Content: m.Content + imgText,
 			MultiContent: []schema.ChatMessagePart{
 				{Type: schema.ChatMessagePartTypeText, Text: m.Content + imgText},
 				{Type: schema.ChatMessagePartTypeImageURL, ImageURL: &schema.ChatMessageImageURL{URL: imageURL}},
 			},
-		})
+		}
+		break
 	}
 	return out
 }
 
-// injectMultiImage 与 injectSingleImage 同骨架，但把 user 消息替换为携带批内多张图片的
+// injectMultiImage 与 injectSingleImage 同骨架：把最后一条 user 消息替换为携带批内多张图片的
 // MultiContent（多个 image_url part），供「合并窗口连发一批消息」的多模态批量路径使用。
 func injectMultiImage(messageList []*schema.Message, imageURLs []string, instruct string) []*schema.Message {
-	out := make([]*schema.Message, 0, len(messageList))
-	for _, m := range messageList {
+	out := make([]*schema.Message, len(messageList))
+	copy(out, messageList)
+	for i := len(out) - 1; i >= 0; i-- {
+		m := out[i]
 		if string(m.Role) != "user" {
-			out = append(out, m)
 			continue
 		}
 		imgText := "\n\n" + instruct
@@ -432,11 +464,12 @@ func injectMultiImage(messageList []*schema.Message, imageURLs []string, instruc
 				ImageURL: &schema.ChatMessageImageURL{URL: url},
 			})
 		}
-		out = append(out, &schema.Message{
+		out[i] = &schema.Message{
 			Role:         schema.User,
 			Content:      m.Content + imgText,
 			MultiContent: parts,
-		})
+		}
+		break
 	}
 	return out
 }
@@ -452,6 +485,9 @@ func (g *AvatarReplyGraph) ExecuteStream(ctx context.Context, userID uint, conve
 		UserID:         userID,
 		HistoryBefore:  historyBefore,
 	}
+	// 草稿模式：用户主动要草稿，忽略 SkipReply（即使命中"知识范围外"也照常生成），
+	// 且范围策略按宽松渲染（资料不足允许给出理解，供用户编辑后再发）
+	input.BypassScope = true
 
 	if err := g.prepare(ctx, input, preloaded); err != nil {
 		return nil, err
@@ -477,6 +513,8 @@ func (g *AvatarReplyGraph) ExecuteStreamWithImageSources(ctx context.Context, us
 		UserID:         userID,
 		HistoryBefore:  historyBefore,
 	}
+	// 图片草稿：用户主动要草稿，忽略范围外静默（prompt 范围策略按宽松渲染）
+	input.BypassScope = true
 
 	if err := g.prepare(ctx, input, preloaded); err != nil {
 		return nil, err
@@ -550,17 +588,55 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 		_ = json.Unmarshal([]byte(input.Config.ReplyStrategyJSON), &input.ReplyStrategy)
 	}
 
+	// 会话历史先于知识检索组装：既注入 prompt，也作为「上下文感知检索」的 query 前缀——
+	// 多轮追问（"那后来呢？"）借此携带话题上下文，否则向量召回必然失败。
+	history := ""
+	// ConversationHistory nil（存量配置未显式设置）按默认 true 处理，避免升级后静默丢失历史
+	historyEnabled := true
+	if input.KnowledgeScope.ConversationHistory != nil {
+		historyEnabled = *input.KnowledgeScope.ConversationHistory
+	}
+	if historyEnabled && input.ConversationID > 0 {
+		history = g.getConversationHistory(input.ConversationID, g.historyLimit(), input.Message, input.HistoryBefore)
+	}
+	input.History = history
+	// 检索 query：最近 4 行对话 + 当前提问，让笔记/群知识/记忆的 embedding 携带话题上下文
+	retrievalQuery := contextualQuery(input.History, input.Message, 4)
+
+	// 检索诊断计数（供末尾汇总日志：命中几条 vs 实际注入几条，定位"为什么没标/乱回复"）
+	noteHits, groupHits, memoryHits := 0, 0, 0
+
 	noteCtx := ""
 	// 笔记检索受 Notes 开关门控，与其他知识来源对齐（否则 Notes 关不掉，且会破坏 docs-only 的范围控制）
 	if g.noteSvc != nil && input.KnowledgeScope.Notes {
-		noteResults, err := g.noteSvc.SearchNotes(input.UserID, input.Message, 3)
+		// 宽召回（TopK 6）→ LLM 相关性二次判定 → 硬下限过滤 → 取前 3：
+		// 与群助手/Bot 的"宽召回+精排"范式对齐——此前召回 3 条再 rerank 形同虚设，
+		// 精排没有候选集可以筛。
+		noteResults, err := g.noteSvc.SearchNotes(input.UserID, retrievalQuery, 6)
 		if err == nil && len(noteResults) > 0 {
-			var parts []string
+			noteHits = len(noteResults)
+			// 先转成统一 snippet 供 LLM 相关性二次判定（与群助手/Bot 同款）
+			snippets := make([]KnowledgeSnippet, 0, len(noteResults))
 			for _, r := range noteResults {
-				parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", r.Metadata["title"], r.Content))
-				input.Sources = append(input.Sources, KnowledgeSource{Source: "notes", Title: r.Metadata["title"], Score: r.Score, ID: r.DocID, Snippet: r.Content})
+				snippets = append(snippets, KnowledgeSnippet{
+					Title:    r.Metadata["title"],
+					Content:  r.Content,
+					Score:    r.Score,
+					Source:   "notes",
+					DocID:    r.DocID,
+					Metadata: r.Metadata,
+				})
 			}
-			noteCtx = "【相关笔记知识】\n" + strings.Join(parts, "\n\n")
+			snippets = filterSnippetsByReranker(g.reranker, g.thresholdSvc, 0, retrievalQuery, snippets)
+			picked := selectTopByScore(snippets, g.knowledgeScoreFloor(), 3)
+			var parts []string
+			for _, snip := range picked {
+				parts = append(parts, fmt.Sprintf("[笔记: %s]\n%s", snip.Title, snip.Content))
+				input.Sources = append(input.Sources, KnowledgeSource{Source: "notes", Title: snip.Title, Score: snip.Score, ID: snip.DocID, Snippet: snip.Content})
+			}
+			if len(parts) > 0 {
+				noteCtx = "【相关笔记知识】\n" + strings.Join(parts, "\n\n")
+			}
 		}
 	}
 	input.NoteContext = noteCtx
@@ -572,20 +648,38 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 		if g.db.First(&conv, input.ConversationID).Error == nil && (conv.Type == "group" || conv.Type == "discussion") {
 			var group model.Group
 			if g.db.Where("conversation_id = ?", input.ConversationID).First(&group).Error == nil {
-				results, err := g.groupDocSvc.SearchKnowledge(group.ID, input.Message, 2)
+				// 与笔记同款宽召回（TopK 4 → rerank → floor → 取前 2）
+				results, err := g.groupDocSvc.SearchKnowledge(group.ID, retrievalQuery, 4)
 				if err == nil && len(results) > 0 {
-					var parts []string
+					groupHits = len(results)
+					snippets := make([]KnowledgeSnippet, 0, len(results))
 					for _, r := range results {
-						parts = append(parts, fmt.Sprintf("[群知识库: %s]\n%s", r.Metadata["title"], r.Content))
-						input.Sources = append(input.Sources, KnowledgeSource{Source: "knowledge", Title: r.Metadata["title"], Score: r.Score, ID: r.DocID, Snippet: r.Content})
+						snippets = append(snippets, KnowledgeSnippet{
+							Title:    r.Metadata["title"],
+							Content:  r.Content,
+							Score:    r.Score,
+							Source:   "knowledge",
+							DocID:    r.DocID,
+							Metadata: r.Metadata,
+						})
 					}
-					groupKnowledge = "【群知识库】\n" + strings.Join(parts, "\n\n")
+					snippets = filterSnippetsByReranker(g.reranker, g.thresholdSvc, 0, retrievalQuery, snippets)
+					picked := selectTopByScore(snippets, g.knowledgeScoreFloor(), 2)
+					var parts []string
+					for _, snip := range picked {
+						parts = append(parts, fmt.Sprintf("[群知识库: %s]\n%s", snip.Title, snip.Content))
+						input.Sources = append(input.Sources, KnowledgeSource{Source: "knowledge", Title: snip.Title, Score: snip.Score, ID: snip.DocID, Snippet: snip.Content})
+					}
+					if len(parts) > 0 {
+						groupKnowledge = "【群知识库】\n" + strings.Join(parts, "\n\n")
 
-					// 知识图谱关系扩展（GraphRAG MVP）：在向量命中的文档上做 GraphBFS，
-					// 追加"该文档关联的实体/文档"，补足"XX 关联了谁/哪些文档"这类关系问答。
-					// 无图谱数据时 ExpandGraphKnowledge 返回空串，不影响 normal 答复。
-					if graphCtx := g.groupDocSvc.ExpandGraphKnowledge(group.ID, input.Message, 3); graphCtx != "" {
-						groupKnowledge += "\n\n" + graphCtx
+						// 知识图谱关系扩展（GraphRAG MVP）：在向量命中的文档上做 GraphBFS，
+						// 追加"该文档关联的实体/文档"，补足"XX 关联了谁/哪些文档"这类关系问答。
+						// 无图谱数据时 ExpandGraphKnowledge 返回空串；仅作已命中知识之上的增强，
+						// 不在无直接命中时单独充当"范围内"依据。
+						if graphCtx := g.groupDocSvc.ExpandGraphKnowledge(group.ID, input.Message, 3); graphCtx != "" {
+							groupKnowledge += "\n\n" + graphCtx
+						}
 					}
 				}
 			}
@@ -594,19 +688,28 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	input.GroupKnowledge = groupKnowledge
 
 	memoryCtx := ""
-	bestMemoryScore := 0.0
-	if g.memorySvc != nil {
-		memoryResults, err := g.memorySvc.Recall(input.UserID, input.Message, 2)
+	// 记忆受 Memory 开关门控（nil 默认启用）：关闭时跳过召回，不注入不进徽章也不参与范围判定。
+	// 判定复用 model.AvatarKnowledgeScope.MemoryEnabled，与后台学习写入（maybeRememberSenderMessage）
+	// 共用同一语义——"关掉记忆 = 既不读也不学"。
+	if g.memorySvc != nil && input.KnowledgeScope.MemoryEnabled() {
+		// 记忆召回同样用上下文感知 query（TopK 3）：追问场景下历史话题能让记忆命中
+		memoryResults, err := g.memorySvc.Recall(input.UserID, retrievalQuery, 3)
 		if err == nil && len(memoryResults) > 0 {
+			memoryHits = len(memoryResults)
+			// 记忆只按召回门槛（默认 0.5）过滤注入：低分噪音记忆不进 prompt，
+			// 避免"被记忆干扰"。过滤在注入前做，不进 Sources（依据徽章）也不参与范围判定。
 			var parts []string
+			threshold := g.memoryRecallThreshold()
 			for _, r := range memoryResults {
+				if r.Score < threshold {
+					continue
+				}
 				parts = append(parts, r.Content)
 				input.Sources = append(input.Sources, KnowledgeSource{Source: "memory", Score: r.Score, ID: r.DocID, Snippet: r.Content})
-				if r.Score > bestMemoryScore {
-					bestMemoryScore = r.Score
-				}
 			}
-			memoryCtx = "【相关记忆】\n" + strings.Join(parts, "\n\n")
+			if len(parts) > 0 {
+				memoryCtx = "【相关记忆】\n" + strings.Join(parts, "\n\n")
+			}
 		}
 	}
 	input.MemoryContext = memoryCtx
@@ -635,35 +738,45 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	}
 	input.TaskContext = taskCtx
 
-	history := ""
-	// ConversationHistory nil（存量配置未显式设置）按默认 true 处理，避免升级后静默丢失历史
-	historyEnabled := true
-	if input.KnowledgeScope.ConversationHistory != nil {
-		historyEnabled = *input.KnowledgeScope.ConversationHistory
-	}
-	if historyEnabled && input.ConversationID > 0 {
-		history = g.getConversationHistory(input.ConversationID, 10, input.Message, input.HistoryBefore)
-	}
-	input.History = history
-
 	// 自选模型：配置了「使用自定义模型」时解析出 provider，供 Execute/ExecuteStream 走临时 provider 生成。
 	// 解析失败（配置不存在/密钥解密失败等）时置为 nil，静默回退系统默认配置，不阻断回复。
 	if !input.Config.UseSystemConfig && input.Config.ModelConfigID != nil {
 		input.CustomProvider = g.resolveCustomProvider(input.UserID, *input.Config.ModelConfigID)
 	}
 
-	// 范围外静默（硬门控）：ReplyOutOfScope=false 时，分身只应回复「与自身知识/上下文相关」的消息。
-	// 有笔记/群知识命中 → 属于范围内，正常回复；无任何知识命中 → 属于范围外，直接静默。
-	// 记忆参与判定但需过相关度阈值（≥0.5）：低分噪音记忆不算"知识命中"，避免无关问题
-	// 因 Recall 出历史记忆而误回复；高分记忆（用户确实问过相关内容）则正常放行。
+	// 范围外静默（硬门控）：ReplyOutOfScope=false 时，分身只应回复「与自身知识相关」的消息。
+	// 有笔记/群知识命中（且过 0.3 硬下限与 LLM 相关性校验）→ 属于范围内，正常回复；
+	// 无任何知识命中 → 属于范围外，直接静默。记忆不再单独放行：选了"不回答知识范围外"，
+	// 就不该因"以前聊过类似话题"（记忆召回命中）被放行——记忆只作辅助上下文注入。
 	// 任务不参与范围内判定（任务只是附加注入的知识，不应让"有任务就什么都回"旁路门控）。
-	memoryHit := memoryCtx != "" && bestMemoryScore >= g.memoryRecallThreshold()
-	hasKnowledge := noteCtx != "" || groupKnowledge != "" || memoryHit
+	hasKnowledge := noteCtx != "" || groupKnowledge != ""
 	if !input.ReplyStrategy.ReplyOutOfScope && !hasKnowledge {
 		input.SkipReply = true
 	}
 
+	// 检索诊断汇总（独立 diag.log）：每次回复命中几条→实际注入几条、是否静默、标记了几条依据。
+	// 排查"为什么没标/乱回复"：命中数 > 注入数即存在被 rerank/硬下限/Top-K 滤掉的命中，
+	// 逐条被滤原因见 diag.log 中 filterSnippetsByReranker 的"LLM 判定不相关，已过滤"。
+	logger.WithModule("diag").Info("[Diag] 分身检索",
+		"conv", input.ConversationID, "user", input.UserID,
+		"msg", truncateRunes(input.Message, 60),
+		"notes", fmt.Sprintf("%d→%d", noteHits, countSourcesByType(input.Sources, "notes")),
+		"group", fmt.Sprintf("%d→%d", groupHits, countSourcesByType(input.Sources, "knowledge")),
+		"memory", fmt.Sprintf("%d→%d", memoryHits, countSourcesByType(input.Sources, "memory")),
+		"skip", input.SkipReply, "sources", len(input.Sources))
+
 	return nil
+}
+
+// countSourcesByType 统计 Sources 中指定来源类型（notes/knowledge/memory）的条数，诊断汇总用。
+func countSourcesByType(sources []KnowledgeSource, typ string) int {
+	n := 0
+	for _, s := range sources {
+		if s.Source == typ {
+			n++
+		}
+	}
+	return n
 }
 
 // resolveCustomProvider 根据分身配置的 modelConfigID 解析出自选模型 provider。
@@ -708,11 +821,17 @@ func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int
 		Limit(limit + 8).
 		Find(&messages)
 
-	// 在 Go 侧筛掉远期自身回复；近期自身回复保留。
+	// 在 Go 侧筛掉远期自身回复；近期自身回复保留（最多 recentAIMessagesLimit 条，
+	// 超出按远期折叠——接入 ai.recent_ai_messages_limit，后台可调防自我复制上限）。
 	filtered := messages[:0]
+	keptSelf := 0
+	maxSelf := g.recentAIMessagesLimit()
 	for _, m := range messages {
-		if m.Origin == "avatar" && !isNearSelf(m) {
-			continue
+		if m.Origin == "avatar" {
+			if !isNearSelf(m) || keptSelf >= maxSelf {
+				continue
+			}
+			keptSelf++
 		}
 		filtered = append(filtered, m)
 	}
@@ -732,8 +851,8 @@ func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int
 		}
 	}
 	logHistoryDiagnostics("分身/历史", conversationID, messages, nil)
-	log.Printf("[ContextDiag] 分身/历史 conv=%d avatar总=%d 保留=%d 已滤=%d",
-		conversationID, selfFiltered, keptAvatar, int(selfFiltered)-keptAvatar)
+	logger.WithModule("diag").Info(fmt.Sprintf("[ContextDiag] 分身/历史 conv=%d avatar总=%d 保留=%d 已滤=%d",
+		conversationID, selfFiltered, keptAvatar, int(selfFiltered)-keptAvatar))
 	// 纳入窗口聚合：分身过滤有效性（保留率/已滤率）供定时快照判断是否仍失忆
 	aggregateAvatarFilter(int(selfFiltered), keptAvatar, int(selfFiltered)-keptAvatar)
 
@@ -769,7 +888,9 @@ func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int
 	for i := len(messages) - 1; i >= 0; i-- {
 		msg := messages[i]
 		sender := senderMap[msg.SenderID]
-		parts = append(parts, fmt.Sprintf("%s: %s", sender.Nickname, msg.Content))
+		// 逐条截断历史消息：单条超长（粘贴的长文本/合并转发）会被 rune 截到 800 字，
+		// 避免一条消息撑爆 prompt 并稀释注意力。尾巴通常含关键信息，故保留开头。
+		parts = append(parts, fmt.Sprintf("%s: %s", sender.Nickname, truncateRunes(msg.Content, 800)))
 	}
 
 	return strings.Join(parts, "\n")

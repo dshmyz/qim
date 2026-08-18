@@ -2,11 +2,11 @@ package service
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 // HistorySegment 描述一份对话历史里「自身（assistant/avatar）回复」的近期/远期分布。
@@ -101,15 +101,17 @@ func logHistoryDiagnostics(label string, conversationID uint, messages []model.M
 	// 纳入窗口聚合（供定时报 [ContextDiagAgg] 快照看占比趋势）
 	aggregateHistorySegment(label, seg)
 
-	// 有历史就记；全空则记一行“无历史注入”便于区分“真的空”与“忘统计”。
+	// 诊断日志走 diag 模块 → 独立 diag.log 文件（与业务日志分离，便于单独排查）
+	diag := logger.WithModule("diag")
+	// 有历史就记；全空则记一行"无历史注入"便于区分"真的空"与"忘统计"。
 	if seg.Total == 0 {
-		log.Printf("[ContextDiag] %s conv=%d 无历史注入", label, conversationID)
+		diag.Info(fmt.Sprintf("[ContextDiag] %s conv=%d 无历史注入", label, conversationID))
 		return
 	}
 
-	log.Printf("[ContextDiag] %s conv=%d 注入=%d 自身回复=%d (近期=%d 远期=%d)%s token~%d",
+	diag.Info(fmt.Sprintf("[ContextDiag] %s conv=%d 注入=%d 自身回复=%d (近期=%d 远期=%d)%s token~%d",
 		label, conversationID, seg.Total, seg.SelfCount, seg.NearSelf, seg.FarSelf,
-		filteredSuffix(seg.filteredOut), seg.tokenEst)
+		filteredSuffix(seg.filteredOut), seg.tokenEst))
 }
 
 func filteredSuffix(filtered int) string {

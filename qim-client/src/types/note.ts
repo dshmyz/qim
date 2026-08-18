@@ -18,6 +18,12 @@ export interface AIAnalyzeResult {
   action_items: string[]
 }
 
+/** AI 格式化接口 /notes/:id/format 的返回 */
+export interface NoteFormatResult {
+  content: string
+  truncated: boolean
+}
+
 export interface NoteVectorSearchResult {
   content: string
   score: number

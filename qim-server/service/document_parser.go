@@ -125,7 +125,44 @@ func (p *DocumentParser) Parse(filePath string) (string, error) {
 	if !utf8.ValidString(text) {
 		return "", fmt.Errorf("解析结果不是合法 UTF-8 文本（字节数 %d，疑似二进制内容，文件可能损坏或为扫描件）", len(text))
 	}
+
+	// 乱码拦截：UTF-8 合法 ≠ 内容正确。解码失败的解析器（如 PDF 字体编码不被
+	// 识别、缺 ToUnicode CMap）会把每个坏字节替换成 U+FFFD——替换符本身是合法
+	// UTF-8，能通过上面的字节校验，但正文已不可读。正常文档几乎不会出现 U+FFFD，
+	// 故按占比阈值拦截，防止乱码落库后被图谱/检索读到。
+	if IsMojibakeText(text) {
+		return "", fmt.Errorf("解析结果疑似乱码（U+FFFD 替换符占比 %.1f%%），文件可能使用特殊编码或缺少字体映射，请改用 txt/md 或可复制文字的标准 PDF", utf8ReplacementRatio(text)*100)
+	}
 	return text, nil
+}
+
+// IsMojibakeText 判断文本是否为「合法 UTF-8 但解码失败」的乱码：U+FFFD 替换符
+// 占比超过 maxMojibakeRatio。导出供 handler 等跨包复用（如 AI 格式化接口对
+// 输入/输出内容的乱码防御）。
+func IsMojibakeText(s string) bool {
+	return utf8ReplacementRatio(s) > maxMojibakeRatio
+}
+
+// maxMojibakeRatio U+FFFD 替换符在解析结果中的占比上限。
+// 正常文档中替换符几乎不存在；解码失败（编码表缺失/不识别）时占比可达数十百分比。
+const maxMojibakeRatio = 0.01
+
+// utf8ReplacementRatio 统计文本中 U+FFFD（替换符）的字符占比。
+// U+FFFD 是解码器对无法映射字节的通用占位，其出现密度是「合法 UTF-8 但内容
+// 已损坏」的最直接信号——比仅校验 UTF-8 合法性多挡住一类乱码。
+func utf8ReplacementRatio(s string) float64 {
+	total := 0
+	replaced := 0
+	for _, r := range s {
+		total++
+		if r == utf8.RuneError {
+			replaced++
+		}
+	}
+	if total == 0 {
+		return 0
+	}
+	return float64(replaced) / float64(total)
 }
 
 // parsePathRegexp 匹配错误信息中内嵌的文件路径 token。

@@ -12,7 +12,20 @@
             <span class="label-hint">分身可以参考当前会话中的历史消息来回复</span>
           </div>
           <label class="switch">
-            <input type="checkbox" :checked="knowledgeScope?.conversationHistory ?? false" @change="updateScope('conversationHistory', ($event.target as HTMLInputElement).checked)" />
+            <input type="checkbox" :checked="knowledgeScope?.conversationHistory ?? true" @change="updateScope('conversationHistory', ($event.target as HTMLInputElement).checked)" />
+            <span class="slider round"></span>
+          </label>
+        </label>
+      </div>
+
+      <div class="setting-item">
+        <label class="toggle-label">
+          <div class="label-content">
+            <span class="label-title">分身记忆</span>
+            <span class="label-hint">分身可以参考长期记忆中的相关内容来回复</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" :checked="knowledgeScope?.memory ?? true" @change="updateScope('memory', ($event.target as HTMLInputElement).checked)" />
             <span class="slider round"></span>
           </label>
         </label>
@@ -83,7 +96,8 @@ const knowledgeScope = computed(() => props.modelValue?.knowledgeScope)
 
 function updateScope(key: keyof AvatarKnowledgeScope, value: boolean) {
   const currentScope = props.modelValue.knowledgeScope || {
-    conversationHistory: false,
+    conversationHistory: true,
+    memory: true,
     knowledgeDocs: false,
     notes: false,
     tasks: false

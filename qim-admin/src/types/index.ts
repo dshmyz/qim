@@ -378,6 +378,7 @@ export interface AvatarTriggerRules {
 // 分身知识范围
 export interface AvatarKnowledgeScope {
   conversationHistory: boolean
+  memory: boolean // 分身长期记忆
   knowledgeDocs: boolean
   notes: boolean
   tasks: boolean

@@ -154,3 +154,8 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+// 仓库内 fork：ledongthuc/pdf 原生解析对知网/万方中文论文（Type0 字体 + GBK-EUC-H
+// 具名编码 + 无 ToUnicode）输出 U+FFFD 乱码。本地副本修复 getEncoder（ToUnicode
+// 优先 + GBK 系编码解码），改动见 third_party/ledongthuc/pdf/gbk_patch.go。
+replace github.com/ledongthuc/pdf => ./third_party/ledongthuc/pdf

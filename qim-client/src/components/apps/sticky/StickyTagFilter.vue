@@ -82,7 +82,7 @@ defineEmits<{
   background: var(--btn-bg);
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--transition-fast);
   font-weight: var(--font-weight-medium);

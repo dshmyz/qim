@@ -523,6 +523,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/notes/:id", handler.UpdateNote)
 			authed.DELETE("/notes/:id", handler.DeleteNote)
 			authed.POST("/notes/:id/analyze", handler.AnalyzeNote)
+			authed.POST("/notes/:id/format", handler.FormatNote)
 			authed.GET("/notes/:id/export", handler.ExportNote)
 			authed.PATCH("/notes/:id/tags", handler.UpdateNoteTags)
 			authed.PATCH("/notes/:id/summary", handler.UpdateNoteSummary)

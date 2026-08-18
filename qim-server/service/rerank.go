@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
@@ -59,13 +61,12 @@ func (r *LLMReranker) Relevant(ctx context.Context, query string, snip Knowledge
 
 // defaultJudge 构造判定 prompt，让 LLM 对单条片段输出 {"relevant": bool, "confident": bool}。
 // 语义上鼓励"拿不准就 confident=false"，把误杀决策交给调用方。
+// 判定正文用 snippetJudgeWindow 截取围绕 query 的窗口，而非整段或固定前缀（见函数注释）。
 func (r *LLMReranker) defaultJudge(ctx context.Context, query, title, content string) (bool, bool, error) {
 	if title == "" {
 		title = "未命名"
 	}
-	if n := len([]rune(content)); n > 200 {
-		content = string([]rune(content)[:200]) + "..."
-	}
+	content = snippetJudgeWindow(content, query, 800)
 
 	prompt := `你是一个知识检索相关性判断器。判断下面这条检索结果是否与用户问题真正相关。
 只返回 JSON，格式：{"relevant": true|false, "confident": true|false}
@@ -82,16 +83,61 @@ func (r *LLMReranker) defaultJudge(ctx context.Context, query, title, content st
 	messages := []ai.Message{{Role: "user", Content: prompt}}
 	resp, err := r.ai.GetCompletion(ai.TaskTypeAnalysis, messages)
 	if err != nil {
-		logger.WithModule("UnifiedKnowledge").Warn("LLM 相关性判定失败", "error", err)
+		logger.WithModule("diag").Warn("LLM 相关性判定失败，按拿不准保留", "error", err)
 		return false, false, err // 拿不准，调用方保留
 	}
 
 	relevant, confident, ok := r.parseVerdict(resp)
 	if !ok {
-		logger.WithModule("UnifiedKnowledge").Warn("LLM 相关性判定解析失败，按拿不准处理", "raw", resp)
+		logger.WithModule("diag").Warn("LLM 相关性判定解析失败，按拿不准保留", "raw", resp)
 		return false, false, nil
 	}
 	return relevant, confident, nil
+}
+
+// snippetJudgeWindow 截取判定用正文窗口：优先以 query 首次命中处为中心（前后各半），
+// 否则取开头；上限 maxRunes，超出时在截断处加省略号。query 取前几个 rune 作锚点，
+// 避免整句 query 因词序差异无法精确命中而误落"取开头"分支。
+func snippetJudgeWindow(content, query string, maxRunes int) string {
+	runes := []rune(content)
+	if len(runes) <= maxRunes {
+		return content
+	}
+	// 上下文感知 query 形如"历史行...\n当前提问：XXX"：锚点应取提问部分，而非开头的
+	// 发送者名——后者几乎不会出现在片段正文里，会白白回退到"取开头"分支。
+	if i := strings.LastIndex(query, "当前提问："); i >= 0 {
+		query = query[i+len("当前提问："):]
+	}
+	anchor := []rune(strings.TrimSpace(query))
+	if len(anchor) > 4 {
+		anchor = anchor[:4]
+	}
+	anchorStr := string(anchor)
+	byteIdx := strings.Index(content, anchorStr)
+	runesIdx := -1
+	if byteIdx >= 0 {
+		// content[:byteIdx] 的 rune 数即锚点起始的下标（byteIdx 是字节偏移）
+		runesIdx = utf8.RuneCountInString(content[:byteIdx])
+	}
+	if runesIdx < 0 {
+		return string(runes[:maxRunes]) + "…"
+	}
+	start := runesIdx - maxRunes/2
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxRunes
+	if end > len(runes) {
+		end = len(runes)
+	}
+	out := string(runes[start:end])
+	if start > 0 {
+		out = "…" + out
+	}
+	if end < len(runes) {
+		out = out + "…"
+	}
+	return out
 }
 
 // verdict 从 LLM 返回的 JSON 判定中承载 {布尔判定, confident}。

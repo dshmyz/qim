@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -222,6 +221,24 @@ func (g *SmartReplyGraph) memorySourceThreshold() float64 {
 		return g.thresholdSvc.GetFloat("ai.memory_source_threshold", 0.3)
 	}
 	return 0.3
+}
+
+// groupHistoryLimit 返回群助手注入 prompt 的会话历史条数上限：接入 ai.context_history_limit
+// 配置（后台可调），未注入阈值服务时回退默认 20（与群助手历史默认一致）。
+func (g *SmartReplyGraph) groupHistoryLimit() int {
+	if g.thresholdSvc != nil {
+		return g.thresholdSvc.GetInt("ai.context_history_limit", 20)
+	}
+	return 20
+}
+
+// recentAIMessagesLimit 返回上下文中保留的近期 AI 回复条数上限（防自我复制）：
+// 接入 ai.recent_ai_messages_limit 配置（后台可调），未注入阈值服务时回退默认 5。
+func (g *SmartReplyGraph) recentAIMessagesLimit() int {
+	if g.thresholdSvc != nil {
+		return g.thresholdSvc.GetInt("ai.recent_ai_messages_limit", 5)
+	}
+	return 5
 }
 
 // groupAssistantAllowedTools 计算群 @AI 实际可用的工具白名单：内置群管理工具
@@ -510,19 +527,25 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 		}
 	}
 	if !skipKnowledge {
+		// 上下文感知检索：把最近对话历史拼进 query，追问场景下话题上下文让知识/记忆召回更准
+		// （"那后来呢？"这类短 query 不带历史时向量召回必然失败）。
+		dedupe := input.OriginalContent
+		if dedupe == "" {
+			dedupe = input.Message // 排除触发消息本身，避免 query 自引用
+		}
+		query := contextualQuery(fetchRecentHistoryForQuery(g.db, input.ConversationID, input.UserID, dedupe), input.Message, 4)
+		if query == "" && input.Group != nil && input.Group.Name != "" {
+			query = input.Group.Name
+		}
 		if g.unifiedKnowledge != nil && input.Group != nil {
-			query := input.Message
-			if query == "" && input.Group.Name != "" {
-				query = input.Group.Name
-			}
 			// 一次检索同时产出上下文串与命中的知识来源（标题/相关度）；无命中时两者皆空。
 			knowledgeCtx, input.KnowledgeSources = g.unifiedKnowledge.BuildContextWithSources(query, input.Group.ID, 3)
 		} else if g.legacyKnowledge != nil {
-			knowledgeCtx = g.legacyKnowledge.BuildKnowledgeContext(input.Message)
+			knowledgeCtx = g.legacyKnowledge.BuildKnowledgeContext(query)
 		}
 
 		if g.groupMemorySvc != nil && input.Group != nil {
-			memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, input.Message, 2)
+			memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, query, 2)
 			if err == nil && len(memoryResults) > 0 {
 				var parts []string
 				for _, r := range memoryResults {
@@ -1000,7 +1023,7 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 	db.Where("conversation_id = ? AND type IN ?", input.ConversationID, []string{"text", "markdown"}).
 		Preload("Sender").
 		Order("created_at DESC").
-		Limit(20).
+		Limit(g.groupHistoryLimit()).
 		Find(&messages)
 
 	logHistoryDiagnostics("群助手/buildHistory", input.ConversationID, messages, nil)
@@ -1028,33 +1051,39 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 
 	var foldedFar []string
 	hasRecentAI := false
+	keptSelf := 0
+	maxSelf := g.recentAIMessagesLimit()
 	for _, msg := range filteredMessages {
 		senderName := msg.Sender.Nickname
 		if senderName == "" {
 			senderName = msg.Sender.Username
 		}
+		// 逐条截断历史消息（单条超长/粘贴长文本会被 rune 截到 800 字），避免撑爆 prompt 稀释注意力
+		content := truncateRunes(msg.Content, 800)
 
 		if msg.Origin == "assistant" {
-			// 近期自身回复保留为多轮指代锚点；远期自身回复是自我复制污染源，折叠而非原样回灌。
-			if isNearSelf(msg) {
+			// 近期自身回复保留为多轮指代锚点（最多 recentAIMessagesLimit 条，超出按远期折叠——
+			// 接入 ai.recent_ai_messages_limit，后台可调防自我复制上限）；远期自身回复是污染源，折叠。
+			if isNearSelf(msg) && keptSelf < maxSelf {
+				keptSelf++
 				hasRecentAI = true
 				result = append(result, &schema.Message{
 					Role:    schema.Assistant,
-					Content: msg.Content,
+					Content: content,
 				})
 			} else {
-				foldedFar = append(foldedFar, msg.Content)
+				foldedFar = append(foldedFar, content)
 			}
 		} else if msg.SenderID == input.UserID {
 			// 当前用户自己的消息，标为"我"
 			result = append(result, &schema.Message{
 				Role:    schema.User,
-				Content: fmt.Sprintf("[我]: %s", msg.Content),
+				Content: fmt.Sprintf("[我]: %s", content),
 			})
 		} else {
 			result = append(result, &schema.Message{
 				Role:    schema.User,
-				Content: fmt.Sprintf("[%s]: %s", senderName, msg.Content),
+				Content: fmt.Sprintf("[%s]: %s", senderName, content),
 			})
 		}
 	}
@@ -1120,7 +1149,7 @@ func (g *SmartReplyGraph) Execute(ctx context.Context, input *SmartReplyContext)
 		return nil, err
 	}
 
-	log.Printf("[SmartReplyGraph] 生成回复耗时: %v", time.Since(startTime))
+	logger.WithModule("diag").Info(fmt.Sprintf("[Diag] 群助手生成回复耗时: %v", time.Since(startTime)))
 
 	return result, nil
 }
@@ -1188,26 +1217,34 @@ func (g *SmartReplyGraph) createPrepareNode() *compose.Lambda {
 
 func (g *SmartReplyGraph) createKnowledgeNode() *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *SmartReplyContext) (*SmartReplyContext, error) {
-		if input.SkipKnowledge {
-			return input, nil
-		}
-		content := ""
-
-		if g.unifiedKnowledge != nil && input.Group != nil {
-			// 群聊场景优先用用户消息检索，无消息时回退到群名
-			query := input.Message
-			if query == "" && input.Group.Name != "" {
-				query = input.Group.Name
-			}
-			// 一次检索同时产出上下文串与命中的知识来源（供自动回复路径把来源随回复下发）。
-			content, input.KnowledgeSources = g.unifiedKnowledge.BuildContextWithSources(query, input.Group.ID, 3)
-		} else if g.legacyKnowledge != nil {
-			content = g.legacyKnowledge.BuildKnowledgeContext(input.Message)
-		}
-
-		input.KnowledgeCtx = content
+		g.retrieveGroupKnowledge(input)
 		return input, nil
 	})
+}
+
+// retrieveGroupKnowledge 群知识检索（上下文感知 query）——createKnowledgeNode 与单测共用：
+// 群聊场景优先用上下文感知 query 检索（最近历史 + 当前提问，追问能借此携带话题），
+// 无消息时回退到群名；一次检索同时产出上下文串与命中的知识来源（供前端「知识来源」徽章）。
+func (g *SmartReplyGraph) retrieveGroupKnowledge(input *SmartReplyContext) {
+	if input.SkipKnowledge {
+		return
+	}
+	content := ""
+	if g.unifiedKnowledge != nil && input.Group != nil {
+		dedupe := input.OriginalContent
+		if dedupe == "" {
+			dedupe = input.Message
+		}
+		query := contextualQuery(fetchRecentHistoryForQuery(g.db, input.ConversationID, input.UserID, dedupe), input.Message, 4)
+		if query == "" && input.Group.Name != "" {
+			query = input.Group.Name
+		}
+		// 一次检索同时产出上下文串与命中的知识来源（供自动回复路径把来源随回复下发）。
+		content, input.KnowledgeSources = g.unifiedKnowledge.BuildContextWithSources(query, input.Group.ID, 3)
+	} else if g.legacyKnowledge != nil {
+		content = g.legacyKnowledge.BuildKnowledgeContext(input.Message)
+	}
+	input.KnowledgeCtx = content
 }
 
 func (g *SmartReplyGraph) createMemoryNode() *compose.Lambda {

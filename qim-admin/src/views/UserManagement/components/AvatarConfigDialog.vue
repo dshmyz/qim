@@ -83,6 +83,7 @@
         <el-divider content-position="left">知识范围</el-divider>
         <el-form-item label="可访问数据">
           <el-checkbox v-model="form.knowledge_scope.conversationHistory">会话历史</el-checkbox>
+          <el-checkbox v-model="form.knowledge_scope.memory">分身记忆</el-checkbox>
           <el-checkbox v-model="form.knowledge_scope.knowledgeDocs">知识文档</el-checkbox>
           <el-checkbox v-model="form.knowledge_scope.notes">笔记</el-checkbox>
           <el-checkbox v-model="form.knowledge_scope.tasks">任务</el-checkbox>
@@ -143,6 +144,7 @@ const form = reactive({
   },
   knowledge_scope: {
     conversationHistory: true,
+    memory: true,
     knowledgeDocs: false,
     notes: false,
     tasks: false,

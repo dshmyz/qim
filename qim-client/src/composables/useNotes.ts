@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { useRequest, request } from './useRequest'
 import { getStoredServerUrl } from './useServerUrl'
-import type { Note, AIAnalyzeResult, NoteVectorSearchResult } from '../types/note'
+import type { Note, AIAnalyzeResult, NoteFormatResult, NoteVectorSearchResult } from '../types/note'
 
 export function useNotes() {
   const { get, post, put, delete: del } = useRequest()
@@ -85,6 +85,20 @@ export function useNotes() {
     error.value = null
     try {
       const response = await post<any>(`/api/v1/notes/${id}/analyze`, {})
+      return response?.data || null
+    } catch (e: any) {
+      error.value = e.message
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const formatNote = async (id: number): Promise<NoteFormatResult | null> => {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await post<any>(`/api/v1/notes/${id}/format`, {})
       return response?.data || null
     } catch (e: any) {
       error.value = e.message
@@ -197,6 +211,7 @@ export function useNotes() {
     updateNote,
     deleteNote,
     analyzeNote,
+    formatNote,
     updateNoteTags,
     updateNoteSummary,
     exportNote,

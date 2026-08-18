@@ -1208,7 +1208,12 @@ func (e *SmartReplyEngine) maybeRememberSenderMessage(senderID uint, conversatio
 	go func() {
 		db := database.GetDB()
 		var config model.AvatarConfig
-		if err := db.Select("enabled").Where("user_id = ?", senderID).First(&config).Error; err != nil || !config.Enabled {
+		if err := db.Select("enabled", "knowledge_scope_json").Where("user_id = ?", senderID).First(&config).Error; err != nil || !config.Enabled {
+			return
+		}
+		// 记忆总开关：分身「记忆」关闭时后台也不再学习写入（避免关了还在偷偷攒记忆）。
+		// 判定与回复召回共用 config.MemoryEnabled，保证"关掉记忆 = 既不读也不学"。
+		if !config.MemoryEnabled() {
 			return
 		}
 		// 一次 Recall(top-3)：top-1 用于去重，全部传给 Consolidate 避免二次查询
