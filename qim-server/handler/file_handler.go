@@ -901,7 +901,9 @@ func GetFolderFiles(c *gin.Context) {
 }
 
 func DownloadFile(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	// 登录即可下载（auth 中间件已保证 user_id 存在）：
+	// 消息里他人发送的聊天文件也须能下载，故不做所有者校验，仅要求文件存在。
+	// 路由组 /api/v1/files 已挂 auth 中间件；软删除文件仍由 GORM 自动过滤。
 	fileIDStr := c.Param("id")
 
 	fileID, err := strconv.ParseUint(fileIDStr, 10, 32)
@@ -911,7 +913,7 @@ func DownloadFile(c *gin.Context) {
 	}
 
 	svc := di.GlobalContainer.FileService
-	file, err := svc.GetFile(userID.(uint), uint(fileID))
+	file, err := svc.GetFileByID(uint(fileID))
 	if err != nil {
 		response.NotFound(c, "文件不存在")
 		return

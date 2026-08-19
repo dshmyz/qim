@@ -72,6 +72,18 @@ func (s *FileService) GetFile(userID, fileID uint) (*model.File, error) {
 	return &file, nil
 }
 
+// GetFileByID 按 id 返回未删除的文件记录，不做所有者限制。
+// 仅供下载通道使用：下载仅要求登录（auth 中间件已保证），
+// 以便消息里他人发送的聊天文件也能被会话用户下载。改名/删除等
+// 写操作仍走 GetFile（严格个人域校验），不受此放宽影响。
+func (s *FileService) GetFileByID(fileID uint) (*model.File, error) {
+	var file model.File
+	if err := s.db.Where("id = ?", fileID).First(&file).Error; err != nil {
+		return nil, err
+	}
+	return &file, nil
+}
+
 func (s *FileService) GetFiles(userID uint, page, pageSize int, filters map[string]string) ([]model.File, int64, error) {
 	ctx := context.Background()
 	query := s.legacyUserFiles(ctx, userID).Model(&model.File{})

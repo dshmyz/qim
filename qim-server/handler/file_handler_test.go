@@ -319,6 +319,86 @@ func Test_DownloadFile_EncodesChineseFilename(t *testing.T) {
 		"Content-Disposition should use RFC 5987 encoding for Chinese filename")
 }
 
+// 登录即可下载：非文件所有者（他人发送的聊天文件）也能下载。
+// 下载仅要求登录（auth 中间件），不做所有者/scope 校验。
+func Test_DownloadFile_LoginOnlyAllowsNonOwner(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupFileHandlerTestDB(t)
+	setupFileHandlerDI(t, db)
+
+	// 文件由 user 2 上传，属于 user 2 的个人域；不涉及任何会话/消息
+	file := model.File{
+		Name:         "shared.txt",
+		OriginalName: "shared.txt",
+		StoragePath:  storage.BuildPath("local", "uploads/shared.txt"),
+		Size:         5,
+		MimeType:     "text/plain",
+		UserID:       2,
+		ScopeType:    "user",
+		ScopeID:      2,
+		Source:       "chat",
+		CreatedAt:    time.Now(),
+	}
+	db.Create(&file)
+
+	st := di.GlobalContainer.DefaultStorage
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = st.Put(ctx, "uploads/shared.txt", bytes.NewReader([]byte("hello")), 5, "text/plain")
+
+	r := gin.New()
+	// user 1 登录，不是该文件所有者
+	r.Use(func(c *gin.Context) {
+		c.Set("user_id", uint(1))
+		c.Set("username", "user1")
+		c.Next()
+	})
+	r.GET("/files/:id/download", DownloadFile)
+
+	req := httptest.NewRequest("GET", "/files/"+strconv.FormatUint(uint64(file.ID), 10)+"/download", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "hello", w.Body.String())
+}
+
+// 软删除的文件仍不可下载。
+func Test_DownloadFile_LoginOnlyBlocksSoftDeleted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupFileHandlerTestDB(t)
+	setupFileHandlerDI(t, db)
+
+	deleted := model.File{
+		Name:         "gone.txt",
+		OriginalName: "gone.txt",
+		StoragePath:  storage.BuildPath("local", "uploads/gone.txt"),
+		Size:         5,
+		MimeType:     "text/plain",
+		UserID:       1,
+		ScopeType:    "user",
+		ScopeID:      1,
+		Source:       "upload",
+		CreatedAt:    time.Now(),
+	}
+	db.Create(&deleted)
+	db.Delete(&deleted)
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("user_id", uint(1))
+		c.Set("username", "user1")
+		c.Next()
+	})
+	r.GET("/files/:id/download", DownloadFile)
+
+	req := httptest.NewRequest("GET", "/files/"+strconv.FormatUint(uint64(deleted.ID), 10)+"/download", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
 // --- S6: sanitizeFilename 单元测试 ---
 
 func Test_SanitizeFilename_EscapesSpecialChars(t *testing.T) {
