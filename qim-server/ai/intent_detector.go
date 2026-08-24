@@ -12,10 +12,13 @@ import (
 
 // MessageIntent 表示消息的意图分类
 type MessageIntent struct {
-	Type       string                 `json:"type"` // "chat", "command", "query", "alert", "todo"
-	Confidence float32                `json:"confidence"`
-	Action     string                 `json:"action,omitempty"`
-	Entities   map[string]interface{} `json:"entities,omitempty"`
+	Type        string                 `json:"type"` // "chat", "command", "query", "alert", "todo"
+	Confidence  float32                `json:"confidence"`
+	Action      string                 `json:"action,omitempty"`
+	Entities    map[string]interface{} `json:"entities,omitempty"`
+	ShouldReply *bool                  `json:"should_reply,omitempty"`
+	Target      string                 `json:"target,omitempty"`
+	Reason      string                 `json:"reason,omitempty"`
 }
 
 // IntentDetector 意图检测器
@@ -41,7 +44,9 @@ func NewIntentDetector(aiService *AIService) *IntentDetector {
 func (d *IntentDetector) initPatterns() {
 	// 管理命令模式
 	d.patterns["command"] = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(移除|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
+		regexp.MustCompile(`(?i)^\s*(请|帮我|麻烦|请你).*?(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
+		regexp.MustCompile(`(?i)^\s*(把|将)\s*.+?(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
+		regexp.MustCompile(`(?i)^\s*(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
 		regexp.MustCompile(`(?i)(create|delete|remove|add|ban|unban|promote|demote)`),
 	}
 
@@ -59,7 +64,7 @@ func (d *IntentDetector) initPatterns() {
 
 	// 待办提取模式
 	d.patterns["todo"] = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(记得|要|需要|安排|计划|待办|任务|明天|下周)`),
+		regexp.MustCompile(`(?i)(请帮我|帮我|提醒我|记得提醒|安排|创建.*任务|设置.*提醒|截止日期)`),
 		regexp.MustCompile(`(?i)(remember to|need to|schedule|plan|todo|task|deadline)`),
 	}
 }
@@ -89,7 +94,9 @@ func (d *IntentDetector) detectByRules(content string) *MessageIntent {
 
 	// command 优先级最高（管理操作）
 	commandPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(移除|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
+		regexp.MustCompile(`(?i)^\s*(请|帮我|麻烦|请你).*?(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
+		regexp.MustCompile(`(?i)^\s*(把|将)\s*.+?(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
+		regexp.MustCompile(`(?i)^\s*(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
 		regexp.MustCompile(`(?i)(create|delete|remove|add|ban|unban|promote|demote)`),
 	}
 	for _, pattern := range commandPatterns {
@@ -97,9 +104,10 @@ func (d *IntentDetector) detectByRules(content string) *MessageIntent {
 			logger.WithModule("IntentDetector").Debug("匹配到 command 模式", "pattern", pattern.String())
 			entities := d.extractEntities(content, "command")
 			return &MessageIntent{
-				Type:       "command",
-				Confidence: 0.8,
-				Entities:   entities,
+				Type:        "command",
+				Confidence:  0.8,
+				ShouldReply: boolPtr(true),
+				Entities:    entities,
 			}
 		}
 	}
@@ -113,9 +121,10 @@ func (d *IntentDetector) detectByRules(content string) *MessageIntent {
 		if pattern.MatchString(content) {
 			entities := d.extractEntities(content, "alert")
 			return &MessageIntent{
-				Type:       "alert",
-				Confidence: 0.7,
-				Entities:   entities,
+				Type:        "alert",
+				Confidence:  0.7,
+				ShouldReply: boolPtr(true),
+				Entities:    entities,
 			}
 		}
 	}
@@ -129,25 +138,27 @@ func (d *IntentDetector) detectByRules(content string) *MessageIntent {
 		if pattern.MatchString(content) {
 			entities := d.extractEntities(content, "query")
 			return &MessageIntent{
-				Type:       "query",
-				Confidence: 0.6,
-				Entities:   entities,
+				Type:        "query",
+				Confidence:  0.6,
+				ShouldReply: boolPtr(true),
+				Entities:    entities,
 			}
 		}
 	}
 
 	// todo 最后（待办）
 	todoPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(记得|要|需要|安排|计划|待办|任务|明天|下周)`),
+		regexp.MustCompile(`(?i)(请帮我|帮我|提醒我|记得提醒|安排|创建.*任务|设置.*提醒|截止日期)`),
 		regexp.MustCompile(`(?i)(remember to|need to|schedule|plan|todo|task|deadline)`),
 	}
 	for _, pattern := range todoPatterns {
 		if pattern.MatchString(content) {
 			entities := d.extractEntities(content, "todo")
 			return &MessageIntent{
-				Type:       "todo",
-				Confidence: 0.6,
-				Entities:   entities,
+				Type:        "todo",
+				Confidence:  0.6,
+				ShouldReply: boolPtr(true),
+				Entities:    entities,
 			}
 		}
 	}
@@ -160,14 +171,16 @@ func (d *IntentDetector) detectByRules(content string) *MessageIntent {
 func (d *IntentDetector) detectByAI(content string, userID uint, conversationID uint) (*MessageIntent, error) {
 	systemPrompt := aiprompt.CurrentTimeLine() + "\n\n" + `你是一个意图识别助手。分析用户消息的意图，并按 JSON 格式返回结果。
 
-意图类型：
+	意图类型：
 - "chat": 普通聊天/闲聊
 - "command": 管理指令（如"把某人移出群"、"设置管理员"）
 - "query": 问题咨询（询问如何做某事、寻求信息）
 - "alert": 告警/异常报告（系统故障、错误等）
 - "todo": 待办事项/任务安排
 
-只返回 JSON，格式：{"type": "意图类型", "confidence": 0.0-1.0, "action": "具体动作", "entities": {"key": "value"}}`
+	只返回 JSON，格式：{"type": "意图类型", "confidence": 0.0-1.0, "should_reply": true或false, "target": "ai或human_group", "reason": "判断理由", "action": "具体动作", "entities": {"key": "value"}}
+
+should_reply 规则：只有用户明确提问、请求 AI 分析/执行、报告需要处理的故障时为 true；普通陈述、群成员之间闲聊、没有明确对象的安排信息为 false。拿不准时为 false。`
 
 	messages := []Message{
 		{Role: "system", Content: systemPrompt},
@@ -204,6 +217,11 @@ func (d *IntentDetector) parseAIResult(result string) (*MessageIntent, error) {
 	}
 	if intent.Confidence == 0 {
 		intent.Confidence = 0.6
+	}
+	// 兼容旧模型未返回 should_reply 的情况：非 chat 意图继续沿用旧阈值逻辑；
+	// 一旦模型明确返回 false，必须尊重它，避免规则外的普通陈述误触发。
+	if intent.ShouldReply == nil && intent.Type != "chat" {
+		intent.ShouldReply = boolPtr(true)
 	}
 
 	return &intent, nil
@@ -244,11 +262,15 @@ func (d *IntentDetector) ShouldTriggerAIReply(intent *MessageIntent, conversatio
 		logger.WithModule("IntentDetector").Debug("机器人会话，始终回复")
 		return true
 	}
+	if intent.ShouldReply != nil && !*intent.ShouldReply {
+		logger.WithModule("IntentDetector").Debug("AI 意图明确判断无需回复", "reason", intent.Reason, "target", intent.Target)
+		return false
+	}
 
 	// 各类意图的触发阈值
 	switch intent.Type {
 	case "query":
-		if intent.Confidence >= 0.5 {
+		if intent.Confidence >= 0.75 {
 			logger.WithModule("IntentDetector").Info("问题咨询，触发回复", "confidence", intent.Confidence)
 			return true
 		}
@@ -263,7 +285,7 @@ func (d *IntentDetector) ShouldTriggerAIReply(intent *MessageIntent, conversatio
 			return true
 		}
 	case "todo":
-		if intent.Confidence >= 0.6 {
+		if intent.Confidence >= 0.75 {
 			logger.WithModule("IntentDetector").Info("待办事项，触发回复", "confidence", intent.Confidence)
 			return true
 		}
@@ -272,3 +294,5 @@ func (d *IntentDetector) ShouldTriggerAIReply(intent *MessageIntent, conversatio
 	logger.WithModule("IntentDetector").Debug("不触发回复", "type", intent.Type, "confidence", intent.Confidence)
 	return false
 }
+
+func boolPtr(v bool) *bool { return &v }

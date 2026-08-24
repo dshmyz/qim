@@ -54,6 +54,7 @@ var Thresholds = []AiThresholdConfig{
 	{Key: "ai.context_history_limit", Default: 20, Min: 1, Max: 100, Label: "上下文历史条数", Description: "注入到 AI prompt 的最近对话消息条数上限（分身默认 10、群助手默认 20；管理员调整后两路径同用该值）"},
 	{Key: "ai.recent_ai_messages_limit", Default: 5, Min: 0, Max: 20, Label: "近期 AI 回复条数", Description: "上下文中保留的近期 AI 回复消息条数上限（防自我复制）；超出按远期折叠（0-20）"},
 	{Key: "ai.knowledge_llm_rerank", Default: 1, Min: 0, Max: 1, IsBool: true, Label: "知识检索相关性校验", Description: "开启后知识库检索结果经 LLM 二次校验相关性，过滤误召回（0=关 1=开）"},
+	{Key: "ai.reply_quality_gate", Default: 1, Min: 0, Max: 1, IsBool: true, Label: "回复质量门", Description: "发送 AI 回复前核验切题性、依据支持和幻觉；质量优先建议开启（0=关 1=开）"},
 }
 
 // StaticConfig 静态资源路径配置，避免在 routes.go 中硬编码工作目录相对路径
@@ -163,7 +164,7 @@ type JWTConfig struct {
 }
 
 // SecurityConfig 安全相关配置：encryption_key 用于 AES-GCM 加密用户自选模型的 API Key
-//（存库前加密、读取时解密）。环境变量 ENCRYPTION_KEY 始终优先于此配置；
+// （存库前加密、读取时解密）。环境变量 ENCRYPTION_KEY 始终优先于此配置；
 // 两者都未设置时每次启动随机生成密钥，已加密数据重启后无法解密。
 type SecurityConfig struct {
 	EncryptionKey string `yaml:"encryption_key"`

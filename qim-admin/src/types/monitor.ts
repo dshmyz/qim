@@ -23,6 +23,24 @@ export interface ServerMetrics {
   goRoutines: number
 }
 
+export interface AIReplyQualityMetrics {
+  counters: {
+    autoAttempts: number
+    autoReplies: number
+    qualityRejected: number
+    qualityCheckFailed: number
+    manualMentions: number
+    userIgnored: number
+  }
+  rates: {
+    autoReplyRate: number
+    qualityRejectionRate: number
+    qualityFailureRate: number
+    manualMentionRate: number
+    userIgnoredRate: number
+  }
+}
+
 export interface ServiceStatus {
   name: string
   status: 'healthy' | 'unhealthy' | 'warning'

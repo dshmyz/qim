@@ -56,6 +56,7 @@ func NewAvatarService(db *gorm.DB, aiService *ai.AIService) *AvatarService {
 	}
 	service.workerPool = NewAvatarWorkerPool(5, 30, service)
 	graph := NewAvatarReplyGraph(aiService, db, nil, nil, nil)
+	graph.SetQualityGateEnabled(true)
 	if err := graph.BuildGraph(); err != nil {
 		logger.WithModule("AvatarService").Error("BuildGraph 失败", "error", err)
 	}
@@ -83,12 +84,20 @@ func (s *AvatarService) SetAIService(aiService *ai.AIService) {
 func (s *AvatarService) rebuildReplyGraph(source string) {
 	graph := NewAvatarReplyGraph(s.aiService, s.db, s.noteVectorSvc, s.memorySvc, s.groupDocSvc)
 	graph.SetThresholdService(s.thresholdSvc)
+	graph.SetQualityGateEnabled(s.qualityGateEnabled())
 	if err := graph.BuildGraph(); err != nil {
 		logger.WithModule("AvatarService").Error("BuildGraph 失败", "source", source, "error", err)
 		return
 	}
 	// 先编译成功再原子替换，调用方始终拿到完整可用的 graph
 	s.replyGraph.Store(graph)
+}
+
+func (s *AvatarService) qualityGateEnabled() bool {
+	if s.thresholdSvc == nil {
+		return true
+	}
+	return s.thresholdSvc.GetFloat("ai.reply_quality_gate", 1) >= 0.5
 }
 
 // GetWorkerPool 获取 Worker Pool

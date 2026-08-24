@@ -35,6 +35,26 @@
       </el-col>
     </el-row>
 
+    <!-- AI 回复质量 -->
+    <el-card style="margin-top: 20px;" v-if="monitorStore.aiReplyQuality">
+      <template #header>
+        <div class="card-header">
+          <span>AI 回复质量</span>
+          <el-button type="primary" text size="small" @click="loadAIReplyQuality">刷新</el-button>
+        </div>
+      </template>
+      <el-row :gutter="20">
+        <el-col :span="6" v-for="item in aiQualityCards" :key="item.label">
+          <div class="ai-quality-stat">
+            <div class="pool-stat-label">{{ item.label }}</div>
+            <div class="ai-quality-value">{{ formatRate(item.value) }}</div>
+            <div class="ai-quality-count">{{ item.count }} 次</div>
+          </div>
+        </el-col>
+      </el-row>
+      <div class="ai-quality-hint">统计范围：当前服务进程启动以来；服务重启后重新累计。</div>
+    </el-card>
+
     <!-- 系统信息 -->
     <el-row :gutter="20" style="margin-top: 20px;">
       <el-col :span="8">
@@ -222,6 +242,18 @@ const timeRange = ref<Date[]>([])
 const historyData = ref<any[]>([])
 let refreshTimer: number | null = null
 
+const aiQualityCards = computed(() => {
+  const quality = monitorStore.aiReplyQuality
+  if (!quality) return []
+  return [
+    { label: '自动回复率', value: quality.rates.autoReplyRate, count: quality.counters.autoReplies },
+    { label: '质量拒绝率', value: quality.rates.qualityRejectionRate, count: quality.counters.qualityRejected },
+    { label: '核验失败率', value: quality.rates.qualityFailureRate, count: quality.counters.qualityCheckFailed },
+    { label: '手动 @AI 率', value: quality.rates.manualMentionRate, count: quality.counters.manualMentions },
+    { label: '用户忽略率', value: quality.rates.userIgnoredRate, count: quality.counters.userIgnored }
+  ]
+})
+
 const networkPercentage = computed(() => {
   if (!monitorStore.serverMetrics?.network) return 0
   const { in: inBytes, out: outBytes } = monitorStore.serverMetrics.network
@@ -341,6 +373,7 @@ function getStatusText(status: string): string {
 
 onMounted(() => {
   loadCurrentData()
+  loadAIReplyQuality()
   loadServiceStatus()
   startAutoRefresh()
 })
@@ -351,6 +384,14 @@ onUnmounted(() => {
 
 async function loadCurrentData() {
   await monitorStore.loadServerMetrics()
+}
+
+async function loadAIReplyQuality() {
+  await monitorStore.loadAIReplyQuality()
+}
+
+function formatRate(value: number): string {
+  return `${(value * 100).toFixed(1)}%`
 }
 
 async function loadServiceStatus() {
@@ -450,5 +491,28 @@ async function loadHistoryData() {
   font-size: 13px;
   color: #909399;
   margin-bottom: 8px;
+}
+
+.ai-quality-stat {
+  text-align: center;
+  padding: 8px 0;
+}
+
+.ai-quality-value {
+  font-size: 26px;
+  font-weight: bold;
+  color: #303133;
+  margin: 6px 0;
+}
+
+.ai-quality-count {
+  font-size: 12px;
+  color: #909399;
+}
+
+.ai-quality-hint {
+  margin-top: 16px;
+  font-size: 12px;
+  color: #909399;
 }
 </style>

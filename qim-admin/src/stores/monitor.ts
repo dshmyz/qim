@@ -1,13 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { getServerMetrics, getServiceStatus, getServerMetricsHistory } from '@/api/monitor'
-import type { ServerMetrics, ServiceStatus } from '@/types/monitor'
+import { getServerMetrics, getServiceStatus, getServerMetricsHistory, getAIReplyQualityMetrics } from '@/api/monitor'
+import type { ServerMetrics, ServiceStatus, AIReplyQualityMetrics } from '@/types/monitor'
 
 export const useMonitorStore = defineStore('monitor', () => {
   const serverMetrics = ref<ServerMetrics | null>(null)
   const serviceStatus = ref<ServiceStatus[]>([])
   const loading = ref(false)
   const metricsHistory = ref<ServerMetrics[]>([])
+  const aiReplyQuality = ref<AIReplyQualityMetrics | null>(null)
   
   async function loadServerMetrics() {
     loading.value = true
@@ -38,6 +39,11 @@ export const useMonitorStore = defineStore('monitor', () => {
       loading.value = false
     }
   }
+
+  async function loadAIReplyQuality() {
+    const { data } = await getAIReplyQualityMetrics()
+    aiReplyQuality.value = data.data
+  }
   
   return {
     serverMetrics,
@@ -46,6 +52,8 @@ export const useMonitorStore = defineStore('monitor', () => {
     metricsHistory,
     loadServerMetrics,
     loadServiceStatus,
-    loadMetricsHistory
+    loadMetricsHistory,
+    aiReplyQuality,
+    loadAIReplyQuality
   }
 })

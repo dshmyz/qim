@@ -65,20 +65,10 @@ func fetchRecentHistoryForQuery(db *gorm.DB, conversationID, senderID uint, orig
 	if len(messages) == 0 {
 		return "", nil
 	}
-	// 反转为时间正序
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
-	lines := make([]string, 0, len(messages))
-	for _, m := range messages {
-		if originalContent != "" && m.SenderID == senderID && m.Content == originalContent {
-			continue
-		}
-		name := m.Sender.Nickname
-		if name == "" {
-			name = m.Sender.Username
-		}
-		lines = append(lines, fmt.Sprintf("%s: %s", name, truncateRunes(m.Content, 300)))
+	history := normalizeConversationHistory(messages, senderID, originalContent, 300, 2)
+	lines := make([]string, 0, len(history))
+	for _, item := range history {
+		lines = append(lines, fmt.Sprintf("%s: %s", item.SenderName, item.Content))
 	}
 	return strings.Join(lines, "\n"), nil
 }

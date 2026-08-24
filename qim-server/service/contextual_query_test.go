@@ -60,6 +60,7 @@ func TestFetchRecentHistoryForQuery(t *testing.T) {
 		{ConversationID: 7, SenderID: 2, Type: "text", Content: "第二条"},
 		{ConversationID: 7, SenderID: 1, Type: "text", Content: "触发消息"},
 		{ConversationID: 7, SenderID: 2, Type: "image", Content: "图片消息"},
+		{ConversationID: 7, SenderID: 2, Type: "text", Origin: "assistant", Content: "近期 AI 回复"},
 	}
 	for i := range msgs {
 		require.NoError(t, db.Create(&msgs[i]).Error)
@@ -72,6 +73,7 @@ func TestFetchRecentHistoryForQuery(t *testing.T) {
 	assert.Contains(t, hist, "Alice: 第一条")
 	assert.Contains(t, hist, "Bob: 第二条")
 	assert.NotContains(t, hist, "图片消息", "非 text/markdown 消息不应进入历史")
+	assert.Contains(t, hist, "近期 AI 回复", "近期 AI 回复可作为当前话题锚点")
 
 	// 无 dedupe 参数时保留全部文本
 	hist2, err := fetchRecentHistoryForQuery(db, 7, 1, "")

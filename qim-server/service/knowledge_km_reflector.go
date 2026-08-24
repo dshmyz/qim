@@ -52,19 +52,19 @@ func reflectConsolidated(aiService *ai.AIService, message string, memories []str
 	// 仅当判定值得记时才做结构化反射（产出 Summary/Facts/Themes/Entities 供知识图谱等使用）。
 	// 不值得记就不浪费这次 LLM 调用；反射失败不阻断（保留上面的 deterministic summary 兜底）。
 	if verdict.ShouldRemember && aiService != nil {
-			if s, ok := reflectStructure(aiService, message, memories, knowledge, context); ok {
-				if strings.TrimSpace(s.Summary) != "" {
-					ref.Summary = s.Summary
-				}
-				ref.Facts = s.Facts
-				ref.Themes = s.Themes
-				ref.Entities = s.Entities
-				// 反射出的可迁移范围（conversation/global）须带回 ref，否则落库时
-				// knowledge_memory_scope 恒为空而按 global 处理，对话隔离功能形同虚设。
-				ref.Scope = s.Scope
-				ref.Type = s.Type
+		if s, ok := reflectStructure(aiService, message, memories, knowledge, context); ok {
+			if strings.TrimSpace(s.Summary) != "" {
+				ref.Summary = s.Summary
 			}
+			ref.Facts = s.Facts
+			ref.Themes = s.Themes
+			ref.Entities = s.Entities
+			// 反射出的可迁移范围（conversation/global）须带回 ref，否则落库时
+			// knowledge_memory_scope 恒为空而按 global 处理，对话隔离功能形同虚设。
+			ref.Scope = s.Scope
+			ref.Type = s.Type
 		}
+	}
 	return ref, verdict, nil
 }
 

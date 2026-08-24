@@ -213,6 +213,11 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			ws.GlobalHub.SendToUser(userID, jsonData)
 		}
 	})
+	ws.SetAIDecisionFeedbackHandler(func(_ uint, action string) {
+		if action == "ignore" {
+			service.GlobalAIReplyMetrics.RecordUserIgnored()
+		}
+	})
 
 	// 自定义CORS中间件，确保所有响应都包含CORS头
 	corsConfig := cors.Config{
@@ -808,6 +813,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 				{
 					monitor.GET("/server", monitorHandler.GetServerMetrics)
 					monitor.GET("/server/history", monitorHandler.GetServerMetricsHistory)
+					monitor.GET("/ai-reply-quality", monitorHandler.GetAIReplyQualityMetrics)
 					monitor.GET("/services", monitorHandler.GetServiceStatus)
 					monitor.POST("/services/health-check", monitorHandler.HealthCheck)
 					monitor.GET("/alerts", alertHandler.GetAlertRules)

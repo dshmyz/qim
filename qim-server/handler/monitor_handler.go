@@ -7,6 +7,7 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -24,6 +25,28 @@ func NewMonitorHandler() *MonitorHandler {
 	return &MonitorHandler{
 		startTime: time.Now(),
 	}
+}
+
+// GetAIReplyQualityMetrics 返回 AI 回复质量计数及派生比例，供管理后台和灰度观察使用。
+func (h *MonitorHandler) GetAIReplyQualityMetrics(c *gin.Context) {
+	s := service.GlobalAIReplyMetrics.Snapshot()
+	denom := float64(s.AutoAttempts)
+	rate := func(value uint64) float64 {
+		if denom == 0 {
+			return 0
+		}
+		return float64(value) / denom
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"counters": s,
+		"rates": gin.H{
+			"autoReplyRate":        rate(s.AutoReplies),
+			"qualityRejectionRate": rate(s.QualityRejected),
+			"qualityFailureRate":   rate(s.QualityCheckFailed),
+			"manualMentionRate":    rate(s.ManualMentions),
+			"userIgnoredRate":      rate(s.UserIgnored),
+		},
+	}})
 }
 
 type ServerMetrics struct {

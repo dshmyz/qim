@@ -125,6 +125,12 @@ func (c *Client) readPump() {
 			// 下次溢出时会按旧起点立刻判超时，静默丢失补偿直接失效。
 			c.needsSync.Store(false)
 			c.syncHintStartedAt.Store(0)
+		case "ai_reply_decision_feedback":
+			if data, ok := msg.Data.(map[string]interface{}); ok {
+				if action, ok := data["action"].(string); ok && AIDecisionFeedbackHandler != nil {
+					AIDecisionFeedbackHandler(c.userID, action)
+				}
+			}
 		case "subscribe_user_status":
 			handleSubscribeUserStatus(c, msg.Data)
 		case "unsubscribe_user_status":

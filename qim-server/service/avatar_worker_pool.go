@@ -250,6 +250,7 @@ func (p *AvatarWorkerPool) flushBucket(b *avatarBatch) {
 // 全局限流与按用户限流已在编排层完成，这里只处理分身专属逻辑。
 func (p *AvatarWorkerPool) process(task AvatarTask) {
 	logger.WithModule("AvatarWorkerPool").Info("开始处理分身任务", "userID", task.UserID, "convID", task.ConversationID, "triggerUserID", task.TriggerUserID)
+	GlobalAIReplyMetrics.RecordAutoAttempt()
 
 	var session model.AvatarSession
 	err := p.db.Where("user_id = ? AND conversation_id = ?", task.UserID, task.ConversationID).First(&session).Error
@@ -276,6 +277,7 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		reply, sources, err = p.service.GenerateReplyBatchWithImageSources(task.UserID, task.ConversationID, task.BatchItems, &avatarConfig)
 		if err != nil {
 			logger.WithModule("AvatarWorkerPool").Info("分身批量生成失败，尽力而为跳过", "user", task.UserID, "conv", task.ConversationID, "batch", len(task.BatchItems), "error", err)
+			p.notifyQualitySkip(task, err)
 			return
 		}
 	} else if task.TriggerMsgType == "image" {
@@ -288,12 +290,14 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		reply, sources, err = p.service.GenerateReplyWithImageSources(task.UserID, task.ConversationID, task.TriggerMessage, imageName, fileID, &avatarConfig)
 		if err != nil {
 			logger.WithModule("AvatarWorkerPool").Info("分身图片识别失败，尽力而为跳过", "user", task.UserID, "conv", task.ConversationID, "fileID", fileID, "error", err)
+			p.notifyQualitySkip(task, err)
 			return
 		}
 	} else {
 		reply, sources, err = p.service.GenerateReplyWithSources(task.UserID, task.ConversationID, task.TriggerMessage, &avatarConfig)
 		if err != nil {
 			logger.WithModule("AvatarWorkerPool").Error("分身回复生成失败", "user", task.UserID, "conv", task.ConversationID, "error", err)
+			p.notifyQualitySkip(task, err)
 			return
 		}
 	}
@@ -335,6 +339,7 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		} else {
 			p.sendReply(task, task.ConversationID, reply, meta)
 		}
+		GlobalAIReplyMetrics.RecordAutoReply()
 		now := time.Now()
 		p.db.Model(&session).Update("last_reply_at", now)
 	}
@@ -358,6 +363,23 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	} else {
 		send()
 	}
+}
+
+// notifyQualitySkip 只把质量门控相关的跳过原因反馈给用户，普通的范围外静默仍保持安静。
+func (p *AvatarWorkerPool) notifyQualitySkip(task AvatarTask, err error) {
+	if err == nil || p.service == nil || p.service.wsNotify == nil {
+		return
+	}
+	message := err.Error()
+	if !strings.Contains(message, "reply quality") {
+		return
+	}
+	GlobalAIReplyMetrics.RecordQualityRejected()
+	p.service.wsNotify(task.UserID, "avatar_reply_skipped", map[string]interface{}{
+		"conversation_id": task.ConversationID,
+		"reason":          "quality_rejected",
+		"message":         "分身生成的回复未通过相关性或事实依据核验，未自动发送。你可以调整分身设置或手动处理。",
+	})
 }
 
 // sendReply 把分身回复作为新消息写入指定会话并广播。

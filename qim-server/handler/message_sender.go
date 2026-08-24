@@ -389,3 +389,21 @@ func (s *WebSocketMessageSender) NotifyReplyStarted(conversationID uint, assista
 	jsonMsg, _ := json.Marshal(wsMsg)
 	s.hub.SendToConversation(conversationID, 0, jsonMsg)
 }
+
+// NotifyReplyDecision 把 AI 是否自动回复及原因通知前端。
+// 该事件不落库，但保证“未回复”不会静默，前端可以把处理权交给用户。
+func (s *WebSocketMessageSender) NotifyReplyDecision(conversationID uint, decision SmartReplyDecision) {
+	if s.hub == nil {
+		return
+	}
+	data := gin.H{
+		"conversation_id": conversationID,
+		"action":          decision.Action,
+		"reason_code":     decision.ReasonCode,
+		"reason":          decision.Reason,
+		"confidence":      decision.Confidence,
+	}
+	wsMsg := ws.WSMessage{Type: "ai_reply_decision", Data: data}
+	jsonMsg, _ := json.Marshal(wsMsg)
+	s.hub.SendToConversation(conversationID, 0, jsonMsg)
+}

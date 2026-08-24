@@ -32,6 +32,13 @@ const (
 
 var GlobalHub *Hub
 
+// AIDecisionFeedbackHandler 由应用层注入，用于记录用户对 AI 不回复提示的处理结果。
+var AIDecisionFeedbackHandler func(userID uint, action string)
+
+func SetAIDecisionFeedbackHandler(fn func(userID uint, action string)) {
+	AIDecisionFeedbackHandler = fn
+}
+
 // wsAllowedOrigins 及其锁：CheckOrigin 在每个 WS 连接时并发读，
 // SetAllowedOrigins 在配置重载时写。用 RWMutex 保护防止并发 map 读写 panic。
 

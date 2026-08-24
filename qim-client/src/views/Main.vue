@@ -1808,6 +1808,39 @@ const connectWebSocket = () => {
       const cid = data?.conversation_id
       if (cid != null) chatStore.setAiThinking(String(cid), true, data?.sender)
     },
+    'ai_reply_decision': (data: any) => {
+      // 自动回复被安全门控拦截时不静默：把原因展示给用户，由用户决定是否手动处理。
+      if (data?.action !== 'ask_user') return
+      const reason = data?.reason || '当前消息未自动回复'
+      const actions = Array.isArray(data?.actions) && data.actions.length
+        ? '可选：' + data.actions.map((action: string) => ({
+          retry: '重试',
+          mention_ai: '手动 @AI',
+          adjust_settings: '调整设置',
+          ignore: '忽略'
+        } as Record<string, string>)[action] || action).join('、')
+        : '你可以手动 @AI，或调整群助手设置'
+      showMessage({
+        message: `AI 未自动回复：${reason}。${actions}。`,
+        type: 'info',
+        duration: 5000
+      })
+      // 当前提示为临时通知，没有可点击的关闭/处理状态；到期仍未采取 AI 操作时记为忽略。
+      window.setTimeout(() => {
+        sendMessage({ type: 'ai_reply_decision_feedback', data: { action: 'ignore' } })
+      }, 5000)
+    },
+    'avatar_reply_skipped': (data: any) => {
+      if (data?.reason !== 'quality_rejected') return
+      showMessage({
+        message: data?.message || '分身未通过回复质量核验，未自动发送。你可以调整设置或手动处理。',
+        type: 'info',
+        duration: 6000
+      })
+      window.setTimeout(() => {
+        sendMessage({ type: 'ai_reply_decision_feedback', data: { action: 'ignore' } })
+      }, 6000)
+    },
     'sync_hint': async (data: any) => {
       // 服务端缓冲区溢出时发送 sync_hint，触发离线消息增量拉取补偿
       logger.log('[WS] 收到 sync_hint，开始离线消息补偿:', data?.reason)

@@ -892,6 +892,6 @@ func TestGetConversationHistory_ReturnsErrorOnDBFailure(t *testing.T) {
 	require.NoError(t, sqlDB.Close())
 
 	g := &AvatarReplyGraph{db: db}
-	_, err = g.getConversationHistory(7, 10, "在吗", nil)
+	_, err = g.getConversationHistory(7, 1, 10, "在吗", nil)
 	require.Error(t, err, "历史查询失败时应显式返回 error，而非静默返回空历史")
 }

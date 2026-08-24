@@ -1,7 +1,14 @@
 import type { ApiResponse, PaginatedResponse } from '@/types'
 import { request } from '@/utils/request'
 import type { AxiosResponse } from 'axios'
-import type { ServerMetrics, ServiceStatus, AlertRule, AlertHistory } from '@/types/monitor'
+import type { ServerMetrics, ServiceStatus, AlertRule, AlertHistory, AIReplyQualityMetrics } from '@/types/monitor'
+
+export const getAIReplyQualityMetrics = (): Promise<AxiosResponse<ApiResponse<AIReplyQualityMetrics>>> => {
+  return request({
+    url: '/v1/admin/monitor/ai-reply-quality',
+    method: 'get',
+  })
+}
 
 export const getServerMetrics = (): Promise<AxiosResponse<ApiResponse<ServerMetrics>>> => {
   return request({

@@ -65,6 +65,9 @@ type AvatarReplyGraph struct {
 	thresholdSvc *AiThresholdService
 	// reranker 知识相关性二次判定器（与群助手/Bot 共用 LLMReranker）；nil 时不做判定（保留全部）。
 	reranker KnowledgeReranker
+	// qualityGateEnabled 为 true 时，自动发送前必须通过相关性/依据核验。
+	// 默认关闭以保持单元测试和显式自选路径的确定性，由 AvatarService 生产装配时开启。
+	qualityGateEnabled bool
 }
 
 func NewAvatarReplyGraph(
@@ -92,6 +95,11 @@ func (g *AvatarReplyGraph) SetReranker(r KnowledgeReranker) {
 // SetThresholdService 注入阈值读取服务；nil 时记忆召回门槛用默认 0.5。
 func (g *AvatarReplyGraph) SetThresholdService(t *AiThresholdService) {
 	g.thresholdSvc = t
+}
+
+// SetQualityGateEnabled 控制分身自动回复的生成后质量核验。
+func (g *AvatarReplyGraph) SetQualityGateEnabled(enabled bool) {
+	g.qualityGateEnabled = enabled
 }
 
 // memoryRecallThreshold 返回记忆召回相关度门槛：未注入阈值服务时回退默认 0.5。
@@ -259,6 +267,28 @@ func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, 
 	logger.WithModule("diag").Info(fmt.Sprintf("[Diag] 分身生成回复耗时: %v", time.Since(startTime)))
 
 	reply = truncateReply(input, reply)
+	if g.qualityGateEnabled {
+		evidence := strings.Join([]string{
+			input.NoteContext,
+			input.GroupKnowledge,
+			input.MemoryContext,
+			input.History,
+			input.TaskContext,
+		}, "\n\n")
+		verdict, verr := g.aiService.ValidateReply(message, evidence, reply)
+		if verr != nil {
+			logger.WithModule("diag").Warn(fmt.Sprintf("[Diag] 分身回复质量核验失败，拒绝自动发送: userID=%d convID=%d err=%v", userID, conversationID, verr))
+			return "", input.Sources, fmt.Errorf("reply quality check unavailable: %w", verr)
+		}
+		if !verdict.ShouldSend() {
+			reason := verdict.Reason
+			if reason == "" {
+				reason = "回复未通过相关性或事实依据核验"
+			}
+			logger.WithModule("diag").Info(fmt.Sprintf("[Diag] 分身回复质量核验拒绝自动发送: userID=%d convID=%d reason=%s", userID, conversationID, reason))
+			return "", input.Sources, fmt.Errorf("reply quality rejected: %s", reason)
+		}
+	}
 
 	return reply, input.Sources, nil
 }
@@ -405,7 +435,28 @@ func (g *AvatarReplyGraph) completeReply(input *AvatarReplyContext, aiMessages [
 	if err != nil {
 		return "", input.Sources, err
 	}
-	return truncateReply(input, reply), input.Sources, nil
+	reply = truncateReply(input, reply)
+	if g.qualityGateEnabled {
+		evidence := strings.Join([]string{
+			input.NoteContext,
+			input.GroupKnowledge,
+			input.MemoryContext,
+			input.History,
+			input.TaskContext,
+		}, "\n\n")
+		verdict, verr := g.aiService.ValidateReply(input.Message, evidence, reply)
+		if verr != nil {
+			return "", input.Sources, fmt.Errorf("reply quality check unavailable: %w", verr)
+		}
+		if !verdict.ShouldSend() {
+			reason := verdict.Reason
+			if reason == "" {
+				reason = "回复未通过相关性或事实依据核验"
+			}
+			return "", input.Sources, fmt.Errorf("reply quality rejected: %s", reason)
+		}
+	}
+	return reply, input.Sources, nil
 }
 
 // truncateReply 按分身 MaxReplyLength 对回复做 rune 截断（避免中文等变长 UTF-8 在字节中切断），
@@ -601,7 +652,7 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	}
 	if historyEnabled && input.ConversationID > 0 {
 		var herr error
-		history, herr = g.getConversationHistory(input.ConversationID, g.historyLimit(), input.Message, input.HistoryBefore)
+		history, herr = g.getConversationHistory(input.ConversationID, input.UserID, g.historyLimit(), input.Message, input.HistoryBefore)
 		if herr != nil {
 			// 历史查询失败不阻断回复：降级为空历史并记日志（避免"假装没有历史"且可排查）
 			logger.WithModule("diag").Warn("[Diag] 分身历史查询失败，跳过历史注入",
@@ -850,14 +901,15 @@ func buildCustomProviderExtraParams(maxTokens int, temperature float64) map[stri
 // needReplyForOutOfScope 已废弃：范围外静默已改为硬门控（无知识命中即 SkipReply），
 // 不再需要 LLM 二次判断。保留此函数已无调用点，故移除。
 
-func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int, triggerMessage string, before *time.Time) (string, error) {
+func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, currentUserID uint, limit int, triggerMessage string, before *time.Time) (string, error) {
 	// 不再一刀切排除 avatar 自回复：近期（selfTurnWindow 内）的 avatar 自回复保留作
 	// 多轮指代锚点（用户可能追问”你刚说的”），只滤掉远期自回复（自我复制污染源）。
 	// 为此多取一段（limit+1），在内存里丢弃远期自回复 + 触发消息后仍尽量满足 limit。
 	// before 非 nil（草稿模式锚定到目标消息）时，只取该时间之前的历史——目标可能不是
 	// 会话最新一条，按”整个会话最近 N 条”会把目标之后的后续对话混进来导致答非所问。
 	query := g.db.Where("conversation_id = ?", conversationID).
-		Where("type = ?", "text")
+		Where("type IN ?", []string{"text", "markdown"}).
+		Preload("Sender")
 	if before != nil {
 		query = query.Where("created_at < ?", *before)
 	}
@@ -870,21 +922,7 @@ func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int
 		return "", fmt.Errorf("分身历史查询失败: %w", err)
 	}
 
-	// 在 Go 侧筛掉远期自身回复；近期自身回复保留（最多 recentAIMessagesLimit 条，
-	// 超出按远期折叠——接入 ai.recent_ai_messages_limit，后台可调防自我复制上限）。
-	filtered := messages[:0]
-	keptSelf := 0
-	maxSelf := g.recentAIMessagesLimit()
-	for _, m := range messages {
-		if m.Origin == "avatar" {
-			if !isNearSelf(m) || keptSelf >= maxSelf {
-				continue
-			}
-			keptSelf++
-		}
-		filtered = append(filtered, m)
-	}
-	messages = filtered
+	// 分身与群助手共用同一个历史规范化器，避免两条路径对媒体、当前消息和 AI 回复的处理漂移。
 
 	// 诊断：统计本会话里被过滤排除的『分身自己回复』条数，确认“潜在多轮失忆”
 	// 是否真实发生（分身刚说的话是否被历史排除、导致追问“你刚说的”断链）。
@@ -895,7 +933,7 @@ func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int
 	// 已滤远期 = 全量 avatar 回复 - 保留下来的近期 avatar 回复
 	keptAvatar := 0
 	for _, m := range messages {
-		if m.Origin == "avatar" {
+		if m.Origin == "avatar" && isNearSelf(m) {
 			keptAvatar++
 		}
 	}
@@ -909,37 +947,13 @@ func (g *AvatarReplyGraph) getConversationHistory(conversationID uint, limit int
 		return "", nil
 	}
 
-	// 触发消息本身已在 prompt 中以"对方说：{Message}"呈现，这里按 DESC 取到的最新一条若与之相同则剔除，避免模型重复见到
-	if triggerMessage != "" && messages[0].Content == triggerMessage {
-		messages = messages[1:]
-		if len(messages) == 0 {
-			return "", nil
-		}
+	history := normalizeConversationHistory(messages, currentUserID, triggerMessage, 800, g.recentAIMessagesLimit())
+	if len(history) == 0 {
+		return "", nil
 	}
-
-	// 批量查询发送者，避免 N+1
-	senderIDs := make(map[uint]struct{}, len(messages))
-	for _, msg := range messages {
-		senderIDs[msg.SenderID] = struct{}{}
-	}
-	ids := make([]uint, 0, len(senderIDs))
-	for id := range senderIDs {
-		ids = append(ids, id)
-	}
-	var senders []model.User
-	g.db.Where("id IN ?", ids).Find(&senders)
-	senderMap := make(map[uint]model.User, len(senders))
-	for _, s := range senders {
-		senderMap[s.ID] = s
-	}
-
 	var parts []string
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg := messages[i]
-		sender := senderMap[msg.SenderID]
-		// 逐条截断历史消息：单条超长（粘贴的长文本/合并转发）会被 rune 截到 800 字，
-		// 避免一条消息撑爆 prompt 并稀释注意力。尾巴通常含关键信息，故保留开头。
-		parts = append(parts, fmt.Sprintf("%s: %s", sender.Nickname, truncateRunes(msg.Content, 800)))
+	for _, item := range history {
+		parts = append(parts, fmt.Sprintf("%s: %s", item.SenderName, item.Content))
 	}
 
 	return strings.Join(parts, "\n"), nil

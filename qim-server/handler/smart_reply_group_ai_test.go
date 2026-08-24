@@ -137,3 +137,31 @@ func TestDecideGroupAIReply(t *testing.T) {
 		})
 	}
 }
+
+func TestDecideGroupAIReplyDetailedExplainsEverySkip(t *testing.T) {
+	tests := []struct {
+		name       string
+		cfg        model.GroupAIConfig
+		content    string
+		assistant  string
+		antiSpam   bool
+		wantAction SmartReplyAction
+		wantCode   string
+	}{
+		{"disabled", model.GroupAIConfig{}, "你好", "AI助手", false, SmartReplyAskUser, "disabled"},
+		{"anti spam", model.GroupAIConfig{Enabled: true, ReplyMode: "always"}, "你好", "AI助手", true, SmartReplyAskUser, "anti_spam"},
+		{"mention", model.GroupAIConfig{Enabled: true, ReplyMode: "mention_only"}, "@AI 请总结", "AI助手", false, SmartReplyReply, "explicit_mention"},
+		{"keyword miss", model.GroupAIConfig{Enabled: true, ReplyMode: "always", TriggerKeywords: "会议"}, "今天吃什么", "AI助手", false, SmartReplyAskUser, "keyword_miss"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DecideGroupAIReplyDetailed(tt.cfg, tt.content, tt.assistant, tt.antiSpam)
+			if got.Action != tt.wantAction || got.ReasonCode != tt.wantCode {
+				t.Fatalf("decision=%+v, want action=%s code=%s", got, tt.wantAction, tt.wantCode)
+			}
+			if got.Reason == "" {
+				t.Fatal("skip decision must explain its reason")
+			}
+		})
+	}
+}

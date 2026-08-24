@@ -25,18 +25,19 @@ import (
 
 // SmartReplyEngine 智能回复引擎
 type SmartReplyEngine struct {
-	aiService        *ai.AIService
-	intentDetector   *ai.IntentDetector
-	knowledgeSvc     *KnowledgeService
-	unifiedKnowledge *service.UnifiedKnowledgeService
-	memorySvc        *service.AvatarMemoryService
-	groupMemorySvc   *service.GroupMemoryService
-	promptBuilder    *SmartPromptBuilder
-	messageSender    *WebSocketMessageSender
-	avatarWorkerPool *service.AvatarWorkerPool
-	avatarTriggerSvc AvatarTriggerDecider
-	smartReplyGraph  *service.SmartReplyGraph
-	convReplyWorker  *service.ReplyOrchestrator // 群助手回复的并发控制（限并发+会话串行）
+	aiService          *ai.AIService
+	intentDetector     *ai.IntentDetector
+	knowledgeSvc       *KnowledgeService
+	unifiedKnowledge   *service.UnifiedKnowledgeService
+	memorySvc          *service.AvatarMemoryService
+	groupMemorySvc     *service.GroupMemoryService
+	promptBuilder      *SmartPromptBuilder
+	messageSender      *WebSocketMessageSender
+	avatarWorkerPool   *service.AvatarWorkerPool
+	avatarTriggerSvc   AvatarTriggerDecider
+	smartReplyGraph    *service.SmartReplyGraph
+	qualityGateEnabled bool
+	convReplyWorker    *service.ReplyOrchestrator // 群助手回复的并发控制（限并发+会话串行）
 }
 
 // AvatarTriggerDecider decides whether a configured avatar should reply.
@@ -61,6 +62,7 @@ func NewSmartReplyEngine(aiService *ai.AIService, detector *ai.IntentDetector) *
 			Workers:   8,
 			Serialize: true, // 群助手：按会话串行
 		}),
+		qualityGateEnabled: true,
 	}
 }
 
@@ -118,6 +120,11 @@ func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 	// 注入 AI 阈值服务：群 @AI 的知识来源分数门槛从 system_configs 读取，
 	// 后台修改即生效；容器中未初始化（nil）时 graph 内部回退默认 0.6。
 	e.smartReplyGraph.SetThresholdService(di.GlobalContainer.AiThresholdService)
+	if di.GlobalContainer.AiThresholdService != nil {
+		enabled := di.GlobalContainer.AiThresholdService.GetFloat("ai.reply_quality_gate", 1) >= 0.5
+		e.smartReplyGraph.SetQualityGateEnabled(enabled)
+		e.qualityGateEnabled = enabled
+	}
 
 	// 注入被引用文件正文读取器，使 @AI 引用文件消息时可把文件内容喂给 AI（nil 时安全降级）。
 	if gds := di.GlobalContainer.GroupDocumentService; gds != nil {
@@ -228,7 +235,14 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 		// 触发范围：auto/smart/keyword 等启用模式；off / mention_only 维持现状不回复。
 		// video/audio 仅跳过（无法解析进上下文），同样不落入意图检测。
 		if e.smartReplyGraph != nil && isDirectMediaType(msg.Type) {
-			if decideDirectMediaReply(aiConfig, content, antiSpamBlocked) && (msg.Type == "image" || msg.Type == "file") {
+			mediaReply := decideDirectMediaReply(aiConfig, content, antiSpamBlocked)
+			if !mediaReply {
+				e.messageSender.NotifyReplyDecision(conversationID, SmartReplyDecision{
+					Action: SmartReplyAskUser, ReasonCode: "media_not_eligible",
+					Reason: "当前群助手模式、关键词或防刷屏策略未允许自动处理该媒体消息", Confidence: 1,
+				})
+			}
+			if mediaReply && (msg.Type == "image" || msg.Type == "file") {
 				question := "请识别用户发送的这张图片，并结合上下文回复。"
 				if msg.Type == "file" {
 					question = "请阅读用户发送的这份文件的内容，并结合上下文回复。"
@@ -236,20 +250,34 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 				e.submitConvReply(conversationID, func() {
 					e.handleAIMention(userID, conversationID, question, content, &conv, assistantName, msg)
 				})
+			} else if mediaReply {
+				e.messageSender.NotifyReplyDecision(conversationID, SmartReplyDecision{
+					Action: SmartReplyAskUser, ReasonCode: "media_unsupported",
+					Reason: "当前仅支持自动读取图片和文件，视频/语音暂不自动回复", Confidence: 1,
+				})
 			}
 			return
 		}
 
-		switch DecideGroupAIReply(*aiConfig, content, assistantName, antiSpamBlocked) {
-		case GroupAIMentionReply:
+		groupDecision := DecideGroupAIReplyDetailed(*aiConfig, content, assistantName, antiSpamBlocked)
+		// 自动门控普通群消息只记日志；明确 @AI 后被策略拦截，才向群内广播解释。
+		if groupDecision.Action != SmartReplyReply && groupAIMentionsAI(content, assistantName) {
+			e.messageSender.NotifyReplyDecision(conversationID, groupDecision)
+		}
+		if groupDecision.Action != SmartReplyReply {
+			log.Printf("[SmartReplyDecision] convID=%d action=%s reason=%s", conversationID, groupDecision.Action, groupDecision.ReasonCode)
+		}
+		switch groupDecision.ReasonCode {
+		case "explicit_mention":
+			service.GlobalAIReplyMetrics.RecordManualMention()
 			question := extractAIQuestion(content, assistantName)
 			e.submitConvReply(conversationID, func() {
 				e.handleAIMention(userID, conversationID, question, content, &conv, assistantName, msg)
 			})
 			return
-		case GroupAISkipReply:
+		case "disabled", "anti_spam", "keyword_miss", "reply_mode":
 			return
-		case GroupAIAutoReply:
+		case "auto_trigger":
 			// 落到下方意图检测自动回复
 		}
 	}
@@ -266,6 +294,18 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 
 	if !shouldReply {
 		log.Printf("[SmartReply] 意图类型 %s (confidence=%.2f) 不触发 AI 回复", intent.Type, intent.Confidence)
+		// 只有 AI 明确判断这是发给 AI 的请求、但置信度/策略仍不足时才广播原因；
+		// 普通陈述和 human_group 闲聊只记日志，避免群内每条消息都弹提示。
+		if intent.ShouldReply != nil && *intent.ShouldReply {
+			reason := intent.Reason
+			if reason == "" {
+				reason = fmt.Sprintf("这是可能需要 AI 处理的请求，但置信度不足（意图=%s，置信度=%.2f）", intent.Type, intent.Confidence)
+			}
+			e.messageSender.NotifyReplyDecision(conversationID, SmartReplyDecision{
+				Action: SmartReplyAskUser, ReasonCode: "intent_low_confidence",
+				Reason: reason, Confidence: intent.Confidence,
+			})
+		}
 	}
 
 	if shouldReply {
@@ -335,6 +375,7 @@ func (e *SmartReplyEngine) generateAndSendReply(userID uint, conversationID uint
 }
 
 func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversationID uint, userContent string, intent *ai.MessageIntent) {
+	service.GlobalAIReplyMetrics.RecordAutoAttempt()
 	ctx := context.Background()
 	input := &service.SmartReplyContext{
 		Message:         userContent,
@@ -358,6 +399,34 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 		log.Printf("[SmartReplyGraph] AI 回复内容为空，跳过发送: convID=%d", conversationID)
 		return
 	}
+	if e.qualityGateEnabled {
+		evidence := strings.Join([]string{input.KnowledgeCtx, input.MemoryCtx, input.ChatHistory}, "\n\n")
+		verdict, verr := e.aiService.ValidateReply(userContent, evidence, result.Reply)
+		if verr != nil {
+			service.GlobalAIReplyMetrics.RecordQualityCheckFailed()
+			log.Printf("[SmartReplyQuality] 核验失败，拒绝自动发送: %v", verr)
+			e.messageSender.NotifyReplyDecision(conversationID, SmartReplyDecision{
+				Action: SmartReplyAskUser, ReasonCode: "quality_check_unavailable",
+				Reason: "回复质量核验暂时不可用，未自动发送，请由你决定是否重试", Confidence: 0,
+				Actions: []string{"mention_ai", "adjust_settings"},
+			})
+			return
+		}
+		if !verdict.ShouldSend() {
+			service.GlobalAIReplyMetrics.RecordQualityRejected()
+			reason := verdict.Reason
+			if reason == "" {
+				reason = "回复未通过相关性或事实依据核验"
+			}
+			log.Printf("[SmartReplyQuality] 拒绝发送: relevant=%v supported=%v hallucinate=%v reason=%s", verdict.Relevant, verdict.Supported, verdict.Hallucinate, reason)
+			e.messageSender.NotifyReplyDecision(conversationID, SmartReplyDecision{
+				Action: SmartReplyAskUser, ReasonCode: "quality_rejected",
+				Reason: reason, Confidence: verdict.Confidence,
+				Actions: []string{"mention_ai", "adjust_settings", "ignore"},
+			})
+			return
+		}
+	}
 
 	// 命中的知识来源（标题/相关度）随回复写入 Extra，刷新/回放后「知识来源」徽章仍可见。
 	// 已由注入前 reranker 过滤误召回，徽章展示通过的真实来源。
@@ -366,8 +435,54 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
 		return
 	}
+	service.GlobalAIReplyMetrics.RecordAutoReply()
 
 	log.Printf("[SmartReplyGraph] 已发送智能回复到会话 %d", conversationID)
+}
+
+// validateReplyBeforeSend 统一处理群助手所有非工具流式回复的发送前质量门。
+// 失败时不发送正文，由调用方把原因反馈给用户，避免“先发出去再发现幻觉”。
+func (e *SmartReplyEngine) validateReplyBeforeSend(input *service.SmartReplyContext, reply string) bool {
+	if !e.qualityGateEnabled || strings.TrimSpace(reply) == "" {
+		return true
+	}
+	quoted := ""
+	if input.Quoted != nil {
+		quoted = input.Quoted.Text
+	}
+	evidence := strings.Join([]string{
+		input.KnowledgeCtx,
+		input.MemoryCtx,
+		input.ChatHistory,
+		quoted,
+		input.PendingTasks,
+	}, "\n\n")
+	verdict, err := e.aiService.ValidateReply(input.Message, evidence, reply)
+	if err != nil {
+		service.GlobalAIReplyMetrics.RecordQualityCheckFailed()
+		log.Printf("[SmartReplyQuality] @AI 核验不可用，拒绝发送: %v", err)
+		e.messageSender.NotifyReplyDecision(input.ConversationID, SmartReplyDecision{
+			Action: SmartReplyAskUser, ReasonCode: "quality_check_unavailable",
+			Reason:  "回复质量核验暂时不可用，未自动发送，请由你决定是否重试",
+			Actions: []string{"mention_ai", "adjust_settings"},
+		})
+		return false
+	}
+	if verdict.ShouldSend() {
+		return true
+	}
+	service.GlobalAIReplyMetrics.RecordQualityRejected()
+	reason := verdict.Reason
+	if reason == "" {
+		reason = "回复未通过相关性或事实依据核验"
+	}
+	log.Printf("[SmartReplyQuality] @AI 拒绝发送: reason=%s", reason)
+	e.messageSender.NotifyReplyDecision(input.ConversationID, SmartReplyDecision{
+		Action: SmartReplyAskUser, ReasonCode: "quality_rejected",
+		Reason: reason, Confidence: verdict.Confidence,
+		Actions: []string{"mention_ai", "adjust_settings", "ignore"},
+	})
+	return false
 }
 
 func (e *SmartReplyEngine) generateAndSendReplyLegacy(userID uint, conversationID uint, userContent string, intent *ai.MessageIntent) {
@@ -491,6 +606,44 @@ const (
 	GroupAIAutoReply                              // 走意图检测自动回复
 )
 
+// SmartReplyAction 是群助手触发决策的可解释结果。
+// ask_user 表示系统选择不自动发送，但把原因交给调用方/用户决定如何处理。
+type SmartReplyAction string
+
+const (
+	SmartReplyReply   SmartReplyAction = "reply"
+	SmartReplyAskUser SmartReplyAction = "ask_user"
+)
+
+type SmartReplyDecision struct {
+	Action     SmartReplyAction `json:"action"`
+	ReasonCode string           `json:"reason_code"`
+	Reason     string           `json:"reason"`
+	Confidence float32          `json:"confidence"`
+	Actions    []string         `json:"actions,omitempty"`
+}
+
+// DecideGroupAIReplyDetailed 是群助手触发的唯一可解释决策入口。
+// 不自动回复时仍返回 ask_user 和原因，禁止调用方把跳过静默吞掉。
+func DecideGroupAIReplyDetailed(cfg model.GroupAIConfig, content, assistantName string, antiSpamBlocked bool) SmartReplyDecision {
+	if !cfg.Enabled {
+		return SmartReplyDecision{Action: SmartReplyAskUser, ReasonCode: "disabled", Reason: "群助手未启用", Confidence: 1}
+	}
+	if antiSpamBlocked {
+		return SmartReplyDecision{Action: SmartReplyAskUser, ReasonCode: "anti_spam", Reason: "命中防刷屏间隔，暂不自动回复", Confidence: 1}
+	}
+	if groupAIMentionsAI(content, assistantName) {
+		return SmartReplyDecision{Action: SmartReplyReply, ReasonCode: "explicit_mention", Reason: "用户明确提及群助手", Confidence: 1}
+	}
+	if cfg.ReplyMode != "mention_only" && cfg.TriggerKeywords != "" && !groupAIKeywordMatches(content, cfg.TriggerKeywords) {
+		return SmartReplyDecision{Action: SmartReplyAskUser, ReasonCode: "keyword_miss", Reason: "消息未命中群助手触发关键词", Confidence: 1}
+	}
+	if cfg.ReplyMode == "off" || cfg.ReplyMode == "mention_only" {
+		return SmartReplyDecision{Action: SmartReplyAskUser, ReasonCode: "reply_mode", Reason: "当前群助手回复模式不支持自动回复", Confidence: 1}
+	}
+	return SmartReplyDecision{Action: SmartReplyReply, ReasonCode: "auto_trigger", Reason: "消息符合自动回复条件", Confidence: 0.8}
+}
+
 // DecideGroupAIReply 是群聊 AI 触发的纯决策入口。
 //
 // 决策顺序：启用 → 反刷屏 → @AI 提及 → 关键词门控 → 模式判定。
@@ -498,23 +651,12 @@ const (
 // 自动回复路径生效。反刷屏优先级最高——即使 @AI 提及，命中反刷屏窗口也跳过。
 // 以上行为均由表测试钉死（见 smart_reply_group_ai_test.go），调整请同步更新。
 func DecideGroupAIReply(cfg model.GroupAIConfig, content, assistantName string, antiSpamBlocked bool) GroupAIReplyAction {
-	if !cfg.Enabled {
+	decision := DecideGroupAIReplyDetailed(cfg, content, assistantName, antiSpamBlocked)
+	if decision.Action != SmartReplyReply {
 		return GroupAISkipReply
 	}
-	if antiSpamBlocked {
-		return GroupAISkipReply
-	}
-	if groupAIMentionsAI(content, assistantName) {
+	if decision.ReasonCode == "explicit_mention" {
 		return GroupAIMentionReply
-	}
-	// 关键词门控仅在非 mention_only 模式下、且对自动回复路径生效
-	if cfg.ReplyMode != "mention_only" && cfg.TriggerKeywords != "" {
-		if !groupAIKeywordMatches(content, cfg.TriggerKeywords) {
-			return GroupAISkipReply
-		}
-	}
-	if cfg.ReplyMode == "off" || cfg.ReplyMode == "mention_only" {
-		return GroupAISkipReply
 	}
 	return GroupAIAutoReply
 }
@@ -775,9 +917,7 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 	var toolCalls []ToolCallRecord
 	feedback := newToolCallFeedback(e.messageSender, conversationID, getMsg, &toolCalls, e.smartReplyGraph.MCPToolTitles(), e.smartReplyGraph.MCPToolDescriptions())
 
-	// 先尝试真·流式路径：execStream 内 final 答案逐 token 经 onChunk → sendChunk 送出，
-	// 工具事件经 feedback 实时推卡片。streamed=true 表示已走流式逐 token。
-	// sentBody 累积实际送出的正文（不含 mention 前缀），供收尾判定"是否有真实正文"。
+	// 先尝试真·流式路径：正文先缓冲，质量门通过后才送出，避免流式输出无法撤回。
 	if execStream != nil {
 		var sentBody strings.Builder
 		streamed, serr := execStream(ctx, input, feedback, func(chunk ai.StreamChunk) error {
@@ -785,13 +925,8 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 			if c == "" {
 				return nil
 			}
-			// mention 前缀只拼在首个真实正文块上（模型无正文则永不拼接，消息不创建）。
-			if mentionPending {
-				c = mentionPrefix + c
-				mentionPending = false
-			}
 			sentBody.WriteString(c)
-			return sendChunk(c)
+			return nil
 		})
 		if serr != nil && !errors.Is(serr, ai.ErrStreamingToolsNotSupported) {
 			log.Printf("[SmartReplyGraph] @AI %s工具流式回复失败: %v", kind, serr)
@@ -814,6 +949,23 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 		if streamed {
 			hasBody := strings.TrimSpace(mention.StripTokens(sentBody.String())) != ""
 			if hasBody {
+				if !e.validateReplyBeforeSend(input, sentBody.String()) {
+					finish()
+					return
+				}
+				for _, chunk := range splitReplyChunks(sentBody.String()) {
+					if chunk == "" {
+						continue
+					}
+					if mentionPending {
+						chunk = mentionPrefix + chunk
+						mentionPending = false
+					}
+					if sendErr := sendChunk(chunk); sendErr != nil {
+						log.Printf("[SmartReplyGraph] 发送核验通过的流式回复失败: %v", sendErr)
+						break
+					}
+				}
 				// 有正文：工具调用记录 + 命中的知识来源合并持久化，回放/刷新后卡片与徽章仍可见。
 				e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
 			} else {
@@ -850,6 +1002,10 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 	hasReply := strings.TrimSpace(reply) != ""
 
 	if hasReply {
+		if !e.validateReplyBeforeSend(input, reply) {
+			finish()
+			return
+		}
 		// 按句子切子块流式送出最终答案，保留打字感；空块跳过。@前缀拼在首个分块上。
 		// err 非空但已有部分内容时也照常发送（部分结果不丢弃）。
 		for _, chunk := range splitReplyChunks(reply) {
