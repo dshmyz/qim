@@ -63,6 +63,92 @@ func TestNewGroupMemoryService_NilVectorSvc(t *testing.T) {
 	assert.Nil(t, s.db, "vectorSvc=nil 时 db 应为 nil（no-op 模式）")
 }
 
+// TestGroupMemoryService_Consolidate_DuplicateRefreshesNotAppends 验证群记忆近义复述（R1 duplicate）：
+// 同一决定被再次确认/换个说法时，不新增重复群记忆，仅刷新旧记忆重要度，防近义重复占位。
+func TestGroupMemoryService_Consolidate_DuplicateRefreshesNotAppends(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+
+	svc := &GroupMemoryService{db: db, aiService: nil}
+	svc.SetMergeCheck(func(_, _ string) (MemoryMergeKind, error) { return MemoryMergeDuplicate, nil })
+
+	oldID := "groupmem_5_1"
+	if _, err := db.SaveMemory(types.MemorySaveRequest{
+		MemoryID: oldID, UserID: "5", Scope: "user", Namespace: groupMemoryNamespace,
+		Content: "项目截止日期是3月15日", Importance: 0.4,
+		Metadata: map[string]interface{}{"importance": "5.0"},
+	}); err != nil {
+		t.Fatalf("预置群记忆失败: %v", err)
+	}
+
+	ref := MemoryReflection{Summary: "项目截止日期是3月15日（已在群里再次确认）", Importance: 2}
+	memories := []SearchResult{
+		{Content: "项目截止日期是3月15日", Score: 0.85, DocID: oldID, Metadata: map[string]string{"importance": "5.0"}},
+	}
+
+	// 传入发言归属（senderID/senderName）验证 P2：落库应记录"谁说的"。
+	// 注意：换一个 sender 且近义复述——R1 判定为 dup，应保留首提者（不改变原 metadata）。
+	ok, err := svc.saveConsolidatedGroupMemory(5, 1, 999, "小王", ref, memories)
+	if err != nil {
+		t.Fatalf("saveConsolidatedGroupMemory 失败: %v", err)
+	}
+	if !ok {
+		t.Fatal("近义复述应返回 ok=true（刷新了旧群记忆）")
+	}
+
+	if count := countMemories(db, "5", groupMemoryNamespace); count != 1 {
+		t.Fatalf("近义复述应合并而非新增，期望 1 条，got %d", count)
+	}
+	rec, err := loadMemoryRecord(db, "5", groupMemoryNamespace, oldID)
+	if err != nil {
+		t.Fatalf("读取群记忆失败: %v", err)
+	}
+	if !strings.Contains(rec.Content, "3月15日") {
+		t.Fatalf("近义复述不应改动旧内容，got %q", rec.Content)
+	}
+	if rec.Importance != 1.0 {
+		t.Fatalf("群记忆重要度应刷新为 max(2,5)=5→1.0，got %v", rec.Importance)
+	}
+}
+
+// TestGroupMemoryService_Consolidate_StoresSender 验证 P2：新增群记忆时落库 sender_id/sender_name。
+func TestGroupMemoryService_Consolidate_StoresSender(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+
+	svc := &GroupMemoryService{db: db, aiService: nil}
+	ref := MemoryReflection{Summary: "团队决定下周一起用新部署流程", Importance: 4}
+
+	ok, err := svc.saveConsolidatedGroupMemory(5, 1, 42, "李四", ref, nil)
+	if err != nil {
+		t.Fatalf("saveConsolidatedGroupMemory 失败: %v", err)
+	}
+	if !ok {
+		t.Fatal("新记忆应成功落库")
+	}
+
+	recs, err := db.SearchMemory(types.MemorySearchRequest{UserID: "5", Scope: "user", Namespace: groupMemoryNamespace, TopK: 10})
+	if err != nil {
+		t.Fatalf("查询群记忆失败: %v", err)
+	}
+	if got := len(recs.Results); got != 1 {
+		t.Fatalf("期望写入 1 条，got %d", got)
+	}
+	md := recs.Results[0].Memory.Metadata
+	if md["sender_id"] != "42" {
+		t.Fatalf("sender_id 期望 42，got %v", md["sender_id"])
+	}
+	if md["sender_name"] != "李四" {
+		t.Fatalf("sender_name 期望 李四，got %v", md["sender_name"])
+	}
+}
+
 // TestGroupMemory_UpdateMemory_CorrectsAndCrossGroupDenied 验证群记忆显式纠正接口：
 // 本群可纠正记忆内容；其他群不能纠正（防跨群越权）。
 func TestGroupMemory_UpdateMemory_CorrectsAndCrossGroupDenied(t *testing.T) {

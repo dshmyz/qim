@@ -15,9 +15,9 @@ import (
 type AvatarMemoryService struct {
 	db        *gracedb.DB
 	aiService *ai.AIService
-	// conflictCheck 判断新旧两条记忆是否"同一主题但结论矛盾"：矛盾则更新旧的
-	// （保留 memoryID），否则新增。nil 时用 LLM 默认实现。可注入以便测试不真调 LLM。
-	conflictCheck func(newMemo, oldMemo string) (bool, error)
+	// mergeCheck 判断新记忆相对最相关旧记忆的合并关系（冲突→更新、复述→合并、不同→新增）。
+	// nil 时用共享 LLM 默认实现（等同 R1 统一判定）。可注入以便测试不真调 LLM。
+	mergeCheck func(newMemo, oldMemo string) (MemoryMergeKind, error)
 	// thresholdSvc 阈值读取服务；nil 时用默认 0.3（与 config 默认一致）。
 	thresholdSvc *AiThresholdService
 }
@@ -29,9 +29,9 @@ func NewAvatarMemoryService(vectorSvc *VectorService, aiService *ai.AIService) *
 	}
 }
 
-// SetConflictCheck 注入语义冲突判定器（默认 LLM 实现，测试可用假判定）。
-func (s *AvatarMemoryService) SetConflictCheck(f func(newMemo, oldMemo string) (bool, error)) {
-	s.conflictCheck = f
+// SetMergeCheck 注入合并关系判定器（默认 LLM 实现，测试可用假判定）。
+func (s *AvatarMemoryService) SetMergeCheck(f func(newMemo, oldMemo string) (MemoryMergeKind, error)) {
+	s.mergeCheck = f
 }
 
 // SetThresholdService 注入阈值读取服务；nil 时冲突检测用默认 0.3。
@@ -39,7 +39,7 @@ func (s *AvatarMemoryService) SetThresholdService(t *AiThresholdService) {
 	s.thresholdSvc = t
 }
 
-// conflictThreshold 返回冲突检测分数门槛：未注入阈值服务时回退默认 0.3。
+// conflictThreshold 返回合并/冲突检测分数门槛：未注入阈值服务时回退默认 0.3。
 func (s *AvatarMemoryService) conflictThreshold() float64 {
 	if s.thresholdSvc != nil {
 		return s.thresholdSvc.GetFloat("ai.conflict_detection_threshold", 0.3)
@@ -47,15 +47,17 @@ func (s *AvatarMemoryService) conflictThreshold() float64 {
 	return 0.3
 }
 
-// memoryConflicts LLM 判定新旧记忆是否冲突；判定器未注入时用默认 LLM 实现。
-func (s *AvatarMemoryService) memoryConflicts(newMemo, oldMemo string) (bool, error) {
-	if s.conflictCheck != nil {
-		return s.conflictCheck(newMemo, oldMemo)
+// memoryMerge 判定新记忆相对最相关旧记忆的合并关系；判定器未注入时用共享 LLM 默认实现。
+func (s *AvatarMemoryService) memoryMerge(newMemo, oldMemo string) (MemoryMergeKind, error) {
+	if s.mergeCheck != nil {
+		return s.mergeCheck(newMemo, oldMemo)
 	}
-	return checkMemoryConflictWithAI(s.aiService, newMemo, oldMemo)
+	return inferMemoryMergeKind(s.aiService, newMemo, oldMemo)
 }
 
 func (s *AvatarMemoryService) Remember(userID uint, conversationID uint, content string, importance float64) error {
+	avatarWriteMutex.Lock(fmt.Sprintf("%d", userID))
+	defer avatarWriteMutex.Unlock(fmt.Sprintf("%d", userID))
 	memoryID := fmt.Sprintf("memory_%d_%d", userID, time.Now().UnixMilli())
 
 	_, err := s.db.SaveMemory(types.MemorySaveRequest{
@@ -119,24 +121,47 @@ func (s *AvatarMemoryService) ConsolidateMessage(userID, conversationID uint, co
 // 更新旧记忆内容（保留 memoryID），否则新增一条。返回是否真的落库。
 // 提取为独立方法便于测试（不依赖整条 LLM 反射流程）。
 func (s *AvatarMemoryService) saveConsolidatedMemory(userID, conversationID uint, namespace string, ref MemoryReflection, memories []SearchResult) (bool, error) {
+	// 并发串行化：同一用户的写路径互斥，防止多条近义/冲突记忆并发对同一目标竞态。
+	avatarWriteMutex.Lock(fmt.Sprintf("%d", userID))
+	defer avatarWriteMutex.Unlock(fmt.Sprintf("%d", userID))
 	uid := fmt.Sprintf("%d", userID)
 	cid := fmt.Sprintf("%d", conversationID)
 
-	// 语义冲突检测：新记忆与最相似的旧记忆冲突时，更新旧的而非新增。
+	// 合并关系判定（R1）：命中足够相似的旧记忆时，按其关系决定更新/合并/新增。
 	if len(memories) > 0 && memories[0].Score >= s.conflictThreshold() {
-		conflict, cerr := s.memoryConflicts(ref.Summary, memories[0].Content)
-		if cerr == nil && conflict {
+		kind, kerr := s.memoryMerge(ref.Summary, memories[0].Content)
+		switch {
+		case kerr != nil:
+			// 判定失败：退化为新增（不更新、不误并，安全方向），由下方插入路径处理
+		case kind == MemoryMergeConflict:
+			// 冲突合并只修正内容与重要度；scope（召回边界）与 conversation_id 沿用旧记录，
+			// 避免一次在别的对话提及就让"专属约定"漂移为新对话的 global 记忆。
 			content := ref.Summary
 			_, uerr := s.db.UpdateMemory(types.MemoryUpdateRequest{
 				MemoryID:   memories[0].DocID,
 				Content:    &content,
-				Importance: func() *float64 { v := importance01(ref.Importance); return &v }(),
+				Importance: func() *float64 { v := importance01(mergedImportance(memories[0].Metadata, ref.Importance)); return &v }(),
 			})
 			if uerr != nil {
 				return false, uerr
 			}
 			logger.WithModule("AvatarMemory").Info("记忆冲突，更新旧记忆",
 				"userID", userID, "memoryID", memories[0].DocID, "new", ref.Summary)
+			return true, nil
+		case kind == MemoryMergeDuplicate:
+			// 近义复述/确认：不新增，仅把旧记忆重要度刷新为较高档位，防止重复记忆占位。
+			_, uerr := s.db.UpdateMemory(types.MemoryUpdateRequest{
+				MemoryID: memories[0].DocID,
+				Importance: func() *float64 {
+					v := importance01(mergedImportance(memories[0].Metadata, ref.Importance))
+					return &v
+				}(),
+			})
+			if uerr != nil {
+				return false, uerr
+			}
+			logger.WithModule("AvatarMemory").Info("记忆近义复述，合并刷新重要度",
+				"userID", userID, "memoryID", memories[0].DocID)
 			return true, nil
 		}
 	}
@@ -156,6 +181,9 @@ func (s *AvatarMemoryService) saveConsolidatedMemory(userID, conversationID uint
 			"knowledge_memory_summary":  "true", // 标记为反射摘要记忆
 			"knowledge_memory_themes":   ref.Themes,
 			"knowledge_memory_entities": ref.Entities,
+			// 可迁移范围：global（跨对话召回）/ conversation（仅记录时所在对话召回）。
+			// 分身回复按对话召回时据此过滤，避免把 A-B 对话的专属互动带进其他对话。
+			"knowledge_memory_scope": ref.Scope,
 		},
 	})
 	if err != nil {
@@ -166,13 +194,34 @@ func (s *AvatarMemoryService) saveConsolidatedMemory(userID, conversationID uint
 	return true, nil
 }
 
+// Recall 全局召回该用户的分身记忆（不分对话）。用于写入去重、记忆合并、手动检索等场景。
 func (s *AvatarMemoryService) Recall(userID uint, query string, topK int) ([]SearchResult, error) {
+	return s.recall(userID, query, topK, 0, false)
+}
+
+// RecallForConversation 在指定对话内召回分身记忆，供分身回复使用：
+// global 级记忆（事实/偏好/决定/FAQ）任意对话可召回；conversation 级记忆（针对特定对象的
+// 回应/私约/承诺）仅在其记录时所在对话（metadata.conversation_id 匹配）可召回——
+// 避免 A-B 对话里记下的专属互动被带进 C-B 对话，造成答非所问或泄露语境。
+func (s *AvatarMemoryService) RecallForConversation(userID, conversationID uint, query string, topK int) ([]SearchResult, error) {
+	return s.recall(userID, query, topK, conversationID, true)
+}
+
+// recall 公共召回实现。filterByConversation=true 时对 conversation 级记忆按 conversationID 过滤；
+// 请求时多召回一倍，避免过滤后不足 TopK。
+func (s *AvatarMemoryService) recall(userID uint, query string, topK int, conversationID uint, filterByConversation bool) ([]SearchResult, error) {
+	queryTopK := topK
+	if filterByConversation {
+		// TODO(记忆): TopK 加倍是经验值。当 conversation 级记忆占比高时，过滤后仍可能不足
+		// TopK，导致回复注入变少。可考虑过滤后不足时用候选补齐或调高倍数。
+		queryTopK = topK * 2
+	}
 	resp, err := s.db.SearchMemory(types.MemorySearchRequest{
 		Query:     query,
 		UserID:    fmt.Sprintf("%d", userID),
 		Scope:     "user",
 		Namespace: "avatar",
-		TopK:      topK,
+		TopK:      queryTopK,
 		// 提升重要度与新颖度的排序权重：反射落库的重要记忆（Importance 1-5 → [0,1]）与
 		// 较新的记忆在召回时更靠前，避免被默认权重（importance 0.10 / recency 0.05）稀释。
 		SemanticWeight:   0.55,
@@ -184,13 +233,24 @@ func (s *AvatarMemoryService) Recall(userID uint, query string, topK int) ([]Sea
 		return nil, fmt.Errorf("检索记忆失败: %w", err)
 	}
 
+	currentConv := fmt.Sprintf("%d", conversationID)
 	var results []SearchResult
 	for _, hit := range resp.Results {
 		metadataStr := make(map[string]string)
 		for k, v := range hit.Memory.Metadata {
+			// 仅取字符串值用于过滤判断：scope 与 conversation_id 当前均以字符串落库，一致。
+			// TODO(记忆): 若未来有其他路径以非字符串存 conversation_id，这里会判非当前对话而
+			// 剔除（安全方向），但需确认预期的数字类型处理。
 			if s, ok := v.(string); ok {
 				metadataStr[k] = s
 			}
+		}
+		// 对话级记忆过滤：scope=conversation 且记录对话与当前对话不一致时剔除。
+		// scope 缺失/为空视为 global（保守不丢知识）；conversation 级但缺 conversation_id
+		// 无法匹配，一并剔除（安全）。
+		if filterByConversation && metadataStr["knowledge_memory_scope"] == "conversation" &&
+			metadataStr["conversation_id"] != currentConv {
+			continue
 		}
 		results = append(results, SearchResult{
 			Content:  hit.Memory.Content,
@@ -213,8 +273,8 @@ func (s *AvatarMemoryService) ShouldRemember(message string) (bool, error) {
 // ShouldRememberWithImportance 判断内容是否值得记，并给出重要度档位（1-5）。
 func (s *AvatarMemoryService) ShouldRememberWithImportance(message string) (RememberVerdict, error) {
 	const prompt = `判断以下对话内容是否包含值得记忆的长期信息。
-值得记忆的信息包括：个人偏好、重要决定、项目关键信息、约定事项。
-普通闲聊、简短回复不需要记忆。`
+值得记忆：个人偏好、重要决定、项目关键信息、约定事项、答疑形成的可复用知识（步骤、配置、口径、规范）。
+` + rememberVerdictNegativeClause
 	return evaluateRemember(s.aiService, prompt, message)
 }
 

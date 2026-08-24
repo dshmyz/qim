@@ -81,6 +81,11 @@ func memoryResultsToSources(results []SearchResult, threshold float64) []Knowled
 		if r.Score < threshold {
 			continue // 硬下限：拦住纯噪音记忆；真实低分命中（> threshold）保留
 		}
+		// R2：低重要度（≤2）的群记忆不展示为「知识来源」徽章，避免被当强依据；
+		// importance 缺失/不可解析时按"可展示"处理（不压制未知）。
+		if imp, err := parseImportanceMeta(r.Metadata["importance"]); err == nil && imp <= 2 {
+			continue
+		}
 		title := r.Metadata["title"]
 		if title == "" {
 			// 群记忆没有 title 字段，用 content 前 20 个字符作为展示标题

@@ -24,9 +24,9 @@ var ErrMemoryNotFound = errors.New("memory not found")
 type GroupMemoryService struct {
 	db        *gracedb.DB
 	aiService *ai.AIService
-	// conflictCheck 判断新旧两条群记忆是否"同一主题但结论矛盾"：矛盾则更新旧的，
-	// 否则新增。nil 时用 LLM 默认实现。可注入以便测试不真调 LLM。
-	conflictCheck func(newMemo, oldMemo string) (bool, error)
+	// mergeCheck 判断新记忆相对最相关旧记忆的合并关系（冲突→更新、复述→合并、不同→新增）。
+	// 与分身共用同一套共享判定（R1）。nil 时用共享 LLM 默认实现。可注入以便测试不真调 LLM。
+	mergeCheck func(newMemo, oldMemo string) (MemoryMergeKind, error)
 	// thresholdSvc 阈值读取服务；nil 时用默认 0.3（与 config 默认一致）。
 	thresholdSvc *AiThresholdService
 }
@@ -38,9 +38,9 @@ func NewGroupMemoryService(vectorSvc *VectorService, aiService *ai.AIService) *G
 	return &GroupMemoryService{db: vectorSvc.GetDB(), aiService: aiService}
 }
 
-// SetConflictCheck 注入语义冲突判定器（默认 LLM 实现，测试可用假判定）。
-func (s *GroupMemoryService) SetConflictCheck(f func(newMemo, oldMemo string) (bool, error)) {
-	s.conflictCheck = f
+// SetMergeCheck 注入合并关系判定器（默认 LLM 实现，测试可用假判定）。
+func (s *GroupMemoryService) SetMergeCheck(f func(newMemo, oldMemo string) (MemoryMergeKind, error)) {
+	s.mergeCheck = f
 }
 
 // SetThresholdService 注入阈值读取服务；nil 时冲突检测用默认 0.3。
@@ -48,9 +48,9 @@ func (s *GroupMemoryService) SetThresholdService(t *AiThresholdService) {
 	s.thresholdSvc = t
 }
 
-// conflictThreshold 返回冲突检测分数门槛：未注入阈值服务时回退默认 0.3。
+// conflictThreshold 返回合并/冲突检测分数门槛：未注入阈值服务时回退默认 0.3。
 // 混合加权分（语义 0.55 + 重要度 0.20 + 时效 0.10 + 词面 0.15）中，真实相关记忆
-// 典型得分在 0.3-0.5 之间。0.3 门槛确保"大致相关但可能矛盾"的记忆对也能触发冲突检测。
+// 典型得分在 0.3-0.5 之间。0.3 门槛确保"大致相关但可能矛盾"的记忆对也能触发合并判定。
 func (s *GroupMemoryService) conflictThreshold() float64 {
 	if s.thresholdSvc != nil {
 		return s.thresholdSvc.GetFloat("ai.conflict_detection_threshold", 0.3)
@@ -58,12 +58,12 @@ func (s *GroupMemoryService) conflictThreshold() float64 {
 	return 0.3
 }
 
-// memoryConflicts LLM 判定新旧记忆是否冲突；判定器未注入时用默认 LLM 实现。
-func (s *GroupMemoryService) memoryConflicts(newMemo, oldMemo string) (bool, error) {
-	if s.conflictCheck != nil {
-		return s.conflictCheck(newMemo, oldMemo)
+// memoryMerge 判定新记忆相对最相关旧记忆的合并关系；判定器未注入时用共享 LLM 默认实现。
+func (s *GroupMemoryService) memoryMerge(newMemo, oldMemo string) (MemoryMergeKind, error) {
+	if s.mergeCheck != nil {
+		return s.mergeCheck(newMemo, oldMemo)
 	}
-	return checkMemoryConflictWithAI(s.aiService, newMemo, oldMemo)
+	return inferMemoryMergeKind(s.aiService, newMemo, oldMemo)
 }
 
 const groupMemoryNamespace = "group_assistant"
@@ -73,6 +73,8 @@ func (s *GroupMemoryService) Remember(groupID uint, conversationID uint, content
 	if s.db == nil {
 		return nil
 	}
+	groupWriteMutex.Lock(fmt.Sprintf("%d", groupID))
+	defer groupWriteMutex.Unlock(fmt.Sprintf("%d", groupID))
 	memoryID := fmt.Sprintf("groupmem_%d_%d", groupID, time.Now().UnixMilli())
 
 	_, err := s.db.SaveMemory(types.MemorySaveRequest{
@@ -98,7 +100,7 @@ func (s *GroupMemoryService) Remember(groupID uint, conversationID uint, content
 // 群记忆被后续召回。knowledge 由调用方用自建 searchHybrid 语义召回后传入（本服务不持
 // 有 groupDocSvc，避免循环依赖）。context 为最近几条对话消息（可选）。
 // 返回是否真的落库。
-func (s *GroupMemoryService) ConsolidateGroupMessage(groupID, conversationID uint, content string, knowledge []string, context []string, existingMemories ...SearchResult) (bool, error) {
+func (s *GroupMemoryService) ConsolidateGroupMessage(groupID, conversationID uint, senderID uint, senderName string, content string, knowledge []string, context []string, existingMemories ...SearchResult) (bool, error) {
 	if s.db == nil {
 		return false, nil
 	}
@@ -127,29 +129,49 @@ func (s *GroupMemoryService) ConsolidateGroupMessage(groupID, conversationID uin
 		return false, nil
 	}
 
-	return s.saveConsolidatedGroupMemory(groupID, conversationID, ref, memories)
+	return s.saveConsolidatedGroupMemory(groupID, conversationID, senderID, senderName, ref, memories)
 }
 
 // saveConsolidatedGroupMemory 落库群记忆：与最相似旧记忆（score≥冲突检测门槛）语义冲突时
 // 更新旧记忆内容（保留 memoryID），否则新增一条。返回是否真的落库。
 // 提取为独立方法便于测试。
-func (s *GroupMemoryService) saveConsolidatedGroupMemory(groupID, conversationID uint, ref MemoryReflection, memories []SearchResult) (bool, error) {
-	// 语义冲突检测：新记忆与最相似的旧记忆冲突时更新旧的，避免"用MySQL→改用
-	// PostgreSQL"这类矛盾群记忆并存、群助手后续混淆。
+func (s *GroupMemoryService) saveConsolidatedGroupMemory(groupID, conversationID uint, senderID uint, senderName string, ref MemoryReflection, memories []SearchResult) (bool, error) {
+	// 并发串行化：同一群的写路径互斥，防止多条近义/冲突记忆并发对同一目标竞态。
+	groupWriteMutex.Lock(fmt.Sprintf("%d", groupID))
+	defer groupWriteMutex.Unlock(fmt.Sprintf("%d", groupID))
+	// 合并关系判定（R1）：新记忆与最相似的旧记忆按关系决定更新/合并/新增，避免
+	// "用MySQL→改用PostgreSQL"的矛盾并存，也避免"同一决定被多人反复确认"的近义重复占位。
 	if len(memories) > 0 && memories[0].Score >= s.conflictThreshold() {
-		conflict, cerr := s.memoryConflicts(ref.Summary, memories[0].Content)
-		if cerr == nil && conflict {
+		kind, kerr := s.memoryMerge(ref.Summary, memories[0].Content)
+		switch {
+		case kerr != nil:
+			// 判定失败：退化为新增（不更新、不误并，安全方向），由下方插入路径处理
+		case kind == MemoryMergeConflict:
 			content := ref.Summary
 			_, uerr := s.db.UpdateMemory(types.MemoryUpdateRequest{
 				MemoryID:   memories[0].DocID,
 				Content:    &content,
-				Importance: func() *float64 { v := importance01(ref.Importance); return &v }(),
+				Importance: func() *float64 { v := importance01(mergedImportance(memories[0].Metadata, ref.Importance)); return &v }(),
 			})
 			if uerr != nil {
 				return false, uerr
 			}
 			logger.WithModule("GroupMemoryService").Info("群记忆冲突，更新旧记忆",
 				"groupID", groupID, "memoryID", memories[0].DocID, "new", ref.Summary)
+			return true, nil
+		case kind == MemoryMergeDuplicate:
+			_, uerr := s.db.UpdateMemory(types.MemoryUpdateRequest{
+				MemoryID: memories[0].DocID,
+				Importance: func() *float64 {
+					v := importance01(mergedImportance(memories[0].Metadata, ref.Importance))
+					return &v
+				}(),
+			})
+			if uerr != nil {
+				return false, uerr
+			}
+			logger.WithModule("GroupMemoryService").Info("群记忆近义复述，合并刷新重要度",
+				"groupID", groupID, "memoryID", memories[0].DocID)
 			return true, nil
 		}
 	}
@@ -169,6 +191,10 @@ func (s *GroupMemoryService) saveConsolidatedGroupMemory(groupID, conversationID
 			"knowledge_memory_summary":  "true",
 			"knowledge_memory_themes":   ref.Themes,
 			"knowledge_memory_entities": ref.Entities,
+			// 发言人归属（群特有）：记录这条群记忆是谁说的/拍板的，供群助手回答
+			// "上次谁定的""谁接手了 X" 类追问。冲突/复述更新时保留首提者（不改 metadata）。
+			"sender_id":   fmt.Sprintf("%d", senderID),
+			"sender_name": senderName,
 		},
 	})
 	if err != nil {
@@ -177,6 +203,28 @@ func (s *GroupMemoryService) saveConsolidatedGroupMemory(groupID, conversationID
 	logger.WithModule("GroupMemoryService").Info("群记忆反射落库",
 		"groupID", groupID, "content", ref.Summary)
 	return true, nil
+}
+
+// GroupMemoryCtxText 把群记忆召回结果格式化为注入回复 prompt 的正文，并附带发言人（sender_name）。
+// 群助手 3 条注入链路（legacy systemPrompt / prepareInput / recallGroupMemory）共用，避免各拼一套、
+// 导致"谁说的/谁拍板"的信息只在落库而进不了回复。sender_name 为空时退化为纯内容行。
+func GroupMemoryCtxText(results []SearchResult) string {
+	parts := make([]string, 0, len(results))
+	for _, r := range results {
+		if r.Content == "" {
+			continue
+		}
+		name := r.Metadata["sender_name"]
+		if name != "" {
+			parts = append(parts, fmt.Sprintf("• [%s] %s", name, r.Content))
+		} else {
+			parts = append(parts, "• "+r.Content)
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "💡 群聊记忆：\n" + strings.Join(parts, "\n")
 }
 
 // Recall 按群检索与当前消息最相关的若干条群记忆。
@@ -232,8 +280,8 @@ func (s *GroupMemoryService) ShouldRemember(message string) (bool, error) {
 // ShouldRememberWithImportance 判断群消息是否值得记，并给出重要度档位（1-5）。
 func (s *GroupMemoryService) ShouldRememberWithImportance(message string) (RememberVerdict, error) {
 	const prompt = `判断以下群聊内容是否包含值得群助手长期记忆的信息。
-值得记忆的信息包括：群内决定、约定事项、项目关键信息、群偏好与共识。
-普通闲聊、简短回复、打招呼不需要记忆。`
+值得记忆：群内决定、约定事项、项目关键信息、群偏好与共识、答疑形成的可复用知识（步骤、配置、口径、规范）。
+` + rememberVerdictNegativeClause
 	return evaluateRemember(s.aiService, prompt, message)
 }
 

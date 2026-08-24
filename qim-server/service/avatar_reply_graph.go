@@ -698,27 +698,62 @@ func (g *AvatarReplyGraph) prepare(ctx context.Context, input *AvatarReplyContex
 	input.GroupKnowledge = groupKnowledge
 
 	memoryCtx := ""
+	// 记忆作注入上下文使用的召回/收敛系数：recall 内为补偿对话过滤会把 TopK 翻倍取回，
+	// 注入前再按分数收敛回此值，避免 global 记忆多时「相关记忆」超量注入（与笔记→3、群知识→2 对齐）。
+	const memoryInjectTopK = 3
 	// 记忆受 Memory 开关门控（nil 默认启用）：关闭时跳过召回，不注入不进徽章也不参与范围判定。
 	// 判定复用 model.AvatarKnowledgeScope.MemoryEnabled，与后台学习写入（maybeRememberSenderMessage）
 	// 共用同一语义——"关掉记忆 = 既不读也不学"。
 	if g.memorySvc != nil && input.KnowledgeScope.MemoryEnabled() {
-		// 记忆召回同样用上下文感知 query（TopK 3）：追问场景下历史话题能让记忆命中
-		memoryResults, err := g.memorySvc.Recall(input.UserID, retrievalQuery, 3)
+		// 记忆召回同样用上下文感知 query（TopK 3）：追问场景下历史话题能让记忆命中。
+		// 按对话召回：conversation 级记忆（针对特定对象的回应/私约/承诺）仅在本对话命中，
+		// 避免把 A-B 对话的专属互动带进 C-B 对话；global 级知识记忆（事实/偏好/决定）不受限。
+		memoryResults, err := g.memorySvc.RecallForConversation(input.UserID, input.ConversationID, retrievalQuery, memoryInjectTopK)
 		if err == nil && len(memoryResults) > 0 {
 			memoryHits = len(memoryResults)
 			// 记忆只按召回门槛（默认 0.5）过滤注入：低分噪音记忆不进 prompt，
 			// 避免"被记忆干扰"。过滤在注入前做，不进 Sources（依据徽章）也不参与范围判定。
-			var parts []string
+			var candidates []SearchResult
 			threshold := g.memoryRecallThreshold()
 			for _, r := range memoryResults {
 				if r.Score < threshold {
 					continue
 				}
-				parts = append(parts, r.Content)
-				input.Sources = append(input.Sources, KnowledgeSource{Source: "memory", Score: r.Score, ID: r.DocID, Snippet: r.Content})
+				candidates = append(candidates, r)
 			}
-			if len(parts) > 0 {
-				memoryCtx = "【相关记忆】\n" + strings.Join(parts, "\n\n")
+			if len(candidates) > 0 {
+				// 转统一 snippet 供 LLM 相关性二次判定（与笔记/群知识同款）：记忆是三类来源里
+				// 唯一无精排的路径，纯靠 embedding 分数可能让"高分但与当前意图无关"的记忆直接
+				// 进 prompt（违背"避免被记忆干扰"初衷）。只对已过 0.5 门槛的候选做人精排；
+				// LLM 拿不准/失败时保留，不误杀。开关 ai.knowledge_llm_rerank=0 或 mock 下可关停。
+				snippets := make([]KnowledgeSnippet, 0, len(candidates))
+				for _, r := range candidates {
+					snippets = append(snippets, KnowledgeSnippet{
+						Title:    r.Metadata["title"],
+						Content:  r.Content,
+						Score:    r.Score,
+						Source:   "memory",
+						DocID:    r.DocID,
+						Metadata: r.Metadata,
+					})
+				}
+				snippets = filterSnippetsByReranker(g.reranker, g.thresholdSvc, 0, retrievalQuery, snippets)
+				// 精排后按分数收敛回 memoryInjectTopK（floor 沿用 0.5 门槛）：即便 recall 内
+				// 翻倍取回、且该用户 global 记忆多，注入的「相关记忆」也封顶在 memoryInjectTopK 条。
+				picked := selectTopByScore(snippets, threshold, memoryInjectTopK)
+				var parts []string
+				for _, snip := range picked {
+					parts = append(parts, snip.Content)
+					// R2：低重要度（≤2）的记忆仍注入正文，但不进 Sources（依据徽章），
+					// 避免被当作"强依据"展示给用户。importance 为 1-5 档位字符串。
+					if imp, err := parseImportanceMeta(snip.Metadata["importance"]); err == nil && imp <= 2 {
+						continue
+					}
+					input.Sources = append(input.Sources, KnowledgeSource{Source: "memory", Score: snip.Score, ID: snip.DocID, Snippet: snip.Content})
+				}
+				if len(parts) > 0 {
+					memoryCtx = "【相关记忆】\n" + strings.Join(parts, "\n\n")
+				}
 			}
 		}
 	}

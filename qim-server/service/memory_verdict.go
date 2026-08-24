@@ -15,6 +15,9 @@ type RememberVerdict struct {
 	Importance     float64 `json:"importance"` // 1-5
 }
 
+// rememberVerdictNegativeClause 判定提示中通用的"不值得记忆"负面清单，供分身/群共用，避免两处改得不一致。
+const rememberVerdictNegativeClause = "不值得记忆：寒暄问候、确认/感谢短句、情绪化表达、日常流水（吃饭、天气、出行等琐碎日常）、针对某人的临时答复、闲聊式问答（未形成可复用知识）、一次性/过期即失效的信息（“今天”“这周”等相对时间）、即时操作指令（“把文件放到桌面”这类当下动作）、敏感凭据（密码、token、密钥、证件号、卡号）、吐槽与主观宣泄。"
+
 // evaluateRemember 用 LLM 判断内容是否值得记，并给出重要度（1-5）。
 //
 // 返回的 verdict.Importance 为用户可读的 1-5 档位；调用方落库时应换算成 [0,1]
@@ -31,7 +34,18 @@ func evaluateRemember(aiService *ai.AIService, taskPrompt string, message string
 
 请以 JSON 返回，形如 {"remember": true, "importance": 3}。
 - remember: 是否值得记忆
-- importance: 1(极不重要) 到 5(极重要) 的整数档位
+- importance: 1-5 的整数档位，参考锚点：
+  - 5: 影响长期目标/项目成败的关键决定
+  - 4: 明确约定、承诺、会议安排
+  - 3: 明确偏好/习惯/共识
+  - 2: 偶发、短效信息
+  - 1: 琐碎
+- 联动规则：若判定 importance ≤ 2（偶发或琐碎、记了没长期价值），通常也应 remember=false，不要记。
+
+示例：
+- 内容："项目 Alpha 上线定在下周一" → {"remember": true, "importance": 4}
+- 内容："和张三约好周五晚上一起吃饭" → {"remember": true, "importance": 4}
+- 内容："嗯嗯知道了" → {"remember": false, "importance": 1}
 
 内容：` + message
 

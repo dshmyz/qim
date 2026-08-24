@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dshmyz/qim/qim-server/ai"
@@ -163,4 +164,51 @@ func TestResolveToolLabel_TitlePriority(t *testing.T) {
 	assert.Equal(t, "创建一条阻断规则", resolveToolLabel("mcp_demo_create_rule", nil, descs))
 	// 都没有时 fallback 到内置映射
 	assert.Equal(t, "任务管理", resolveToolLabel("list_tasks", nil, nil))
+}
+
+// TestBuildEmptyReplyFallback 验证空回兜底文案按原因细分：
+// 工具失败点出失败工具 / 工具全成功指向卡片 / 技术失败提示重试 / 纯空回提示换问法。
+func TestBuildEmptyReplyFallback(t *testing.T) {
+	t.Run("工具失败点名", func(t *testing.T) {
+		got := BuildEmptyReplyFallback([]ToolCallRecord{
+			{ID: "c1", ToolLabel: "查询天气", Status: "ok"},
+			{ID: "c2", ToolLabel: "创建群待办", Status: "error"},
+		}, false, "")
+		assert.Contains(t, got, "创建群待办", "应点出失败工具名")
+		assert.NotContains(t, got, "查询天气", "成功工具不应出现在失败点名里")
+		assert.Contains(t, got, "稍后再试")
+	})
+
+	t.Run("工具全成功指向卡片", func(t *testing.T) {
+		got := BuildEmptyReplyFallback([]ToolCallRecord{
+			{ID: "c1", ToolLabel: "群消息搜索", Status: "ok"},
+		}, false, "")
+		assert.Contains(t, got, "工具卡片")
+		assert.NotContains(t, got, "没有成功")
+	})
+
+	t.Run("失败但无 label 时指向卡片", func(t *testing.T) {
+		got := BuildEmptyReplyFallback([]ToolCallRecord{
+			{ID: "c1", Status: "error"},
+		}, false, "")
+		assert.Contains(t, got, "工具卡片", "失败 label 为空时不应产生空点名文案")
+	})
+
+	t.Run("技术失败", func(t *testing.T) {
+		got := BuildEmptyReplyFallback(nil, true, "")
+		assert.Contains(t, got, "出了点问题")
+		assert.Contains(t, got, "稍后再试")
+	})
+
+	t.Run("纯空回", func(t *testing.T) {
+		got := BuildEmptyReplyFallback(nil, false, "")
+		assert.Contains(t, got, "换个问法")
+		assert.NotContains(t, got, "稍后再试", "纯空回不应提示重试（不是技术问题）")
+	})
+
+	t.Run("mention 前缀拼接", func(t *testing.T) {
+		got := BuildEmptyReplyFallback(nil, false, "@{mention:5|Bob}\n\n")
+		assert.True(t, strings.HasPrefix(got, "@{mention:5|Bob}"), "mention 前缀应拼在文案前")
+		assert.Contains(t, got, "换个问法")
+	})
 }

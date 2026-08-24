@@ -213,6 +213,16 @@ func TestLooksMemorable(t *testing.T) {
 	assert.False(t, looksMemorable("在吗"))
 	// 纯 @AI 指令不记
 	assert.False(t, looksMemorable("@AI 帮我总结一下今天的会议纪要"))
+	// 黑名单精确命中（寒暄/确认/感叹）不记
+	assert.False(t, looksMemorable("收到收到"))
+	assert.False(t, looksMemorable("辛苦了"))
+	assert.False(t, looksMemorable("哈哈哈哈哈哈哈"))
+	// 重复语气词/表情/标点噪音（>15 字）不记
+	assert.False(t, looksMemorable("哈哈哈哈哈哈哈哈哈哈哈哈哈哈"))
+	assert.False(t, looksMemorable("🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀"))
+	// 带实质内容的正常长消息不被误杀
+	assert.True(t, looksMemorable("好的，我把方案发你，你抽空看一下"))
+	assert.True(t, looksMemorable("今天中午去楼下新开的餐厅吃饭了，味道不错"))
 	// 主人本人的实质表达应进入后续门控
 	assert.True(t, looksMemorable("我下周三要去上海出差，项目A的评审改到周五上午"))
 	assert.True(t, looksMemorable("I prefer replies in English, thanks"))

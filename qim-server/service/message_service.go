@@ -1048,15 +1048,21 @@ func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot mode
 
 	if streamErr != nil {
 		logger.WithModule("handleBotMessage").Error("bot 流式回复出错", "error", streamErr, "convID", convID)
-		// 完全无产出（无正文且无工具调用）-> 发兜底文案，保证用户得到反馈，避免残留空气泡。
-		// 已有正文/工具调用则保留（finish 收尾），不覆盖。
-		if !contentProduced && len(toolCalls) == 0 {
-			_ = sendChunk("抱歉，AI 服务暂时不可用，请稍后再试。")
-		}
 	}
 
-	// 工具调用记录 + 命中的知识来源合并持久化到消息 Extra，回放/刷新后卡片与徽章仍可见
-	PersistAIMessageExtra(getMsg, toolCalls, knowledgeSources)
+	// 收尾：模型未生成正文（空回）时，按失败原因补细分兜底文案——bot 是用户主动对话，
+	// 期待回复，静默会让用户以为"AI 理都不理"。有工具调用则文案点出失败工具/指向卡片。
+	if !contentProduced {
+		_ = sendChunk(BuildEmptyReplyFallback(toolCalls, streamErr != nil, ""))
+	}
+
+	// 工具调用记录持久化到消息 Extra，回放/刷新后卡片仍可见。知识来源只在有正文时挂：
+	// 空正文下挂 knowledge_sources 会造出"看似有内容"的空气泡（与群 @AI 同构，已按同款治理）。
+	if contentProduced {
+		PersistAIMessageExtra(getMsg, toolCalls, knowledgeSources)
+	} else if len(toolCalls) > 0 {
+		PersistAIMessageExtra(getMsg, toolCalls, nil)
+	}
 
 	if finish() == nil {
 		logger.WithModule("handleBotMessage").Warn("bot 流式回复无内容产出", "convID", convID)
@@ -1129,11 +1135,13 @@ func (s *MessageService) handleBotMessageLegacy(userID, convID uint, bot model.B
 	}
 
 	response := builder.String()
-	// 自定义模型已流出部分内容后中途失败（builder.Len()>0）：保留已生成的部分，兑现
-	// 「已流出部分内容则保留」契约。仅在完全没流出任何内容（含回退系统默认也失败）时用兜底文案。
-	if response == "" && streamErr != nil {
-		logger.WithModule("handleBotMessage").Error("AI API error", "error", streamErr)
-		response = "抱歉，AI 服务暂时不可用，请稍后再试。"
+	// 空回（含出错后完全没产出）：按原因补细分兜底（与流式路径共用 BuildEmptyReplyFallback），
+	// 避免落库空正文消息。已有部分内容则保留（兑现「已流出部分内容则保留」契约）。
+	if strings.TrimSpace(response) == "" {
+		if streamErr != nil {
+			logger.WithModule("handleBotMessage").Error("AI API error", "error", streamErr)
+		}
+		response = BuildEmptyReplyFallback(nil, streamErr != nil, "")
 	}
 
 	botReply := model.Message{

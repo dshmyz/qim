@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
@@ -219,7 +220,7 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 		// LearnEnabled 为 opt-out：默认学习（GetAIConfig 默认 true），仅显式 false 才停写。
 		// 仅文本类消息参与记忆形成（媒体消息 content 是 JSON，反射空转一轮 LLM）。
 		if aiConfig.Enabled && aiConfig.LearnEnabled && (msg.Type == "text" || msg.Type == "markdown") {
-			e.maybeRememberGroupMessage(group.ID, conversationID, content)
+			e.maybeRememberGroupMessage(group.ID, conversationID, content, msg.SenderID, senderDisplayName(msg))
 		}
 
 		// 直接发图/发文件（不引用）：合成自引用复用引用机制的多模态读取（读图/读正文）。
@@ -396,12 +397,9 @@ func (e *SmartReplyEngine) generateAndSendReplyLegacy(userID uint, conversationI
 	if e.groupMemorySvc != nil && ctx.Group != nil {
 		memoryResults, err := e.groupMemorySvc.Recall(ctx.Group.ID, userContent, 2)
 		if err == nil && len(memoryResults) > 0 {
-			var parts []string
-			for _, r := range memoryResults {
-				parts = append(parts, r.Content)
+			if memoryCtx := service.GroupMemoryCtxText(memoryResults); memoryCtx != "" {
+				systemPrompt += "\n\n" + memoryCtx
 			}
-			memoryCtx := "💡 群聊记忆：\n" + strings.Join(parts, "\n")
-			systemPrompt += "\n\n" + memoryCtx
 		}
 	}
 
@@ -702,12 +700,12 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	if streamErr != nil {
 		log.Printf("[SmartReplyGraph] @AI 流式回复出错: %v", streamErr)
 		if chunkCount == 0 {
-			fallback := "⚠️ 这条消息暂时没能回复（模型调用出错），请稍后再试。"
+			prefix := ""
 			if mentionPrefix != "" {
-				fallback = mentionPrefix + fallback
+				prefix = mentionPrefix
 				mentionPrefix = ""
 			}
-			if err := sendChunk(fallback); err != nil {
+			if err := sendChunk(service.BuildEmptyReplyFallback(nil, true, prefix)); err != nil {
 				log.Printf("[SmartReplyGraph] 发送兜底文案失败: %v", err)
 			}
 		}
@@ -719,7 +717,15 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	}
 
 	if chunkCount == 0 {
-		log.Printf("[SmartReplyGraph] AI 回复内容为空，跳过保存")
+		// 模型空回（无错误）：@AI 后不应静默，补细分兜底（纯流式无工具，仅纯空回文案）。
+		prefix := ""
+		if mentionPrefix != "" {
+			prefix = mentionPrefix
+			mentionPrefix = ""
+		}
+		_ = sendChunk(service.BuildEmptyReplyFallback(nil, false, prefix))
+		log.Printf("[SmartReplyGraph] AI 回复内容为空，已补兜底文案")
+		finish()
 		return
 	}
 
@@ -757,20 +763,12 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 		return
 	}
 
-	// @提问者模式：读取配置（与流式路径一致）
+	// @提问者模式：读取配置（与流式路径一致）。
+	// mention 前缀不再提前 sendChunk：那会触发消息创建，模型只调工具没吐正文时
+	// 就落库一条只有 @ 前缀的空消息（并挂上知识引用）。改为延迟到首个真实正文块
+	// （或兜底文案）时拼接，模型无正文则消息从未创建、零残留。
 	mentionPrefix := e.buildMentionPrefix(conversationID, userID)
-
-	// 仅 @提问者模式需在正文前发送 mention 前缀（非空 → 触发懒创建）。
-	// 普通模式不在此提前建/投递任何消息占位：SendStreamingAIMessage 采用懒创建，
-	// 消息延迟到首个非空正文块或首个工具调用才真正落库，避免空占位排在用户后续
-	// 消息之上、等答案回填后造成顺序错乱。
-	if mentionPrefix != "" {
-		if err := sendChunk(mentionPrefix); err != nil {
-			log.Printf("[SmartReplyGraph] 发送 @ 前缀失败: %v", err)
-			finish()
-			return
-		}
-	}
+	mentionPending := mentionPrefix != ""
 
 	// 收集本次 ReAct 用到的工具调用：start/end 阶段实时推 ai_tool_call 事件供前端
 	// 渲染工具卡片（进行态→终态按 ID 对齐），终态记录写入消息 Extra 持久化。
@@ -779,21 +777,60 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 
 	// 先尝试真·流式路径：execStream 内 final 答案逐 token 经 onChunk → sendChunk 送出，
 	// 工具事件经 feedback 实时推卡片。streamed=true 表示已走流式逐 token。
+	// sentBody 累积实际送出的正文（不含 mention 前缀），供收尾判定"是否有真实正文"。
 	if execStream != nil {
+		var sentBody strings.Builder
 		streamed, serr := execStream(ctx, input, feedback, func(chunk ai.StreamChunk) error {
-			return sendChunk(chunk.Content)
+			c := chunk.Content
+			if c == "" {
+				return nil
+			}
+			// mention 前缀只拼在首个真实正文块上（模型无正文则永不拼接，消息不创建）。
+			if mentionPending {
+				c = mentionPrefix + c
+				mentionPending = false
+			}
+			sentBody.WriteString(c)
+			return sendChunk(c)
 		})
 		if serr != nil && !errors.Is(serr, ai.ErrStreamingToolsNotSupported) {
 			log.Printf("[SmartReplyGraph] @AI %s工具流式回复失败: %v", kind, serr)
 			// 流式中途失败：若已产出正文/工具、且拿到了知识来源，仍需把 Extra 落库，
 			// 否则刷新/REST 回放后工具卡片与「知识来源」徽章丢失（正文已由 finish 收尾）。
 			e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
+			// 完全没产出（无正文、无工具、无知识命中）时消息未被创建：补技术性失败兜底，
+			// 避免"思考中"占位消失后完全无反馈。
+			if len(toolCalls) == 0 && strings.TrimSpace(mention.StripTokens(sentBody.String())) == "" {
+				prefix := ""
+				if mentionPending {
+					prefix = mentionPrefix
+					mentionPending = false
+				}
+				_ = sendChunk(service.BuildEmptyReplyFallback(toolCalls, true, prefix))
+			}
 			finish()
 			return
 		}
 		if streamed {
-			// 工具调用记录 + 命中的知识来源合并持久化到消息 Extra，回放/刷新后卡片与徽章仍可见。
-			e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
+			hasBody := strings.TrimSpace(mention.StripTokens(sentBody.String())) != ""
+			if hasBody {
+				// 有正文：工具调用记录 + 命中的知识来源合并持久化，回放/刷新后卡片与徽章仍可见。
+				e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
+			} else {
+				// 空回：模型没生成任何正文。@AI 后不应完全静默——按失败原因补细分兜底文案
+				// （工具失败点出工具名 / 工具成功指向卡片 / 纯空回提示换问法）。
+				prefix := ""
+				if mentionPending {
+					prefix = mentionPrefix
+					mentionPending = false
+				}
+				_ = sendChunk(service.BuildEmptyReplyFallback(toolCalls, false, prefix))
+				// 有工具调用则保留卡片（工具确实执行/尝试过，失败状态可见），但不挂知识引用
+				// （无正文依托，引用只会误导）。
+				if len(toolCalls) > 0 {
+					e.persistAIMessageExtra(getMsg, toolCalls, nil)
+				}
+			}
 			if finish() == nil {
 				log.Printf("[SmartReplyGraph] 完成流式消息失败")
 			} else {
@@ -808,37 +845,42 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 	reply, err := exec(ctx, input, feedback)
 	if err != nil {
 		log.Printf("[SmartReplyGraph] @AI %s工具回复失败: %v", kind, err)
-		// 完全没产出时发兜底文案，避免残留空白卡住的空气泡
-		if reply == "" {
-			_ = sendChunk("⚠️ 这条消息暂时没能回复（调用出错），请稍后再试。")
-		}
-		// 与流式路径一致：若已收集到工具调用/知识来源，仍需把 Extra 落库，
-		// 否则刷新/REST 回放后工具卡片与「知识来源」徽章丢失。
-		e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
-		finish()
-		return
 	}
-
 	reply = mention.StripTokens(reply)
-	if strings.TrimSpace(reply) == "" {
-		log.Printf("[SmartReplyGraph] @AI %s工具回复内容为空，跳过保存", kind)
-		finish()
-		return
-	}
+	hasReply := strings.TrimSpace(reply) != ""
 
-	// 按句子切子块流式送出最终答案，保留打字感；空块跳过。
-	for _, chunk := range splitReplyChunks(reply) {
-		if chunk == "" {
-			continue
+	if hasReply {
+		// 按句子切子块流式送出最终答案，保留打字感；空块跳过。@前缀拼在首个分块上。
+		// err 非空但已有部分内容时也照常发送（部分结果不丢弃）。
+		for _, chunk := range splitReplyChunks(reply) {
+			if chunk == "" {
+				continue
+			}
+			if mentionPending {
+				chunk = mentionPrefix + chunk
+				mentionPending = false
+			}
+			if serr := sendChunk(chunk); serr != nil {
+				log.Printf("[SmartReplyGraph] 发送回复分块失败: %v", serr)
+				break
+			}
 		}
-		if err := sendChunk(chunk); err != nil {
-			log.Printf("[SmartReplyGraph] 发送回复分块失败: %v", err)
-			break
+		// 有正文：工具调用记录 + 命中的知识来源合并持久化，回放/刷新后卡片与徽章仍可见。
+		e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
+	} else {
+		// 空回：@AI 后不应完全静默。按原因补细分兜底文案（工具失败点出工具名 /
+		// 技术失败提示重试 / 纯空回提示换问法）；有工具调用则保留卡片，但不挂知识引用。
+		prefix := ""
+		if mentionPending {
+			prefix = mentionPrefix
+			mentionPending = false
 		}
+		_ = sendChunk(service.BuildEmptyReplyFallback(toolCalls, err != nil, prefix))
+		if len(toolCalls) > 0 {
+			e.persistAIMessageExtra(getMsg, toolCalls, nil)
+		}
+		log.Printf("[SmartReplyGraph] @AI %s工具回复内容为空，已补兜底文案", kind)
 	}
-
-	// 工具调用记录 + 命中的知识来源合并持久化到消息 Extra，回放/刷新后卡片与徽章仍可见。
-	e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
 
 	if finish() == nil {
 		log.Printf("[SmartReplyGraph] 完成流式消息失败")
@@ -1222,8 +1264,8 @@ func (e *SmartReplyEngine) maybeRememberSenderMessage(senderID uint, conversatio
 		}
 		// 一次 Recall(top-3)：top-1 用于去重，全部传给 Consolidate 避免二次查询
 		existing, _ := e.memorySvc.Recall(senderID, content, 3)
-		if len(existing) > 0 && existing[0].Score > 0.85 {
-			return // 已有高度相似记忆，跳过
+		if len(existing) > 0 && existing[0].Score > 0.7 {
+			return // 已有高度相似记忆（同一件事换个说法），跳过避免重复
 		}
 		// 分数门槛：低于 0.6 的召回结果视为噪音，不传给 Consolidate 避免误记
 		filtered := existing[:0]
@@ -1247,7 +1289,7 @@ func (e *SmartReplyEngine) maybeRememberSenderMessage(senderID uint, conversatio
 // maybeRememberGroupMessage 异步把值得记的群消息择要写入本群群级记忆库。
 // 三层门控压成本：1. 便宜规则预筛（looksMemorable，无 LLM）2. 去重（向量近邻，无 LLM）3. LLM 质量门。
 // 仅群 AI 启用时由调用方触发；不阻塞消息主流程。与分身记忆（按 userID 键）隔离。
-func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationID uint, content string) {
+func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationID uint, content string, senderID uint, senderName string) {
 	if e.groupMemorySvc == nil {
 		return
 	}
@@ -1257,8 +1299,8 @@ func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationI
 	go func() {
 		// 一次 Recall(top-3)：top-1 用于去重，全部传给 Consolidate 避免二次查询
 		existing, _ := e.groupMemorySvc.Recall(groupID, content, 3)
-		if len(existing) > 0 && existing[0].Score > 0.85 {
-			return // 已有高度相似记忆，跳过
+		if len(existing) > 0 && existing[0].Score > 0.7 {
+			return // 已有高度相似记忆（同一件事换个说法），跳过避免重复
 		}
 		// 分数门槛：低于 0.6 的召回结果视为噪音，不传给 Consolidate 避免误记
 		filtered := existing[:0]
@@ -1281,7 +1323,7 @@ func (e *SmartReplyEngine) maybeRememberGroupMessage(groupID uint, conversationI
 			}
 		}
 		// 群记忆反射闭环：内部完成"是否值得记 + 重要度 + 折叠既有群记忆/群知识"，仅值得记时落库
-		if ok, err := e.groupMemorySvc.ConsolidateGroupMessage(groupID, conversationID, content, knowledge, ctx, existing...); err != nil {
+		if ok, err := e.groupMemorySvc.ConsolidateGroupMessage(groupID, conversationID, senderID, senderName, content, knowledge, ctx, existing...); err != nil {
 			log.Printf("[GroupMemory] 反射失败: group=%d err=%v", groupID, err)
 		} else if ok {
 			log.Printf("[GroupMemory] 反射记忆已写入 group=%d", groupID)
@@ -1326,16 +1368,80 @@ func fetchRecentMessages(db *gorm.DB, conversationID uint, currentContent string
 	return result
 }
 
-// looksMemorable 便宜预筛，过滤明显不值得记的消息（短消息、纯 @AI 指令）。
+// lowSignalPhrases 低信息量消息黑名单：trim+小写后整条精确命中即不记（寒暄/确认/感谢/感叹/语气词）。
+// 仅精确匹配，避免误杀"好的，我把方案发你"这类带实质内容的消息；短消息（≤15 字）本已由长度门槛过滤。
+var lowSignalPhrases = map[string]bool{
+	"好的": true, "好的好的": true, "收到": true, "收到收到": true, "好的收到": true,
+	"谢谢": true, "谢谢啦": true, "谢谢了": true, "辛苦了": true, "感谢": true,
+	"嗯": true, "嗯嗯": true, "嗯嗯好的": true, "哈哈": true, "哈哈哈": true, "哈哈哈哈": true,
+	"在吗": true, "在不在": true, "没问题": true, "好的没问题": true, "知道了": true, "了解": true,
+	"可以": true, "ok": true, "okay": true, "收到谢谢": true,
+}
+
+// looksMemorable 便宜预筛，过滤明显不值得记的消息（短消息、纯 @AI 指令、寒暄/感叹/表情流水）。
+// 三层门控的第一层，无 LLM 成本；判定标准宁紧勿松——被误挡的消息只是少记一条，
+// 被放过的垃圾消息则白耗一轮 LLM 判定甚至污染记忆库。
 func looksMemorable(content string) bool {
-	if len([]rune(content)) <= 15 {
+	trimmed := strings.TrimSpace(content)
+	if len([]rune(trimmed)) <= 15 {
 		return false
 	}
-	lower := strings.ToLower(strings.TrimSpace(content))
+	lower := strings.ToLower(trimmed)
 	if strings.HasPrefix(lower, "@ai") {
 		return false
 	}
+	if lowSignalPhrases[lower] {
+		return false
+	}
+	// 重复语气词/表情/标点构成的噪音（如"哈哈哈哈哈""🚀🚀🚀""。。。"）：去重后字符集极小
+	if isLowSignalNoise(trimmed) {
+		return false
+	}
 	return true
+}
+
+// senderDisplayName 取消息发送者的展示名，用于群记忆落库的 sender_name。
+// 优先 Nickname，回退 RealName/Username；Sender 未预载时查一次库（仅在需要名字时多一次查询）。
+func senderDisplayName(msg *model.Message) string {
+	name := displayNameOf(&msg.Sender)
+	if name != "" {
+		return name
+	}
+	if msg.Sender.ID == 0 {
+		var u model.User
+		if err := database.GetDB().First(&u, msg.SenderID).Error; err == nil {
+			name = displayNameOf(&u)
+		}
+	}
+	if name == "" {
+		name = fmt.Sprintf("user#%d", msg.SenderID)
+	}
+	return name
+}
+
+func displayNameOf(u *model.User) string {
+	if u == nil {
+		return ""
+	}
+	if u.Nickname != "" {
+		return u.Nickname
+	}
+	if u.RealName != "" {
+		return u.RealName
+	}
+	return u.Username
+}
+
+// isLowSignalNoise 判断消息是否由重复的寒暄/表情/标点构成（无信息量）。判据：忽略空白后
+// 去重字符集 ≤2。正常句子字符集远大于此；只有"哈哈哈哈哈""😄😄😄""。。。。"这类才命中。
+func isLowSignalNoise(s string) bool {
+	seen := make(map[rune]struct{}, 8)
+	for _, r := range s {
+		if !unicode.IsSpace(r) {
+			seen[r] = struct{}{}
+		}
+	}
+	return len(seen) <= 2
 }
 
 // checkAvatarTriggers 检查是否有用户的分身需要触发

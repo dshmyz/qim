@@ -60,6 +60,24 @@ func TestPersistAIMessageExtra_MergesToolCallsAndSources(t *testing.T) {
 		require.Len(t, ks, 1)
 	})
 
+	t.Run("无正文场景只挂工具卡片（sources=nil）", func(t *testing.T) {
+		// 对应"模型只调了工具、没生成正文"的收尾：工具确实执行了，卡片要保留，
+		// 但知识引用没有正文依托，必须丢弃，避免"@人的空消息+知识引用"误导观感。
+		msg := &model.Message{}
+		e := &SmartReplyEngine{}
+		e.persistAIMessageExtra(func() *model.Message { return msg }, []ToolCallRecord{{
+			ID: "call_2", ToolLabel: "查询消息", Status: "ok",
+		}}, nil)
+		require.NotEmpty(t, msg.Extra)
+		var extra map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(msg.Extra), &extra))
+		tcs, ok := extra["tool_calls"].([]interface{})
+		require.True(t, ok, "应保留 tool_calls（工具执行反馈）")
+		require.Len(t, tcs, 1)
+		_, hasKS := extra["knowledge_sources"]
+		assert.False(t, hasKS, "无正文时不应写 knowledge_sources")
+	})
+
 	t.Run("nil 消息安全", func(t *testing.T) {
 		e := &SmartReplyEngine{}
 		e.persistAIMessageExtra(func() *model.Message { return nil }, []ToolCallRecord{{ID: "x"}}, nil) // 不应 panic

@@ -172,8 +172,8 @@ func TestSaveConsolidated_ConflictUpdatesOldNotAppends(t *testing.T) {
 	defer db.Close()
 
 	svc := &AvatarMemoryService{db: db, aiService: nil}
-	// 注入假冲突判定：恒返回冲突
-	svc.SetConflictCheck(func(_, _ string) (bool, error) { return true, nil })
+	// 注入假合并判定：恒返回"冲突"→ 应更新旧记忆
+	svc.SetMergeCheck(func(_, _ string) (MemoryMergeKind, error) { return MemoryMergeConflict, nil })
 
 	// 预置旧记忆
 	oldID := "memory_9_1"
@@ -212,6 +212,56 @@ func TestSaveConsolidated_ConflictUpdatesOldNotAppends(t *testing.T) {
 	}
 }
 
+// TestSaveConsolidated_DuplicateRefreshesNotAppends 验证近义复述（R1 duplicate）：
+// 同一事实换个说法再次出现时，不新增重复记忆，仅刷新旧记忆重要度；旧内容保持不变。
+func TestSaveConsolidated_DuplicateRefreshesNotAppends(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+
+	svc := &AvatarMemoryService{db: db, aiService: nil}
+	// 注入假合并判定：恒返回"复述"→ 应合并刷新而不新增
+	svc.SetMergeCheck(func(_, _ string) (MemoryMergeKind, error) { return MemoryMergeDuplicate, nil })
+
+	oldID := "memory_7_1"
+	if _, err := db.SaveMemory(types.MemorySaveRequest{
+		MemoryID: oldID, UserID: "7", Scope: "user", Namespace: "avatar",
+		Content: "项目计划周三发布", Importance: 0.4,
+		Metadata: map[string]interface{}{"importance": "5.0"},
+	}); err != nil {
+		t.Fatalf("预置旧记忆失败: %v", err)
+	}
+
+	ref := MemoryReflection{Summary: "项目计划周三发布", Importance: 2}
+	memories := []SearchResult{
+		{Content: "项目计划周三发布", Score: 0.85, DocID: oldID, Metadata: map[string]string{"importance": "5.0"}},
+	}
+
+	ok, err := svc.saveConsolidatedMemory(7, 1, "avatar", ref, memories)
+	if err != nil {
+		t.Fatalf("saveConsolidatedMemory 失败: %v", err)
+	}
+	if !ok {
+		t.Fatal("近义复述应返回 ok=true（刷新了旧记忆）")
+	}
+
+	if count := countMemories(db, "7", "avatar"); count != 1 {
+		t.Fatalf("近义复述应合并而非新增，期望 1 条，got %d", count)
+	}
+	rec, err := loadMemoryRecord(db, "7", "avatar", oldID)
+	if err != nil {
+		t.Fatalf("读取旧记忆失败: %v", err)
+	}
+	if !strings.Contains(rec.Content, "周三发布") {
+		t.Fatalf("近义复述不应改动旧内容，got %q", rec.Content)
+	}
+	if rec.Importance != 1.0 {
+		t.Fatalf("旧记忆重要度应刷新为 max(2,5)=5→[0,1]=1.0，got %v", rec.Importance)
+	}
+}
+
 // TestSaveConsolidated_NoConflictAppends 验证不冲突（或 score<0.7）时照常新增一条。
 func TestSaveConsolidated_NoConflictAppends(t *testing.T) {
 	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
@@ -221,7 +271,7 @@ func TestSaveConsolidated_NoConflictAppends(t *testing.T) {
 	defer db.Close()
 
 	svc := &AvatarMemoryService{db: db, aiService: nil}
-	svc.SetConflictCheck(func(_, _ string) (bool, error) { return false, nil })
+	svc.SetMergeCheck(func(_, _ string) (MemoryMergeKind, error) { return MemoryMergeNew, nil })
 
 	if _, err := db.SaveMemory(types.MemorySaveRequest{
 		MemoryID: "memory_8_1", UserID: "8", Scope: "user", Namespace: "avatar",
@@ -495,5 +545,101 @@ func TestBuildNoteGraph_FromMetadata_NoLLMCall(t *testing.T) {
 	}
 	if len(graph.Edges) < 1 {
 		t.Fatalf("应有至少1条边，got %d", len(graph.Edges))
+	}
+}
+
+// TestAvatarMemory_RecallForConversation_FiltersScope 验证分身回复的按对话召回：
+// global 级记忆（事实/偏好/FAQ）任意对话可召回；conversation 级记忆（针对特定对象的
+// 私约/承诺）仅在其记录时所在对话召回——A-B 对话记下的专属约定不得在 B-C 对话冒出来。
+// 全局 Recall（去重/手动检索）不受对话限制，三条都应可见。
+func TestAvatarMemory_RecallForConversation_FiltersScope(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+
+	svc := &AvatarMemoryService{db: db, aiService: nil}
+
+	seeds := []types.MemorySaveRequest{
+		{ // global：项目知识，脱离对话依然成立，任意对话可召回
+			MemoryID: "memory_7_global", UserID: "7", Scope: "user", Namespace: "avatar",
+			Content: "项目 Alpha 的上线时间定在下周一", Importance: 0.8,
+			Metadata: map[string]any{"conversation_id": "100", "knowledge_memory_scope": "global"},
+		},
+		{ // conversation + 对话A（100）：A-B 专属约定
+			MemoryID: "memory_7_a", UserID: "7", Scope: "user", Namespace: "avatar",
+			Content: "和张三约好周五晚上一起吃饭", Importance: 0.7,
+			Metadata: map[string]any{"conversation_id": "100", "knowledge_memory_scope": "conversation"},
+		},
+		{ // conversation + 对话B（200）：B-C 专属约定
+			MemoryID: "memory_7_b", UserID: "7", Scope: "user", Namespace: "avatar",
+			Content: "和李四约好下周三一起看球赛", Importance: 0.7,
+			Metadata: map[string]any{"conversation_id": "200", "knowledge_memory_scope": "conversation"},
+		},
+	}
+	for i := range seeds {
+		if _, err := db.SaveMemory(seeds[i]); err != nil {
+			t.Fatalf("seed #%d SaveMemory 失败: %v", i, err)
+		}
+	}
+
+	contains := func(results []SearchResult, substr string) bool {
+		for _, r := range results {
+			if strings.Contains(r.Content, substr) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// 在对话 B（200）回复：不得带出对话 A 的专属记忆（张三），且应命中同对话与 global 记忆
+	got, err := svc.RecallForConversation(7, 200, "上线时间 周五吃饭 看球赛 张三", 5)
+	if err != nil {
+		t.Fatalf("RecallForConversation 失败: %v", err)
+	}
+	if len(got) == 0 {
+		t.Fatal("对话 B 召回为空，过滤测试失去意义（应至少召回 global 或 B 专属记忆）")
+	}
+	for _, r := range got {
+		if strings.Contains(r.Content, "张三") {
+			t.Fatalf("A-B 对话的专属记忆泄漏到 B-C 对话: %s", r.Content)
+		}
+	}
+	if !contains(got, "李四") {
+		t.Fatal("同对话 B 的专属记忆应被召回（过滤不能把同对话记忆也剔掉）")
+	}
+	if !contains(got, "上线时间") {
+		t.Fatal("global 级事实应在任意对话召回")
+	}
+
+	// 反向：在对话 A（100）回复：不得带出对话 B 的专属记忆（李四），且应命中同对话记忆
+	gotA, err := svc.RecallForConversation(7, 100, "上线时间 周五吃饭 看球赛 李四", 5)
+	if err != nil {
+		t.Fatalf("RecallForConversation(conv A) 失败: %v", err)
+	}
+	for _, r := range gotA {
+		if strings.Contains(r.Content, "李四") {
+			t.Fatalf("B-C 对话的专属记忆泄漏到 A-B 对话: %s", r.Content)
+		}
+	}
+	if !contains(gotA, "张三") {
+		t.Fatal("同对话 A 的专属记忆应被召回（过滤不能把同对话记忆也剔掉）")
+	}
+
+	// 全局召回（去重/手动检索）：不分对话，三条都应可见
+	all, err := svc.Recall(7, "上线时间 周五吃饭 看球赛", 10)
+	if err != nil {
+		t.Fatalf("Recall 失败: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, r := range all {
+		seen[r.Content] = true
+	}
+	if !seen["和张三约好周五晚上一起吃饭"] {
+		t.Fatal("全局召回应包含对话 A 的专属记忆（Recall 不分对话）")
+	}
+	if !seen["和李四约好下周三一起看球赛"] {
+		t.Fatal("全局召回应包含对话 B 的专属记忆（Recall 不分对话）")
 	}
 }

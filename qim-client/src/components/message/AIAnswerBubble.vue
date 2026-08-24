@@ -9,6 +9,9 @@
       <span>思考中</span>
       <span class="typing-indicator-inline"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span>
     </div>
+    <!-- 终态但正文为空（如模型只调了工具没生成总结、或历史遗留的空回复）：给占位文案，
+         避免"看似有内容的空气泡"，下方知识来源/工具卡片照常展示 -->
+    <div v-else-if="!content" class="empty-body-placeholder">（本条消息未生成文字内容）</div>
     <div v-else ref="bodyEl" class="markdown-content" v-html="html"></div>
     <div v-if="isStreaming && content" class="typing-indicator">
       <span class="typing-dot"></span>
@@ -132,6 +135,13 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
   gap: 3px;
   margin-left: 6px;
   vertical-align: baseline;
+}
+
+/* 终态空正文占位：与「思考中」同级的弱化灰字，说明这条消息确实没有文字内容 */
+.empty-body-placeholder {
+  color: color-mix(in srgb, var(--text-color), transparent 45%);
+  font-size: 0.92em;
+  letter-spacing: 0.3px;
 }
 
 .typing-indicator-inline .typing-dot,

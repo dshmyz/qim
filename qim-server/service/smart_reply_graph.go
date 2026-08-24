@@ -570,11 +570,7 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 		if g.groupMemorySvc != nil && input.Group != nil {
 			memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, query, 2)
 			if err == nil && len(memoryResults) > 0 {
-				var parts []string
-				for _, r := range memoryResults {
-					parts = append(parts, r.Content)
-				}
-				memoryCtx = "💡 群聊记忆：\n" + strings.Join(parts, "\n")
+				memoryCtx = GroupMemoryCtxText(memoryResults)
 				// 群记忆分数透出到「知识来源」徽章，供用户看到 AI 为什么记住了这条
 				input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults, g.memorySourceThreshold())...)
 			}
@@ -1299,10 +1295,7 @@ func (g *SmartReplyGraph) recallGroupMemory(input *SmartReplyContext) string {
 	if err != nil || len(memoryResults) == 0 {
 		return ""
 	}
-	var parts []string
-	for _, r := range memoryResults {
-		parts = append(parts, r.Content)
-	}
+	memoryCtx := GroupMemoryCtxText(memoryResults)
 	// 群记忆分数透出到「知识来源」徽章
 	input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults, g.memorySourceThreshold())...)
 	// 诊断：区分"群记忆注入但分数低于门槛未进徽章"。scores 为召回原始分，th 为门槛。
@@ -1315,7 +1308,7 @@ func (g *SmartReplyGraph) recallGroupMemory(input *SmartReplyContext) string {
 	logger.WithModule("SmartReplyGraph").Info("群记忆召回与徽章产出",
 		"query", input.Message, "scores", _scores, "threshold", g.memorySourceThreshold(),
 		"recalled", beforeMem, "badge_sources", afterMem)
-	return "💡 群聊记忆：\n" + strings.Join(parts, "\n")
+	return memoryCtx
 }
 
 func (g *SmartReplyGraph) createHistoryNode() *compose.Lambda {

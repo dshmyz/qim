@@ -18,6 +18,11 @@ type MemoryReflection struct {
 	Entities   []string `json:"entities"`
 	Importance float64  `json:"importance"` // 1-5 档位（与 RememberVerdict 一致）
 	Type       string   `json:"type"`       // fact/preference/event：记忆分类标签
+	// Scope 记忆的可迁移范围，控制召回时的对话边界：
+	//   "global"       跨对话依然成立的知识（事实/偏好/决定/FAQ）——任意对话可召回；
+	//   "conversation" 仅原对话语境有效（针对特定对象的回应/私约/承诺）——只在记录时所在对话召回。
+	// 空值视为 global（保守不丢知识）。分身回复按对话召回时据此过滤。
+	Scope string `json:"scope,omitempty"`
 }
 
 // reflectConsolidated 执行记忆反射闭环：
@@ -47,15 +52,19 @@ func reflectConsolidated(aiService *ai.AIService, message string, memories []str
 	// 仅当判定值得记时才做结构化反射（产出 Summary/Facts/Themes/Entities 供知识图谱等使用）。
 	// 不值得记就不浪费这次 LLM 调用；反射失败不阻断（保留上面的 deterministic summary 兜底）。
 	if verdict.ShouldRemember && aiService != nil {
-		if s, ok := reflectStructure(aiService, message, memories, knowledge, context); ok {
-			if strings.TrimSpace(s.Summary) != "" {
-				ref.Summary = s.Summary
+			if s, ok := reflectStructure(aiService, message, memories, knowledge, context); ok {
+				if strings.TrimSpace(s.Summary) != "" {
+					ref.Summary = s.Summary
+				}
+				ref.Facts = s.Facts
+				ref.Themes = s.Themes
+				ref.Entities = s.Entities
+				// 反射出的可迁移范围（conversation/global）须带回 ref，否则落库时
+				// knowledge_memory_scope 恒为空而按 global 处理，对话隔离功能形同虚设。
+				ref.Scope = s.Scope
+				ref.Type = s.Type
 			}
-			ref.Facts = s.Facts
-			ref.Themes = s.Themes
-			ref.Entities = s.Entities
 		}
-	}
 	return ref, verdict, nil
 }
 
@@ -80,12 +89,16 @@ func reflectStructure(aiService *ai.AIService, message string, memories []string
 func reflectionExtractPrompt(message string, memories []string, knowledge []string, context []string) string {
 	var b strings.Builder
 	b.WriteString("请把以下对话信息折叠合并成一条结构化记忆，提取关键实体与主题。\n")
-	b.WriteString("仅返回 JSON，形如 {\"summary\":\"...\",\"facts\":[\"...\"],\"themes\":[\"...\"],\"entities\":[\"...\"],\"type\":\"fact\"}\n")
+	b.WriteString("仅返回 JSON，形如 {\"summary\":\"...\",\"facts\":[\"...\"],\"themes\":[\"...\"],\"entities\":[\"...\"],\"type\":\"fact\",\"scope\":\"global\"}\n")
 	b.WriteString("- summary: 一段通顺的中文总结，合并重复信息。除结论外，尽量保留“为什么/背景/动机”，让后续回忆时能答出缘由而不仅是事实\n")
 	b.WriteString("- facts: 明确的事实要点列表\n")
 	b.WriteString("- themes: 2-5 个主题词（如“项目、偏好、约定”）\n")
 	b.WriteString("- entities: 关键实体/人名/项目名（如“团队A、张三”）\n")
 	b.WriteString("- type: 记忆类型。fact=客观事实（日期/数字/决定），preference=偏好/习惯/喜好，event=事件/约定/会议\n")
+	b.WriteString("- scope: 记忆的可迁移范围。global=脱离本次对话依然成立的知识（事实、偏好、决定、FAQ）；conversation=仅本次对话语境有效（针对当前对话对象的回应、私约、承诺、临时安排），换到其他对话就失效或不该被引用。拿不准时偏向 global\n")
+	b.WriteString("\nscope 示例：\n")
+	b.WriteString("- “项目 Alpha 上线定在下周一”→ scope: global（跨对话依然成立的事实）\n")
+	b.WriteString("- “和张三约好周五晚上一起吃饭”→ scope: conversation（仅本次对话的私约）\n")
 	if len(context) > 0 {
 		b.WriteString("\n对话上下文（最近几条消息，帮助理解语境）：\n")
 		for i, c := range context {
@@ -123,6 +136,8 @@ func reflectionExtractPrompt(message string, memories []string, knowledge []stri
 func rememberTaskPrompt(message string, memories []string, knowledge []string, context []string) string {
 	var b strings.Builder
 	b.WriteString("判断以下对话内容是否包含值得记忆的长期信息。\n")
+	b.WriteString("值得记忆：个人偏好、重要决定、项目关键信息、约定事项、群内决定与共识、答疑形成的可复用知识（步骤、配置、口径、规范）。\n")
+	b.WriteString(rememberVerdictNegativeClause + "\n")
 	if len(context) > 0 {
 		b.WriteString("\n对话上下文（最近几条消息，帮助理解当前消息的语境）：\n")
 		for i, c := range context {
@@ -195,41 +210,4 @@ func parseReflectionJSON(s string) (MemoryReflection, bool) {
 	}
 	raw.Summary = strings.TrimSpace(raw.Summary)
 	return raw, raw.Summary != ""
-}
-
-// memoryConflictPrompt 构造"两条记忆是否冲突"的二分类提示。
-// 判定标准：是否讨论同一主题/实体，但结论或事实相互矛盾。
-// 仅对高相似度（score≥0.7）的旧记忆调用，避免对不相关记忆浪费 LLM 调用。
-func memoryConflictPrompt(newMemo, oldMemo string) string {
-	var b strings.Builder
-	b.WriteString("判断下面两条记忆是否描述同一件事，但结论或事实相互矛盾。\n")
-	b.WriteString("仅返回 JSON，形如 {\"conflict\": true}。conflict=true 表示矛盾（应更新旧记录），false 表示不矛盾。\n")
-	b.WriteString("注意：仅仅是措辞不同但结论一致的不算冲突；结论相反（如'用MySQL'vs'改用PostgreSQL'）才算冲突。\n\n")
-	b.WriteString("新记忆：\n" + newMemo + "\n\n")
-	b.WriteString("旧记忆：\n" + oldMemo + "\n")
-	return b.String()
-}
-
-// checkMemoryConflictWithAI 用 LLM 判断两条记忆是否语义冲突。
-// aiService 为 nil 时返回 false（不冲突），避免降级路径误更新。
-func checkMemoryConflictWithAI(aiService *ai.AIService, newMemo, oldMemo string) (bool, error) {
-	if aiService == nil {
-		return false, nil
-	}
-	aiMessages := []ai.Message{{Role: "user", Content: memoryConflictPrompt(newMemo, oldMemo)}}
-	out, err := aiService.GetCompletion(ai.TaskTypeAnalysis, aiMessages)
-	if err != nil {
-		return false, err
-	}
-	var raw struct {
-		Conflict bool `json:"conflict"`
-	}
-	block := reflectionJSONRe.FindString(out)
-	if block == "" {
-		return false, nil
-	}
-	if err := json.Unmarshal([]byte(block), &raw); err != nil {
-		return false, nil
-	}
-	return raw.Conflict, nil
 }

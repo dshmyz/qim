@@ -97,8 +97,7 @@ func resolveToolLabel(tool string, toolTitles, toolDescriptions map[string]strin
 // FriendlyToolLabel 把内部工具名映射为面向用户的中文动作名词（表意的工具名，不带
 // 进行时态）。内置群管理工具（group_management/user_management/...）与外部 mcp_*
 // 工具都走这里；mcp_* 工具始终提取可读名（如「查询 Stock price」「Fmt」），
-// 不再退化为无意义的「外部服务」。
-//
+// 不再退化为无意义的「外部服务」。//
 // 调用总是发生在工具执行结束后（feedback 闭包在工具返回后才触发），因此标签用
 // 动作名词而非「正在…」进行时；完成/失败由 status + 前端状态徽标体现，避免结束后
 // 卡片仍显示「正在 XX」的奇怪语义。
@@ -209,6 +208,39 @@ func formatToolSuffix(s string) string {
 		s = strings.ToUpper(s[:1]) + s[1:]
 	}
 	return s
+}
+
+// BuildEmptyReplyFallback 构造"AI 未生成正文"时的兜底文案，按原因细分，
+// 让用户明白发生了什么而不是收到一条无内容的空气泡（群 @AI 与 bot 共用）：
+//   - 有工具调用：有失败则点出失败工具，全部成功则指向上方工具卡片；
+//   - 无工具但有调用错误：技术性失败，提示稍后再试；
+//   - 无工具无错误：纯空回，中性提示换个问法。
+//
+// mentionPrefix 为 @提问者模式前缀（可空，通常已 Encode 成 mention token），
+// 非空时拼在文案前，保证 @提问者模式下兜底也能 @ 到提问者。
+func BuildEmptyReplyFallback(toolCalls []ToolCallRecord, hasError bool, mentionPrefix string) string {
+	var body string
+	if len(toolCalls) > 0 {
+		var failed []string
+		for _, tc := range toolCalls {
+			if tc.Status == "error" && tc.ToolLabel != "" {
+				failed = append(failed, tc.ToolLabel)
+			}
+		}
+		if len(failed) > 0 {
+			body = "我调用了「" + strings.Join(failed, "」「") + "」但没有成功，暂时给不出结果，你可以稍后再试。"
+		} else {
+			body = "已执行以上操作，结果见上方工具卡片。"
+		}
+	} else if hasError {
+		body = "抱歉，我这边处理时出了点问题，没能生成回复，请稍后再试一次。"
+	} else {
+		body = "抱歉，我没有想到合适的回答，你可以换个问法再问我一次。"
+	}
+	if mentionPrefix != "" {
+		return mentionPrefix + body
+	}
+	return body
 }
 
 // PersistAIMessageExtra 把工具调用记录 + 命中的知识来源合并持久化到消息 Extra（JSON），
