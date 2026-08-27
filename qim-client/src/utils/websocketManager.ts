@@ -1,5 +1,6 @@
 import { logger } from './logger';
 import { APP_CONFIG } from '../config/appConfig'
+import { detectPlatform } from './platform'
 // WebSocket 管理器 - 简洁版
 
 // 定义消息类型
@@ -31,9 +32,7 @@ export const connectWebSocket = (serverUrl: string, token: string): WebSocket =>
   }
 
   // 携带客户端版本和平台信息，用于版本分布统计
-  const platform = navigator.userAgent.toLowerCase().includes('mac') ? 'macos'
-    : navigator.userAgent.toLowerCase().includes('linux') ? 'linux'
-    : 'windows'
+  const platform = detectPlatform()
   const version = APP_CONFIG.version
   const wsUrl = `ws${serverUrl.startsWith('https') ? 's' : ''}://${serverUrl.replace(/^https?:\/\//, '')}/api/v1/ws?token=${token}&version=${encodeURIComponent(version)}&platform=${platform}`;
   ws = new WebSocket(wsUrl);

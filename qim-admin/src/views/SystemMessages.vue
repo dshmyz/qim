@@ -20,10 +20,13 @@
               <el-tag size="small" :type="row.target_type === 'all' ? '' : 'warning'" effect="plain">
                 {{ targetTypeLabel(row.target_type) }}
               </el-tag>
+              <span v-if="row.target_type === 'version' && row.target_version" class="target-detail">
+                版本: {{ row.target_version }}{{ row.target_platform ? ` · ${clientPlatformLabel(row.target_platform)}` : '' }}
+              </span>
               <span v-if="row.target_type !== 'all' && row.target_id" class="target-detail">
                 ID: {{ row.target_id }}
               </span>
-              <span v-if="row.target_type !== 'all' && !row.target_id" class="target-detail text-muted">
+              <span v-if="row.target_type !== 'all' && !row.target_id && row.target_type !== 'version'" class="target-detail text-muted">
                 未指定
               </span>
             </div>
@@ -96,6 +99,7 @@
             <el-option label="全员" value="all" />
             <el-option label="指定部门" value="department" />
             <el-option label="指定用户" value="user" />
+            <el-option label="指定版本(在线)" value="version" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="messageForm.target_type === 'user'" label="目标用户" prop="target_ids">
@@ -149,6 +153,23 @@
             <div v-if="messageForm.target_ids.length > 0" class="selected-summary">
               已选 <strong>{{ messageForm.target_ids.length }}</strong> 个部门
             </div>
+          </div>
+        </el-form-item>
+        <el-form-item v-if="messageForm.target_type === 'version'" label="目标版本" prop="target_version">
+          <div class="multi-select-wrapper">
+            <el-select v-model="messageForm.target_version" placeholder="请选择客户端版本" filterable style="width: 100%">
+              <el-option
+                v-for="item in versionOptions"
+                :key="item.version"
+                :label="`${item.version}（${item.count} 台在线）`"
+                :value="item.version"
+              />
+            </el-select>
+            <el-select v-model="messageForm.target_platform" placeholder="全部平台" clearable style="width: 100%; margin-top: var(--space-2)">
+              <el-option label="全部平台" value="" />
+              <el-option v-for="p in CLIENT_PLATFORM_OPTIONS" :key="p.value" :label="p.label" :value="p.value" />
+            </el-select>
+            <div class="selected-summary">仅推送给所选版本的<strong>在线</strong>用户；未上报版本的老客户端归入「未知版本」</div>
           </div>
         </el-form-item>
         <el-form-item v-if="isEdit" label="状态">
@@ -242,9 +263,13 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { SystemMessage, Organization } from '@/types'
 import type { User } from '@/types'
-import { getSystemMessages, createSystemMessage, updateSystemMessage, deleteSystemMessage, broadcastChat } from '@/api/systemMessages'
+import { getSystemMessages, createSystemMessage, updateSystemMessage, deleteSystemMessage, broadcastChat, getBroadcastChatJob } from '@/api/systemMessages'
+import type { BroadcastChatJob } from '@/api/systemMessages'
 import { getOrganizationTree } from '@/api/organization'
 import { getUsers } from '@/api/users'
+import { getVersionDistribution } from '@/api/versions'
+import type { VersionDistribution } from '@/types/client'
+import { CLIENT_PLATFORM_OPTIONS, clientPlatformLabel } from '@/constants/platforms'
 
 // 搜索和分页
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
@@ -263,8 +288,28 @@ const messageForm = reactive({
   target_type: 'all' as string,
   target_id: undefined as number | undefined,
   target_ids: [] as number[],
+  target_version: '' as string,
+  target_platform: '' as string,
   status: 'draft' as 'published' | 'draft' | 'active',
 })
+
+// 版本分布（在线客户端快照，含「未知版本」桶）供「指定版本(在线)」选择。
+// 后端分布按 version|platform 拆分，此处聚合到版本级：同一版本跨平台合并台数，
+// 避免下拉出现重复选项与误导性的分平台计数。
+const versionOptions = ref<VersionDistribution[]>([])
+const fetchVersionDistribution = async () => {
+  try {
+    const { data } = await getVersionDistribution()
+    const byVersion = new Map<string, number>()
+    for (const item of data.data || []) {
+      byVersion.set(item.version, (byVersion.get(item.version) || 0) + item.count)
+    }
+    versionOptions.value = Array.from(byVersion.entries()).map(([version, count]) => ({ version, count }))
+  } catch {
+    // 请求拦截器已提示
+  }
+}
+
 
 const messageRules: FormRules = {
   title: [{ required: true, message: '请输入消息标题', trigger: 'blur' }],
@@ -273,8 +318,20 @@ const messageRules: FormRules = {
   target_ids: [
     {
       validator: (_rule: any, value: number[], callback: Function) => {
-        if (messageForm.target_type !== 'all' && (!value || value.length === 0)) {
+        if (messageForm.target_type !== 'all' && messageForm.target_type !== 'version' && (!value || value.length === 0)) {
           callback(new Error(targetTypeRequiredMsg.value))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change',
+    },
+  ],
+  target_version: [
+    {
+      validator: (_rule: any, value: string, callback: Function) => {
+        if (messageForm.target_type === 'version' && !value) {
+          callback(new Error('请选择目标版本'))
         } else {
           callback()
         }
@@ -297,6 +354,7 @@ const targetTypeLabel = (type: string): string => {
     all: '全员',
     department: '指定部门',
     user: '指定用户',
+    version: '指定版本(在线)',
   }
   return map[type] || type
 }
@@ -384,6 +442,8 @@ const handleEdit = (row: SystemMessage) => {
   messageForm.target_type = row.target_type || 'all'
   messageForm.target_id = row.target_id
   messageForm.target_ids = row.target_id ? [row.target_id] : []
+  messageForm.target_version = row.target_version || ''
+  messageForm.target_platform = row.target_platform || ''
   messageForm.status = row.status === 'active' ? 'published' : 'draft'
   messageDialogVisible.value = true
 }
@@ -395,6 +455,8 @@ const resetMessageForm = () => {
   messageForm.target_type = 'all'
   messageForm.target_id = undefined
   messageForm.target_ids = []
+  messageForm.target_version = ''
+  messageForm.target_platform = ''
   messageForm.status = 'draft'
 }
 
@@ -420,6 +482,8 @@ const handleSubmit = async () => {
           content: messageForm.content,
           target_type: messageForm.target_type,
           target_ids: messageForm.target_type !== 'all' ? messageForm.target_ids : undefined,
+          target_version: messageForm.target_type === 'version' ? messageForm.target_version : undefined,
+          target_platform: messageForm.target_type === 'version' ? messageForm.target_platform || undefined : undefined,
         })
         ElMessage.success('创建成功')
       }
@@ -487,20 +551,41 @@ const handleSendChat = async () => {
     }
     chatSubmitting.value = true
     try {
+      // POST 提交（可能真失败：权限/参数）
       const { data } = await broadcastChat({
         content: chatForm.content,
         target_user_ids: chatForm.scope === 'user' ? chatForm.target_user_ids : undefined,
       })
-      const res = data.data
-      ElMessage.success(`发送完成：成功 ${res.sent}，失败 ${res.failed}`)
+      const job = data.data
+      ElMessage.success(`群发已开始（共 ${job.total} 人，任务ID：${job.job_id}），后台处理中...`)
       chatDialogVisible.value = false
+      // 轮询真实成败：POST 已成功，任何轮询错误（404/网络/超时）都表示"结果暂无法确认"而非发送失败
+      try {
+        const result = await pollBroadcastChatJob(job.job_id)
+        ElMessage.success(`发送完成：成功 ${result.sent}，失败 ${result.failed}，跳过 ${result.skipped}（任务ID：${job.job_id}）`)
+      } catch (pollErr: any) {
+        const detail = pollErr instanceof Error ? pollErr.message : '后台仍在处理中，消息会陆续送达'
+        ElMessage.warning({ message: `群发结果暂无法确认（任务ID：${job.job_id}）：${detail}`, duration: 6000 })
+      }
     } catch (error: any) {
-      console.error('群发私聊失败:', error)
+      console.error('群发私聊提交失败:', error)
       ElMessage.error(error.response?.data?.message || '群发失败')
     } finally {
       chatSubmitting.value = false
     }
   })
+}
+
+// 轮询群发任务直至完成（上限 ~60s）；超时说明后台仍在处理、消息会陆续送达
+const pollBroadcastChatJob = async (jobId: string, timeoutMs = 60000): Promise<BroadcastChatJob> => {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    const { data } = await getBroadcastChatJob(jobId)
+    const job = data.data
+    if (job.status === 'done') return job
+    await new Promise(r => setTimeout(r, 1000))
+  }
+  throw new Error('后台仍在处理中，消息会陆续送达，可稍后刷新页面确认')
 }
 
 // 删除消息
@@ -517,6 +602,7 @@ const handleDelete = async (id: number) => {
 onMounted(() => {
   fetchMessages()
   fetchDepartmentTree()
+  fetchVersionDistribution()
 })
 </script>
 

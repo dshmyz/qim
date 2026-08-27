@@ -12,28 +12,28 @@ import (
 
 // 用户
 type User struct {
-	ID               uint           `json:"id" gorm:"primarykey"`
-	Username         string         `json:"username" gorm:"uniqueIndex;size:50;not null"`
-	PasswordHash     string         `json:"-" gorm:"size:255;not null"`
-	Nickname         string         `json:"nickname" gorm:"size:100"`
-	RealName         string         `json:"real_name" gorm:"size:100"`
-	Avatar           string         `json:"avatar" gorm:"size:500"`
-	Type             string         `json:"type" gorm:"size:30;default:'user';index"` // 'user' | 'bot' | 'system' | 'api' | 'admin'
-	Gender           string         `json:"gender" gorm:"size:10;default:'secret'"`   // 'male' | 'female' | 'secret'
-	Organization     string         `json:"organization" gorm:"size:500"`             // 组织架构信息（冗余存储）
-	Signature        string         `json:"signature" gorm:"type:text"`
-	Phone            string         `json:"phone" gorm:"size:20;index"`
-	Email            string         `json:"email" gorm:"size:100;index"`
-	Status           string         `json:"status" gorm:"size:20;default:'offline'"`       // 连接状态：online / offline（系统自动维护）
-	AccountStatus    string         `json:"accountStatus" gorm:"size:20;default:'active'"` // 账号状态：active / disabled / banned（管理员维护）
-	LastOnline       *time.Time     `json:"last_online"`
-	IP               string         `json:"ip" gorm:"size:50"`
-	TwoFactorEnabled bool           `json:"two_factor_enabled" gorm:"default:false"`
+	ID               uint       `json:"id" gorm:"primarykey"`
+	Username         string     `json:"username" gorm:"uniqueIndex;size:50;not null"`
+	PasswordHash     string     `json:"-" gorm:"size:255;not null"`
+	Nickname         string     `json:"nickname" gorm:"size:100"`
+	RealName         string     `json:"real_name" gorm:"size:100"`
+	Avatar           string     `json:"avatar" gorm:"size:500"`
+	Type             string     `json:"type" gorm:"size:30;default:'user';index"` // 'user' | 'bot' | 'system' | 'api' | 'admin'
+	Gender           string     `json:"gender" gorm:"size:10;default:'secret'"`   // 'male' | 'female' | 'secret'
+	Organization     string     `json:"organization" gorm:"size:500"`             // 组织架构信息（冗余存储）
+	Signature        string     `json:"signature" gorm:"type:text"`
+	Phone            string     `json:"phone" gorm:"size:20;index"`
+	Email            string     `json:"email" gorm:"size:100;index"`
+	Status           string     `json:"status" gorm:"size:20;default:'offline'"`       // 连接状态：online / offline（系统自动维护）
+	AccountStatus    string     `json:"accountStatus" gorm:"size:20;default:'active'"` // 账号状态：active / disabled / banned（管理员维护）
+	LastOnline       *time.Time `json:"last_online"`
+	IP               string     `json:"ip" gorm:"size:50"`
+	TwoFactorEnabled bool       `json:"two_factor_enabled" gorm:"default:false"`
 	// StorageQuota 个人文件存储配额（字节），默认 50GB；管理员可在用户管理中调整
-	StorageQuota     int64          `json:"storage_quota" gorm:"not null;default:53687091200"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	DeletedAt        gorm.DeletedAt `json:"-" gorm:"index"`
+	StorageQuota int64          `json:"storage_quota" gorm:"not null;default:53687091200"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 // AfterCreate 新用户创建后自动订阅所有默认频道（仅真人用户）。
@@ -407,16 +407,18 @@ type UserRole struct {
 
 // 系统消息
 type SystemMessage struct {
-	ID         uint           `json:"id" gorm:"primarykey"`
-	Title      string         `json:"title" gorm:"size:500;not null"`
-	Content    string         `json:"content" gorm:"type:text;not null"`
-	SenderID   uint           `json:"sender_id" gorm:"not null"`
-	Status     string         `json:"status" gorm:"size:20;default:'active'"`
-	TargetType string         `json:"target_type" gorm:"size:20"`
-	TargetID   *uint          `json:"target_id"`
-	CreatedAt  time.Time      `json:"created_at"`
-	DeletedAt  gorm.DeletedAt `json:"-" gorm:"index"`
-	Sender     User           `json:"sender,omitempty" gorm:"foreignkey:SenderID"`
+	ID             uint           `json:"id" gorm:"primarykey"`
+	Title          string         `json:"title" gorm:"size:500;not null"`
+	Content        string         `json:"content" gorm:"type:text;not null"`
+	SenderID       uint           `json:"sender_id" gorm:"not null"`
+	Status         string         `json:"status" gorm:"size:20;default:'active'"`
+	TargetType     string         `json:"target_type" gorm:"size:20"`
+	TargetID       *uint          `json:"target_id"`
+	TargetVersion  string         `json:"target_version" gorm:"size:50"`  // target_type=version：定向客户端版本
+	TargetPlatform string         `json:"target_platform" gorm:"size:20"` // target_type=version：定向平台（空=全部）
+	CreatedAt      time.Time      `json:"created_at"`
+	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
+	Sender         User           `json:"sender,omitempty" gorm:"foreignkey:SenderID"`
 }
 
 // 任务

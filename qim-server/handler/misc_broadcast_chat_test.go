@@ -2,10 +2,12 @@ package handler
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
@@ -19,7 +21,7 @@ import (
 )
 
 // setupBroadcastChatTest 构造后台服务上下文：迁移表、注入 DI 容器、
-// 创建 1 个系统账号(type=system) + 2 个普通用户，并注册 BroadcastChatMessage 路由。
+// 创建 1 个系统账号(type=system) + 2 个普通用户，并注册 BroadcastChatMessage 及其任务查询路由。
 func setupBroadcastChatTest(t *testing.T) (*gin.Engine, *gorm.DB, model.User) {
 	t.Helper()
 
@@ -59,8 +61,53 @@ func setupBroadcastChatTest(t *testing.T) (*gin.Engine, *gorm.DB, model.User) {
 		c.Set("user_id", sysUser.ID)
 		BroadcastChatMessage(c)
 	})
+	router.GET("/api/v1/system-messages/broadcast-chat/jobs/:id", func(c *gin.Context) {
+		c.Set("user_id", sysUser.ID)
+		GetBroadcastChatJob(c)
+	})
 
 	return router, db, sysUser
+}
+
+// postBroadcast 提交群发任务并轮询任务结果直至 done（异步执行），返回任务结果。
+func postBroadcast(t *testing.T, router *gin.Engine, body string) (sent, failed, skipped int) {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/system-messages/broadcast-chat",
+		bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp struct {
+		Data struct {
+			JobID string `json:"job_id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.NotEmpty(t, resp.Data.JobID)
+
+	// 轮询任务结果（worker 池并发执行，SQLite 单连接下通常瞬时完成）
+	var job broadcastChatJob
+	require.Eventually(t, func() bool {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/system-messages/broadcast-chat/jobs/"+resp.Data.JobID, nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			return false
+		}
+		var r struct {
+			Data broadcastChatJob `json:"data"`
+		}
+		if json.Unmarshal(w.Body.Bytes(), &r) != nil {
+			return false
+		}
+		job = r.Data
+		return job.Status == "done"
+	}, 5*time.Second, 20*time.Millisecond, "群发任务应在超时内完成")
+
+	return job.Sent, job.Failed, job.Skipped
 }
 
 // TestBroadcastChatMessageToAll 全员私聊：系统账号向所有普通用户单聊发一条 text 消息。
@@ -72,13 +119,10 @@ func TestBroadcastChatMessageToAll(t *testing.T) {
 	db.Where("type != ?", "system").Find(&users)
 	require.Len(t, users, 2)
 
-	body := bytes.NewBufferString(`{"content":"请升级到最新版本"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/system-messages/broadcast-chat", body)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-
-	router.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code)
+	sent, failed, skipped := postBroadcast(t, router, `{"content":"请升级到最新版本"}`)
+	require.Equal(t, 2, sent)
+	require.Equal(t, 0, failed)
+	require.Equal(t, 0, skipped)
 
 	var messages []model.Message
 	db.Find(&messages)
@@ -119,21 +163,12 @@ func TestBroadcastChatMessageToAll(t *testing.T) {
 func TestBroadcastChatMessageReusesConversation(t *testing.T) {
 	router, db, _ := setupBroadcastChatTest(t)
 
-	sendOnce := func() {
-		body := bytes.NewBufferString(`{"content":"hello"}`)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/system-messages/broadcast-chat", body)
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-		require.Equal(t, http.StatusOK, w.Code)
-	}
-
-	sendOnce()
+	postBroadcast(t, router, `{"content":"hello"}`)
 	var convs1 int64
 	db.Model(&model.Conversation{}).Count(&convs1)
 	require.Equal(t, int64(2), convs1) // 一个用户一个单聊会话
 
-	sendOnce()
+	postBroadcast(t, router, `{"content":"hello"}`)
 	var convs2 int64
 	db.Model(&model.Conversation{}).Count(&convs2)
 	require.Equal(t, convs1, convs2) // 复用旧会话，不新增
@@ -150,12 +185,7 @@ func TestBroadcastChatMessageTargeted(t *testing.T) {
 	var user2 model.User
 	db.Where("username = ?", "u2").First(&user2)
 
-	body := bytes.NewBufferString(fmt.Sprintf(`{"content":"仅通知你","target_user_ids":[%d]}`, user2.ID))
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/system-messages/broadcast-chat", body)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code)
+	postBroadcast(t, router, fmt.Sprintf(`{"content":"仅通知你","target_user_ids":[%d]}`, user2.ID))
 
 	var total int64
 	db.Model(&model.Message{}).Count(&total)

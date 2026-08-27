@@ -393,29 +393,42 @@ class Screenshots extends node_events_1.default {
                 // 回退路径：node-screenshots 不可用时用 Electron desktopCapturer。
                 // 注意：desktopCapturer 在某些 Electron 版本会缓存缩略图，可能返回上一次截屏画面。
                 // 仅作为回退方案，主路径 node-screenshots 实时截屏无此问题。
-                const sources = yield electron_1.desktopCapturer.getSources({
-                    types: ['screen'],
-                    thumbnailSize: {
-                        width: display.width * display.scaleFactor,
-                        height: display.height * display.scaleFactor,
-                    },
-                });
-                let source;
-                // Linux系统上，screen.getDisplayNearestPoint 返回的 Display 对象的 id
-                // 和这里 source 对象上的 display_id(Linux上，这个值是空字符串) 或 id 的中间部分，都不一致
-                // 但是，如果只有一个显示器的话，其实不用判断，直接返回就行
-                if (sources.length === 1) {
-                    [source] = sources;
-                }
-                else {
-                    source = sources.find((item) => item.display_id === display.id.toString() ||
-                        item.id.startsWith(`screen:${display.id}:`));
+                // 空/1x1 缩略图在 Wayland 上常见：先重试一次拿有效图；仍拿不到也不报错，
+                // 返回现有缩略图（可能为空白/旧图）——报错会让截图功能在该平台整体不可用。
+                let source = null;
+                let thumbnail = null;
+                let sources = [];
+                for (let attempt = 0; attempt < 2 && !thumbnail; attempt++) {
+                    sources = yield electron_1.desktopCapturer.getSources({
+                        types: ['screen'],
+                        thumbnailSize: {
+                            width: display.width * display.scaleFactor,
+                            height: display.height * display.scaleFactor,
+                        },
+                    });
+                    let picked;
+                    // Linux系统上，screen.getDisplayNearestPoint 返回的 Display 对象的 id
+                    // 和这里 source 对象上的 display_id(Linux上，这个值是空字符串) 或 id 的中间部分，都不一致
+                    // 但是，如果只有一个显示器的话，其实不用判断，直接返回就行
+                    if (sources.length === 1) {
+                        [picked] = sources;
+                    }
+                    else {
+                        picked = sources.find((item) => item.display_id === display.id.toString() ||
+                            item.id.startsWith(`screen:${display.id}:`));
+                    }
+                    if (!picked) continue;
+                    source = picked;
+                    const size = picked.thumbnail.getSize();
+                    if (!picked.thumbnail.isEmpty() && size.width > 1 && size.height > 1) {
+                        thumbnail = picked.thumbnail;
+                    }
                 }
                 if (!source) {
                     this.logger("SCREENSHOTS:capture Can't find screen source. sources: %o, display: %o", sources, display);
                     throw new Error("Can't find screen source");
                 }
-                return source.thumbnail.toDataURL();
+                return (thumbnail || source.thumbnail).toDataURL();
             }
         });
     }

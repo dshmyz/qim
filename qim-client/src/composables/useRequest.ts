@@ -1,6 +1,8 @@
 import { ref, computed } from 'vue'
 import { useServerUrl } from './useServerUrl'
 import QMessage from '../utils/qmessage'
+import { APP_CONFIG } from '../config/appConfig'
+import { detectPlatform } from '../utils/platform'
 
 const { serverUrl, setServerUrl } = useServerUrl()
 
@@ -63,6 +65,9 @@ export async function request<T = any>(
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
+  // 上报客户端版本与平台，供服务端消息发送版本门槛校验（真实发送路径走 fetch，不经 axios 拦截器）
+  headers['X-App-Version'] = APP_CONFIG.version
+  headers['X-App-Platform'] = detectPlatform()
 
   const baseUrl = options?.baseUrl || serverUrl.value
   let fullUrl = baseUrl.startsWith('http')

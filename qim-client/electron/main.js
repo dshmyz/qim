@@ -415,7 +415,6 @@ function createWindow() {
     windowOptions.trafficLightPosition = { x: -100, y: -100 }
   }
   if (isLinux) {
-    windowOptions.transparent = true
     windowOptions.icon = loadIcon(64)
   }
   mainWindow = new BrowserWindow(windowOptions)

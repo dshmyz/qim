@@ -4,6 +4,7 @@ import { calculateReconnectDelay, shouldReconnect, DEFAULT_RECONNECT_CONFIG } fr
 import { connectionMonitor } from '../utils/connectionMonitor'
 import { messageQueue } from '../utils/messageQueue'
 import { APP_CONFIG } from '../config/appConfig'
+import { detectPlatform } from '../utils/platform'
 
 export interface WebSocketMessage {
   type: string
@@ -309,9 +310,7 @@ export function useWebSocket(wsUrl: string) {
       const cleanUrl = serverUrl.replace(/\/+$/, '')
 
       // 携带客户端版本和平台信息，用于版本分布统计
-      const platform = navigator.userAgent.toLowerCase().includes('mac') ? 'macos'
-        : navigator.userAgent.toLowerCase().includes('linux') ? 'linux'
-        : 'windows'
+      const platform = detectPlatform()
       const version = APP_CONFIG.version
       const versionQuery = `&version=${encodeURIComponent(version)}&platform=${platform}`
 

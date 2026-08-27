@@ -112,7 +112,11 @@ func InitWSHandlers() {
 		msgSvc := di.GlobalContainer.MessageService
 		di.GlobalContainer.WebSocketHub.HandleMessage = msgSvc.SendMessage
 		di.GlobalContainer.WebSocketHub.HandleReadMessage = msgSvc.MarkAsRead
-		logger.WithModule("Init").Info("WS HandleMessage / HandleReadMessage 已注册到 MessageService")
+		// 客户端版本门槛：与 REST SendMessage 同一判定，供 WS send_message 路径使用
+		di.GlobalContainer.WebSocketHub.SendVersionGate = func(version, platform string) bool {
+			return clientSendBlocked(version, minSendVersion(platform))
+		}
+		logger.WithModule("Init").Info("WS HandleMessage / HandleReadMessage / SendVersionGate 已注册")
 	}
 }
 

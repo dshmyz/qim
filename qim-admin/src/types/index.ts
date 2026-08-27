@@ -69,6 +69,8 @@ export interface SystemMessage {
   priority?: 'low' | 'medium' | 'high'
   target_type?: string
   target_id?: number
+  target_version?: string
+  target_platform?: string
   senderId?: number
   sender?: any
   readCount?: number
@@ -274,6 +276,10 @@ export interface SystemConfig {
   rateLimitLoginMaxAttempts: number
   rateLimitLoginWindow: number
   rateLimitLoginBan: number
+  clientMinSendVersion?: string
+  clientMinSendVersionWindows?: string
+  clientMinSendVersionMacos?: string
+  clientMinSendVersionLinux?: string
 }
 
 // 版本管理相关

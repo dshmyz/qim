@@ -1,5 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 import { getStoredServerUrl } from '../composables/useServerUrl'
+import { APP_CONFIG } from '../config/appConfig'
+import { detectPlatform } from '../utils/platform'
 import type { ApiResponse } from '../composables/useRequest'
 import { onUnauthorized } from '../composables/useRequest'
 import { requestInterceptor } from '../utils/requestInterceptor'
@@ -70,7 +72,11 @@ const api: AxiosInstance = axios.create({
 api.interceptors.request.use(
   (config) => {
     config.baseURL = getStoredServerUrl()
-    if (!config.headers || config.headers['skipAuth'] !== 'true') {
+    // 上报客户端版本与平台，供服务端消息发送版本门槛校验（X-App-Version / X-App-Platform）
+    config.headers = config.headers || {}
+    config.headers['X-App-Version'] = APP_CONFIG.version
+    config.headers['X-App-Platform'] = detectPlatform()
+    if (config.headers['skipAuth'] !== 'true') {
       const token = localStorage.getItem('token')
       if (token) {
         config.headers.Authorization = `Bearer ${token}`

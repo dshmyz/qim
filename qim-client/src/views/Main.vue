@@ -718,6 +718,7 @@ import ShareModal from '../components/modals/ShareModal.vue'
 const UserProfile = defineAsyncComponent(() => import('../components/modals/UserProfile.vue'))
 const NotificationCenter = defineAsyncComponent(() => import('../components/notification/NotificationCenter.vue'))
 import { mapNotification } from '../utils/notificationMapper'
+import { detectPlatform } from '../utils/platform'
 import { showReminder } from '../utils/notify'
 const CreateGroupModal = defineAsyncComponent(() => import('../components/modals/CreateGroupModal.vue'))
 const ChannelDetailNew = defineAsyncComponent(() => import('../components/channel/ChannelDetailNew.vue'))
@@ -1861,6 +1862,7 @@ const connectWebSocket = () => {
     'conversation_updated': handleConversationUpdated,
     'group_announcement_updated': refreshUserGroupsAfter(handleGroupAnnouncementUpdated),
     'notification': handleNotification,
+    'error': handleWsError,
     'new_notification': handleNewNotification,
     'approval_notification': handleApprovalNotification,
     'system_config_updated': (data: any) => systemConfigStore.updateFromServer(data),
@@ -2051,6 +2053,18 @@ const handleToolCall = (data: any) => {
 
   // 复用 store.updateMessage 统一更新路径，与 handleMessageUpdated 保持一致
   chatStore.updateMessage(convId, target.id, { tool_calls: toolCalls })
+}
+
+// 处理 WS error 事件（版本门槛拦截 / 发送失败 / 非成员等）：
+// version_too_low 明确提示升级；其余错误默认展示服务端消息，避免发送失败静默
+const handleWsError = (data: any) => {
+  const message = data?.message || '操作失败'
+  if (data?.code === 'version_too_low') {
+    QMessage.error(message, 5000)
+    return
+  }
+  QMessage.error(message, 3000)
+  logger.log('收到 WS error:', data)
 }
 
 // 处理通知
@@ -3639,13 +3653,7 @@ const checkUpdateViaAPI = async () => {
   }
 }
 
-// 检测当前平台
-const detectPlatform = (): string => {
-  const ua = navigator.userAgent.toLowerCase()
-  if (ua.includes('mac')) return 'macos'
-  if (ua.includes('linux')) return 'linux'
-  return 'windows'
-}
+// 检测当前平台（共用 utils/platform 单一实现）
 
 // 版本号比较：判断新版本是否比当前版本更新
 const isNewerVersion = (newVer: string, currentVer: string): boolean => {

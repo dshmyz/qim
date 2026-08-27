@@ -324,6 +324,8 @@ func UnsubscribeChannel(c *gin.Context) {
 
 func CreateChannelMessage(c *gin.Context) {
 	userID, _ := c.Get("user_id")
+	uid := userID.(uint)
+
 	channelIDStr := c.Param("id")
 
 	channelID, err := strconv.ParseUint(channelIDStr, 10, 32)
@@ -356,27 +358,38 @@ func CreateChannelMessage(c *gin.Context) {
 		return
 	}
 
-	if channel.CreatorID != userID.(uint) {
-		// 系统管理员/频道管理员可在任意频道发布消息（不受 creator_only 限制）
-		roles, _ := di.GlobalContainer.UserService.GetUserRoles(userID.(uint))
-		isAdmin := false
+	// 频道创建者 / 系统管理员 / 频道管理员：不受 creator_only 限制，且豁免客户端版本门槛
+	// （管理动作不被版本升级策略阻塞，对齐群禁言的管理员豁免先例）。
+	isManager := channel.CreatorID == uid
+	if !isManager {
+		roles, _ := di.GlobalContainer.UserService.GetUserRoles(uid)
 		for _, r := range roles {
 			if r == "system_admin" || r == "channel_manager" {
-				isAdmin = true
+				isManager = true
 				break
 			}
 		}
+	}
 
-		if !isAdmin {
-			if channel.PublishPermission == "creator_only" {
-				response.Forbidden(c, "无权限发布消息，仅频道创建者可发布")
-				return
+	if !isManager {
+		if channel.PublishPermission == "creator_only" {
+			response.Forbidden(c, "无权限发布消息，仅频道创建者可发布")
+			return
+		}
+		var subscription model.ChannelSubscriber
+		if err := db.Where("channel_id = ? AND user_id = ?", uint(channelID), uid).First(&subscription).Error; err != nil {
+			response.Forbidden(c, "无权限发布消息，需先订阅该频道")
+			return
+		}
+
+		// 客户端版本门槛（普通订阅者）：低于对应平台配置的最低版本禁止发送（与普通消息一致）
+		if blocked, minV, unverifiable := clientSendBlockedRequest(c, uid); blocked {
+			if unverifiable {
+				response.Forbidden(c, "当前客户端版本无法验证，请升级至最新客户端并保持网络连接后再发送消息")
+			} else {
+				response.Forbidden(c, fmt.Sprintf("当前客户端版本过低（需 v%s 及以上），请升级客户端后再发送消息", minV))
 			}
-			var subscription model.ChannelSubscriber
-			if err := db.Where("channel_id = ? AND user_id = ?", uint(channelID), userID).First(&subscription).Error; err != nil {
-				response.Forbidden(c, "无权限发布消息，需先订阅该频道")
-				return
-			}
+			return
 		}
 	}
 

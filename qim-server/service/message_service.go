@@ -326,7 +326,8 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 			// 广播（mention_user_ids 数组随消息发送，前端据此算 is_at_mention）
 			s.broadcastMessage(&msg, mentionUserIDs, senderID)
 			// HTTP 与 WebSocket 都经由本 service 发送，因此在此统一触发一次智能回复/分身回调。
-			if s.hub.OnMessageSent != nil && !mention.IsAllMentioned(mentions) {
+			// 系统账号消息（如后台群发私聊）跳过：避免一次群发给 N 个用户派生 N 个 AI 触发 goroutine。
+			if s.hub.OnMessageSent != nil && !mention.IsAllMentioned(mentions) && msg.Sender.Type != "system" {
 				utils.SafeGo(func() {
 					s.hub.OnMessageSent(&msg, mentionUserIDs)
 				})

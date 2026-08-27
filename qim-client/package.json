@@ -1,7 +1,7 @@
 {
   "name": "qim",
   "author": "QIM Team <huangqun@buaa.edu.cn>",
-  "version": "1.0.0",
+  "version": "2.0.39",
   "description": "即时通讯 UI 组件库",
   "homepage": "https://qim.work",
   "type": "module",
@@ -49,6 +49,9 @@
     "files": [
       "dist/**/*",
       "electron/**/*"
+    ],
+    "asarUnpack": [
+      "**/node_modules/node-screenshots/**"
     ],
     "directories": {
       "output": "electron-dist",
@@ -140,6 +143,7 @@
     "lunar-javascript": "^1.7.7",
     "mammoth": "^1.12.1",
     "marked": "^18.0.2",
+    "node-screenshots": "^0.2.8",
     "pdfjs-dist": "^5.7.284",
     "pinia": "^3.0.4",
     "spark-md5": "^3.0.2",

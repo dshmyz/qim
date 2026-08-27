@@ -77,6 +77,7 @@ type Hub struct {
 	broadcast           chan []byte
 	Broadcast           chan []byte
 	userClients         sync.Map
+	userClientsMu       sync.RWMutex // 保护 userClients 中各 []*Client 切片的并发读写（register/unregister 增删 vs 读取方枚举）
 	conversationMembers map[uint]cachedMembers
 	mu                  sync.RWMutex
 	nodes               []string
@@ -98,6 +99,11 @@ type Hub struct {
 
 	// HandleMessage 回调：处理 WebSocket 发送消息请求，由外部注入 MessageService 逻辑
 	HandleMessage func(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error)
+
+	// SendVersionGate 回调：客户端版本门槛判定（版本/平台是否被禁止发送），由外部注入。
+	// 返回 true 表示该连接的版本被门槛拦截；nil 表示不启用门槛。独立于 HandleMessage 注入，
+	// 避免 ws 包反向依赖 handler/service 的版本比较逻辑。
+	SendVersionGate func(clientVersion, clientPlatform string) bool
 
 	// HandleReadMessage 回调：处理 WebSocket 已读消息请求
 	HandleReadMessage func(convID, userID uint) error
@@ -289,6 +295,7 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.register:
 			h.clients.Store(client, true)
+			h.userClientsMu.Lock()
 			if existingClients, ok := h.userClients.Load(client.userID); ok {
 				clients := existingClients.([]*Client)
 				clients = append(clients, client)
@@ -296,6 +303,7 @@ func (h *Hub) Run() {
 			} else {
 				h.userClients.Store(client.userID, []*Client{client})
 			}
+			h.userClientsMu.Unlock()
 			h.incVersionStats(client.version, client.platform)
 			logger.WithModule("WS").Info("用户连接", "userID", client.userID)
 
@@ -307,6 +315,8 @@ func (h *Hub) Run() {
 			safeCloseSend(client.send)
 			h.decVersionStats(client.version, client.platform)
 
+			h.userClientsMu.Lock()
+			removed := false
 			if existingClients, ok := h.userClients.Load(client.userID); ok {
 				clients := existingClients.([]*Client)
 				for i, c := range clients {
@@ -318,10 +328,15 @@ func (h *Hub) Run() {
 
 				if len(clients) == 0 {
 					h.userClients.Delete(client.userID)
-					h.UpdateUserStatus(client.userID, client.username, StatusOffline)
+					removed = true
 				} else {
 					h.userClients.Store(client.userID, clients)
 				}
+			}
+			h.userClientsMu.Unlock()
+			// 状态更新含 DB 写与状态广播，放在锁外执行，避免拉长持锁
+			if removed {
+				h.UpdateUserStatus(client.userID, client.username, StatusOffline)
 			}
 
 			h.CleanupUserSubscriptions(client.userID)
@@ -439,6 +454,8 @@ func (h *Hub) deliverLocally(message []byte) {
 		h.decVersionStats(client.version, client.platform)
 
 		// 同步清理 userClients，防止悬空
+		h.userClientsMu.Lock()
+		removed := false
 		if existingClients, ok := h.userClients.Load(client.userID); ok {
 			clients := existingClients.([]*Client)
 			for i, c := range clients {
@@ -449,10 +466,14 @@ func (h *Hub) deliverLocally(message []byte) {
 			}
 			if len(clients) == 0 {
 				h.userClients.Delete(client.userID)
-				h.UpdateUserStatus(client.userID, client.username, StatusOffline)
+				removed = true
 			} else {
 				h.userClients.Store(client.userID, clients)
 			}
+		}
+		h.userClientsMu.Unlock()
+		if removed {
+			h.UpdateUserStatus(client.userID, client.username, StatusOffline)
 		}
 	}
 }
@@ -470,6 +491,7 @@ func (h *Hub) SendToUser(userID uint, message []byte) {
 // deliverToUserLocal 仅向本节点该用户的连接投递，不转发其他节点。
 func (h *Hub) deliverToUserLocal(userID uint, message []byte) {
 	now := time.Now()
+	h.userClientsMu.RLock()
 	if existingClients, ok := h.userClients.Load(userID); ok {
 		clients := existingClients.([]*Client)
 		for _, client := range clients {
@@ -487,6 +509,7 @@ func (h *Hub) deliverToUserLocal(userID uint, message []byte) {
 			}
 		}
 	}
+	h.userClientsMu.RUnlock()
 }
 
 // DeliverBroadcastFromNode 处理来自其他节点的广播中继：仅投递本节点客户端，不再转发。
@@ -537,6 +560,8 @@ func (h *Hub) BroadcastNewVersion(version, platform string, forceUpdate bool) {
 // IsUserOnline 检查用户是否在线
 
 func (h *Hub) IsUserOnline(userID uint) bool {
+	h.userClientsMu.RLock()
+	defer h.userClientsMu.RUnlock()
 	if existingClients, ok := h.userClients.Load(userID); ok {
 		clients := existingClients.([]*Client)
 		return len(clients) > 0

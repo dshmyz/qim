@@ -13,6 +13,17 @@ import (
 )
 
 func handleSendMessage(c *Client, data interface{}) {
+	// 客户端版本门槛：低于对应平台配置的最低版本禁止发送（与 REST SendMessage 同一门槛逻辑）
+	if c.hub.SendVersionGate != nil && c.hub.SendVersionGate(c.version, c.platform) {
+		errMsg := WSMessage{
+			Type: "error",
+			Data: map[string]interface{}{"code": "version_too_low", "message": "当前客户端版本过低，请升级客户端后再发送消息"},
+		}
+		jsonErr, _ := json.Marshal(errMsg)
+		safeSend(c, jsonErr)
+		return
+	}
+
 	msgData, ok := data.(map[string]interface{})
 	if !ok {
 		return
@@ -53,6 +64,17 @@ func handleSendMessage(c *Client, data interface{}) {
 // 因此该路径实际不可达；其载荷构建仍是手写（历史遗留，未走 service.BuildMessageResponse），
 // 保留仅作防御。字段集可能落后于统一构建函数——改动消息字段时请同步此处或直接删除。
 func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quotedMessageID *uint) {
+	// 与 handleSendMessage 一致：客户端版本门槛（防御性，正常路径经 SendVersionGate 已拦）
+	if c.hub.SendVersionGate != nil && c.hub.SendVersionGate(c.version, c.platform) {
+		errMsg := WSMessage{
+			Type: "error",
+			Data: map[string]interface{}{"code": "version_too_low", "message": "当前客户端版本过低，请升级客户端后再发送消息"},
+		}
+		jsonErr, _ := json.Marshal(errMsg)
+		safeSend(c, jsonErr)
+		return
+	}
+
 	db := c.hub.db
 
 	var member model.ConversationMember

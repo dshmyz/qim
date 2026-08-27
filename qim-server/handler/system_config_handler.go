@@ -8,6 +8,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/middleware"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -54,6 +55,13 @@ func mapConfigToFrontend(raw map[string]interface{}) map[string]interface{} {
 				out["allowedFileTypes"] = s
 			}
 		default:
+			// 最低发消息版本（含平台专属）经共享查找表映射，平台集由 clientMinSendVersionPlatforms 单源驱动
+			if field, ok := minSendVersionConfigToField[k]; ok {
+				if s, ok := v.(string); ok {
+					out[field] = s
+				}
+				continue
+			}
 			if fk, ok := rateLimitKeys[k]; ok {
 				out[fk] = v
 			} else {
@@ -126,6 +134,26 @@ func UpdateSystemConfig(c *gin.Context) {
 
 	req = mapConfigFromFrontend(req)
 
+	// 最低发消息版本（任一平台）服务端校验：非空必须是 x.y.z 格式，否则拒绝保存——
+	// 非法值会让 clientSendBlocked 的 IsValidVersion 判定 fail-open 静默禁用门槛，管理员误以为已生效。
+	for configKey, field := range minSendVersionConfigToField {
+		if v, ok := req[configKey]; ok {
+			if s, ok := v.(string); ok && s != "" && !service.IsValidVersion(s) {
+				response.BadRequest(c, field+" 版本号格式无效（应为 x.y.z，如 2.0.35）")
+				return
+			}
+		}
+	}
+
+	// 最低发消息版本（任一平台）变更后立即可感知（缓存 5s TTL 之外主动失效）。
+	// 平台集由 clientMinSendVersionPlatforms 单源驱动，新增平台自动覆盖。
+	for configKey := range minSendVersionConfigToField {
+		if _, touched := req[configKey]; touched {
+			invalidateMinSendVersionCache()
+			break
+		}
+	}
+
 	configSvc := di.GlobalContainer.SystemConfigService
 	if err := configSvc.BatchUpdate(req); err != nil {
 		response.InternalServerError(c, "配置保存失败")
@@ -185,6 +213,11 @@ func mapConfigFromFrontend(req map[string]interface{}) map[string]interface{} {
 		case "allowedFileTypes":
 			out["file_upload:allowed_extensions"] = v
 		default:
+			// 最低发消息版本（含平台专属）经共享查找表映射，平台集由 clientMinSendVersionPlatforms 单源驱动
+			if configKey, ok := minSendVersionFieldToConfig[k]; ok {
+				out[configKey] = v
+				continue
+			}
 			if dbKey, ok := rateLimitKeys[k]; ok {
 				out[dbKey] = v
 			} else {

@@ -7,7 +7,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
-	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/ws"
 
@@ -70,11 +69,13 @@ func CreateSystemMessage(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
 	var req struct {
-		Title      string `json:"title" binding:"required"`
-		Content    string `json:"content" binding:"required"`
-		TargetType string `json:"target_type"`
-		TargetID   *uint  `json:"target_id"`
-		TargetIDs  []uint `json:"target_ids"`
+		Title          string `json:"title" binding:"required"`
+		Content        string `json:"content" binding:"required"`
+		TargetType     string `json:"target_type"`
+		TargetID       *uint  `json:"target_id"`
+		TargetIDs      []uint `json:"target_ids"`
+		TargetVersion  string `json:"target_version"`  // target_type=version：定向客户端版本
+		TargetPlatform string `json:"target_platform"` // target_type=version：定向平台（空=全部）
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -82,15 +83,24 @@ func CreateSystemMessage(c *gin.Context) {
 		return
 	}
 
+	// 定向版本必须指定版本号：空值会让 GetVersionUsers("") 退化为"全部在线用户"而 BroadcastToVersion("")
+	// 只命中未知版本桶，DB 通知集合与实时推送目标分歧。仅前端校验不够，须在服务端兜底。
+	if req.TargetType == "version" && req.TargetVersion == "" {
+		response.BadRequest(c, "target_type=version 时必须提供 target_version")
+		return
+	}
+
 	db := database.GetDB()
 
 	systemMessage := model.SystemMessage{
-		Title:      req.Title,
-		Content:    req.Content,
-		SenderID:   userID.(uint),
-		Status:     "active",
-		TargetType: req.TargetType,
-		TargetID:   req.TargetID,
+		Title:          req.Title,
+		Content:        req.Content,
+		SenderID:       userID.(uint),
+		Status:         "active",
+		TargetType:     req.TargetType,
+		TargetID:       req.TargetID,
+		TargetVersion:  req.TargetVersion,
+		TargetPlatform: req.TargetPlatform,
 	}
 
 	if err := db.Create(&systemMessage).Error; err != nil {
@@ -144,6 +154,19 @@ func CreateSystemMessage(c *gin.Context) {
 		}
 		// 支持多选用户
 		usersToNotify = append(usersToNotify, req.TargetIDs...)
+	case "version":
+		// 定向版本（可选平台）的在线用户：版本只在在线连接上可知，离线用户无法按版本寻址。
+		// 老客户端未上报版本时归入"未知版本"桶，选该桶可给老客户端发升级通知。
+		// 已知限制：GetVersionUsers 只枚举本节点的在线连接；多节点部署下连接在其他节点的
+		// 同版本用户不在名单内（既无通知记录也无推送）。单节点默认部署不受影响。
+		if ws.GlobalHub != nil {
+			for _, u := range ws.GlobalHub.GetVersionUsers(req.TargetVersion) {
+				if req.TargetPlatform != "" && u.Platform != req.TargetPlatform {
+					continue
+				}
+				usersToNotify = append(usersToNotify, u.UserID)
+			}
+		}
 	default:
 		usersToNotify = append(usersToNotify, userID.(uint))
 	}
@@ -182,6 +205,8 @@ func CreateSystemMessage(c *gin.Context) {
 	}
 
 	// 事务成功后再推送 WS
+	// 逐用户推送各自的通知记录（user_id/id 与 DB 行一致，客户端已读/删除按 id+user_id 归属校验），
+	// version 定向同样走此路径：接收者已按版本筛选，通知是用户级记录，无需设备级分发。
 	if ws.GlobalHub != nil {
 		for _, n := range notifications {
 			notificationMsg := ws.WSMessage{
@@ -320,7 +345,6 @@ func BroadcastChatMessage(c *gin.Context) {
 
 	app := di.GlobalContainer
 	msgSvc := app.MessageService
-	convSvc := app.ConversationService
 	db := database.GetDB()
 
 	systemUserID := msgSvc.GetSystemUserID()
@@ -343,37 +367,22 @@ func BroadcastChatMessage(c *gin.Context) {
 		db.Where("type != ?", "system").Find(&targetUsers)
 	}
 
-	var sent, failed, skipped int
+	// 异步发送：POST 立即返回 job_id，前端轮询真实成败——避免大用户量群发超过前端超时
+	// 而管理员不知道是否已发送（worker 池并行显著缩短总耗时）。
+	var total int
 	for _, u := range targetUsers {
-		if exclude[u.ID] {
-			skipped++
-			continue
+		if !exclude[u.ID] {
+			total++
 		}
-
-		conv, err := convSvc.CreateSingleConversation(systemUserID, u.ID)
-		if err != nil {
-			failed++
-			logger.WithModule("BroadcastChatMessage").Warn("获取/创建单聊会话失败",
-				"user_id", u.ID, "error", err)
-			continue
-		}
-
-		if _, err := msgSvc.SendMessage(conv.ID, systemUserID, "text", req.Content, nil); err != nil {
-			failed++
-			logger.WithModule("BroadcastChatMessage").Warn("发送私聊消息失败",
-				"user_id", u.ID, "conv_id", conv.ID, "error", err)
-			continue
-		}
-		sent++
 	}
-
-	logger.WithModule("BroadcastChatMessage").Info("全员私聊发送完成",
-		"total", len(targetUsers), "sent", sent, "failed", failed, "skipped", skipped)
+	job := newBroadcastChatJob(total, req.Content)
+	// 响应字段在启动 worker 前读取（此时 Status 恒为 running、Total 已定），避免与并发 worker 读竞争
+	jobID, jobTotal, jobStatus := job.ID, job.Total, job.Status
+	go runBroadcastChatJob(job, targetUsers, exclude, systemUserID)
 
 	response.Success(c, gin.H{
-		"total":   len(targetUsers),
-		"sent":    sent,
-		"failed":  failed,
-		"skipped": skipped,
+		"job_id": jobID,
+		"total":  jobTotal,
+		"status": jobStatus,
 	})
 }

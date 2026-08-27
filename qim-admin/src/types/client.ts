@@ -36,6 +36,7 @@ export interface CLIVersion {
 
 export interface VersionDistribution {
   version: string
+  platform?: string // 后端按 version|platform 拆分返回（GetVersionStats）
   count: number
 }
 

@@ -105,3 +105,28 @@ func TestAsyncBroadcast_DecrementsVersionStatsOnFailedClient(t *testing.T) {
 		t.Fatalf("广播清理失败客户端后版本计数应为 0（已 decVersionStats），实际 %d（计数泄漏）", got)
 	}
 }
+
+// TestGetUserDevices 验证按用户枚举在线设备的版本与平台（多设备全量返回，供门槛取最低版本）。
+func TestGetUserDevices(t *testing.T) {
+	h := NewHub(nil, "", "http")
+
+	if got := h.GetUserDevices(1); len(got) != 0 {
+		t.Fatalf("无连接时应返回空列表，实际 %+v", got)
+	}
+
+	h.userClients.Store(uint(1), []*Client{
+		{version: "2.0.20", platform: "windows"},
+		{version: "2.0.35", platform: "macos"},
+	})
+	got := h.GetUserDevices(1)
+	if len(got) != 2 {
+		t.Fatalf("应返回 2 台设备，实际 %d", len(got))
+	}
+	seen := map[string]bool{}
+	for _, d := range got {
+		seen[d.Version+"/"+d.Platform] = true
+	}
+	if !seen["2.0.20/windows"] || !seen["2.0.35/macos"] {
+		t.Fatalf("应包含两台设备的版本/平台，实际 %+v", got)
+	}
+}

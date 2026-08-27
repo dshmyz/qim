@@ -10,6 +10,7 @@
           <el-form
             ref="configFormRef"
             :model="configForm"
+            :rules="configRules"
             label-width="140px"
             v-loading="loading"
             class="config-form"
@@ -60,6 +61,29 @@
           />
           <span class="desc" style="margin-left: 8px">（关闭后用户不可见已读状态，后台仍记录）</span>
         </el-form-item>
+
+        <el-divider content-position="left">客户端版本门槛</el-divider>
+
+        <el-form-item
+          v-for="f in versionGateFields"
+          :key="f.key"
+          :label="f.label"
+          :prop="f.key"
+        >
+          <div class="form-item-with-desc">
+            <el-input
+              v-model="configForm[f.key]"
+              :placeholder="f.placeholder"
+              clearable
+              style="width: 220px"
+            />
+            <span class="desc">{{ f.desc }}</span>
+          </div>
+        </el-form-item>
+
+        <div v-if="versionGateImpact > 0" class="gate-impact-warning">
+          ⚠ 按当前在线分布，将有 <strong>{{ versionGateImpact }}</strong> 台客户端因低于门槛被禁止发送消息；请确认已先发布新版客户端。
+        </div>
 
         <el-divider content-position="left">AI 设置</el-divider>
 
@@ -254,11 +278,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import type { FormInstance } from 'element-plus'
+import { ref, reactive, computed, onMounted } from 'vue'
+import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import type { SystemConfig } from '@/types'
 import { getSystemConfig, updateSystemConfig } from '@/api/systemConfig'
+import { getVersionDistribution } from '@/api/versions'
+import type { VersionDistribution } from '@/types/client'
 import MessageRemindWebhookConfig from './components/MessageRemindWebhookConfig.vue'
 import AIThresholdConfig from './components/AIThresholdConfig.vue'
 
@@ -284,7 +310,81 @@ const configForm = reactive<SystemConfig>({
   rateLimitLoginMaxAttempts: 5,
   rateLimitLoginWindow: 60,
   rateLimitLoginBan: 900,
+  clientMinSendVersion: '',
+  clientMinSendVersionWindows: '',
+  clientMinSendVersionMacos: '',
+  clientMinSendVersionLinux: '',
 })
+
+// 客户端最低发消息版本字段数组：驱动表单渲染与校验（单一来源，新增平台只改这里）
+type VersionGateKey =
+  | 'clientMinSendVersion'
+  | 'clientMinSendVersionWindows'
+  | 'clientMinSendVersionMacos'
+  | 'clientMinSendVersionLinux'
+
+const versionGateFields: { key: VersionGateKey; label: string; placeholder: string; desc: string }[] = [
+  { key: 'clientMinSendVersion', label: '最低发消息版本', placeholder: '如 2.0.35，留空不限制', desc: '（所有平台通用；低于此版本的客户端无法发送消息，强制升级）' },
+  { key: 'clientMinSendVersionWindows', label: 'Windows 专属', placeholder: '留空则用通用门槛', desc: '（仅 Windows，优先于通用值）' },
+  { key: 'clientMinSendVersionMacos', label: 'macOS 专属', placeholder: '留空则用通用门槛', desc: '（仅 macOS，优先于通用值）' },
+  { key: 'clientMinSendVersionLinux', label: 'Linux 专属', placeholder: '留空则用通用门槛', desc: '（仅 Linux，优先于通用值）' },
+]
+
+// 客户端最低发消息版本格式校验（\d+\.\d+\.\d+，与后端 IsValidVersion 一致）
+const versionFormatRule = (v: string, cb: Function) => {
+  if (v && !/^\d+\.\d+\.\d+$/.test(v)) {
+    cb(new Error('版本号格式应为 x.y.z，如 2.0.35'))
+  } else {
+    cb()
+  }
+}
+const configRules: FormRules = Object.fromEntries(
+  versionGateFields.map(f => [
+    f.key,
+    [{ validator: (_r: any, v: string, cb: Function) => versionFormatRule(v, cb), trigger: 'blur' }],
+  ])
+) as FormRules
+
+// ---- 门槛影响面预览：按当前在线版本分布，实时提示有多少客户端会低于门槛被拦 ----
+const distribution = ref<VersionDistribution[]>([])
+
+const compareVersions = (a: string, b: string): number => {
+  const pa = a.split('.').map(Number)
+  const pb = b.split('.').map(Number)
+  for (let i = 0; i < 3; i++) {
+    const x = pa[i] || 0
+    const y = pb[i] || 0
+    if (x !== y) return x < y ? -1 : 1
+  }
+  return 0
+}
+
+const versionGateImpact = computed(() => {
+  const thresholdFor = (platform: string | undefined): string => {
+    if (platform === 'windows' && configForm.clientMinSendVersionWindows) return configForm.clientMinSendVersionWindows
+    if (platform === 'macos' && configForm.clientMinSendVersionMacos) return configForm.clientMinSendVersionMacos
+    if (platform === 'linux' && configForm.clientMinSendVersionLinux) return configForm.clientMinSendVersionLinux
+    return configForm.clientMinSendVersion || ''
+  }
+  let blocked = 0
+  for (const item of distribution.value) {
+    const t = thresholdFor(item.platform)
+    if (!t) continue
+    // "未知版本"（未上报版本的老客户端）无法证明达门槛，门槛生效即视为会被拦
+    const below = item.version === '未知版本' || compareVersions(item.version, t) < 0
+    if (below) blocked += item.count
+  }
+  return blocked
+})
+
+const fetchDistribution = async () => {
+  try {
+    const { data } = await getVersionDistribution()
+    distribution.value = data.data || []
+  } catch {
+    distribution.value = []
+  }
+}
 
 const fetchConfig = async () => {
   loading.value = true
@@ -305,6 +405,14 @@ const fetchConfig = async () => {
 }
 
 const handleSubmit = async () => {
+  if (configFormRef.value) {
+    try {
+      await configFormRef.value.validate()
+    } catch {
+      ElMessage.warning('请检查表单填写是否完整')
+      return
+    }
+  }
   submitting.value = true
   try {
     await updateSystemConfig({
@@ -318,7 +426,10 @@ const handleSubmit = async () => {
   }
 }
 
-onMounted(fetchConfig)
+onMounted(() => {
+  fetchConfig()
+  fetchDistribution()
+})
 </script>
 
 <style scoped>
@@ -363,5 +474,15 @@ onMounted(fetchConfig)
   color: var(--color-text-muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.gate-impact-warning {
+  margin: var(--space-2) 0 0 140px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-bg, rgba(230, 162, 60, 0.12));
+  color: var(--color-warning, #e6a23c);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
 }
 </style>

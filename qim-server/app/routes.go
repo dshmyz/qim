@@ -222,7 +222,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	// 自定义CORS中间件，确保所有响应都包含CORS头
 	corsConfig := cors.Config{
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Node-Secret"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Node-Secret", "X-App-Version", "X-App-Platform", "skipAuth"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}
@@ -576,6 +576,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.DELETE("/system-messages/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.DeleteSystemMessage)
 			// 全员私聊：以系统账号向用户单聊会话发送普通私聊消息（进最近会话），仅 system_admin
 			authed.POST("/system-messages/broadcast-chat", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.BroadcastChatMessage)
+			// 群发私聊任务结果查询（异步执行，前端轮询真实成败）
+			authed.GET("/system-messages/broadcast-chat/jobs/:id", middleware.RequireRole(di.GlobalContainer.UserService, "system_admin"), handler.GetBroadcastChatJob)
 
 			// 频道
 			authed.POST("/channels", handler.CreateChannel)

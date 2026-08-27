@@ -591,6 +591,18 @@ func SendMessage(c *gin.Context) {
 		response.Unauthorized(c, "用户未登录")
 		return
 	}
+
+	// 客户端版本门槛：低于对应平台配置的最低版本（client:min_send_version[:平台]）禁止发送，强制升级。
+	// 无法验证版本（无头且无在线设备）与版本过低分别提示，避免误导"请升级"
+	if blocked, minV, unverifiable := clientSendBlockedRequest(c, uid); blocked {
+		if unverifiable {
+			response.Forbidden(c, "当前客户端版本无法验证，请升级至最新客户端并保持网络连接后再发送消息")
+		} else {
+			response.Forbidden(c, fmt.Sprintf("当前客户端版本过低（需 v%s 及以上），请升级客户端后再发送消息", minV))
+		}
+		return
+	}
+
 	convID := c.Param("id")
 
 	if strings.HasPrefix(convID, "conv_") {

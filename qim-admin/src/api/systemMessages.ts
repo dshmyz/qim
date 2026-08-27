@@ -8,6 +8,8 @@ export interface CreateSystemMessageParams {
   content: string
   target_type?: string
   target_id?: number
+  target_version?: string
+  target_platform?: string
 }
 
 export interface UpdateSystemMessageParams {
@@ -55,12 +57,30 @@ export interface BroadcastChatParams {
   exclude_user_ids?: number[]
 }
 
+// 群发私聊任务：POST 异步执行立即返回 job_id，用 getBroadcastChatJob 轮询真实成败
+export interface BroadcastChatJob {
+  job_id: string
+  status: 'running' | 'done'
+  total: number
+  sent: number
+  failed: number
+  skipped: number
+}
+
 // 群发私聊：以系统账号向用户(默认全员，可指定)的单聊会话发送普通私聊消息。
 // 消息会出现在目标用户的「最近会话」列表中（区别于 createSystemMessage 的通知红点）。
-export const broadcastChat = (data: BroadcastChatParams): Promise<AxiosResponse<ApiResponse<{ total: number; sent: number; failed: number; skipped: number }>>> => {
+// 返回 job_id，需轮询 getBroadcastChatJob 获取发送结果。
+export const broadcastChat = (data: BroadcastChatParams): Promise<AxiosResponse<ApiResponse<{ job_id: string; total: number; status: string }>>> => {
   return request({
     url: '/v1/system-messages/broadcast-chat',
     method: 'post',
     data,
+  })
+}
+
+export const getBroadcastChatJob = (jobId: string): Promise<AxiosResponse<ApiResponse<BroadcastChatJob>>> => {
+  return request({
+    url: `/v1/system-messages/broadcast-chat/jobs/${jobId}`,
+    method: 'get',
   })
 }

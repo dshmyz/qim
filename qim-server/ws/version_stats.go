@@ -100,3 +100,26 @@ func (h *Hub) GetVersionUsers(version string) []VersionUser {
 	})
 	return users
 }
+
+// UserDevice 用户在线连接（多设备）的版本与平台。
+type UserDevice struct {
+	Version  string
+	Platform string
+}
+
+// GetUserDevices 返回用户全部在线连接的版本与平台。
+// 供 REST 消息发送版本门槛在请求头缺失时回退到 WS 上报值——老客户端不携带
+// X-App-Version/X-App-Platform 头，但自早期版本起就在 WS 连接时上报。
+// 返回全部设备而非单个，由调用方决定语义（如取最低版本 fail-closed）。
+func (h *Hub) GetUserDevices(userID uint) []UserDevice {
+	var devices []UserDevice
+	h.userClientsMu.RLock()
+	defer h.userClientsMu.RUnlock()
+	if existing, ok := h.userClients.Load(userID); ok {
+		clients := existing.([]*Client)
+		for _, c := range clients {
+			devices = append(devices, UserDevice{Version: c.version, Platform: c.platform})
+		}
+	}
+	return devices
+}
