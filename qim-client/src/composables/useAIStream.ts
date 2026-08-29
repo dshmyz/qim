@@ -2,12 +2,40 @@
 
 import { ref } from 'vue'
 
+// 待确认发送载荷：与后端 ai.PendingSend 对齐（SSE pending 帧）
+export interface PendingSend {
+  id: number
+  target_conversation_id: number
+  target_name: string
+  preview: string
+}
+
 interface StreamOptions {
   url: string
   body: Record<string, any>
   onChunk: (content: string) => void
   onComplete: () => void
   onError: (error: Error) => void
+  // 收到待确认发送帧时回调（send_message 确认制）：由调用方挂到消息上渲染确认条
+  onPending?: (pending: PendingSend) => void
+}
+
+function handleChunk(chunk: any, options: StreamOptions): 'stop' | null {
+  if (chunk.error) {
+    options.onError(new Error(chunk.error))
+    return 'stop'
+  }
+  if (chunk.pending) {
+    options.onPending?.(chunk.pending as PendingSend)
+  }
+  if (chunk.content) {
+    options.onChunk(chunk.content)
+  }
+  if (chunk.finish === 'stop') {
+    options.onComplete()
+    return 'stop'
+  }
+  return null
 }
 
 export function useAIStream() {
@@ -52,18 +80,7 @@ export function useAIStream() {
             if (data.trim() === '') continue
 
             try {
-              const chunk = JSON.parse(data)
-              if (chunk.error) {
-                options.onError(new Error(chunk.error))
-                return
-              }
-              if (chunk.content) {
-                options.onChunk(chunk.content)
-              }
-              if (chunk.finish === 'stop') {
-                options.onComplete()
-                return
-              }
+              if (handleChunk(JSON.parse(data), options) === 'stop') return
             } catch {
               // 忽略解析错误
             }
@@ -74,18 +91,7 @@ export function useAIStream() {
       // 流结束后处理 buffer 中残留的最后一行
       if (buffer.startsWith('data: ')) {
         try {
-          const chunk = JSON.parse(buffer.slice(6))
-          if (chunk.error) {
-            options.onError(new Error(chunk.error))
-            return
-          }
-          if (chunk.content) {
-            options.onChunk(chunk.content)
-          }
-          if (chunk.finish === 'stop') {
-            options.onComplete()
-            return
-          }
+          if (handleChunk(JSON.parse(buffer.slice(6)), options) === 'stop') return
         } catch {
           // 忽略解析错误
         }

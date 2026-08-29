@@ -25,6 +25,10 @@ type CallerContext struct {
 	GroupRole      string
 	ConversationID uint     // 当前会话 ID，工具可据此获取上下文
 	AllowedTools   []string // 允许使用的工具名列表，为空则允许全部
+	// ConfirmTools 需用户确认后才真正执行的工具名列表（大小写不敏感，与 AllowedTools 同源匹配）。
+	// 命中的工具不直接生效，而是生成待确认请求（见 service.AIPendingActionService），
+	// 由用户在客户端确认/取消。高危代执行类工具（如侧边栏的 send_message）应列入。
+	ConfirmTools []string
 }
 
 // ToolRegistry 是 QIM server 进程内的 AI 工具注册表。

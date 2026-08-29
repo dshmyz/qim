@@ -349,9 +349,7 @@ func (g *SmartReplyGraph) resolveQuotedImageTaskType(input *SmartReplyContext) a
 
 // groupAssistantToolWhitelist 群聊助手可用的工具白名单：只含群聊相关工具，
 // 排除运维工具（intelligent_troubleshooting 等）和系统级用户管理工具。
-var groupAssistantToolWhitelist = []string{
-	"group_management", "create_group_task", "search_messages", "group_summary", "system_notification",
-}
+// groupAssistantToolWhitelist 白名单已收敛到 ai_tool_scopes.go（各 AI 入口工具面单一来源）。
 
 // externalToolOutputGuideMessage 外部工具 ReAct 路径追加的输出组织指引。
 // 只作用于该路径，不写进全局 buildSystemPrompt（避免污染普通流式/管理指令路径）；

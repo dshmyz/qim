@@ -44,3 +44,42 @@ export const aiConfigAPI = {
     return response.data.data
   }
 }
+
+// 侧边栏 AI 敏感工具（send_message）待确认执行。
+// 工具执行只生成待确认记录，用户在确认条点击后调用本 API 真正执行/作废。
+export interface PendingActionResult {
+  already_handled: boolean
+  status: 'pending' | 'confirmed' | 'cancelled' | 'expired'
+  id: number
+  target_name?: string
+  message_id?: number
+}
+
+function pendingActionError(err: any): Error {
+  const message = err?.response?.data?.message || err?.message || '请求失败'
+  return new Error(message)
+}
+
+export const aiPendingAPI = {
+  async confirm(id: number): Promise<PendingActionResult> {
+    try {
+      const response = await axios.post(`${baseURL()}/api/v1/ai/pending-actions/${id}/confirm`, {}, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      })
+      return response.data.data
+    } catch (err) {
+      throw pendingActionError(err)
+    }
+  },
+
+  async cancel(id: number): Promise<PendingActionResult> {
+    try {
+      const response = await axios.post(`${baseURL()}/api/v1/ai/pending-actions/${id}/cancel`, {}, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      })
+      return response.data.data
+    } catch (err) {
+      throw pendingActionError(err)
+    }
+  }
+}

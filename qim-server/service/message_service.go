@@ -923,16 +923,7 @@ func (s *MessageService) sendBotTextReply(userID, convID uint, bot model.Bot, re
 	log.Info("bot 兜底消息已发送", "convID", convID, "content", reply)
 }
 
-// botAllowedTools 专属机器人 1:1 会话可调用的工具白名单。
-// 按 talker scope（CallerContext.UserID = 和 bot 对话的用户），不暴露创建者私有数据：
-// list_tasks / create_user_task / search_knowledge 均按 ctx.UserID 检索，别人和 bot 对话
-// 只能读到他自己的任务/知识。不含 send_message（防 bot 代用户向其他会话发消息，滥用风险）；
-// 不含 summarize_conversation（群场景导向，1:1 价值有限）。
-var botAllowedTools = []string{
-	"list_tasks",
-	"create_user_task",
-	"search_knowledge",
-}
+// botAllowedTools 白名单已收敛到 ai_tool_scopes.go（各 AI 入口工具面单一来源）。
 
 // aiReplyTimeout 返回 bot AI 回复的超时预算：多模态（带图）请求 + 多步 ReAct 显著更慢，
 // 60s 会被图片消息耗尽（实测图片触发工具循环时第 3 步模型请求已 context deadline exceeded）。

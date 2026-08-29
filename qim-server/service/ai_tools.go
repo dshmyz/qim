@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
@@ -75,18 +76,23 @@ func (t *ListTasksTool) Execute(params map[string]interface{}, ctx *ai.CallerCon
 }
 
 // SendMessageTool 让 AI 代替用户发送消息到指定会话。
+// 当 CallerContext.ConfirmTools 命中本工具时为确认制：不直接发送，而是生成待确认
+// 记录（AIPendingActionService），由用户在客户端点击确认后才真正发出。
+// 直接发送的旧路径保留给未启用确认制的入口与测试。
 type SendMessageTool struct {
 	messageService *MessageService
+	pendings       *AIPendingActionService
 }
 
-func NewSendMessageTool(messageService *MessageService) *SendMessageTool {
-	return &SendMessageTool{messageService: messageService}
+func NewSendMessageTool(messageService *MessageService, pendings *AIPendingActionService) *SendMessageTool {
+	return &SendMessageTool{messageService: messageService, pendings: pendings}
 }
 
 func (t *SendMessageTool) Name() string { return "send_message" }
 
 func (t *SendMessageTool) Description() string {
-	return "在当前会话中发送一条消息。需要传入消息内容。如果用户没有指定会话，则使用当前打开的会话。"
+	return "在当前会话中发送一条消息。需要传入消息内容。如果用户没有指定会话，则使用当前打开的会话。" +
+		"注意：发送前会生成待确认请求，需用户在确认条上点击「确认发送」后才会真正发出；请勿重复调用。"
 }
 
 func (t *SendMessageTool) Parameters() map[string]interface{} {
@@ -134,12 +140,55 @@ func (t *SendMessageTool) Execute(params map[string]interface{}, ctx *ai.CallerC
 		return nil, fmt.Errorf("未指定会话，无法发送消息")
 	}
 
+	// 确认制入口（如侧边栏 AI）：模型不得自行决定代发，先落待确认记录，
+	// 结果文本引导模型向用户复述内容与目标，等用户在确认条上操作。
+	if t.pendings != nil && confirmToolRequired(ctx, "send_message") {
+		record, err := t.pendings.CreatePendingSend(userID, ctx.ConversationID, convID, content)
+		if err != nil {
+			return nil, fmt.Errorf("生成待确认发送请求失败: %w", err)
+		}
+		info := ai.PendingSend{
+			ID:                   record.ID,
+			TargetConversationID: record.TargetConversationID,
+			TargetName:           record.TargetName,
+			Preview:              truncatePreview(content, 200),
+		}
+		return map[string]interface{}{
+			"status":  "pending_confirmation",
+			"pending": info,
+			"note":    "尚未发送。请向用户复述将要发送的内容与目标会话，并请用户在下方确认条点击「确认发送」或「取消」。不要再次调用本工具。",
+		}, nil
+	}
+
 	_, err := t.messageService.SendMessage(convID, userID, "text", content, nil)
 	if err != nil {
 		return nil, fmt.Errorf("发送消息失败: %w", err)
 	}
 
 	return map[string]interface{}{"sent": true, "conversation_id": convID}, nil
+}
+
+// confirmToolRequired 判断工具是否在 CallerContext.ConfirmTools 中（大小写不敏感，
+// 与 isToolAllowed 的白名单匹配口径一致）。
+func confirmToolRequired(ctx *ai.CallerContext, toolName string) bool {
+	if ctx == nil {
+		return false
+	}
+	for _, name := range ctx.ConfirmTools {
+		if strings.EqualFold(name, toolName) {
+			return true
+		}
+	}
+	return false
+}
+
+// truncatePreview 截断内容预览（按 rune），供确认条与模型结果共用。
+func truncatePreview(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max]) + "…"
 }
 
 // SearchKnowledgeTool 让 AI 搜索知识库/笔记/历史消息。
@@ -311,13 +360,14 @@ func requireConversationMember(userID, convID uint) error {
 }
 
 // RegisterUserTools 把用户侧 AI 工具注册到进程内工具注册表。
-func RegisterUserTools(registry *ai.ToolRegistry, taskSvc *TaskService, msgSvc *MessageService, searchGraph *UnifiedSearchGraph, summaryGraph *SummaryGraph) {
+// pendings 为 send_message 的待确认执行服务（nil 时该工具退回直接发送，仅供测试场景）。
+func RegisterUserTools(registry *ai.ToolRegistry, taskSvc *TaskService, msgSvc *MessageService, searchGraph *UnifiedSearchGraph, summaryGraph *SummaryGraph, pendings *AIPendingActionService) {
 	if taskSvc != nil {
 		registry.RegisterTool(NewCreateUserTaskTool(taskSvc))
 		registry.RegisterTool(NewListTasksTool(taskSvc))
 	}
 	if msgSvc != nil {
-		registry.RegisterTool(NewSendMessageTool(msgSvc))
+		registry.RegisterTool(NewSendMessageTool(msgSvc, pendings))
 	}
 	if searchGraph != nil {
 		registry.RegisterTool(NewSearchKnowledgeTool(searchGraph))

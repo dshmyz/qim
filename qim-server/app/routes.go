@@ -38,6 +38,19 @@ func GetAIService() *ai.AIService {
 	return di.GlobalContainer.AIService
 }
 
+// buildGraphOrWarn 构建 Eino 编排图并统一处理降级语义：构建失败时告警并返回零值（nil），
+// 调用方将零值注入 handler 即自动走无该能力的降级路径——收敛原先每个图一段
+// 「if Build err warn else Set+Info」的重复样板。
+func buildGraphOrWarn[T interface{ Build() error }](name string, graph T) T {
+	if err := graph.Build(); err != nil {
+		logger.WithModule("Routes").Warn("初始化 "+name+" 失败，对应能力降级", "error", err)
+		var zero T
+		return zero
+	}
+	logger.WithModule("Routes").Info(name + " 初始化成功")
+	return graph
+}
+
 // SetupRoutes 设置 API 路由
 func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	handler.SetConfig(cfg)
@@ -112,43 +125,39 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	// 导致普通提问 HasExternalTools() 恒为 false、外部工具永不生效。
 	handler.SetMCPGateway(mcpGateway)
 
-	aiHandler := handler.NewAIHandler(aiSvc, toolRegistry)
-
+	// ── AIHandler 依赖装配：先构建全部依赖（某图构建失败 → 该能力降级为 nil），再一次性构造。
+	// 取代原先「New 后逐个 Set* + 每图一段 if Build err」的散装写法。──
 	aiCache := service.NewAICache()
-
-	summaryGraph := service.NewSummaryGraph(aiSvc, aiCache)
-	if err := summaryGraph.Build(); err != nil {
-		logger.WithModule("Routes").Warn("初始化 SummaryGraph 失败", "error", err)
-	} else {
-		aiHandler.SetSummaryGraph(summaryGraph)
-		logger.WithModule("Routes").Info("SummaryGraph 初始化成功")
-	}
-
-	textProcessGraph := service.NewTextProcessGraph(aiSvc, aiCache)
-	if err := textProcessGraph.Build(); err != nil {
-		logger.WithModule("Routes").Warn("初始化 TextProcessGraph 失败", "error", err)
-	} else {
-		aiHandler.SetTextProcessGraph(textProcessGraph)
-		logger.WithModule("Routes").Info("TextProcessGraph 初始化成功")
-	}
 
 	noteVectorSvc := di.GlobalContainer.NoteVectorService
 	avatarMemorySvc := di.GlobalContainer.AvatarMemoryService
-	unifiedSearchGraph := service.NewUnifiedSearchGraph(aiSvc, noteVectorSvc, groupDocSvc, avatarMemorySvc)
-	if err := unifiedSearchGraph.Build(); err != nil {
-		logger.WithModule("Routes").Warn("初始化 UnifiedSearchGraph 失败", "error", err)
-	} else {
-		aiHandler.SetUnifiedSearchGraph(unifiedSearchGraph)
-		logger.WithModule("Routes").Info("UnifiedSearchGraph 初始化成功")
-	}
+
+	summaryGraph := buildGraphOrWarn("SummaryGraph", service.NewSummaryGraph(aiSvc, aiCache))
+	textProcessGraph := buildGraphOrWarn("TextProcessGraph", service.NewTextProcessGraph(aiSvc, aiCache))
+	unifiedSearchGraph := buildGraphOrWarn("UnifiedSearchGraph", service.NewUnifiedSearchGraph(aiSvc, noteVectorSvc, groupDocSvc, avatarMemorySvc))
+	smartDigestGraph := buildGraphOrWarn("SmartDigestGraph", service.NewSmartDigestGraph(aiSvc, aiCache))
 
 	// 统一上下文预制：侧边栏 current 模式的历史注入经它声明式装配（与 bot 笔记注入同一套抽象）。
 	contextAsm := service.NewContextAssembler(di.GlobalContainer.DB)
 	contextAsm.SetNoteSearcher(noteVectorSvc) // 可为 nil（向量库未配时安全降级）
-	aiHandler.SetContextAssembler(contextAsm)
 
-	// 注册用户侧 AI 工具（依赖 TaskService/MessageService/SearchGraph/SummaryGraph）
-	service.RegisterUserTools(toolRegistry, di.GlobalContainer.TaskService, di.GlobalContainer.MessageService, unifiedSearchGraph, summaryGraph)
+	// send_message 等敏感工具的待确认执行服务（侧边栏 AI 生成 → 用户确认 → 才真正发送）
+	pendingActions := service.NewAIPendingActionService(di.GlobalContainer.MessageService)
+
+	aiHandler := handler.NewAIHandler(handler.AIHandlerDeps{
+		AIService:          aiSvc,
+		ToolRegistry:       toolRegistry,
+		AvatarService:      di.GlobalContainer.AvatarService, // 帮我回复草稿模式复用分身生成
+		SummaryGraph:       summaryGraph,
+		TextProcessGraph:   textProcessGraph,
+		UnifiedSearchGraph: unifiedSearchGraph,
+		SmartDigestGraph:   smartDigestGraph,
+		ContextAssembler:   contextAsm,
+		PendingActions:     pendingActions,
+	})
+
+	// 注册用户侧 AI 工具（依赖 TaskService/MessageService/SearchGraph/SummaryGraph/PendingActions）
+	service.RegisterUserTools(toolRegistry, di.GlobalContainer.TaskService, di.GlobalContainer.MessageService, unifiedSearchGraph, summaryGraph, pendingActions)
 
 	// 给专属机器人 1:1 回复注入流式 AI 消息发送器，使其复用群 @AI 同款流式逐 token +
 	// 工具调用基建（SendStreamingAIMessage / GetCompletionWithToolsStreamMultiStep / SendToolCallEvent）。
@@ -157,16 +166,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		handler.NewWebSocketMessageSender(ws.GlobalHub, di.GlobalContainer.UserService),
 	)
 
-	smartDigestGraph := service.NewSmartDigestGraph(aiSvc, aiCache)
-	if err := smartDigestGraph.Build(); err != nil {
-		logger.WithModule("Routes").Warn("Failed to build SmartDigestGraph", "error", err)
-	} else {
-		aiHandler.SetSmartDigestGraph(smartDigestGraph)
-		logger.WithModule("Routes").Info("SmartDigestGraph 初始化成功")
-	}
-
 	avatarService := di.GlobalContainer.AvatarService
-	aiHandler.SetAvatarService(avatarService) // 帮我回复草稿模式复用分身生成
 	handler.SetAvatarWorkerPool(avatarService.GetWorkerPool())
 	if avatarTriggerSvc := di.GlobalContainer.AvatarTriggerService; avatarTriggerSvc != nil {
 		handler.GetSmartReplyEngine().SetAvatarTriggerService(avatarTriggerSvc)

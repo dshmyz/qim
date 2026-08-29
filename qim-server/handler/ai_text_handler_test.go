@@ -171,7 +171,7 @@ func newDescribeImageTestAI(routeVision bool, reply string) (*AIHandler, *descri
 	})
 	capProv := &describeCaptureProvider{reply: reply}
 	aiSvc.SetProviderForTesting("mock", capProv)
-	return NewAIHandler(aiSvc, nil), capProv
+	return NewAIHandler(AIHandlerDeps{AIService: aiSvc}), capProv
 }
 
 func describeImageRequest(router *gin.Engine, body string) *httptest.ResponseRecorder {

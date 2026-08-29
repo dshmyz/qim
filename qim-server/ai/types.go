@@ -109,10 +109,24 @@ type StreamChunk struct {
 	Finish  *string      `json:"finish,omitempty"`
 	Usage   *StreamUsage `json:"usage,omitempty"`
 	Error   *string      `json:"error,omitempty"`
+	// Pending 非 nil 时表示本次流中产生了待用户确认的敏感工具调用（如 send_message）。
+	// 仅供 SSE 下行给前端渲染确认条；ReAct 引擎内部不会设置此字段，由 handler 的
+	// 进度回调在工具执行后填入。普通流式/工具增量路径恒为 nil。
+	Pending *PendingSend `json:"pending,omitempty"`
 	// ToolCalls 流式 tool-call 回合的增量：OpenAI 兼容流把 function.arguments 以分片
 	// JSON 字符串多 chunk 发送，逐片透传由调用方（流式 ReAct 引擎）按 index 跨 chunk 累积，
 	// 回合终了再整体 unmarshal。仅流式 tool-call 路径使用，普通流式恒为空。
 	ToolCalls []ToolCallDelta `json:"tool_calls,omitempty"`
+}
+
+// PendingSend 侧边栏「待确认发送」卡片载荷：工具生成待确认请求后经 SSE 推给前端，
+// 前端据此渲染确认条（目标会话 + 内容预览 + 确认/取消按钮），确认后调
+// POST /ai/pending-actions/:id/confirm 真正执行。
+type PendingSend struct {
+	ID                   uint   `json:"id"`
+	TargetConversationID uint   `json:"target_conversation_id"`
+	TargetName           string `json:"target_name"`
+	Preview              string `json:"preview"`
 }
 
 // ToolCallDelta 流式 tool-call 的一条增量：Index 标识同一流内第几个 tool call

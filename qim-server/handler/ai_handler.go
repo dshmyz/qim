@@ -68,6 +68,20 @@ func checkAIEnabledMiddleware() gin.HandlerFunc {
 	}
 }
 
+// AIHandlerDeps AIHandler 的全部可选依赖。任一依赖为 nil 时对应能力降级
+// （如 SummaryGraph 为 nil 则摘要走旧路径），与原逐个 Set* 注入的语义一致。
+type AIHandlerDeps struct {
+	AIService          *ai.AIService
+	ToolRegistry       *ai.ToolRegistry
+	AvatarService      *service.AvatarService     // 帮我回复草稿模式：复用分身生成
+	SummaryGraph       *service.SummaryGraph
+	TextProcessGraph   *service.TextProcessGraph
+	UnifiedSearchGraph *service.UnifiedSearchGraph
+	SmartDigestGraph   *service.SmartDigestGraph
+	ContextAssembler   *service.ContextAssembler  // 上下文预制（侧边栏 current 模式历史注入）；nil=跳过
+	PendingActions     *service.AIPendingActionService // send_message 等敏感工具的待确认执行
+}
+
 // AIHandler AI处理器
 type AIHandler struct {
 	aiService          *ai.AIService
@@ -78,40 +92,22 @@ type AIHandler struct {
 	unifiedSearchGraph *service.UnifiedSearchGraph
 	smartDigestGraph   *service.SmartDigestGraph
 	contextAsm         *service.ContextAssembler // 上下文预制（侧边栏 current 模式历史注入）；nil=跳过
+	pendingActions     *service.AIPendingActionService
 }
 
-// NewAIHandler 创建AI处理器
-func NewAIHandler(aiService *ai.AIService, toolRegistry *ai.ToolRegistry) *AIHandler {
+// NewAIHandler 创建AI处理器。依赖经 Deps 一次性注入，不再逐个 Set*。
+func NewAIHandler(deps AIHandlerDeps) *AIHandler {
 	return &AIHandler{
-		aiService:    aiService,
-		toolRegistry: toolRegistry,
+		aiService:          deps.AIService,
+		toolRegistry:       deps.ToolRegistry,
+		avatarService:      deps.AvatarService,
+		summaryGraph:       deps.SummaryGraph,
+		textProcessGraph:   deps.TextProcessGraph,
+		unifiedSearchGraph: deps.UnifiedSearchGraph,
+		smartDigestGraph:   deps.SmartDigestGraph,
+		contextAsm:         deps.ContextAssembler,
+		pendingActions:     deps.PendingActions,
 	}
-}
-
-// SetAvatarService 注入分身服务（帮我回复草稿模式复用分身生成）
-func (h *AIHandler) SetAvatarService(avatarService *service.AvatarService) {
-	h.avatarService = avatarService
-}
-
-func (h *AIHandler) SetSummaryGraph(graph *service.SummaryGraph) {
-	h.summaryGraph = graph
-}
-
-func (h *AIHandler) SetTextProcessGraph(graph *service.TextProcessGraph) {
-	h.textProcessGraph = graph
-}
-
-func (h *AIHandler) SetUnifiedSearchGraph(graph *service.UnifiedSearchGraph) {
-	h.unifiedSearchGraph = graph
-}
-
-func (h *AIHandler) SetSmartDigestGraph(graph *service.SmartDigestGraph) {
-	h.smartDigestGraph = graph
-}
-
-// SetContextAssembler 注入统一上下文预制组件（侧边栏 current 模式经它声明式装配历史注入）。
-func (h *AIHandler) SetContextAssembler(asm *service.ContextAssembler) {
-	h.contextAsm = asm
 }
 
 // RegisterRoutes 注册路由
@@ -121,6 +117,9 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		aiGroup.POST("/completion", h.GetCompletion)
 		aiGroup.POST("/completion/stream", h.GetCompletionStream)
+		// 侧边栏 AI 敏感工具（send_message）的待确认执行：确认后发送 / 取消
+		aiGroup.POST("/pending-actions/:id/confirm", h.ConfirmPendingAction)
+		aiGroup.POST("/pending-actions/:id/cancel", h.CancelPendingAction)
 		// 过时：同步「帮我回复」端点，无前端消费者（前端统一走 /draft-reply/stream），
 		// 保留仅向后兼容，后续择机移除。
 		aiGroup.POST("/draft-reply", h.DraftReply)
@@ -522,20 +521,27 @@ func toolDisplayName(toolName string) string {
 // （真·打字机效果），工具事件仍经 onStep 实时推卡片。首回合若 Provider 不支持流式
 // tool-call（如 Anthropic，返回 ErrStreamingToolsNotSupported）则降级到非流式
 // GetCompletionWithToolsMultiStep、以切字块（保留打字感）发送结果。
-// sidebarAllowedTools 侧边栏 AI 元对话可调用的工具白名单。
-// 单一来源：buildSidebarSystemPrompt 用它注入能力自述，streamCompletionWithTools 用它作为实际 allowlist，
-// 保证「侧边栏 AI 自述的能力」与「它真实能调用的工具」严格一致，避免两处漂移。
-var sidebarAllowedTools = []string{
-	"create_user_task",
-	"list_tasks",
-	"send_message",
-	"search_knowledge",
-	"summarize_conversation",
-}
+// 白名单单一来源：service.SidebarAllowedTools（能力自述与实际放行同源，避免两处漂移）。
 
 func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Message, userID uint, conversationID uint) {
-	callerCtx := &ai.CallerContext{UserID: userID, ConversationID: conversationID}
-	allowedTools := sidebarAllowedTools
+	callerCtx := &ai.CallerContext{
+		UserID:         userID,
+		ConversationID: conversationID,
+		// 侧边栏代发消息为确认制：模型只生成待确认请求，用户在确认条点击后才真正发出
+		ConfirmTools: []string{"send_message"},
+	}
+	allowedTools := service.SidebarAllowedTools
+
+	// writeEvent 推送一条结构化 SSE 帧。streamSSE 的 writeChunk 只发 content 帧，
+	// pending 确认帧需携带载荷，故在此直写响应流（帧格式与 streamSSE 一致）。
+	writeEvent := func(chunk ai.StreamChunk) error {
+		data, _ := json.Marshal(chunk)
+		if _, err := c.Writer.Write([]byte("data: " + string(data) + "\n\n")); err != nil {
+			return err
+		}
+		c.Writer.Flush()
+		return nil
+	}
 
 	streamSSE(c, func(writeChunk func(string) error) error {
 		// 注意：不再把「🤔 正在思考...」写进流内容——该文字会随回复一起落库、永久残留在
@@ -550,9 +556,14 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 			display := toolDisplayName(toolName)
 			if err != nil {
 				_ = writeChunk(fmt.Sprintf("⚠️ %s失败：%s\n\n", display, err.Error()))
-			} else {
-				_ = writeChunk(fmt.Sprintf("✅ %s已完成\n\n", display))
+				return
 			}
+			// send_message 确认制：不报「已完成」（尚未发出），改推 pending 帧渲染确认条
+			if info := pendingSendFromResult(result); info != nil {
+				_ = writeEvent(ai.StreamChunk{Pending: info})
+				return
+			}
+			_ = writeChunk(fmt.Sprintf("✅ %s已完成\n\n", display))
 		}
 
 		streamErr := h.aiService.GetCompletionWithToolsStreamMultiStep(
@@ -1131,7 +1142,7 @@ func (h *AIHandler) buildSidebarSystemPrompt() string {
 - 如果信息不足，诚实告知并建议用户提供更多上下文`, aiprompt.CurrentTimeLine(), productname.Name)
 
 	// 能力自述：静态能力 + 侧边栏实际可调工具，随 allowlist 动态变化。
-	if capPrompt := h.capabilityPrompt(sidebarAllowedTools); capPrompt != "" {
+	if capPrompt := h.capabilityPrompt(service.SidebarAllowedTools); capPrompt != "" {
 		prompt += "\n\n【能力与工具】\n" + capPrompt
 	}
 	return prompt

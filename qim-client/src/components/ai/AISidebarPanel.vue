@@ -78,6 +78,34 @@
             <div v-if="msg.role === 'assistant'" class="ai-msg-content" v-html="renderMd(msg.content)"></div>
             <div v-else class="ai-msg-content" v-html="previewTextToHtml(msg.content)"></div>
           </div>
+          <!-- 待确认发送条：AI 代发消息需用户确认后才真正发出（send_message 确认制） -->
+          <div v-if="msg.pending" class="pending-strip">
+            <template v-if="msg.pending.status === 'awaiting' || msg.pending.status === 'sending'">
+              <div class="pending-title">
+                <i class="fas fa-paper-plane"></i>
+                <span>待确认发送 → {{ msg.pending.target_name }}</span>
+              </div>
+              <div class="pending-preview">{{ msg.pending.preview }}</div>
+              <div class="pending-actions">
+                <button
+                  class="pending-btn confirm"
+                  :disabled="msg.pending.status === 'sending'"
+                  @click="confirmPending(msg)"
+                >
+                  <i :class="msg.pending.status === 'sending' ? 'fas fa-spinner fa-spin' : 'fas fa-check'"></i>
+                  确认发送
+                </button>
+                <button class="pending-btn cancel" :disabled="msg.pending.status === 'sending'" @click="cancelPending(msg)">
+                  取消
+                </button>
+              </div>
+              <div v-if="msg.pending.errorText" class="pending-error">{{ msg.pending.errorText }}</div>
+            </template>
+            <div v-else class="pending-result" :class="msg.pending.status">
+              <i :class="pendingResultIcon(msg.pending.status)"></i>
+              <span>{{ pendingResultText(msg.pending) }}</span>
+            </div>
+          </div>
           <!-- Action row: copy / retry / timestamp -->
           <div v-if="msg.role === 'assistant'" class="ai-msg-actions">
             <span class="msg-time">{{ msg.time }}</span>
@@ -154,9 +182,10 @@
 import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '../../utils/sanitize'
-import { useAIStream } from '../../composables/useAIStream'
+import { useAIStream, type PendingSend } from '../../composables/useAIStream'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
 import { previewTextToHtml, emojiToHtml } from '../../utils/emoji'
+import { aiPendingAPI } from '../../api/ai'
 import ThinkingIndicator from '../shared/ThinkingIndicator.vue'
 
 interface Props {
@@ -168,11 +197,21 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{ close: [] }>()
 
+// 待确认发送的客户端状态机：awaiting（等确认）→ sending → sent / cancelled；
+// expired（服务端超时）/ error（请求失败）由确认请求结果驱动；error 保留可重试。
+type PendingStatus = 'awaiting' | 'sending' | 'sent' | 'cancelled' | 'expired' | 'error'
+
+interface PendingSendState extends PendingSend {
+  status: PendingStatus
+  errorText?: string
+}
+
 interface ChatMsg {
   role: 'user' | 'assistant'
   content: string
   isError?: boolean
   time: string
+  pending?: PendingSendState
 }
 
 
@@ -315,9 +354,12 @@ const retryLastMessage = () => {
 }
 
 // ── 流式请求 ──
+const streamingPending = ref<PendingSend | null>(null)
+
 const doStream = (message: string) => {
   isStreaming.value = true
   streamingContent.value = ''
+  streamingPending.value = null
 
   const serverUrl = getStoredServerUrl()
   const body: Record<string, any> = {
@@ -334,13 +376,22 @@ const doStream = (message: string) => {
     onChunk: (content: string) => {
       streamingContent.value += content
     },
+    // 后端在 send_message 确认制下推送的待确认载荷，随本轮 assistant 消息落位
+    onPending: (info: PendingSend) => {
+      streamingPending.value = info
+    },
     onComplete: () => {
       if (streamingContent.value) {
-        chatMessages.value.push({
+        const msg: ChatMsg = {
           role: 'assistant',
           content: streamingContent.value,
           time: formatTime(),
-        })
+        }
+        if (streamingPending.value) {
+          msg.pending = { ...streamingPending.value, status: 'awaiting' }
+          streamingPending.value = null
+        }
+        chatMessages.value.push(msg)
       }
       streamingContent.value = ''
       isStreaming.value = false
@@ -353,20 +404,81 @@ const doStream = (message: string) => {
         time: formatTime(),
       })
       streamingContent.value = ''
+      streamingPending.value = null
       isStreaming.value = false
     },
   })
+}
+
+// ── 待确认发送 ──
+const confirmPending = async (msg: ChatMsg) => {
+  const p = msg.pending
+  if (!p || p.status !== 'awaiting') return
+  p.status = 'sending'
+  p.errorText = undefined
+  try {
+    const res = await aiPendingAPI.confirm(p.id)
+    if (res.status === 'confirmed') {
+      p.status = 'sent'
+    } else if (res.status === 'cancelled') {
+      p.status = 'cancelled'
+    } else {
+      p.status = 'expired'
+    }
+  } catch (e: any) {
+    // 失败（网络/发送被拒）保留待确认态可重试，错误原因就地展示
+    p.status = 'awaiting'
+    p.errorText = e?.message || '确认失败，请重试'
+  }
+}
+
+const cancelPending = async (msg: ChatMsg) => {
+  const p = msg.pending
+  if (!p || p.status !== 'awaiting') return
+  p.status = 'sending'
+  p.errorText = undefined
+  try {
+    const res = await aiPendingAPI.cancel(p.id)
+    p.status = res.status === 'cancelled' || res.status === 'confirmed' ? 'cancelled' : 'expired'
+  } catch (e: any) {
+    p.status = 'awaiting'
+    p.errorText = e?.message || '取消失败，请重试'
+  }
+}
+
+const pendingResultIcon = (status: PendingStatus): string => {
+  switch (status) {
+    case 'sent': return 'fas fa-circle-check'
+    case 'cancelled': return 'fas fa-ban'
+    case 'expired': return 'fas fa-clock'
+    default: return 'fas fa-circle-exclamation'
+  }
+}
+
+const pendingResultText = (p: PendingSendState): string => {
+  switch (p.status) {
+    case 'sent': return `已发送到 ${p.target_name}`
+    case 'cancelled': return '已取消，未发送'
+    case 'expired': return '确认已过期，未发送'
+    default: return p.errorText || '操作失败'
+  }
 }
 
 // ── 停止生成 ──
 const handleStop = () => {
   abort()
   if (streamingContent.value) {
-    chatMessages.value.push({
+    const msg: ChatMsg = {
       role: 'assistant',
       content: streamingContent.value + '\n\n*(已停止)*',
       time: formatTime(),
-    })
+    }
+    // 停止前已产生的待确认请求仍然有效（服务端已落记录），保留确认条
+    if (streamingPending.value) {
+      msg.pending = { ...streamingPending.value, status: 'awaiting' }
+      streamingPending.value = null
+    }
+    chatMessages.value.push(msg)
   }
   streamingContent.value = ''
   isStreaming.value = false
@@ -1047,5 +1159,128 @@ const autoResize = () => {
   font-size: var(--font-size-xxs);
   color: var(--text-secondary, #9ca3af);
   padding: 2px 0;
+}
+
+/* ── 待确认发送条（send_message 确认制） ── */
+.pending-strip {
+  margin-top: 6px;
+  width: 100%;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--primary-color, #6366f1) 30%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary-color, #6366f1) 5%, var(--card-bg, #fff));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pending-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  color: var(--text-color, #1f2937);
+}
+
+.pending-title i {
+  color: var(--primary-color, #6366f1);
+  font-size: var(--font-size-xxxs);
+}
+
+.pending-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-preview {
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary, #6b7280);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 96px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-color), transparent 95%);
+}
+
+.pending-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.pending-btn {
+  flex: 1;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: var(--font-size-xxs);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: all 0.15s;
+}
+
+.pending-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pending-btn.confirm {
+  background: var(--primary-color, #6366f1);
+  color: #fff;
+}
+
+.pending-btn.confirm:not(:disabled):hover {
+  opacity: 0.88;
+}
+
+.pending-btn.confirm:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.pending-btn.cancel {
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  border: 1px solid var(--border-color, #e5e7eb);
+}
+
+.pending-btn.cancel:not(:disabled):hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.pending-error {
+  font-size: var(--font-size-xxxs);
+  color: #dc2626;
+}
+
+.pending-result {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary, #6b7280);
+}
+
+.pending-result i {
+  font-size: var(--font-size-xxxs);
+}
+
+.pending-result.sent {
+  color: #16a34a;
+}
+
+.pending-result.cancelled,
+.pending-result.expired {
+  color: var(--text-secondary, #9ca3af);
 }
 </style>
