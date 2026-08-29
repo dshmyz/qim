@@ -65,6 +65,8 @@ type MessageService struct {
 	// 注入后专属机器人 1:1 回复走流式逐 token + 工具调用（与群 @AI 同款基建）；nil=降级到老的
 	// 「collect 全文 -> 单条消息广播」非流式路径。
 	streamingSender StreamingAISender
+	// toolScopes 工具面配置服务；nil 时 bot 1:1 白名单用代码默认（ai_tool_scopes.go）。
+	toolScopes *ToolScopeService
 
 	// 文件处理能力：bot 会话收到 file/image 消息时，下载+解析文件内容注入 AI 上下文。
 	// storageAccessor 用于从存储后端读取文件，docParser 用于解析文档提取文本。
@@ -142,6 +144,11 @@ func (s *MessageService) SetGroupContextServices(memorySvc *GroupMemoryService, 
 // / SendToolCallEvent 基建）。nil=降级到非流式老路径（保底不丢回复能力）。
 func (s *MessageService) SetStreamingAISender(sender StreamingAISender) {
 	s.streamingSender = sender
+}
+
+// SetToolScopeService 注入工具面配置服务；nil 时 bot 1:1 使用代码默认白名单。
+func (s *MessageService) SetToolScopeService(ts *ToolScopeService) {
+	s.toolScopes = ts
 }
 
 // SetFileCapabilities 注入文件处理能力（存储访问 + 文档解析），使 bot 会话收到
@@ -1023,14 +1030,14 @@ func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot mode
 		if streamErr != nil && !contentProduced {
 			logger.WithModule("handleBotMessage").Warn("bot 自定义模型生成失败，回退系统默认",
 				"botID", bot.ID, "provider", custom.ProviderName, "error", streamErr)
-			streamErr = s.aiService.GetCompletionWithToolsStreamMultiStep(ctx, taskType, aiMessages, callerCtx, botAllowedTools, ai.MaxReActSteps, feedback, onChunk)
+			streamErr = s.aiService.GetCompletionWithToolsStreamMultiStep(ctx, taskType, aiMessages, callerCtx, s.toolScopes.ScopeTools(ToolScopeBotDM), ai.MaxReActSteps, feedback, onChunk)
 			if errors.Is(streamErr, ai.ErrStreamingToolsNotSupported) {
 				streamErr = s.aiService.GetCompletionStreamWithContext(ctx, taskType, aiMessages, onChunk)
 			}
 		}
 	} else {
 		// 系统默认：带工具的流式 ReAct
-		streamErr = s.aiService.GetCompletionWithToolsStreamMultiStep(ctx, taskType, aiMessages, callerCtx, botAllowedTools, ai.MaxReActSteps, feedback, onChunk)
+		streamErr = s.aiService.GetCompletionWithToolsStreamMultiStep(ctx, taskType, aiMessages, callerCtx, s.toolScopes.ScopeTools(ToolScopeBotDM), ai.MaxReActSteps, feedback, onChunk)
 		if errors.Is(streamErr, ai.ErrStreamingToolsNotSupported) {
 			// Provider 不支持流式 tool-call -> 降级纯流式（无工具）
 			logger.WithModule("handleBotMessage").Info("bot 流式工具不可用，降级纯流式", "convID", convID)

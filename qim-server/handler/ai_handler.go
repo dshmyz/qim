@@ -80,6 +80,7 @@ type AIHandlerDeps struct {
 	SmartDigestGraph   *service.SmartDigestGraph
 	ContextAssembler   *service.ContextAssembler  // 上下文预制（侧边栏 current 模式历史注入）；nil=跳过
 	PendingActions     *service.AIPendingActionService // send_message 等敏感工具的待确认执行
+	ToolScopes         *service.ToolScopeService       // 工具面配置服务；nil=用代码默认白名单
 }
 
 // AIHandler AI处理器
@@ -93,6 +94,7 @@ type AIHandler struct {
 	smartDigestGraph   *service.SmartDigestGraph
 	contextAsm         *service.ContextAssembler // 上下文预制（侧边栏 current 模式历史注入）；nil=跳过
 	pendingActions     *service.AIPendingActionService
+	toolScopes         *service.ToolScopeService
 }
 
 // NewAIHandler 创建AI处理器。依赖经 Deps 一次性注入，不再逐个 Set*。
@@ -107,6 +109,7 @@ func NewAIHandler(deps AIHandlerDeps) *AIHandler {
 		smartDigestGraph:   deps.SmartDigestGraph,
 		contextAsm:         deps.ContextAssembler,
 		pendingActions:     deps.PendingActions,
+		toolScopes:         deps.ToolScopes,
 	}
 }
 
@@ -536,7 +539,8 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 		// 侧边栏代发消息为确认制：模型只生成待确认请求，用户在确认条点击后才真正发出
 		ConfirmTools: []string{"send_message"},
 	}
-	allowedTools := service.SidebarAllowedTools
+	// 生效工具面：admin 覆盖配置优先，未覆盖回退代码默认（nil 接收者安全）
+	allowedTools := h.toolScopes.ScopeTools(service.ToolScopeSidebar)
 
 	// writeEvent 推送一条结构化 SSE 帧。streamSSE 的 writeChunk 只发 content 帧，
 	// pending 确认帧需携带载荷，故在此直写响应流（帧格式与 streamSSE 一致）。
@@ -1148,7 +1152,7 @@ func (h *AIHandler) buildSidebarSystemPrompt() string {
 - 如果信息不足，诚实告知并建议用户提供更多上下文`, aiprompt.CurrentTimeLine(), productname.Name)
 
 	// 能力自述：静态能力 + 侧边栏实际可调工具，随 allowlist 动态变化。
-	if capPrompt := h.capabilityPrompt(service.SidebarAllowedTools); capPrompt != "" {
+	if capPrompt := h.capabilityPrompt(h.toolScopes.ScopeTools(service.ToolScopeSidebar)); capPrompt != "" {
 		prompt += "\n\n【能力与工具】\n" + capPrompt
 	}
 	return prompt

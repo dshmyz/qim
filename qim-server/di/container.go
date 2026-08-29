@@ -47,6 +47,7 @@ type Container struct {
 	OperationLogService  *service.OperationLogService
 	SystemConfigService  *service.SystemConfigService
 	AiThresholdService   *service.AiThresholdService
+	ToolScopeService     *service.ToolScopeService
 	ShortLinkService     *service.ShortLinkService
 	ChannelService       *service.ChannelService
 	RenderRuleService    *service.RenderRuleService

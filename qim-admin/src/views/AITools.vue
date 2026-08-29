@@ -112,6 +112,42 @@
       </el-empty>
     </el-card>
 
+    <!-- 工具面配置：各 AI 入口的白名单，admin 覆盖后改完即生效 -->
+    <el-card shadow="never" style="margin-top: 24px">
+      <div class="toolbar" style="margin-bottom: 16px">
+        <div class="toolbar-left">
+          <h2 class="page-title" style="font-size: 16px">工具面配置</h2>
+          <p class="page-desc">配置各 AI 入口可调用的工具白名单，保存后即时生效；「恢复默认」清除覆盖配置</p>
+        </div>
+      </div>
+
+      <el-table :data="scopes" v-loading="scopesLoading" style="width: 100%">
+        <el-table-column prop="name" label="入口" width="140">
+          <template #default="{ row }">
+            <div class="tool-name">
+              <span>{{ row.name }}</span>
+              <el-tag v-if="row.overridden" size="small" type="warning" style="margin-left: 6px">已覆盖</el-tag>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="desc" label="说明" min-width="240" show-overflow-tooltip />
+        <el-table-column label="生效工具" min-width="380">
+          <template #default="{ row }">
+            <el-select v-model="row.draft" multiple filterable allow-create default-first-option
+              placeholder="选择工具" size="small" style="width: 100%">
+              <el-option v-for="t in registeredTools" :key="t" :label="t" :value="t" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="180" align="center">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" :loading="row.saving" @click="saveScope(row)">保存</el-button>
+            <el-button size="small" :disabled="!row.overridden" @click="resetScope(row)">恢复默认</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
     <!-- 工具详情对话框 -->
     <el-dialog
       v-model="detailDialogVisible"
@@ -157,13 +193,18 @@
 import { ref, computed, onMounted } from 'vue'
 import { Refresh, Tools, Check, CircleClose, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getAITools, updateAIToolConfig } from '@/api/aiTools'
-import type { AITool } from '@/api/aiTools'
+import { getAITools, updateAIToolConfig, getAIToolScopes, updateAIToolScope } from '@/api/aiTools'
+import type { AITool, AIToolScope } from '@/api/aiTools'
 
 const tools = ref<(AITool & { loading?: boolean })[]>([])
 const loading = ref(false)
 const detailDialogVisible = ref(false)
 const selectedTool = ref<AITool | null>(null)
+
+type ScopeRow = AIToolScope & { draft: string[]; saving?: boolean }
+const scopes = ref<ScopeRow[]>([])
+const registeredTools = ref<string[]>([])
+const scopesLoading = ref(false)
 
 const enabledCount = computed(() => tools.value.filter(t => t.enabled).length)
 const disabledCount = computed(() => tools.value.filter(t => !t.enabled).length)
@@ -180,8 +221,59 @@ const fetchTools = async () => {
   }
 }
 
+const fetchScopes = async () => {
+  try {
+    scopesLoading.value = true
+    const res = await getAIToolScopes()
+    const payload = res.data.data as { scopes: AIToolScope[]; registered_tools: string[] }
+    registeredTools.value = payload.registered_tools
+    scopes.value = payload.scopes.map(s => ({ ...s, draft: [...s.tools], saving: false }))
+  } catch (error) {
+    ElMessage.error('获取工具面配置失败')
+  } finally {
+    scopesLoading.value = false
+  }
+}
+
+const saveScope = async (row: ScopeRow) => {
+  if (row.draft.length === 0) {
+    ElMessage.warning('工具列表不能为空（如需恢复默认请点「恢复默认」）')
+    return
+  }
+  try {
+    row.saving = true
+    const res = await updateAIToolScope(row.scope, { tools: row.draft })
+    const data = res.data.data as { tools: string[] }
+    row.tools = data.tools
+    row.draft = [...data.tools]
+    row.overridden = true
+    ElMessage.success(`已保存，${row.name} 的工具面即时生效`)
+  } catch (error) {
+    ElMessage.error('保存失败：' + (error as Error).message)
+  } finally {
+    row.saving = false
+  }
+}
+
+const resetScope = async (row: ScopeRow) => {
+  try {
+    row.saving = true
+    const res = await updateAIToolScope(row.scope, { reset: true })
+    const data = res.data.data as { tools: string[] }
+    row.tools = data.tools
+    row.draft = [...data.tools]
+    row.overridden = false
+    ElMessage.success(`已恢复 ${row.name} 的默认工具面`)
+  } catch (error) {
+    ElMessage.error('恢复默认失败：' + (error as Error).message)
+  } finally {
+    row.saving = false
+  }
+}
+
 const handleRefresh = () => {
   fetchTools()
+  fetchScopes()
   ElMessage.success('已刷新')
 }
 
@@ -235,6 +327,7 @@ const formatParameters = (parameters: Record<string, any>) => {
 
 onMounted(() => {
   fetchTools()
+  fetchScopes()
 })
 </script>
 

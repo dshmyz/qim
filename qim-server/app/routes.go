@@ -144,6 +144,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	// send_message 等敏感工具的待确认执行服务（侧边栏 AI 生成 → 用户确认 → 才真正发送）
 	pendingActions := service.NewAIPendingActionService(di.GlobalContainer.MessageService)
 
+	// 工具面作用域配置服务（admin 可覆盖三个入口的白名单，改完即生效）
+	toolScopes := service.NewToolScopeService(di.GlobalContainer.DB)
+	di.GlobalContainer.MessageService.SetToolScopeService(toolScopes)
+
 	aiHandler := handler.NewAIHandler(handler.AIHandlerDeps{
 		AIService:          aiSvc,
 		ToolRegistry:       toolRegistry,
@@ -154,6 +158,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		SmartDigestGraph:   smartDigestGraph,
 		ContextAssembler:   contextAsm,
 		PendingActions:     pendingActions,
+		ToolScopes:         toolScopes,
 	})
 
 	// 注册用户侧 AI 工具（依赖 TaskService/MessageService/SearchGraph/SummaryGraph/PendingActions）
@@ -173,6 +178,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	if avatarTriggerSvc := di.GlobalContainer.AvatarTriggerService; avatarTriggerSvc != nil {
 		handler.GetSmartReplyEngine().SetAvatarTriggerService(avatarTriggerSvc)
 	}
+	handler.GetSmartReplyEngine().SetToolScopeService(di.GlobalContainer.ToolScopeService)
 
 	// 注入 WebSocket 消息回调，使分身/智能回复在 WebSocket 发送消息时也触发
 	hub.OnMessageSent = func(msg *model.Message, _ []uint) {
@@ -894,6 +900,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			// AI 工具注册表管理（管理员）
 			admin.GET("/tool-registry/tools", aiHandler.ListToolRegistryTools)
 			admin.PUT("/tool-registry/tools/:tool_name", aiHandler.UpdateToolRegistryConfig)
+			admin.GET("/ai/tool-scopes", aiHandler.ListToolScopes)
+			admin.PUT("/ai/tool-scopes/:scope", aiHandler.UpdateToolScope)
 
 			// 知识图谱（管理员）
 			admin.GET("/knowledge-graph", aiHandler.GetKnowledgeGraph)

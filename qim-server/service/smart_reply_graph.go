@@ -149,6 +149,8 @@ type SmartReplyGraph struct {
 	mcpGateway       *MCPClientGateway
 	// thresholdSvc 阈值读取服务；nil 时知识来源门槛用默认 0.3（与 config 默认一致）。
 	thresholdSvc       *AiThresholdService
+	// toolScopes 工具面配置服务；nil 时群 @AI 使用代码默认白名单。
+	toolScopes         *ToolScopeService
 	qualityGateEnabled bool
 }
 
@@ -214,6 +216,11 @@ func (g *SmartReplyGraph) SetThresholdService(t *AiThresholdService) {
 	g.thresholdSvc = t
 }
 
+// SetToolScopeService 注入工具面配置服务；nil 时群 @AI 使用代码默认白名单。
+func (g *SmartReplyGraph) SetToolScopeService(ts *ToolScopeService) {
+	g.toolScopes = ts
+}
+
 // SetQualityGateEnabled 控制生成后质量核验；默认由调用方开启，便于灰度关闭。
 func (g *SmartReplyGraph) SetQualityGateEnabled(enabled bool) {
 	g.qualityGateEnabled = enabled
@@ -251,7 +258,7 @@ func (g *SmartReplyGraph) recentAIMessagesLimit() int {
 // groupAssistantAllowedTools 计算群 @AI 实际可用的工具白名单：内置群管理工具
 // + （若开启）外部 MCP 工具。返回新 slice，避免改动包级白名单。
 func (g *SmartReplyGraph) groupAssistantAllowedTools() []string {
-	allowed := append([]string(nil), groupAssistantToolWhitelist...)
+	allowed := append([]string(nil), g.toolScopes.ScopeTools(ToolScopeGroup)...)
 	if g.mcpGateway != nil && g.mcpGateway.GroupEnabled() {
 		allowed = append(allowed, g.mcpGateway.ListExternalToolNames()...)
 	}

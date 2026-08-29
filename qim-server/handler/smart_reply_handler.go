@@ -98,6 +98,11 @@ func (e *SmartReplyEngine) SetGroupMemoryService(gms *service.GroupMemoryService
 	e.groupMemorySvc = gms
 }
 
+// SetToolScopeService 注入工具面配置服务，转发给内部 graph；nil 时群 @AI 使用代码默认白名单。
+func (e *SmartReplyEngine) SetToolScopeService(ts *service.ToolScopeService) {
+	e.smartReplyGraph.SetToolScopeService(ts)
+}
+
 // SetMCPGateway 注入外部 MCP 客户端网关，使群 @AI 白名单能按位点放行外部工具。
 // 为 nil 时保持默认白名单，无行为变化。
 func (e *SmartReplyEngine) SetMCPGateway(gw *service.MCPClientGateway) {
@@ -120,6 +125,7 @@ func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 	// 注入 AI 阈值服务：群 @AI 的知识来源分数门槛从 system_configs 读取，
 	// 后台修改即生效；容器中未初始化（nil）时 graph 内部回退默认 0.6。
 	e.smartReplyGraph.SetThresholdService(di.GlobalContainer.AiThresholdService)
+	e.smartReplyGraph.SetToolScopeService(di.GlobalContainer.ToolScopeService)
 	if di.GlobalContainer.AiThresholdService != nil {
 		enabled := di.GlobalContainer.AiThresholdService.GetFloat("ai.reply_quality_gate", 1) >= 0.5
 		e.smartReplyGraph.SetQualityGateEnabled(enabled)
