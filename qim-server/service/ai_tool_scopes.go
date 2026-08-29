@@ -17,6 +17,9 @@ var SidebarAllowedTools = []string{
 	"send_message",
 	"search_knowledge",
 	"summarize_conversation",
+	"list_calendar_events",
+	"create_calendar_event",
+	"search_files",
 }
 
 // botAllowedTools 专属机器人 1:1 会话可调用的工具白名单。

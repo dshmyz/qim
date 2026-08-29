@@ -158,6 +158,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	// 注册用户侧 AI 工具（依赖 TaskService/MessageService/SearchGraph/SummaryGraph/PendingActions）
 	service.RegisterUserTools(toolRegistry, di.GlobalContainer.TaskService, di.GlobalContainer.MessageService, unifiedSearchGraph, summaryGraph, pendingActions)
+	// P1 批次工具：日历（读/写）、文件搜索（笔记/群文档已由 search_knowledge 覆盖，审批属 admin 域不进用户侧）
+	service.RegisterP1Tools(toolRegistry, di.GlobalContainer.EventService, di.GlobalContainer.FileService)
 
 	// 给专属机器人 1:1 回复注入流式 AI 消息发送器，使其复用群 @AI 同款流式逐 token +
 	// 工具调用基建（SendStreamingAIMessage / GetCompletionWithToolsStreamMultiStep / SendToolCallEvent）。

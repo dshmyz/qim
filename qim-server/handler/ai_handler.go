@@ -511,6 +511,12 @@ func toolDisplayName(toolName string) string {
 		return "搜索知识库"
 	case "summarize_conversation":
 		return "总结会话"
+	case "list_calendar_events":
+		return "查询日程"
+	case "create_calendar_event":
+		return "创建日程"
+	case "search_files":
+		return "搜索文件"
 	default:
 		return toolName
 	}
