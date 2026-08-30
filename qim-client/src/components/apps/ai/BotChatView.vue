@@ -366,12 +366,13 @@ function formatRelativeTime(ts: string) {
   return new Date(ts).toLocaleDateString('zh-CN')
 }
 
-// 空态示例提问
+// 空态示例提问：覆盖智能体真实工具面（任务/日程/文件/代发确认），引导发现执行力
 const suggestions = [
-  '用三句话解释什么是 RESTful API',
-  '帮我列一个项目启动检查清单',
-  '写一段周报里本周进展的写法示例',
-  '帮我规划一个 30 分钟的健身安排'
+  '我有哪些待办任务？',
+  '帮我建一个明天上午十点的日程：项目评审',
+  '搜一下我文件里的季度报表',
+  '帮我把「周五下午三点开会」发到技术交流群',
+  '用三句话解释什么是 RESTful API'
 ]
 
 /**
