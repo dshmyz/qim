@@ -56,7 +56,7 @@ export interface BotMessage {
     avatar?: string
     type: string
   }
-  type: 'text' | 'markdown'
+  type: 'text' | 'markdown' | 'card' | 'card_action'
   content: string
   timestamp: Date
   isStreaming?: boolean
@@ -66,6 +66,8 @@ export interface BotMessage {
   isFailed?: boolean
   // Bot 回复命中笔记时的知识来源（标题/分数）
   knowledge_sources?: AISource[]
+  // 卡片消息：当前用户已点击过的 action id（后端 CardActionRecord 派生，跨设备一致）
+  cardActionId?: string
 }
 
 export interface BotConversation {

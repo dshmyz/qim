@@ -25,12 +25,16 @@ var SidebarAllowedTools = []string{
 // botAllowedTools 专属机器人 1:1 会话可调用的工具白名单。
 // 按 talker scope（CallerContext.UserID = 和 bot 对话的用户），不暴露创建者私有数据：
 // list_tasks / create_user_task / search_knowledge 均按 ctx.UserID 检索，别人和 bot 对话
-// 只能读到他自己的任务/知识。不含 send_message（防 bot 代用户向其他会话发消息，滥用风险）；
+// 只能读到他自己的任务/知识。
+// send_message 为确认制：callerCtx.ConversationID 定位当前 bot 会话，工具执行只生成
+// 待确认记录并在会话内发确认卡片（BotMessagingService.SendAIConfirmCard），用户点击
+// 卡片按钮确认后才真正发出——不再是无确认的裸代发。
 // 不含 summarize_conversation（群场景导向，1:1 价值有限）。
 var botAllowedTools = []string{
 	"list_tasks",
 	"create_user_task",
 	"search_knowledge",
+	"send_message",
 }
 
 // groupAssistantToolWhitelist 群 @AI 内置群管理工具白名单。

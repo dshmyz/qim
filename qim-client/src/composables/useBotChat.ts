@@ -45,6 +45,7 @@ export function processBotMessage(msg: any): BotMessage {
     } : undefined,
     type: msg.type || 'text',
     content: msg.content,
+    cardActionId: msg.card_action_id || msg.cardActionId || undefined,
     timestamp: new Date(msg.created_at || msg.timestamp || Date.now()),
     isStreaming: false,
     // Bot 回复命中笔记时的知识来源（后端从 message.Extra 解析后放入响应体顶层）

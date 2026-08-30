@@ -182,6 +182,23 @@ func confirmToolRequired(ctx *ai.CallerContext, toolName string) bool {
 	return false
 }
 
+// PendingSendFromResult 从确认制工具的返回值中提取待确认发送载荷。
+// handler（侧边栏 SSE pending 帧、bot 会话确认卡）与测试共用此解析。
+func PendingSendFromResult(result interface{}) *ai.PendingSend {
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	if status, _ := m["status"].(string); status != "pending_confirmation" {
+		return nil
+	}
+	info, ok := m["pending"].(ai.PendingSend)
+	if !ok || info.ID == 0 {
+		return nil
+	}
+	return &info
+}
+
 // truncatePreview 截断内容预览（按 rune），供确认条与模型结果共用。
 func truncatePreview(s string, max int) string {
 	runes := []rune(s)

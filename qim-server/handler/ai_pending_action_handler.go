@@ -15,21 +15,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// pendingSendFromResult 从确认制工具的返回值中提取待确认发送载荷。
-// 结果约定见 service.SendMessageTool 确认分支（status=pending_confirmation + pending 载荷）。
+// pendingSendFromResult 从确认制工具的返回值中提取待确认发送载荷（委托 service 单一实现）。
 func pendingSendFromResult(result interface{}) *ai.PendingSend {
-	m, ok := result.(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	if status, _ := m["status"].(string); status != "pending_confirmation" {
-		return nil
-	}
-	info, ok := m["pending"].(ai.PendingSend)
-	if !ok || info.ID == 0 {
-		return nil
-	}
-	return &info
+	return service.PendingSendFromResult(result)
 }
 
 // pendingActionUserID 从 gin 上下文取认证用户 ID，与 ai_handler 同口径。

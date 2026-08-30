@@ -143,6 +143,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	// send_message 等敏感工具的待确认执行服务（侧边栏 AI 生成 → 用户确认 → 才真正发送）
 	pendingActions := service.NewAIPendingActionService(di.GlobalContainer.MessageService)
+	// bot 会话确认卡：待确认服务注入卡片动作内部分支；bot 回复链路拿到发卡能力
+	di.GlobalContainer.BotMessagingService.SetPendingActions(pendingActions)
+	di.GlobalContainer.MessageService.SetBotMessaging(di.GlobalContainer.BotMessagingService)
 
 	// 工具面作用域配置服务（admin 可覆盖三个入口的白名单，改完即生效）
 	toolScopes := service.NewToolScopeService(di.GlobalContainer.DB)
@@ -373,7 +376,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		api.GET("/client/versions", handler.GetVersions)
 
 		// Bot API：外部 agent 出站消息（Bot 令牌鉴权，非 JWT）
-		botAPIHandler := handler.NewBotAPIHandler(service.NewBotMessagingService(GetDB(), hub))
+		// 复用容器内实例：确认卡的 pendingActions 注入打在它身上，另起实例会丢注入
+		botAPIHandler := handler.NewBotAPIHandler(di.GlobalContainer.BotMessagingService)
 		// 600/min：agent 典型 1~3s 轮询 + 流式分段（stream-stdin 每行一次 POST），60/min 会被打满。
 		botAPI := api.Group("/bot", middleware.BotAuthMiddleware(), middleware.BotRateLimitMiddleware(middleware.NewBotRateLimiter(600, time.Minute)))
 		botAPI.POST("/messages", botAPIHandler.SendMessage)

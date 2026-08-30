@@ -67,6 +67,9 @@ type MessageService struct {
 	streamingSender StreamingAISender
 	// toolScopes 工具面配置服务；nil 时 bot 1:1 白名单用代码默认（ai_tool_scopes.go）。
 	toolScopes *ToolScopeService
+	// botMessaging 确认卡发送/卡片动作内部分支依赖；nil 时 bot 会话不发确认卡
+	//（send_message 确认制退化为仅文本引导，仍不直接代发）。
+	botMessaging *BotMessagingService
 
 	// 文件处理能力：bot 会话收到 file/image 消息时，下载+解析文件内容注入 AI 上下文。
 	// storageAccessor 用于从存储后端读取文件，docParser 用于解析文档提取文本。
@@ -149,6 +152,11 @@ func (s *MessageService) SetStreamingAISender(sender StreamingAISender) {
 // SetToolScopeService 注入工具面配置服务；nil 时 bot 1:1 使用代码默认白名单。
 func (s *MessageService) SetToolScopeService(ts *ToolScopeService) {
 	s.toolScopes = ts
+}
+
+// SetBotMessaging 注入 bot 消息服务（确认卡片发送）。
+func (s *MessageService) SetBotMessaging(bm *BotMessagingService) {
+	s.botMessaging = bm
 }
 
 // SetFileCapabilities 注入文件处理能力（存储访问 + 文档解析），使 bot 会话收到
@@ -984,10 +992,22 @@ func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot mode
 
 	// 工具调用进度回调：start 推 running 卡片，end 推终态 + 收集记录供 Extra 持久化
 	var toolCalls []ToolCallRecord
-	feedback := NewToolCallFeedback(s.streamingSender, convID, getMsg, &toolCalls, nil, nil)
+	baseFeedback := NewToolCallFeedback(s.streamingSender, convID, getMsg, &toolCalls, nil, nil)
+	// 包装 feedback：捕获确认制 send_message 的待确认结果，流结束后据此在会话内发确认卡片
+	var pendingSend *ai.PendingSend
+	feedback := func(step int, toolCallID, phase, toolName string, args map[string]interface{}, result interface{}, err error) {
+		baseFeedback(step, toolCallID, phase, toolName, args, result, err)
+		if phase == "end" && err == nil && toolName == "send_message" {
+			if info := PendingSendFromResult(result); info != nil {
+				pendingSend = info
+			}
+		}
+	}
 
-	// 隐私关键：callerCtx 用 talker(userID)，工具按 talker scope 检索任务/知识，不读创建者私有数据
-	callerCtx := &ai.CallerContext{UserID: userID}
+	// 隐私关键：callerCtx 用 talker(userID)，工具按 talker scope 检索任务/知识，不读创建者私有数据。
+	// ConversationID 指向当前 bot 会话：send_message 确认制的默认目标会话（LLM 未显式指定时），
+	// 也是确认卡片的落点。
+	callerCtx := &ai.CallerContext{UserID: userID, ConversationID: convID, ConfirmTools: []string{"send_message"}}
 
 	// contentProduced 跟踪是否已流出正文：用于自定义模型失败时判断是否回退（已流出则保留部分内容，
 	// 流式中途无法干净衔接重试）。与老路径 builder.Len()==0 判断等价。
@@ -1047,6 +1067,20 @@ func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot mode
 
 	if streamErr != nil {
 		logger.WithModule("handleBotMessage").Error("bot 流式回复出错", "error", streamErr, "convID", convID)
+	}
+
+	// 确认制代发：ReAct 期间产生了待确认 send_message → 以 bot 身份在会话内发一张确认
+	// 卡片，用户点击「确认发送」才真正执行（接线点：BotMessagingService.ForwardCardAction
+	// 的内部分支）。发卡失败不阻断主回复流程。
+	if pendingSend != nil && s.botMessaging != nil {
+		if err := s.botMessaging.SendAIConfirmCard(convID, bot, PendingConfirmCardInfo{
+			ID:         pendingSend.ID,
+			TargetName: pendingSend.TargetName,
+			Preview:    pendingSend.Preview,
+		}); err != nil {
+			logger.WithModule("handleBotMessage").Error("发送确认卡片失败",
+				"convID", convID, "pendingID", pendingSend.ID, "error", err)
+		}
 	}
 
 	// 收尾：模型未生成正文（空回）时，按失败原因补细分兜底文案——bot 是用户主动对话，

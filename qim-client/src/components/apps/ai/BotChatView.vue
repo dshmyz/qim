@@ -119,10 +119,19 @@
           <div class="message-column">
             <div class="message-bubble" :class="{ 'msg-failed': msg.isError || msg.isFailed }">
               <div class="content">
+                <!-- 确认卡片（AI 待确认代发等）：与 IM 主窗口同一 CardMessage 渲染与提交链路 -->
+                <CardMessage
+                  v-if="msg.type === 'card'"
+                  :content="msg.content"
+                  :message-id="String(msg.id)"
+                  :is-self="false"
+                  :action-taken="msg.cardActionId || ''"
+                  :server-url="serverUrl"
+                />
                 <!-- bot 回答统一走 AIAnswerBubble（markdown 正文 + 思考/typing + 命中笔记来源标签），
                      与 IM 气泡 AI 渲染同一套能力 -->
                 <AIAnswerBubble
-                  v-if="msg.senderType === 'bot'"
+                  v-else-if="msg.senderType === 'bot'"
                   :content="msg.content"
                   :is-streaming="Boolean(msg.isStreaming)"
                   variant="botchat"
@@ -223,6 +232,8 @@ import { ref, computed, nextTick, watch, onScopeDispose } from 'vue'
 import Avatar from '../../shared/Avatar.vue'
 import ThinkingIndicator from '../../shared/ThinkingIndicator.vue'
 import AIAnswerBubble from '../../message/AIAnswerBubble.vue'
+import CardMessage from '../../message/CardMessage.vue'
+import { getStoredServerUrl } from '../../../composables/useServerUrl'
 import { previewTextToHtml } from '../../../utils/emoji'
 import { copyToClipboard } from '../../../utils/clipboard'
 import { useChatUtils } from '../../../composables/useChatUtils'
@@ -232,6 +243,8 @@ import QMessageBox from '../../../utils/qmessagebox'
 import { useChatStore } from '../../../stores/chat'
 
 const chatUtils = useChatUtils()
+// 卡片动作提交的服务端地址（CardMessage 内部 fetch 用，与 useBotChat 的请求同源）
+const serverUrl = getStoredServerUrl()
 
 const chatStore = useChatStore()
 

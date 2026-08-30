@@ -10,6 +10,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/ws"
 	"gorm.io/gorm"
+	"fmt"
 )
 
 // BotMessagingService 处理外部 agent 经 Bot API 的出站消息：
@@ -19,6 +20,8 @@ import (
 type BotMessagingService struct {
 	db  *gorm.DB
 	hub *ws.Hub
+	// pendingActions 内部 AI 确认卡的待确认执行服务；nil 时确认卡点击返回服务不可用。
+	pendingActions *AIPendingActionService
 }
 
 // ErrCardActionPendingRetry 卡片 action 已入 webhook 重试队列（立即投递失败，非鉴权错误）。
@@ -384,6 +387,14 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 	if !bot.IsActive {
 		return errors.New("bot 未启用")
 	}
+
+	// 内部 AI 确认卡：kind=ai_confirm 的卡片动作由平台直接执行（确认制代发），
+	// 不要求 bot 配置外部 webhook，也不外发事件。pending_id 以卡片内容（服务端落库）
+	// 为准，不信任客户端 value。
+	if pendingID, ok := parseAIConfirmCard(msg.Content); ok {
+		return s.handleAIConfirmCardAction(&bot, &msg, userID, actionID, pendingID)
+	}
+
 	cfg := ParseBotConfig(bot.Config)
 	if !cfg.IsExternalWebhook() {
 		return errors.New("该 bot 未启用外部 webhook，不支持卡片交互")
@@ -802,4 +813,206 @@ func (s *BotMessagingService) resolveUniqueUser(name string) (*model.User, error
 	default:
 		return nil, errors.New("昵称不唯一，请使用用户名或 ID: " + name)
 	}
+}
+
+
+// aiConfirmCardPayload 内部确认卡的标记字段（其余字段走 cardPayload 通用契约，宽松忽略）。
+type aiConfirmCardPayload struct {
+	Kind      string `json:"kind"`
+	PendingID uint   `json:"pending_id"`
+}
+
+// parseAIConfirmCard 识别内部 AI 确认卡。非确认卡返回 ok=false。
+func parseAIConfirmCard(content string) (uint, bool) {
+	var p aiConfirmCardPayload
+	if err := json.Unmarshal([]byte(content), &p); err != nil {
+		return 0, false
+	}
+	if p.Kind != "ai_confirm" || p.PendingID == 0 {
+		return 0, false
+	}
+	return p.PendingID, true
+}
+
+// SendAIConfirmCard 以 bot 身份在会话内发一张待确认发送卡片。
+// 确认制代发的主窗口落点：用户点击卡片按钮 → ForwardCardAction 内部分支 → 真正执行。
+func (s *BotMessagingService) SendAIConfirmCard(convID uint, bot model.Bot, info PendingConfirmCardInfo) error {
+	if bot.VirtualUserID == nil {
+		return errors.New("bot 未配置虚拟用户")
+	}
+	value := fmt.Sprintf("pending:%d", info.ID)
+	payload := map[string]interface{}{
+		"kind":       "ai_confirm",
+		"pending_id": info.ID,
+		"title":      "待确认发送 → " + info.TargetName,
+		"text":       info.Preview,
+		"buttons": []cardButton{
+			{ID: "confirm", Text: "确认发送", Style: "primary", Value: value},
+			{ID: "cancel", Text: "取消", Value: value},
+		},
+	}
+	content, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if err := validateCardContent(string(content)); err != nil {
+		return err
+	}
+
+	msg := model.Message{
+		ConversationID: convID,
+		SenderID:       *bot.VirtualUserID,
+		Type:           "card",
+		Content:        string(content),
+		Origin:         "bot",
+	}
+	if err := s.db.Create(&msg).Error; err != nil {
+		return err
+	}
+	if err := s.db.Preload("Sender").First(&msg, msg.ID).Error; err != nil {
+		return err
+	}
+	now := time.Now()
+	s.db.Model(&model.Conversation{}).Where("id = ?", convID).Updates(map[string]interface{}{
+		"last_message_id": msg.ID,
+		"last_message_at": now,
+	})
+	if s.hub != nil {
+		resp := BuildMessageResponse(msg, MessageResponseOptions{BroadcastWS: true})
+		wsMsg := ws.WSMessage{Type: "new_message", Data: resp}
+		jsonMsg, _ := json.Marshal(wsMsg)
+		s.hub.SendToConversation(convID, *bot.VirtualUserID, jsonMsg)
+	}
+	return nil
+}
+
+// PendingConfirmCardInfo 确认卡的展示信息（与 ai.PendingSend 字段对齐但解耦 ai 包）。
+type PendingConfirmCardInfo struct {
+	ID         uint
+	TargetName string
+	Preview    string
+}
+
+// handleAIConfirmCardAction 内部确认卡的按钮点击处理：执行 pending 动作、
+// 落点击记录与 card_action 气泡、把卡片回写成终态。
+// 与外部路径的差异：幂等以 pending 状态机为准（记录/bubble 在动作成功后落），
+// 终态回写不删 CardActionRecord（保留点击禁用态，防止重复触发）。
+func (s *BotMessagingService) handleAIConfirmCardAction(bot *model.Bot, msg *model.Message, userID uint, actionID string, pendingID uint) error {
+	if s.pendingActions == nil {
+		return errors.New("确认服务不可用")
+	}
+
+	var (
+		record  *model.AIPendingAction
+		handled bool
+		err     error
+	)
+	switch actionID {
+	case "confirm":
+		record, handled, err = s.pendingActions.ConfirmPendingSend(userID, pendingID)
+	case "cancel":
+		record, handled, err = s.pendingActions.CancelPendingSend(userID, pendingID)
+	default:
+		return errors.New("未知按钮动作")
+	}
+	if err != nil && record == nil {
+		// NotFound / Forbidden / 服务不可用：无终态可回写，原样报错
+		return err
+	}
+
+	// 点击记录（best-effort；并发冲突忽略）。终态回写不删它 → 按钮保持点击禁用态。
+	s.db.Create(&model.CardActionRecord{
+		MessageID: msg.ID,
+		UserID:    userID,
+		ActionID:  actionID,
+		BotID:     bot.ID,
+	})
+
+	// card_action 气泡：与外部路径同款「✓ 已选择:xxx」展示
+	if actionText, err := cardActionText(msg.Content, actionID); err == nil {
+		actionContent, _ := json.Marshal(map[string]interface{}{
+			"action_id":       actionID,
+			"action_text":     actionText,
+			"value":           fmt.Sprintf("pending:%d", pendingID),
+			"card_message_id": msg.ID,
+		})
+		actionMsg := model.Message{
+			ConversationID: msg.ConversationID,
+			SenderID:       userID,
+			Type:           "card_action",
+			Content:        string(actionContent),
+			Origin:         "user",
+		}
+		if createErr := s.db.Create(&actionMsg).Error; createErr == nil {
+			s.db.Preload("Sender").First(&actionMsg, actionMsg.ID)
+			if s.hub != nil {
+				resp := BuildMessageResponse(actionMsg, MessageResponseOptions{BroadcastWS: true})
+				wsMsg := ws.WSMessage{Type: "new_message", Data: resp}
+				jsonMsg, _ := json.Marshal(wsMsg)
+				s.hub.SendToConversation(msg.ConversationID, userID, jsonMsg)
+			}
+		}
+	}
+
+	// 终态回写
+	line := confirmResultLine(record, handled)
+	s.rewriteConfirmCard(bot, msg, line)
+	return nil
+}
+
+// confirmResultLine 依据 pending 终态生成卡片回写文案。
+func confirmResultLine(record *model.AIPendingAction, handled bool) string {
+	if record == nil {
+		return "操作失败，请重试"
+	}
+	switch record.Status {
+	case model.AIPendingActionStatusConfirmed:
+		return "✅ 已发送到 " + record.TargetName
+	case model.AIPendingActionStatusCancelled:
+		return "已取消，未发送"
+	case model.AIPendingActionStatusExpired:
+		return "已过期，未发送"
+	default:
+		if handled {
+			return "该请求已被处理"
+		}
+		return "操作失败，请重试"
+	}
+}
+
+// rewriteConfirmCard 把确认卡回写成终态：text 追加结果行，按钮保留（点击者经幂等记录
+// 保持禁用），不删 CardActionRecord——与 UpdateMessageContent 的「改写即新一轮」语义相反，
+// 确认卡是单次生命周期。
+func (s *BotMessagingService) rewriteConfirmCard(bot *model.Bot, msg *model.Message, resultLine string) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(msg.Content), &payload); err != nil {
+		return
+	}
+	text, _ := payload["text"].(string)
+	payload["text"] = text + "\n\n" + resultLine
+	content, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	if err := validateCardContent(string(content)); err != nil {
+		logger.WithModule("BotMessaging").Error("确认卡终态回写校验失败", "messageID", msg.ID, "error", err)
+		return
+	}
+	if err := s.db.Model(&model.Message{}).Where("id = ?", msg.ID).
+		Update("content", string(content)).Error; err != nil {
+		logger.WithModule("BotMessaging").Error("确认卡终态回写失败", "messageID", msg.ID, "error", err)
+		return
+	}
+	var latest model.Message
+	if err := s.db.First(&latest, msg.ID).Error; err != nil {
+		return
+	}
+	if bot.VirtualUserID != nil {
+		s.pushMessageUpdated(latest, *bot.VirtualUserID, false)
+	}
+}
+
+// SetPendingActions 注入内部确认卡的待确认执行服务。
+func (s *BotMessagingService) SetPendingActions(pa *AIPendingActionService) {
+	s.pendingActions = pa
 }
