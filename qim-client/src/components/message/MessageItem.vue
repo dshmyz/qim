@@ -93,6 +93,7 @@
             :tool-calls="message.tool_calls"
             :knowledge-sources="message.knowledge_sources"
             :avatar-sources="message.origin === 'avatar' ? message.sources : undefined"
+            :message-id="typeof message.id === 'number' ? message.id : undefined"
           />
 
           <!-- 图片消息 -->

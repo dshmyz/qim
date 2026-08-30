@@ -101,7 +101,13 @@
               </div>
               <div v-if="msg.pending.errorText" class="pending-error">{{ msg.pending.errorText }}</div>
             </template>
-            <div v-else class="pending-result" :class="msg.pending.status">
+            <div
+              v-else
+              class="pending-result"
+              :class="[msg.pending.status, { jumpable: msg.pending.status === 'sent' && msg.pending.target_conversation_id }]"
+              :title="msg.pending.status === 'sent' && msg.pending.target_conversation_id ? '跳转到目标会话' : ''"
+              @click="jumpToTargetConv(msg.pending)"
+            >
               <i :class="pendingResultIcon(msg.pending.status)"></i>
               <span>{{ pendingResultText(msg.pending) }}</span>
             </div>
@@ -146,6 +152,17 @@
         </button>
       </Transition>
 
+      <!-- 持续指令条：admin 下发的推荐提示词，任何状态下都可一键发起 -->
+      <div v-if="visible && quickPrompts.length" class="quick-prompts">
+        <button
+          v-for="p in quickPrompts"
+          :key="p"
+          class="quick-prompt-chip"
+          :disabled="isStreaming"
+          @click="sendSuggestion(p)"
+        >{{ p }}</button>
+      </div>
+
       <!-- Input -->
       <div class="ai-sidebar-input">
         <textarea
@@ -185,7 +202,7 @@ import { sanitizeMarkdown } from '../../utils/sanitize'
 import { useAIStream, type PendingSend } from '../../composables/useAIStream'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
 import { previewTextToHtml, emojiToHtml } from '../../utils/emoji'
-import { aiPendingAPI } from '../../api/ai'
+import { aiPendingAPI, aiPromptAPI } from '../../api/ai'
 import ThinkingIndicator from '../shared/ThinkingIndicator.vue'
 
 interface Props {
@@ -260,6 +277,9 @@ const restoreChat = (): ChatMsg[] => {
 }
 
 const chatMessages = ref<ChatMsg[]>(restoreChat())
+
+// ── 持续指令条：admin 配置的推荐提示词（空=不显示，空态示例走内置默认） ──
+const quickPrompts = ref<string[]>([])
 const inputText = ref('')
 const isStreaming = ref(false)
 const streamingContent = ref('')
@@ -362,7 +382,10 @@ const onKeydown = (e: KeyboardEvent) => {
   }
 }
 
-onMounted(() => document.addEventListener('keydown', onKeydown))
+onMounted(() => {
+  document.addEventListener('keydown', onKeydown)
+  aiPromptAPI.getSuggested().then(list => { quickPrompts.value = list }).catch(() => {})
+})
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown)
   // 拖拽中卸载的兜底清理（正常路径由 onResizeUp 配对移除）
@@ -491,6 +514,14 @@ const cancelPending = async (msg: ChatMsg) => {
     p.status = 'awaiting'
     p.errorText = e?.message || '取消失败，请重试'
   }
+}
+
+// 确认发送后回跳目标会话（与主窗口确认卡同一事件协议）
+const jumpToTargetConv = (p: PendingSendState) => {
+  if (p.status !== 'sent' || !p.target_conversation_id) return
+  window.dispatchEvent(new CustomEvent('ai-open-conversation', {
+    detail: { conversationId: Number(p.target_conversation_id) },
+  }))
 }
 
 const pendingResultIcon = (status: PendingStatus): string => {
@@ -1329,5 +1360,51 @@ const autoResize = () => {
 .pending-result.cancelled,
 .pending-result.expired {
   color: var(--text-secondary, #9ca3af);
+}
+
+/* 已发送终态可点击回跳目标会话 */
+.pending-result.jumpable {
+  cursor: pointer;
+}
+
+.pending-result.jumpable:hover {
+  text-decoration: underline;
+}
+
+/* ── 持续指令条 ── */
+.quick-prompts {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.quick-prompts::-webkit-scrollbar {
+  display: none;
+}
+
+.quick-prompt-chip {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 999px;
+  background: var(--card-bg, #fff);
+  color: var(--text-color, #374151);
+  font-size: var(--font-size-xxs);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.quick-prompt-chip:hover:not(:disabled) {
+  border-color: var(--primary-color, #6366f1);
+  color: var(--primary-color, #6366f1);
+  background: color-mix(in srgb, var(--primary-color, #6366f1) 5%, transparent);
+}
+
+.quick-prompt-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

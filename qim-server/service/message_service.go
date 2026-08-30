@@ -1074,9 +1074,10 @@ func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot mode
 	// 的内部分支）。发卡失败不阻断主回复流程。
 	if pendingSend != nil && s.botMessaging != nil {
 		if err := s.botMessaging.SendAIConfirmCard(convID, bot, PendingConfirmCardInfo{
-			ID:         pendingSend.ID,
-			TargetName: pendingSend.TargetName,
-			Preview:    pendingSend.Preview,
+			ID:                   pendingSend.ID,
+			TargetName:           pendingSend.TargetName,
+			TargetConversationID: pendingSend.TargetConversationID,
+			Preview:              pendingSend.Preview,
 		}); err != nil {
 			logger.WithModule("handleBotMessage").Error("发送确认卡片失败",
 				"convID", convID, "pendingID", pendingSend.ID, "error", err)

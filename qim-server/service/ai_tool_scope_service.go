@@ -154,6 +154,29 @@ func (s *ToolScopeService) ResetScope(scope string) error {
 	return nil
 }
 
+// RawDB 暴露底层 db：同体系（system_configs）的其他配置键的轻量读写复用，
+// 不经过工具面缓存（各配置键语义独立）。
+func (s *ToolScopeService) RawDB() *gorm.DB { return s.db }
+
+// SaveRawConfig 写任意 system_configs JSON 配置（type=json，存在则更新）。
+// 与工具面缓存无关，调用方自行处理读取。
+func (s *ToolScopeService) SaveRawConfig(key string, value interface{}, desc string) error {
+	if s.db == nil {
+		return ErrToolScopeServiceNotReady
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %w", err)
+	}
+	cfg := model.SystemConfig{ConfigKey: key, Value: string(data), Type: "json", Desc: desc}
+	if err := s.db.Where("config_key = ?", key).
+		Assign(model.SystemConfig{Value: cfg.Value, Type: "json"}).
+		FirstOrCreate(&cfg).Error; err != nil {
+		return fmt.Errorf("写入配置失败: %w", err)
+	}
+	return nil
+}
+
 // loadFromDB 读取覆盖配置。返回 nil 表示未覆盖（非错误）。
 func (s *ToolScopeService) loadFromDB(scope string) *[]string {
 	if s.db == nil {

@@ -844,8 +844,10 @@ func (s *BotMessagingService) SendAIConfirmCard(convID uint, bot model.Bot, info
 	payload := map[string]interface{}{
 		"kind":       "ai_confirm",
 		"pending_id": info.ID,
-		"title":      "待确认发送 → " + info.TargetName,
-		"text":       info.Preview,
+		// 确认后回跳：客户端据此跳转目标会话定位消息
+		"target_conversation_id": info.TargetConversationID,
+		"title":                  "待确认发送 → " + info.TargetName,
+		"text":                   info.Preview,
 		"buttons": []cardButton{
 			{ID: "confirm", Text: "确认发送", Style: "primary", Value: value},
 			{ID: "cancel", Text: "取消", Value: value},
@@ -888,9 +890,10 @@ func (s *BotMessagingService) SendAIConfirmCard(convID uint, bot model.Bot, info
 
 // PendingConfirmCardInfo 确认卡的展示信息（与 ai.PendingSend 字段对齐但解耦 ai 包）。
 type PendingConfirmCardInfo struct {
-	ID         uint
-	TargetName string
-	Preview    string
+	ID                   uint
+	TargetName           string
+	TargetConversationID uint
+	Preview              string
 }
 
 // handleAIConfirmCardAction 内部确认卡的按钮点击处理：执行 pending 动作、

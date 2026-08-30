@@ -83,3 +83,30 @@ export const aiPendingAPI = {
     }
   }
 }
+
+// AI 回复用户反馈（👍=1 / 👎=-1 / 0=撤销），接入质量闭环
+export const aiFeedbackAPI = {
+  async set(messageId: number, rating: 1 | -1 | 0): Promise<void> {
+    await axios.post(`${baseURL()}/api/v1/ai/feedback`, { message_id: messageId, rating }, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+    })
+  },
+
+  async get(messageId: number): Promise<number> {
+    const response = await axios.get(`${baseURL()}/api/v1/ai/feedback/${messageId}`, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+    })
+    return response.data.data?.rating ?? 0
+  }
+}
+
+// 推荐提示词（admin 可配置；未配置返回空，客户端用内置默认）
+export const aiPromptAPI = {
+  async getSuggested(): Promise<string[]> {
+    const response = await axios.get(`${baseURL()}/api/v1/ai/suggested-prompts`, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+    })
+    const list = response.data.data?.prompts
+    return Array.isArray(list) ? list : []
+  }
+}

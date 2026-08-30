@@ -131,3 +131,65 @@ func (h *AIHandler) CancelPendingAction(c *gin.Context) {
 	logPendingAction(c, "ai_pending_send_cancelled")
 	pendingActionResponse(c, record, handled)
 }
+
+
+// SetAIMessageFeedback POST /ai/feedback
+// 用户对单条 AI 回复的 👍/👎 反馈：rating 1/-1 为设置，0 为撤销。
+// 主观反馈接入 ai_reply_metrics 质量闭环，作为自动度量的用户侧信号源。
+func (h *AIHandler) SetAIMessageFeedback(c *gin.Context) {
+	if h.feedback == nil {
+		response.InternalServerError(c, "反馈服务不可用")
+		return
+	}
+	userID := pendingActionUserID(c)
+	if userID == 0 {
+		response.Unauthorized(c, "需要登录")
+		return
+	}
+	var req struct {
+		MessageID uint `json:"message_id"`
+		Rating    int  `json:"rating"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.MessageID == 0 {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+	if err := h.feedback.SetFeedback(userID, req.MessageID, req.Rating); err != nil {
+		switch {
+		case errors.Is(err, service.ErrFeedbackNotFound):
+			response.NotFound(c, err.Error())
+		case errors.Is(err, service.ErrFeedbackForbidden), errors.Is(err, service.ErrFeedbackInvalidParam):
+			response.BadRequest(c, err.Error())
+		default:
+			response.InternalServerError(c, "保存反馈失败")
+		}
+		return
+	}
+	logPendingAction(c, "ai_message_feedback")
+	response.Success(c, gin.H{"message_id": req.MessageID, "rating": req.Rating})
+}
+
+// GetAIMessageFeedback GET /ai/feedback/:messageId
+// 查询当前用户对某条消息的反馈（客户端恢复选中态）。
+func (h *AIHandler) GetAIMessageFeedback(c *gin.Context) {
+	if h.feedback == nil {
+		response.InternalServerError(c, "反馈服务不可用")
+		return
+	}
+	userID := pendingActionUserID(c)
+	if userID == 0 {
+		response.Unauthorized(c, "需要登录")
+		return
+	}
+	messageID, err := strconv.ParseUint(c.Param("messageId"), 10, 64)
+	if err != nil || messageID == 0 {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+	rating, err := h.feedback.GetFeedback(userID, uint(messageID))
+	if err != nil {
+		response.InternalServerError(c, "查询反馈失败")
+		return
+	}
+	response.Success(c, gin.H{"message_id": messageID, "rating": rating})
+}

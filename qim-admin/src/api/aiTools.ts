@@ -39,3 +39,12 @@ export function getAIToolScopes() {
 export function updateAIToolScope(scope: string, payload: { tools?: string[]; reset?: boolean }) {
   return request.put(`/v1/admin/ai/tool-scopes/${scope}`, payload)
 }
+
+// ── 推荐提示词（客户端侧边栏指令条 / bot 会话示例；空数组=恢复内置默认） ──
+export function getSuggestedPromptsAdmin(): Promise<AxiosResponse<{ code: number; message: string; data: { prompts: string[] } }>> {
+  return request.get('/v1/admin/ai/suggested-prompts')
+}
+
+export function updateSuggestedPromptsAdmin(prompts: string[]): Promise<AxiosResponse<{ code: number; message: string; data: { prompts: string[] } }>> {
+  return request.put('/v1/admin/ai/suggested-prompts', { prompts })
+}

@@ -137,6 +137,7 @@
                   variant="botchat"
                   :suppress-streaming-images="true"
                   :knowledge-sources="msg.knowledge_sources"
+                  :message-id="typeof msg.id === 'number' ? msg.id : undefined"
                 />
                 <span v-else v-html="previewTextToHtml(msg.content)"></span>
               </div>
@@ -233,6 +234,7 @@ import Avatar from '../../shared/Avatar.vue'
 import ThinkingIndicator from '../../shared/ThinkingIndicator.vue'
 import AIAnswerBubble from '../../message/AIAnswerBubble.vue'
 import CardMessage from '../../message/CardMessage.vue'
+import { aiPromptAPI } from '../../../api/ai'
 import { getStoredServerUrl } from '../../../composables/useServerUrl'
 import { previewTextToHtml } from '../../../utils/emoji'
 import { copyToClipboard } from '../../../utils/clipboard'
@@ -366,14 +368,18 @@ function formatRelativeTime(ts: string) {
   return new Date(ts).toLocaleDateString('zh-CN')
 }
 
-// 空态示例提问：覆盖智能体真实工具面（任务/日程/文件/代发确认），引导发现执行力
-const suggestions = [
+// 空态示例提问：admin 配置优先，未配置用内置默认（覆盖智能体真实工具面）
+const DEFAULT_SUGGESTIONS = [
   '我有哪些待办任务？',
   '帮我建一个明天上午十点的日程：项目评审',
   '搜一下我文件里的季度报表',
   '帮我把「周五下午三点开会」发到技术交流群',
   '用三句话解释什么是 RESTful API'
 ]
+const suggestions = ref<string[]>([...DEFAULT_SUGGESTIONS])
+aiPromptAPI.getSuggested().then(list => {
+  if (list.length) suggestions.value = list
+}).catch(() => {})
 
 /**
  * 检查是否有正在流式传输的消息

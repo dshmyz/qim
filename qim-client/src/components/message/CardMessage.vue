@@ -2,7 +2,23 @@
   <div class="message-bubble card-message" :class="{ self: isSelf }">
     <div class="card-container">
       <div v-if="card.title" class="card-title" v-html="previewTextToHtml(card.title)"></div>
-      <div v-if="card.text" class="card-text" v-html="previewTextToHtml(card.text)"></div>
+      <div
+        v-if="card.text"
+        class="card-text"
+        :class="{ clamped: textClamped }"
+        v-html="previewTextToHtml(card.text)"
+      ></div>
+      <button v-if="textLong" class="text-toggle" @click="textClamped = !textClamped">
+        {{ textClamped ? '展开全文' : '收起' }}
+      </button>
+      <div
+        v-if="isAIConfirm && card.target_conversation_id"
+        class="card-jump"
+        title="跳转到目标会话"
+        @click="jumpToTarget"
+      >
+        在目标会话中查看 <i class="fas fa-arrow-right"></i>
+      </div>
       <div v-if="card.buttons && card.buttons.length" class="card-actions">
         <button
           v-for="btn in card.buttons"
@@ -26,6 +42,12 @@
 import { ref, computed, watch } from 'vue'
 import { useBotCardAction } from '../../composables/useBotCardAction'
 import { previewTextToHtml } from '../../utils/emoji'
+
+interface CardPayloadWithConfirm extends CardPayload {
+  kind?: string
+  pending_id?: number
+  target_conversation_id?: number
+}
 
 interface CardButton {
   id: string
@@ -85,14 +107,26 @@ if (selectedId.value) submitted.value = true
 // 服务端有记录但 localStorage 没有时，补写本地缓存，保持两边一致
 if (serverAction && !persistedAction) writePersistedAction(serverAction)
 
-const card = computed<CardPayload>(() => {
+const card = computed<CardPayloadWithConfirm>(() => {
   try {
     const p = JSON.parse(props.content)
-    return p && typeof p === 'object' && !Array.isArray(p) ? (p as CardPayload) : {}
+    return p && typeof p === 'object' && !Array.isArray(p) ? (p as CardPayloadWithConfirm) : {}
   } catch {
     return {}
   }
 })
+
+// 长文本折叠：超过 ~160 字默认收起，展开/收起切换（确认卡全文可见是确认制的前提）
+const textClamped = ref(true)
+const textLong = computed(() => (card.value.text || '').length > 160)
+
+// 内部 AI 确认卡：提供「在目标会话中查看」回跳（确认后定位发送结果）
+const isAIConfirm = computed(() => card.value.kind === 'ai_confirm')
+const jumpToTarget = () => {
+  const cid = card.value.target_conversation_id
+  if (!cid) return
+  window.dispatchEvent(new CustomEvent('ai-open-conversation', { detail: { conversationId: Number(cid) } }))
+}
 
 const handleClick = async (btn: CardButton) => {
   if (submitted.value || submitting.value) return
@@ -266,5 +300,35 @@ watch(() => props.content, () => {
   background: color-mix(in srgb, var(--panel-bg), white 5%);
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: none;
+}
+
+/* 长文本折叠 */
+.card-text.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.text-toggle {
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--el-color-primary, #6366f1);
+  cursor: pointer;
+}
+
+.card-jump {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-color-primary, #6366f1);
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.card-jump:hover {
+  opacity: 1;
+  text-decoration: underline;
 }
 </style>

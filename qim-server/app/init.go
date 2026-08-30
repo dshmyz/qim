@@ -691,6 +691,7 @@ func MigrateDB(db *gorm.DB) error {
 		&model.AvatarLearnTask{},       // 依赖 User, AvatarConfig
 		&model.DocumentProcessStatus{}, // 依赖 GroupDocument
 		&model.AIPendingAction{},       // AI 敏感工具待确认记录（侧边栏 send_message 确认制）
+		&model.AIMessageFeedback{},     // AI 回复用户反馈（👍/👎，质量闭环用户侧信号）
 	}
 
 	// AIProvider 采用显式表名 ai_providers。历史版本被 GORM 默认命名策略

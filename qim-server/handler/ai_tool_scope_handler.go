@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 
+	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 
@@ -124,4 +126,84 @@ func (h *AIHandler) UpdateToolScope(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"scope": scope, "tools": h.toolScopes.ScopeTools(scope), "overridden": true})
+}
+
+
+// suggestedPromptsKey 推荐提示词的 system_configs 键（JSON 字符串数组）。
+const suggestedPromptsKey = "ai.ui.suggested_prompts"
+
+// normalizeSuggestedPrompts 校验并规范化推荐提示词列表：去空白、去重、
+// 上限 10 条、单条 ≤100 字。空列表合法（=客户端用内置默认）。
+func normalizeSuggestedPrompts(list []string) ([]string, error) {
+	out := make([]string, 0, len(list))
+	seen := map[string]bool{}
+	for _, raw := range list {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			continue
+		}
+		if len([]rune(p)) > 100 {
+			return nil, errors.New("单条提示词不能超过 100 字")
+		}
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	if len(out) > 10 {
+		return nil, errors.New("提示词最多 10 条")
+	}
+	return out, nil
+}
+
+// readSuggestedPrompts 读取配置的推荐提示词（未配置返回空列表）。
+func (h *AIHandler) readSuggestedPrompts() []string {
+	if h.toolScopes == nil {
+		return []string{}
+	}
+	// 复用 ToolScopeService 的 db（配置同存 system_configs）；读取专用轻量路径
+	var cfg model.SystemConfig
+	if err := h.toolScopes.RawDB().Where("config_key = ?", suggestedPromptsKey).First(&cfg).Error; err != nil {
+		return []string{}
+	}
+	var list []string
+	if json.Unmarshal([]byte(cfg.Value), &list) != nil {
+		return []string{}
+	}
+	return list
+}
+
+// GetSuggestedPrompts GET /ai/suggested-prompts
+// 客户端（侧边栏指令条 / bot 会话示例）获取推荐提示词；未配置返回空，客户端用内置默认。
+func (h *AIHandler) GetSuggestedPrompts(c *gin.Context) {
+	response.Success(c, gin.H{"prompts": h.readSuggestedPrompts()})
+}
+
+// UpdateSuggestedPromptsRequest PUT /admin/ai/suggested-prompts 请求体。
+type UpdateSuggestedPromptsRequest struct {
+	Prompts []string `json:"prompts"`
+}
+
+// UpdateSuggestedPrompts PUT /admin/ai/suggested-prompts
+// 配置推荐提示词（空数组=清除，客户端回退内置默认）。
+func (h *AIHandler) UpdateSuggestedPrompts(c *gin.Context) {
+	if h.toolScopes == nil {
+		response.InternalServerError(c, "配置服务不可用")
+		return
+	}
+	var req UpdateSuggestedPromptsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+	list, err := normalizeSuggestedPrompts(req.Prompts)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := h.toolScopes.SaveRawConfig(suggestedPromptsKey, list, "AI 推荐提示词（客户端指令条/示例），空数组=恢复内置默认"); err != nil {
+		response.InternalServerError(c, "保存失败: "+err.Error())
+		return
+	}
+	response.Success(c, gin.H{"prompts": list})
 }

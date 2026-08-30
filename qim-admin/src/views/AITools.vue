@@ -148,6 +148,27 @@
       </el-table>
     </el-card>
 
+    <!-- 推荐提示词：下发给客户端侧边栏指令条 / bot 会话空态示例 -->
+    <el-card shadow="never" style="margin-top: 24px">
+      <div class="toolbar" style="margin-bottom: 12px">
+        <div class="toolbar-left">
+          <h2 class="page-title" style="font-size: 16px">推荐提示词</h2>
+          <p class="page-desc">下发给客户端的快捷指令（侧边栏指令条 / bot 会话示例）。每行一条，最多 10 条、单条 ≤100 字；清空保存即恢复客户端内置默认</p>
+        </div>
+      </div>
+      <el-input
+        v-model="promptsText"
+        type="textarea"
+        :rows="5"
+        placeholder="每行一条，例如：&#10;我有哪些待办任务？&#10;帮我总结今天的日程"
+      />
+      <div style="margin-top: 10px">
+        <el-button type="primary" size="small" :loading="promptsSaving" @click="savePrompts">保存并下发</el-button>
+        <el-button size="small" :disabled="!promptsConfigured" @click="resetPrompts">恢复内置默认</el-button>
+        <span v-if="promptsConfigured" style="margin-left: 10px; font-size: 12px; color: var(--color-text-secondary)">已自定义</span>
+      </div>
+    </el-card>
+
     <!-- 工具详情对话框 -->
     <el-dialog
       v-model="detailDialogVisible"
@@ -193,7 +214,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { Refresh, Tools, Check, CircleClose, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getAITools, updateAIToolConfig, getAIToolScopes, updateAIToolScope } from '@/api/aiTools'
+import { getAITools, updateAIToolConfig, getAIToolScopes, updateAIToolScope, getSuggestedPromptsAdmin, updateSuggestedPromptsAdmin } from '@/api/aiTools'
 import type { AITool, AIToolScope } from '@/api/aiTools'
 
 const tools = ref<(AITool & { loading?: boolean })[]>([])
@@ -205,6 +226,52 @@ type ScopeRow = AIToolScope & { draft: string[]; saving?: boolean }
 const scopes = ref<ScopeRow[]>([])
 const registeredTools = ref<string[]>([])
 const scopesLoading = ref(false)
+
+// ── 推荐提示词 ──
+const promptsText = ref('')
+const promptsSaving = ref(false)
+const promptsConfigured = ref(false)
+
+const loadPrompts = async () => {
+  try {
+    const res = await getSuggestedPromptsAdmin()
+    const list = res.data.data?.prompts ?? []
+    promptsText.value = list.join('\n')
+    promptsConfigured.value = true
+  } catch {
+    promptsConfigured.value = false
+    promptsText.value = ''
+  }
+}
+
+const savePrompts = async () => {
+  const list = promptsText.value.split('\n').map(l => l.trim()).filter(Boolean)
+  try {
+    promptsSaving.value = true
+    await updateSuggestedPromptsAdmin(list)
+    promptsConfigured.value = list.length > 0
+    promptsText.value = list.join('\n')
+    ElMessage.success('推荐提示词已下发，客户端即时生效')
+  } catch (error) {
+    ElMessage.error('保存失败：' + (error as Error).message)
+  } finally {
+    promptsSaving.value = false
+  }
+}
+
+const resetPrompts = async () => {
+  try {
+    promptsSaving.value = true
+    await updateSuggestedPromptsAdmin([])
+    promptsText.value = ''
+    promptsConfigured.value = false
+    ElMessage.success('已恢复客户端内置默认')
+  } catch (error) {
+    ElMessage.error('恢复失败：' + (error as Error).message)
+  } finally {
+    promptsSaving.value = false
+  }
+}
 
 const enabledCount = computed(() => tools.value.filter(t => t.enabled).length)
 const disabledCount = computed(() => tools.value.filter(t => !t.enabled).length)
@@ -328,6 +395,7 @@ const formatParameters = (parameters: Record<string, any>) => {
 onMounted(() => {
   fetchTools()
   fetchScopes()
+  loadPrompts()
 })
 </script>
 

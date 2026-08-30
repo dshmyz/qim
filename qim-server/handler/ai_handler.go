@@ -81,6 +81,7 @@ type AIHandlerDeps struct {
 	ContextAssembler   *service.ContextAssembler  // 上下文预制（侧边栏 current 模式历史注入）；nil=跳过
 	PendingActions     *service.AIPendingActionService // send_message 等敏感工具的待确认执行
 	ToolScopes         *service.ToolScopeService       // 工具面配置服务；nil=用代码默认白名单
+	Feedback           *service.AIFeedbackService      // AI 回复用户反馈（👍/👎）
 }
 
 // AIHandler AI处理器
@@ -95,6 +96,7 @@ type AIHandler struct {
 	contextAsm         *service.ContextAssembler // 上下文预制（侧边栏 current 模式历史注入）；nil=跳过
 	pendingActions     *service.AIPendingActionService
 	toolScopes         *service.ToolScopeService
+	feedback           *service.AIFeedbackService
 }
 
 // NewAIHandler 创建AI处理器。依赖经 Deps 一次性注入，不再逐个 Set*。
@@ -110,6 +112,7 @@ func NewAIHandler(deps AIHandlerDeps) *AIHandler {
 		contextAsm:         deps.ContextAssembler,
 		pendingActions:     deps.PendingActions,
 		toolScopes:         deps.ToolScopes,
+		feedback:           deps.Feedback,
 	}
 }
 
@@ -123,6 +126,11 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 		// 侧边栏 AI 敏感工具（send_message）的待确认执行：确认后发送 / 取消
 		aiGroup.POST("/pending-actions/:id/confirm", h.ConfirmPendingAction)
 		aiGroup.POST("/pending-actions/:id/cancel", h.CancelPendingAction)
+		// AI 回复用户反馈（👍/👎）
+		aiGroup.POST("/feedback", h.SetAIMessageFeedback)
+		aiGroup.GET("/feedback/:messageId", h.GetAIMessageFeedback)
+		// 推荐提示词（侧边栏指令条 / bot 会话示例；admin 经 /admin/ai/suggested-prompts 配置）
+		aiGroup.GET("/suggested-prompts", h.GetSuggestedPrompts)
 		// 过时：同步「帮我回复」端点，无前端消费者（前端统一走 /draft-reply/stream），
 		// 保留仅向后兼容，后续择机移除。
 		aiGroup.POST("/draft-reply", h.DraftReply)

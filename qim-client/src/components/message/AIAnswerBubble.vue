@@ -23,14 +23,31 @@
     <AISources v-if="knowledgeSources && knowledgeSources.length" :sources="knowledgeSources" variant="list" />
     <ToolCallTrace v-if="toolCalls && toolCalls.length" :calls="toolCalls" :open="isStreaming" />
     <AISources v-if="avatarSources && avatarSources.length" :sources="avatarSources" variant="inline" />
+
+    <!-- 用户反馈 👍/👎：仅持久化消息（有数字 id）且非流式中显示，主观反馈接入质量闭环 -->
+    <div v-if="messageId && !isStreaming" class="fb-row" :class="{ 'fb-visible': fb !== 0 }">
+      <button
+        class="fb-btn"
+        :class="{ active: fb === 1 }"
+        :title="fb === 1 ? '取消点赞' : '赞，有帮助'"
+        @click.stop="setFb(1)"
+      ><i class="fas fa-thumbs-up"></i></button>
+      <button
+        class="fb-btn"
+        :class="{ active: fb === -1 }"
+        :title="fb === -1 ? '取消点踩' : '踩，没帮助'"
+        @click.stop="setFb(-1)"
+      ><i class="fas fa-thumbs-down"></i></button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useMarkdownRender, handleLinkClick } from '../../composables/useMarkdownRender'
 import ToolCallTrace from './ToolCallTrace.vue'
 import AISources from './AISources.vue'
+import { aiFeedbackAPI } from '../../api/ai'
 import type { ToolCallRecord, AISource } from '../../types'
 import './markdown-content.css'
 
@@ -47,6 +64,8 @@ const props = withDefaults(defineProps<{
   suppressStreamingImages?: boolean
   toolCalls?: ToolCallRecord[]
   knowledgeSources?: AISource[]
+  /** 持久化消息 id：传入才显示 👍/👎 反馈（内存态/流式占位消息无 id 不显示） */
+  messageId?: number
   avatarSources?: AISource[]
 }>(), {
   isSelf: false,
@@ -67,6 +86,23 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
     suppressImages: props.suppressStreamingImages,
   }))
 )
+
+// ── 用户反馈 👍/👎：本地选中态 + 服务端 upsert（再点同键 = 撤销） ──
+const fb = ref<1 | -1 | 0>(0)
+const setFb = async (v: 1 | -1) => {
+  const prev = fb.value
+  const next = prev === v ? 0 : v
+  fb.value = next
+  try {
+    await aiFeedbackAPI.set(props.messageId!, next)
+  } catch {
+    fb.value = prev // 失败回滚本地态，允许重试
+  }
+}
+onMounted(() => {
+  if (!props.messageId) return
+  aiFeedbackAPI.get(props.messageId).then(r => { fb.value = (r === 1 || r === -1) ? r : 0 }).catch(() => {})
+})
 </script>
 
 <style>
@@ -166,5 +202,44 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
 @keyframes aitb-typing {
   0%, 80%, 100% { transform: scale(0); }
   40% { transform: scale(1); }
+}
+
+/* ── 用户反馈 👍/👎：默认半透明，hover 或已选时显现 ── */
+.fb-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.ai-answer-bubble:hover .fb-row,
+.fb-row.fb-visible {
+  opacity: 1;
+}
+
+.fb-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--text-secondary, #9ca3af);
+  transition: all 0.15s;
+}
+
+.fb-btn:hover {
+  background: color-mix(in srgb, var(--primary-color, #6366f1) 10%, transparent);
+  color: var(--primary-color, #6366f1);
+}
+
+.fb-btn.active {
+  color: var(--primary-color, #6366f1);
+  background: color-mix(in srgb, var(--primary-color, #6366f1) 14%, transparent);
 }
 </style>

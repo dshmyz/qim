@@ -151,6 +151,9 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	toolScopes := service.NewToolScopeService(di.GlobalContainer.DB)
 	di.GlobalContainer.MessageService.SetToolScopeService(toolScopes)
 
+	// AI 回复用户反馈（👍/👎，接质量闭环）
+	aiFeedback := service.NewAIFeedbackService(di.GlobalContainer.DB)
+
 	aiHandler := handler.NewAIHandler(handler.AIHandlerDeps{
 		AIService:          aiSvc,
 		ToolRegistry:       toolRegistry,
@@ -162,6 +165,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		ContextAssembler:   contextAsm,
 		PendingActions:     pendingActions,
 		ToolScopes:         toolScopes,
+		Feedback:           aiFeedback,
 	})
 
 	// 注册用户侧 AI 工具（依赖 TaskService/MessageService/SearchGraph/SummaryGraph/PendingActions）
@@ -906,6 +910,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			admin.PUT("/tool-registry/tools/:tool_name", aiHandler.UpdateToolRegistryConfig)
 			admin.GET("/ai/tool-scopes", aiHandler.ListToolScopes)
 			admin.PUT("/ai/tool-scopes/:scope", aiHandler.UpdateToolScope)
+			admin.GET("/ai/suggested-prompts", aiHandler.GetSuggestedPrompts)
+			admin.PUT("/ai/suggested-prompts", aiHandler.UpdateSuggestedPrompts)
 
 			// 知识图谱（管理员）
 			admin.GET("/knowledge-graph", aiHandler.GetKnowledgeGraph)

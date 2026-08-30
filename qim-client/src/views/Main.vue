@@ -3377,6 +3377,12 @@ const handleStartScreenShare = async () => {
 }
 
 // 处理切换会话
+// AI 确认卡/确认条「在目标会话中查看」回跳事件（CardMessage / AISidebarPanel 派发）
+window.addEventListener('ai-open-conversation', ((e: CustomEvent) => {
+  const cid = e.detail?.conversationId
+  if (cid) handleSwitchConversation(String(cid))
+}) as EventListener)
+
 const handleSwitchConversation = async (conversationId: string) => {
   // 确保 conversationId 是字符串类型
   const id = String(conversationId)
