@@ -215,7 +215,51 @@ interface ChatMsg {
 }
 
 
-const chatMessages = ref<ChatMsg[]>([])
+// ── 本地持久化：速记历史保存在 localStorage，应用重载后恢复 ──
+// 单一全局历史（与「切换会话不清空对话」的既有行为一致）；带上限防无限增长。
+// 恢复时 awaiting 态的 pending 一律降级为 expired：服务端 pending 有 10 分钟 TTL，
+// 且 SQLite 无 AUTOINCREMENT 会复用已删行 id——旧确认条若保持可点，可能误确认
+// 复用了同 id 的新请求。终端态（sent/cancelled/expired/error）原样保留仅作展示。
+const CHAT_STORAGE_KEY = 'qim:ai_sidebar_chat_v1'
+const CHAT_STORAGE_MAX = 200
+
+const serializeChat = (msgs: ChatMsg[]) => JSON.stringify(msgs)
+const deserializeChat = (raw: string): ChatMsg[] => {
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((m): m is ChatMsg =>
+        m && typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant'))
+      .map(m => ({
+        ...m,
+        pending: m.pending
+          ? { ...m.pending, status: m.pending.status === 'awaiting' || m.pending.status === 'sending' ? 'expired' as PendingStatus : m.pending.status }
+          : undefined,
+      }))
+  } catch {
+    return []
+  }
+}
+
+const persistChat = (msgs: ChatMsg[]) => {
+  try {
+    localStorage.setItem(CHAT_STORAGE_KEY, serializeChat(msgs.slice(-CHAT_STORAGE_MAX)))
+  } catch {
+    // 存储失败（隐私模式/容量）不影响对话本身
+  }
+}
+
+const restoreChat = (): ChatMsg[] => {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY)
+    return raw ? deserializeChat(raw) : []
+  } catch {
+    return []
+  }
+}
+
+const chatMessages = ref<ChatMsg[]>(restoreChat())
 const inputText = ref('')
 const isStreaming = ref(false)
 const streamingContent = ref('')
@@ -266,6 +310,9 @@ const formatTime = (): string => {
   const d = new Date()
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
+
+// 历史变更即持久化（含 pending 状态机流转）
+watch(chatMessages, (msgs) => persistChat(msgs), { deep: true })
 
 // ── 自动滚动 ──
 watch([chatMessages, streamingContent], () => {
