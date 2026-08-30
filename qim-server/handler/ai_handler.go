@@ -566,22 +566,33 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 		// 侧边栏每条回复顶部。思考态改由前端组件 ThinkingIndicator（三点动画）在首个实
 		// 际内容 chunk 到达前渲染，内容到达即自然替换，与主窗口/ BotChatView 保持一致。
 
-		// 每步工具执行后实时推送进度（仅终态；进行态由前端工具卡片处理）
+		// 每步工具调用推结构化进度事件：start=running / end=ok|error，
+		// 前端按 tool_call_id upsert 成工具轨迹（复用 ToolCallTrace，与 bot 会话同构）。
+		// 确认制 send_message 成功时改推 pending 帧（确认条），不进轨迹避免双份展示。
 		onStep := func(step int, toolCallID, phase, toolName string, args map[string]interface{}, result interface{}, err error) {
-			if phase != "end" {
-				return
+			if phase == "end" && err == nil && toolName == "send_message" {
+				if info := pendingSendFromResult(result); info != nil {
+					_ = writeEvent(ai.StreamChunk{Pending: info})
+					return
+				}
 			}
-			display := toolDisplayName(toolName)
-			if err != nil {
-				_ = writeChunk(fmt.Sprintf("⚠️ %s失败：%s\n\n", display, err.Error()))
-				return
+			ev := &ai.ToolEvent{
+				Step:       step,
+				ToolCallID: toolCallID,
+				ToolName:   toolName,
+				Label:      toolDisplayName(toolName),
+				Args:       args,
 			}
-			// send_message 确认制：不报「已完成」（尚未发出），改推 pending 帧渲染确认条
-			if info := pendingSendFromResult(result); info != nil {
-				_ = writeEvent(ai.StreamChunk{Pending: info})
-				return
+			switch {
+			case phase == "start":
+				ev.Status = "running"
+			case err != nil:
+				ev.Status = "error"
+				ev.Error = err.Error()
+			default:
+				ev.Status = "ok"
 			}
-			_ = writeChunk(fmt.Sprintf("✅ %s已完成\n\n", display))
+			_ = writeEvent(ai.StreamChunk{ToolEvent: ev})
 		}
 
 		streamErr := h.aiService.GetCompletionWithToolsStreamMultiStep(

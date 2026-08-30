@@ -78,6 +78,13 @@
             <div v-if="msg.role === 'assistant'" class="ai-msg-content" v-html="renderMd(msg.content)"></div>
             <div v-else class="ai-msg-content" v-html="previewTextToHtml(msg.content)"></div>
           </div>
+          <!-- 工具调用轨迹：与主窗口 ToolCallTrace 同构，展示执行了什么/参数/状态 -->
+          <ToolCallTrace
+            v-if="msg.toolCalls && msg.toolCalls.length"
+            :calls="msg.toolCalls"
+            :open="false"
+            class="sidebar-tool-trace"
+          />
           <!-- 待确认发送条：AI 代发消息需用户确认后才真正发出（send_message 确认制） -->
           <div v-if="msg.pending" class="pending-strip">
             <template v-if="msg.pending.status === 'awaiting' || msg.pending.status === 'sending'">
@@ -142,6 +149,12 @@
             </div>
             <div v-else class="ai-msg-content" v-html="renderMd(streamingContent, true) + '<span class=stream-cursor>▌</span>'"></div>
           </div>
+          <ToolCallTrace
+            v-if="streamingToolCalls.length"
+            :calls="streamingToolCalls"
+            :open="true"
+            class="sidebar-tool-trace"
+          />
         </div>
       </div>
 
@@ -203,6 +216,9 @@ import { useAIStream, type PendingSend } from '../../composables/useAIStream'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
 import { previewTextToHtml, emojiToHtml } from '../../utils/emoji'
 import { aiPendingAPI, aiPromptAPI } from '../../api/ai'
+import ToolCallTrace from '../message/ToolCallTrace.vue'
+import type { ToolCallRecord } from '../../types'
+import type { AIToolEvent } from '../../composables/useAIStream'
 import ThinkingIndicator from '../shared/ThinkingIndicator.vue'
 
 interface Props {
@@ -229,6 +245,8 @@ interface ChatMsg {
   isError?: boolean
   time: string
   pending?: PendingSendState
+  // 本次回复的工具调用轨迹（与主窗口 ToolCallTrace 同构，随 localStorage 持久化）
+  toolCalls?: ToolCallRecord[]
 }
 
 
@@ -425,11 +443,26 @@ const retryLastMessage = () => {
 
 // ── 流式请求 ──
 const streamingPending = ref<PendingSend | null>(null)
+const streamingToolCalls = ref<ToolCallRecord[]>([])
+
+const upsertToolCall = (ev: AIToolEvent) => {
+  const rec: ToolCallRecord = {
+    id: ev.tool_call_id || `step-${ev.step}`,
+    tool_name: ev.tool_name,
+    tool_label: ev.label,
+    args: ev.args,
+    status: ev.status,
+  }
+  const i = streamingToolCalls.value.findIndex(t => t.id === rec.id)
+  if (i >= 0) streamingToolCalls.value.splice(i, 1, rec)
+  else streamingToolCalls.value.push(rec)
+}
 
 const doStream = (message: string) => {
   isStreaming.value = true
   streamingContent.value = ''
   streamingPending.value = null
+  streamingToolCalls.value = []
 
   const serverUrl = getStoredServerUrl()
   const body: Record<string, any> = {
@@ -448,7 +481,12 @@ const doStream = (message: string) => {
     },
     // 后端在 send_message 确认制下推送的待确认载荷，随本轮 assistant 消息落位
     onPending: (info: PendingSend) => {
+      // send_message 走确认条展示，从轨迹里移除避免双份
+      streamingToolCalls.value = streamingToolCalls.value.filter(t => t.tool_name !== 'send_message')
       streamingPending.value = info
+    },
+    onTool: (ev: AIToolEvent) => {
+      upsertToolCall(ev)
     },
     onComplete: () => {
       if (streamingContent.value) {
@@ -460,6 +498,10 @@ const doStream = (message: string) => {
         if (streamingPending.value) {
           msg.pending = { ...streamingPending.value, status: 'awaiting' }
           streamingPending.value = null
+        }
+        if (streamingToolCalls.value.length) {
+          msg.toolCalls = [...streamingToolCalls.value]
+          streamingToolCalls.value = []
         }
         chatMessages.value.push(msg)
       }
@@ -1406,5 +1448,11 @@ const autoResize = () => {
 .quick-prompt-chip:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 侧边栏内工具轨迹的边距微调（组件自身带样式） */
+.sidebar-tool-trace {
+  margin-top: 6px;
+  width: 100%;
 }
 </style>

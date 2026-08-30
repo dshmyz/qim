@@ -113,10 +113,26 @@ type StreamChunk struct {
 	// 仅供 SSE 下行给前端渲染确认条；ReAct 引擎内部不会设置此字段，由 handler 的
 	// 进度回调在工具执行后填入。普通流式/工具增量路径恒为 nil。
 	Pending *PendingSend `json:"pending,omitempty"`
+	// ToolEvent 工具调用进度事件（侧边栏 SSE 通道）：start=running / end=ok|error。
+	// bot 会话同类信息走 ai_tool_call WS 事件；侧边栏只有 SSE 通道，故帧内携带。
+	// 前端按 tool_call_id 跨帧 upsert 成工具轨迹（与 ToolCallTrace 同构）。
+	ToolEvent *ToolEvent `json:"tool_event,omitempty"`
 	// ToolCalls 流式 tool-call 回合的增量：OpenAI 兼容流把 function.arguments 以分片
 	// JSON 字符串多 chunk 发送，逐片透传由调用方（流式 ReAct 引擎）按 index 跨 chunk 累积，
 	// 回合终了再整体 unmarshal。仅流式 tool-call 路径使用，普通流式恒为空。
 	ToolCalls []ToolCallDelta `json:"tool_calls,omitempty"`
+}
+
+// ToolEvent 工具调用进度事件载荷（侧边栏 SSE）。
+// 与 bot 会话的 ToolCallRecord 对齐：前端按 id upsert，渲染复用 ToolCallTrace。
+type ToolEvent struct {
+	Step       int                    `json:"step"`
+	ToolCallID string                 `json:"tool_call_id,omitempty"`
+	ToolName   string                 `json:"tool_name"`
+	Label      string                 `json:"label"`
+	Status     string                 `json:"status"` // running | ok | error
+	Args       map[string]interface{} `json:"args,omitempty"`
+	Error      string                 `json:"error,omitempty"`
 }
 
 // PendingSend 侧边栏「待确认发送」卡片载荷：工具生成待确认请求后经 SSE 推给前端，

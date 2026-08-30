@@ -18,6 +18,20 @@ interface StreamOptions {
   onError: (error: Error) => void
   // 收到待确认发送帧时回调（send_message 确认制）：由调用方挂到消息上渲染确认条
   onPending?: (pending: PendingSend) => void
+  // 收到工具调用进度帧时回调：由调用方按 tool_call_id upsert 工具轨迹（渲染复用 ToolCallTrace）
+  onTool?: (ev: AIToolEvent) => void
+}
+
+// 工具调用进度事件：与后端 ai.ToolEvent 对齐（SSE tool_event 帧），
+// 按 tool_call_id 跨帧 upsert 成工具轨迹（start=running → end=ok|error）
+export interface AIToolEvent {
+  step: number
+  tool_call_id?: string
+  tool_name: string
+  label: string
+  status: 'running' | 'ok' | 'error'
+  args?: Record<string, unknown>
+  error?: string
 }
 
 function handleChunk(chunk: any, options: StreamOptions): 'stop' | null {
@@ -27,6 +41,9 @@ function handleChunk(chunk: any, options: StreamOptions): 'stop' | null {
   }
   if (chunk.pending) {
     options.onPending?.(chunk.pending as PendingSend)
+  }
+  if (chunk.tool_event) {
+    options.onTool?.(chunk.tool_event as AIToolEvent)
   }
   if (chunk.content) {
     options.onChunk(chunk.content)
