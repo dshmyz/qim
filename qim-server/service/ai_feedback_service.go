@@ -94,6 +94,28 @@ func (s *AIFeedbackService) GetFeedback(userID, messageID uint) (int, error) {
 	return fb.Rating, nil
 }
 
+// GetFeedbackBatch 批量查询用户对多条消息的反馈（一次 IN 查询）。
+// 客户端打开会话时每条 AI 回复各查一次形成 N+1，列表层批量拉取替代。
+// 返回 map[messageID]rating，未反馈的消息不在 map 中（调用方按 0 处理）。
+func (s *AIFeedbackService) GetFeedbackBatch(userID uint, messageIDs []uint) (map[uint]int, error) {
+	if s.db == nil {
+		return nil, ErrFeedbackServiceNotReady
+	}
+	result := make(map[uint]int, len(messageIDs))
+	if len(messageIDs) == 0 {
+		return result, nil
+	}
+	var rows []model.AIMessageFeedback
+	if err := s.db.Where("user_id = ? AND message_id IN ?", userID, messageIDs).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		result[r.MessageID] = r.Rating
+	}
+	return result, nil
+}
+
 // ErrFeedbackServiceNotReady / ErrFeedbackForbidden 反馈服务哨兵错误。
 var (
 	ErrFeedbackServiceNotReady = errors.New("反馈服务不可用")

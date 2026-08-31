@@ -91,6 +91,11 @@ func TestSendAIConfirmCardAndConfirmClick(t *testing.T) {
 	botMsgSvc.db.Model(&model.CardActionRecord{}).Where("message_id = ? AND user_id = ?", card.ID, user.ID).Count(&actionCount)
 	assert.EqualValues(t, 1, actionCount)
 
+	// 确认卡走 sendToConversation 管道：人类成员未读 +1（与其他 bot 消息一致，有红点）
+	var member model.ConversationMember
+	require.NoError(t, botMsgSvc.db.Where("conversation_id = ? AND user_id = ?", bc.ConversationID, user.ID).First(&member).Error)
+	assert.EqualValues(t, 1, member.UnreadCount, "确认卡应计入人类成员未读")
+
 	// 3) 重复点击：pending 已终态 → 幂等回写、不再发送
 	require.NoError(t, botMsgSvc.ForwardCardAction(card.ID, user.ID, "confirm", "pending:1"))
 	botMsgSvc.db.Model(&model.Message{}).Where("conversation_id = ?", target.ID).Count(&targetMsgCount)

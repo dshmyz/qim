@@ -193,3 +193,40 @@ func (h *AIHandler) GetAIMessageFeedback(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"message_id": messageID, "rating": rating})
 }
+
+// GetAIMessageFeedbackBatch POST /ai/feedback/batch
+// 批量查询当前用户对多条消息的反馈。请求体 {message_ids: number[]}（上限 200），
+// 返回 {ratings: {messageId: rating}}——未反馈的消息不在 map 中，客户端按 0 处理。
+// 会话列表层一次拉取，替代每条 AI 消息挂载时各自 GET 的 N+1。
+func (h *AIHandler) GetAIMessageFeedbackBatch(c *gin.Context) {
+	if h.feedback == nil {
+		response.InternalServerError(c, "反馈服务不可用")
+		return
+	}
+	userID := pendingActionUserID(c)
+	if userID == 0 {
+		response.Unauthorized(c, "需要登录")
+		return
+	}
+	var req struct {
+		MessageIDs []uint `json:"message_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+	if len(req.MessageIDs) == 0 {
+		response.Success(c, gin.H{"ratings": gin.H{}})
+		return
+	}
+	if len(req.MessageIDs) > 200 {
+		response.BadRequest(c, "单次最多查询 200 条")
+		return
+	}
+	ratings, err := h.feedback.GetFeedbackBatch(userID, req.MessageIDs)
+	if err != nil {
+		response.InternalServerError(c, "批量查询反馈失败")
+		return
+	}
+	response.Success(c, gin.H{"ratings": ratings})
+}

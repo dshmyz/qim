@@ -43,11 +43,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, inject, watch, onMounted } from 'vue'
 import { useMarkdownRender, handleLinkClick } from '../../composables/useMarkdownRender'
 import ToolCallTrace from './ToolCallTrace.vue'
 import AISources from './AISources.vue'
 import { aiFeedbackAPI } from '../../api/ai'
+import { aiFeedbackRatingsKey, type AIFeedbackRatings } from '../../composables/useAIFeedbackBatch'
 import type { ToolCallRecord, AISource } from '../../types'
 import './markdown-content.css'
 
@@ -88,7 +89,16 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
 )
 
 // ── 用户反馈 👍/👎：本地选中态 + 服务端 upsert（再点同键 = 撤销） ──
+// 选中态恢复：列表层（MessageListView/BotChatView）批量拉取后经 provide 注入；
+// 组件响应注入 map 变化；无注入（孤立使用）时回退挂载单条拉取
+const batchRatings = inject<AIFeedbackRatings | null>(aiFeedbackRatingsKey, null)
 const fb = ref<1 | -1 | 0>(0)
+if (batchRatings && props.messageId) {
+  watch(batchRatings, (map) => {
+    const r = map.get(props.messageId!)
+    if (r === 1 || r === -1) fb.value = r
+  })
+}
 const setFb = async (v: 1 | -1) => {
   const prev = fb.value
   const next = prev === v ? 0 : v
@@ -101,6 +111,8 @@ const setFb = async (v: 1 | -1) => {
 }
 onMounted(() => {
   if (!props.messageId) return
+  // 列表层批量注入存在时不再单条拉取（N+1 消除）
+  if (batchRatings) return
   aiFeedbackAPI.get(props.messageId).then(r => { fb.value = (r === 1 || r === -1) ? r : 0 }).catch(() => {})
 })
 </script>

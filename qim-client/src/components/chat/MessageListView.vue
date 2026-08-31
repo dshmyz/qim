@@ -74,13 +74,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, computed, provide, onMounted, onUnmounted, nextTick, watch, type Ref } from 'vue'
 import Viewer from 'viewerjs'
 import 'viewerjs/dist/viewer.css'
 import type { Message, User } from '../../types'
 import MessageItem from '../message/MessageItem.vue'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { isMessageSelectionEligible } from '../../utils/messageSelection'
+import { useAIFeedbackBatch, aiFeedbackRatingsKey, type AIFeedbackRatings } from '../../composables/useAIFeedbackBatch'
 
 const { formatTime, shouldShowTimeDivider } = useChatUtils()
 
@@ -118,6 +119,10 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+// AI 反馈选中态批量拉取（消除每条 AI 消息挂载时各自 GET 的 N+1），provide 给 AIAnswerBubble
+const feedbackRatings = useAIFeedbackBatch(computed(() => props.messages) as unknown as Ref<{ id: number | string }[]>)
+provide(aiFeedbackRatingsKey, feedbackRatings as Ref<AIFeedbackRatings>)
 
 const messageListRef = ref<HTMLDivElement>()
 const isLoadingMore = ref(false)

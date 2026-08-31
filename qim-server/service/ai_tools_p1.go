@@ -55,17 +55,16 @@ func (t *ListCalendarEventsTool) Execute(params map[string]interface{}, ctx *ai.
 		return nil, fmt.Errorf("需要登录后才能查询日程")
 	}
 
-	events, err := t.eventService.GetEvents(userID)
+	// SQL 端 LIMIT：工具只需最近 50 条摘要 + 计数，全量物化浪费（用户上万条日程时
+	// 每次调用都全表拉取再内存丢弃）
+	const cap = 50
+	events, total, err := t.eventService.GetEventsLimited(userID, cap)
 	if err != nil {
 		return nil, fmt.Errorf("查询日程失败: %w", err)
 	}
 
-	const cap = 50
 	result := make([]map[string]interface{}, 0, len(events))
 	for _, e := range events {
-		if len(result) >= cap {
-			break
-		}
 		result = append(result, map[string]interface{}{
 			"id":      e.ID,
 			"title":   e.Title,
@@ -74,7 +73,7 @@ func (t *ListCalendarEventsTool) Execute(params map[string]interface{}, ctx *ai.
 			"all_day": e.AllDay,
 		})
 	}
-	return map[string]interface{}{"events": result, "total": len(events), "returned": len(result)}, nil
+	return map[string]interface{}{"events": result, "total": total, "returned": len(result)}, nil
 }
 
 // CreateCalendarEventTool 为用户创建日历事件（仅本人，低危写）。

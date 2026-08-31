@@ -82,6 +82,7 @@ type NotificationRepository interface {
 type EventRepository interface {
 	BaseRepository[model.Event]
 	FindByUserID(ctx context.Context, userID uint) ([]*model.Event, error)
+	FindByUserIDLimited(ctx context.Context, userID uint, limit int) ([]*model.Event, int64, error)
 	FindByUserIDAndID(ctx context.Context, userID, id uint) (*model.Event, error)
 	DeleteByUserIDAndID(ctx context.Context, userID, id uint) error
 }

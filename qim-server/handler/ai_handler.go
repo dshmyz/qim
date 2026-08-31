@@ -129,6 +129,8 @@ func (h *AIHandler) RegisterRoutes(router *gin.RouterGroup) {
 		// AI 回复用户反馈（👍/👎）
 		aiGroup.POST("/feedback", h.SetAIMessageFeedback)
 		aiGroup.GET("/feedback/:messageId", h.GetAIMessageFeedback)
+		// 批量恢复反馈选中态（会话列表层一次拉取，替代每条 AI 消息挂载时各自 GET 的 N+1）
+		aiGroup.POST("/feedback/batch", h.GetAIMessageFeedbackBatch)
 		// 推荐提示词（侧边栏指令条 / bot 会话示例；admin 经 /admin/ai/suggested-prompts 配置）
 		aiGroup.GET("/suggested-prompts", h.GetSuggestedPrompts)
 		// 过时：同步「帮我回复」端点，无前端消费者（前端统一走 /draft-reply/stream），

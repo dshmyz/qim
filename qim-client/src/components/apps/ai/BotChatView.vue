@@ -234,7 +234,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onScopeDispose } from 'vue'
+import { ref, computed, provide, nextTick, watch, onScopeDispose, type Ref } from 'vue'
 import Avatar from '../../shared/Avatar.vue'
 import ThinkingIndicator from '../../shared/ThinkingIndicator.vue'
 import AIAnswerBubble from '../../message/AIAnswerBubble.vue'
@@ -244,6 +244,7 @@ import { getStoredServerUrl } from '../../../composables/useServerUrl'
 import { previewTextToHtml } from '../../../utils/emoji'
 import { copyToClipboard } from '../../../utils/clipboard'
 import { useChatUtils } from '../../../composables/useChatUtils'
+import { useAIFeedbackBatch, aiFeedbackRatingsKey, type AIFeedbackRatings } from '../../../composables/useAIFeedbackBatch'
 import type { BotMessage } from '../../../types/bot'
 import type { BotConversationThread } from '../../../composables/useBotChat'
 import QMessageBox from '../../../utils/qmessagebox'
@@ -313,6 +314,10 @@ const emit = defineEmits<{
 
 const input = ref('')
 const inputEl = ref<HTMLTextAreaElement | null>(null)
+
+// AI 反馈选中态批量拉取（消除每条 bot 回复挂载时各自 GET 的 N+1），provide 给 AIAnswerBubble
+const feedbackRatings = useAIFeedbackBatch(computed(() => props.messages) as unknown as Ref<{ id: number | string }[]>)
+provide(aiFeedbackRatingsKey, feedbackRatings as Ref<AIFeedbackRatings>)
 const messagesRef = ref<HTMLDivElement | null>(null)
 const copiedMessageId = ref<string | null>(null)
 

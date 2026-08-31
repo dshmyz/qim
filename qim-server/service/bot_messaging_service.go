@@ -861,31 +861,10 @@ func (s *BotMessagingService) SendAIConfirmCard(convID uint, bot model.Bot, info
 		return err
 	}
 
-	msg := model.Message{
-		ConversationID: convID,
-		SenderID:       *bot.VirtualUserID,
-		Type:           "card",
-		Content:        string(content),
-		Origin:         "bot",
-	}
-	if err := s.db.Create(&msg).Error; err != nil {
-		return err
-	}
-	if err := s.db.Preload("Sender").First(&msg, msg.ID).Error; err != nil {
-		return err
-	}
-	now := time.Now()
-	s.db.Model(&model.Conversation{}).Where("id = ?", convID).Updates(map[string]interface{}{
-		"last_message_id": msg.ID,
-		"last_message_at": now,
-	})
-	if s.hub != nil {
-		resp := BuildMessageResponse(msg, MessageResponseOptions{BroadcastWS: true})
-		wsMsg := ws.WSMessage{Type: "new_message", Data: resp}
-		jsonMsg, _ := json.Marshal(wsMsg)
-		s.hub.SendToConversation(convID, *bot.VirtualUserID, jsonMsg)
-	}
-	return nil
+	// 复用 sendToConversation 管道（IsRead/last_message/未读计数/广播一整套），
+	// 不再手写：手写版漏了人类成员未读 +1，确认卡永远无红点，且管道后续修复同步不到。
+	_, err = s.sendToConversation(&bot, convID, string(content), "card", nil)
+	return err
 }
 
 // PendingConfirmCardInfo 确认卡的展示信息（与 ai.PendingSend 字段对齐但解耦 ai 包）。

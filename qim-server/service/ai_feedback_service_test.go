@@ -64,3 +64,37 @@ func TestAIFeedbackMembershipGuard(t *testing.T) {
 	require.ErrorIs(t, svc.SetFeedback(outsider.ID, msg.ID, 1), ErrFeedbackForbidden, "非会话成员不可反馈")
 	require.NoError(t, svc.SetFeedback(insider.ID, msg.ID, 1))
 }
+
+func TestAIFeedbackBatch(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.AIMessageFeedback{}))
+
+	user := &model.User{Username: "batchu", Nickname: "批量用户"}
+	require.NoError(t, db.Create(user).Error)
+	conv := &model.Conversation{Type: "bot"}
+	require.NoError(t, db.Create(conv).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: user.ID}).Error)
+
+	msgs := make([]*model.Message, 3)
+	for i := range msgs {
+		msgs[i] = &model.Message{ConversationID: conv.ID, SenderID: user.ID, Type: "markdown", Content: "回答"}
+		require.NoError(t, db.Create(msgs[i]).Error)
+	}
+
+	svc := NewAIFeedbackService(db)
+	require.NoError(t, svc.SetFeedback(user.ID, msgs[0].ID, 1))
+	require.NoError(t, svc.SetFeedback(user.ID, msgs[1].ID, -1))
+	// msgs[2] 无反馈
+
+	ratings, err := svc.GetFeedbackBatch(user.ID, []uint{msgs[0].ID, msgs[1].ID, msgs[2].ID})
+	require.NoError(t, err)
+	assert.Equal(t, 1, ratings[msgs[0].ID])
+	assert.Equal(t, -1, ratings[msgs[1].ID])
+	_, has := ratings[msgs[2].ID]
+	assert.False(t, has, "未反馈的消息不在 map 中")
+
+	// 空入参
+	empty, err := svc.GetFeedbackBatch(user.ID, nil)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}

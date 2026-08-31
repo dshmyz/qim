@@ -26,6 +26,18 @@ func (r *eventRepository) FindByUserID(ctx context.Context, userID uint) ([]*mod
 	return events, err
 }
 
+// FindByUserIDLimited 最近 limit 条 + 总数（SQL 端 LIMIT，避免全量物化后内存截断）。
+// 供 AI list_calendar_events 工具使用；CalendarApp 的 REST 全量拉取不经过此方法。
+func (r *eventRepository) FindByUserIDLimited(ctx context.Context, userID uint, limit int) ([]*model.Event, int64, error) {
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&model.Event{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var events []*model.Event
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("start_time DESC").Limit(limit).Find(&events).Error
+	return events, total, err
+}
+
 func (r *eventRepository) FindByUserIDAndID(ctx context.Context, userID, id uint) (*model.Event, error) {
 	var event model.Event
 	err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&event).Error

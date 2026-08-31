@@ -40,6 +40,21 @@ func (s *EventService) GetEvents(userID uint) ([]model.Event, error) {
 	return result, nil
 }
 
+// GetEventsLimited 最近 limit 条 + 总数。供 AI list_calendar_events 工具使用：
+// 工具只需前 N 条摘要 + 计数，SQL 端 LIMIT 避免把用户全部日程物化进内存。
+func (s *EventService) GetEventsLimited(userID uint, limit int) ([]model.Event, int64, error) {
+	ctx := context.Background()
+	events, total, err := s.repo.FindByUserIDLimited(ctx, userID, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]model.Event, len(events))
+	for i, e := range events {
+		result[i] = *e
+	}
+	return result, total, nil
+}
+
 func (s *EventService) CreateEvent(event *model.Event) error {
 	ctx := context.Background()
 	return s.repo.Create(ctx, event)
