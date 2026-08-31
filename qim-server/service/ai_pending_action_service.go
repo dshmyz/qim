@@ -75,6 +75,8 @@ func (s *AIPendingActionService) CreatePendingSend(userID, contextConvID, target
 // 归属/状态/有效期三重校验后，经 MessageService.SendMessage 走正常用户发送路径
 // （其内部含成员校验与敏感词校验，确认不是绕过）。
 // 已被处理过的请求返回 ErrPendingAlreadyHandled 且附带当前记录，供前端回显终态。
+// 并发防护：发送前先以条件 UPDATE 原子占有记录（pending→sending），
+// 占有失败的并发请求按已处理回显，保证恰好一次发送。
 func (s *AIPendingActionService) ConfirmPendingSend(userID, id uint) (*model.AIPendingAction, bool, error) {
 	record, handled, err := s.loadOperable(userID, id)
 	if err != nil {
@@ -84,31 +86,66 @@ func (s *AIPendingActionService) ConfirmPendingSend(userID, id uint) (*model.AIP
 		return record, false, ErrPendingServiceNotReady
 	}
 
+	claimRes := s.db.Model(&model.AIPendingAction{}).
+		Where("id = ? AND status = ?", record.ID, model.AIPendingActionStatusPending).
+		Updates(map[string]interface{}{"status": model.AIPendingActionStatusSending})
+	if claimRes.Error != nil {
+		return record, false, fmt.Errorf("锁定待确认请求失败: %w", claimRes.Error)
+	}
+	if claimRes.RowsAffected == 0 {
+		// 并发确认/取消已抢先占有：重读当前状态回显终态
+		if err := s.db.First(record, record.ID).Error; err != nil {
+			return nil, true, ErrPendingAlreadyHandled
+		}
+		return record, true, ErrPendingAlreadyHandled
+	}
+	record.Status = model.AIPendingActionStatusSending
 	msg, err := s.msgSvc.SendMessage(record.TargetConversationID, userID, "text", record.Content, nil)
 	if err != nil {
-		// 发送失败（如命中敏感词）保留 pending 态，用户可修改后重新发起或取消
+		// 发送失败（如命中敏感词）回退 pending 态，用户可修改后重新发起或取消；
+		// 回退仍按条件更新（万一此刻被取消，不覆盖终态）。
+		s.db.Model(&model.AIPendingAction{}).
+			Where("id = ? AND status = ?", record.ID, model.AIPendingActionStatusSending).
+			Update("status", model.AIPendingActionStatusPending)
+		record.Status = model.AIPendingActionStatusPending
 		return record, false, fmt.Errorf("发送失败: %w", err)
 	}
 
+	res := s.db.Model(&model.AIPendingAction{}).
+		Where("id = ? AND status = ?", record.ID, model.AIPendingActionStatusSending).
+		Updates(map[string]interface{}{
+			"status":     model.AIPendingActionStatusConfirmed,
+			"message_id": msg.ID,
+		})
+	if res.Error != nil {
+		return record, false, fmt.Errorf("更新待确认状态失败: %w", res.Error)
+	}
 	record.Status = model.AIPendingActionStatusConfirmed
 	record.MessageID = msg.ID
-	if err := s.db.Save(record).Error; err != nil {
-		return record, false, fmt.Errorf("更新待确认状态失败: %w", err)
-	}
 	return record, false, nil
 }
 
 // CancelPendingSend 取消待确认发送。对已终态的记录同样返回 ErrPendingAlreadyHandled + 当前记录。
+// 取消与确认竞争同一原子占有（pending→sending），确认正在发送时取消失败按已处理回显。
 func (s *AIPendingActionService) CancelPendingSend(userID, id uint) (*model.AIPendingAction, bool, error) {
 	record, handled, err := s.loadOperable(userID, id)
 	if err != nil {
 		return record, handled, err
 	}
 
-	record.Status = model.AIPendingActionStatusCancelled
-	if err := s.db.Save(record).Error; err != nil {
-		return record, false, fmt.Errorf("更新待确认状态失败: %w", err)
+	res := s.db.Model(&model.AIPendingAction{}).
+		Where("id = ? AND status = ?", record.ID, model.AIPendingActionStatusPending).
+		Update("status", model.AIPendingActionStatusCancelled)
+	if res.Error != nil {
+		return record, false, fmt.Errorf("更新待确认状态失败: %w", res.Error)
 	}
+	if res.RowsAffected == 0 {
+		if err := s.db.First(record, record.ID).Error; err != nil {
+			return nil, true, ErrPendingAlreadyHandled
+		}
+		return record, true, ErrPendingAlreadyHandled
+	}
+	record.Status = model.AIPendingActionStatusCancelled
 	return record, false, nil
 }
 

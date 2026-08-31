@@ -139,6 +139,11 @@
                   :knowledge-sources="msg.knowledge_sources"
                   :message-id="typeof msg.id === 'number' ? msg.id : undefined"
                 />
+                <!-- 卡片动作记录：确认卡点击后的「✓ 已选择:xxx」气泡（与主窗口 MessageItem 同款） -->
+                <div v-else-if="msg.type === 'card_action' && parseCardAction(msg).ok" class="card-action-record">
+                  <i class="fas fa-check"></i>
+                  <span>已选择：{{ parseCardAction(msg).data?.action_text || parseCardAction(msg).data?.action_id }}</span>
+                </div>
                 <span v-else v-html="previewTextToHtml(msg.content)"></span>
               </div>
             </div>
@@ -247,6 +252,18 @@ import { useChatStore } from '../../../stores/chat'
 const chatUtils = useChatUtils()
 // 卡片动作提交的服务端地址（CardMessage 内部 fetch 用，与 useBotChat 的请求同源）
 const serverUrl = getStoredServerUrl()
+
+// card_action 消息的 JSON 载荷解析（与主窗口 MessageItem.cardActionData 同款）：
+// 成功解析渲染「✓ 已选择:xxx」，失败（非法 JSON）回退纯文本渲染
+const parseCardAction = (msg: BotMessage): { ok: boolean; data?: { action_text?: string; action_id?: string } } => {
+  if (msg.type !== 'card_action') return { ok: false }
+  try {
+    const p = JSON.parse(msg.content)
+    return p && typeof p === 'object' ? { ok: true, data: p } : { ok: false }
+  } catch {
+    return { ok: false }
+  }
+}
 
 const chatStore = useChatStore()
 
@@ -1110,5 +1127,23 @@ watch(() => props.isStreaming, () => {
 
 .send-btn.stop-btn:hover:not(:disabled) {
   background: #d8454a;
+}
+
+/* 卡片动作记录气泡（与主窗口 MessageItem.card-action-record 同款） */
+.card-action-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: var(--bg-color-page, #f5f5f5);
+  border-radius: 12px;
+  border: 1px solid var(--border-color-light, #e5e7eb);
+  max-width: 320px;
+}
+.card-action-record i {
+  color: var(--success-color, #10b981);
+  font-size: var(--font-size-xxs);
 }
 </style>

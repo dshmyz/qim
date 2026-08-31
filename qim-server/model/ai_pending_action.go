@@ -5,6 +5,7 @@ import "time"
 // AI 待确认动作状态机
 const (
 	AIPendingActionStatusPending   = "pending"   // 待用户确认
+	AIPendingActionStatusSending   = "sending"   // 已被某次确认原子占有，发送执行中
 	AIPendingActionStatusConfirmed = "confirmed" // 已确认并执行
 	AIPendingActionStatusCancelled = "cancelled" // 已取消
 	AIPendingActionStatusExpired   = "expired"   // 超时过期

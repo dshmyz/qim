@@ -2395,6 +2395,8 @@ onUnmounted(() => {
   }
   // 移除 AI 快捷键更新监听
   window.removeEventListener('shortcuts-updated', handleShortcutsUpdated)
+  // 移除 AI 确认卡回跳监听（与 setup 中的注册成对）
+  window.removeEventListener('ai-open-conversation', handleAIOpenConversation)
 })
 
 const sortedConversations = computed(() => {
@@ -3376,12 +3378,14 @@ const handleStartScreenShare = async () => {
   }
 }
 
-// 处理切换会话
-// AI 确认卡/确认条「在目标会话中查看」回跳事件（CardMessage / AISidebarPanel 派发）
-window.addEventListener('ai-open-conversation', ((e: CustomEvent) => {
-  const cid = e.detail?.conversationId
+// AI 确认卡/确认条「在目标会话中查看」回跳事件（CardMessage / AISidebarPanel 派发）。
+// 命名函数引用 + onUnmounted 成对移除：Main 随登出卸载重挂，匿名闭包残留会重复触发
+// handleSwitchConversation 并操作已卸载组件状态。
+const handleAIOpenConversation = (e: Event) => {
+  const cid = (e as CustomEvent).detail?.conversationId
   if (cid) handleSwitchConversation(String(cid))
-}) as EventListener)
+}
+window.addEventListener('ai-open-conversation', handleAIOpenConversation)
 
 const handleSwitchConversation = async (conversationId: string) => {
   // 确保 conversationId 是字符串类型

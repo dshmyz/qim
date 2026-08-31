@@ -145,13 +145,21 @@ const handleClick = async (btn: CardButton) => {
 }
 
 // agent 回写更新卡片 content 时，重置交互态并清除旧持久标记，让新按钮恢复可点
-// （卡片不走流式，content 变化只来自 agent 显式更新，安全）
-watch(() => props.content, () => {
+// （卡片不走流式，content 变化只来自 agent 显式更新，安全）。
+// 已提交（submitted）的卡片不重置：确认卡终态回写（"✅ 已发送到 X"）也是 content
+// 变化，若盲目重置会让按钮复活，再次点击产生重复气泡与重复结果行。按钮集合本身
+// 变化（新按钮/按钮 id 变了）时才解除禁用。
+const buttonsSignature = () => JSON.stringify((card.value.buttons || []).map(b => b.id))
+let lastButtonsSig = buttonsSignature()
+watch(buttonsSignature, (sig) => {
+  if (sig === lastButtonsSig) return
+  lastButtonsSig = sig
   submitted.value = false
   submitting.value = false
   selectedId.value = ''
   writePersistedAction('')
 })
+// 内容回写仅更新文本展示；text 长度变化可能切换展开态，无需重置交互。
 </script>
 
 <style scoped>

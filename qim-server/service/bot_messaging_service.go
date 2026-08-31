@@ -900,6 +900,8 @@ type PendingConfirmCardInfo struct {
 // 落点击记录与 card_action 气泡、把卡片回写成终态。
 // 与外部路径的差异：幂等以 pending 状态机为准（记录/bubble 在动作成功后落），
 // 终态回写不删 CardActionRecord（保留点击禁用态，防止重复触发）。
+// 发送失败（ConfirmPendingSend 返回 err 但记录仍为 pending，可重试）时只回传错误，
+// 不落点击记录、不回写卡片——否则 CardActionRecord 会永久禁用按钮，与「可重试」矛盾。
 func (s *BotMessagingService) handleAIConfirmCardAction(bot *model.Bot, msg *model.Message, userID uint, actionID string, pendingID uint) error {
 	if s.pendingActions == nil {
 		return errors.New("确认服务不可用")
@@ -920,6 +922,11 @@ func (s *BotMessagingService) handleAIConfirmCardAction(bot *model.Bot, msg *mod
 	}
 	if err != nil && record == nil {
 		// NotFound / Forbidden / 服务不可用：无终态可回写，原样报错
+		return err
+	}
+	if err != nil && record != nil && record.Status == model.AIPendingActionStatusPending {
+		// 发送失败但 pending 保留（如敏感词拦截）：按钮必须保持可点，用户可重试或取消，
+		// 因此不落点击记录、不回写终态文案，只把错误带给调用方提示用户。
 		return err
 	}
 

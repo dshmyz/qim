@@ -149,6 +149,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 
 	// 工具面作用域配置服务（admin 可覆盖三个入口的白名单，改完即生效）
 	toolScopes := service.NewToolScopeService(di.GlobalContainer.DB)
+	di.GlobalContainer.ToolScopeService = toolScopes
 	di.GlobalContainer.MessageService.SetToolScopeService(toolScopes)
 
 	// AI 回复用户反馈（👍/👎，接质量闭环）

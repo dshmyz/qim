@@ -80,7 +80,12 @@ func minSendVersion(platform string) string {
 }
 
 func readMinSendVersionConfig(configKey string) string {
-	cfg, err := di.GlobalContainer.SystemConfigService.GetConfig(configKey)
+	svc := di.GlobalContainer.SystemConfigService
+	if svc == nil {
+		// 测试环境/未初始化容器：视为未配置门槛，不拦截
+		return ""
+	}
+	cfg, err := svc.GetConfig(configKey)
 	if err != nil {
 		return ""
 	}

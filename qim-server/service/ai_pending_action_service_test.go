@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -187,4 +188,44 @@ func TestSendMessageToolConfirmMode(t *testing.T) {
 	assert.Equal(t, true, m["sent"])
 	db.Model(&model.Message{}).Count(&msgCount)
 	assert.EqualValues(t, 2, msgCount)
+}
+
+func TestConfirmPendingSendConcurrentOnlySendsOnce(t *testing.T) {
+	svc, alice, _, conv := newPendingActionFixture(t)
+
+	record, err := svc.CreatePendingSend(alice.ID, 0, conv.ID, "并发只应发一条")
+	require.NoError(t, err)
+
+	const racers = 8
+	var wg sync.WaitGroup
+	results := make(chan int, racers) // 每个竞速者记录它是否执行了真实发送
+	for i := 0; i < racers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got, _, err := svc.ConfirmPendingSend(alice.ID, record.ID)
+			// 只有抢到原子占有的请求会走完 SendMessage 并拿到 confirmed 终态
+			if err == nil && got != nil && got.Status == model.AIPendingActionStatusConfirmed {
+				results <- 1
+			} else {
+				results <- 0
+			}
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	wins := 0
+	for v := range results {
+		wins += v
+	}
+	assert.EqualValues(t, 1, wins, "并发确认应有且仅有一个请求执行发送")
+
+	var count int64
+	svc.db.Model(&model.Message{}).Where("conversation_id = ?", conv.ID).Count(&count)
+	assert.EqualValues(t, 1, count, "并发确认最终只应发出一条消息")
+
+	var final model.AIPendingAction
+	require.NoError(t, svc.db.First(&final, record.ID).Error)
+	assert.Equal(t, model.AIPendingActionStatusConfirmed, final.Status)
 }

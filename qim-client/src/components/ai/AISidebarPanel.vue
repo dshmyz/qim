@@ -489,7 +489,9 @@ const doStream = (message: string) => {
       upsertToolCall(ev)
     },
     onComplete: () => {
-      if (streamingContent.value) {
+      // pending 确认条不依赖正文：模型只调 send_message 未回文本时也必须落位，
+      // 否则服务端 pending 记录 10 分钟后过期、用户永远看不到待确认内容
+      if (streamingContent.value || streamingPending.value || streamingToolCalls.value.length) {
         const msg: ChatMsg = {
           role: 'assistant',
           content: streamingContent.value,
@@ -515,8 +517,13 @@ const doStream = (message: string) => {
         isError: true,
         time: formatTime(),
       })
+      // 流中已到达的待确认请求服务端已落库且仍然有效，挂到失败消息上保留确认条
+      if (streamingPending.value) {
+        const last = chatMessages.value[chatMessages.value.length - 1]
+        last.pending = { ...streamingPending.value, status: 'awaiting' }
+        streamingPending.value = null
+      }
       streamingContent.value = ''
-      streamingPending.value = null
       isStreaming.value = false
     },
   })
@@ -587,16 +594,20 @@ const pendingResultText = (p: PendingSendState): string => {
 // ── 停止生成 ──
 const handleStop = () => {
   abort()
-  if (streamingContent.value) {
+  // 停止前已产生的待确认请求仍然有效（服务端已落记录），即使无正文也要落位确认条
+  if (streamingContent.value || streamingPending.value || streamingToolCalls.value.length) {
     const msg: ChatMsg = {
       role: 'assistant',
-      content: streamingContent.value + '\n\n*(已停止)*',
+      content: streamingContent.value + (streamingContent.value ? '\n\n*(已停止)*' : '*(已停止)*'),
       time: formatTime(),
     }
-    // 停止前已产生的待确认请求仍然有效（服务端已落记录），保留确认条
     if (streamingPending.value) {
       msg.pending = { ...streamingPending.value, status: 'awaiting' }
       streamingPending.value = null
+    }
+    if (streamingToolCalls.value.length) {
+      msg.toolCalls = [...streamingToolCalls.value]
+      streamingToolCalls.value = []
     }
     chatMessages.value.push(msg)
   }

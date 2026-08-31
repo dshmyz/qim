@@ -759,6 +759,18 @@ func StreamMessage(c *gin.Context) {
 		response.Unauthorized(c, "用户未登录")
 		return
 	}
+
+	// 客户端版本门槛：与 SendMessage 同判定（clientSendBlockedRequest），防止旧客户端
+	// 经此遗留 SSE 端点绕过强制升级。端点已废弃但历史部署的旧客户端仍在使用，必须同门槛。
+	if blocked, minV, unverifiable := clientSendBlockedRequest(c, uid); blocked {
+		if unverifiable {
+			response.Forbidden(c, "当前客户端版本无法验证，请升级至最新客户端并保持网络连接后再发送消息")
+		} else {
+			response.Forbidden(c, fmt.Sprintf("当前客户端版本过低（需 v%s 及以上），请升级客户端后再发送消息", minV))
+		}
+		return
+	}
+
 	convID := c.Param("id")
 
 	if strings.HasPrefix(convID, "conv_") {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/dshmyz/qim/qim-server/ws"
@@ -141,4 +142,55 @@ func TestBotDMWhitelistIncludesSendMessage(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "pending_confirmation", result.(map[string]interface{})["status"])
+}
+
+func TestConfirmCardSendFailureKeepsRetryable(t *testing.T) {
+	botMsgSvc, pendingSvc, _, user, target, bot := newConfirmCardFixture(t)
+	var bc model.BotConversation
+	require.NoError(t, botMsgSvc.db.Where("bot_id = ?", bot.ID).First(&bc).Error)
+
+	// 注入敏感词，让 ConfirmPendingSend 内的 SendMessage 失败（pending 保留可重试）。
+	// 直接构造缓存（sensitiveWordLoaded=true），避免触发 sensitive_words 表查询。
+	msgSvc := pendingSvc.msgSvc
+	msgSvc.sensitiveWordCacheMu.Lock()
+	msgSvc.sensitiveWordCache = []model.SensitiveWord{{Word: "违禁词", Enabled: true}}
+	msgSvc.sensitiveWordLoaded = true
+	msgSvc.sensitiveWordCacheMu.Unlock()
+
+	record, err := pendingSvc.CreatePendingSend(user.ID, bc.ConversationID, target.ID, "包含违禁词的内容")
+	require.NoError(t, err)
+	require.NoError(t, botMsgSvc.SendAIConfirmCard(bc.ConversationID, bot, PendingConfirmCardInfo{
+		ID: record.ID, TargetName: record.TargetName, Preview: record.Content,
+	}))
+	var card model.Message
+	require.NoError(t, botMsgSvc.db.Where("conversation_id = ? AND type = ?", bc.ConversationID, "card").
+		Order("id DESC").First(&card).Error)
+
+	// 点击确认：发送失败 → 错误带回，但 pending 保留
+	err = botMsgSvc.ForwardCardAction(card.ID, user.ID, "confirm", fmt.Sprintf("pending:%d", record.ID))
+	require.Error(t, err, "发送失败应返回错误供前端提示")
+
+	var confirmed model.AIPendingAction
+	require.NoError(t, pendingSvc.db.First(&confirmed, record.ID).Error)
+	assert.Equal(t, model.AIPendingActionStatusPending, confirmed.Status, "发送失败后 pending 必须保留供重试")
+
+	// 关键：不得落点击记录（否则 card_action_id 会永久禁用按钮）
+	var actionCount int64
+	botMsgSvc.db.Model(&model.CardActionRecord{}).Where("message_id = ? AND user_id = ?", card.ID, user.ID).Count(&actionCount)
+	assert.EqualValues(t, 0, actionCount, "发送失败不应落点击记录锁死按钮")
+
+	// 卡片内容不得回写终态文案
+	var latest model.Message
+	require.NoError(t, botMsgSvc.db.First(&latest, card.ID).Error)
+	assert.NotContains(t, latest.Content, "操作失败", "发送失败不应回写终态，保持原卡片可交互")
+
+	// 清空敏感词缓存后重试 → 成功
+	msgSvc.sensitiveWordCacheMu.Lock()
+	msgSvc.sensitiveWordCache = nil
+	msgSvc.sensitiveWordLoaded = true
+	msgSvc.sensitiveWordCacheMu.Unlock()
+	require.NoError(t, botMsgSvc.ForwardCardAction(card.ID, user.ID, "confirm", fmt.Sprintf("pending:%d", record.ID)))
+	var targetMsgCount int64
+	botMsgSvc.db.Model(&model.Message{}).Where("conversation_id = ? AND content = ?", target.ID, "包含违禁词的内容").Count(&targetMsgCount)
+	assert.EqualValues(t, 1, targetMsgCount, "解除拦截后重试应成功发出")
 }
