@@ -63,3 +63,30 @@ func TestToolScopeServiceInvalidScope(t *testing.T) {
 	assert.Error(t, err)
 	assert.False(t, svc.IsOverridden("hacky"))
 }
+
+// 群作用域即使被 admin 覆盖为包含 send_message，群 @AI 实际放行也必须剔除它：
+// 群路径 callerCtx 无 ConfirmTools，send_message 会走无确认直发分支（群助手获得
+// 静默代发能力，超出群管理工具边界）。过滤点在 groupAssistantAllowedTools（唯一消费口）。
+func TestGroupAssistantAllowedToolsExcludesSendMessage(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SystemConfig{}))
+	svc := NewToolScopeService(db)
+
+	// admin 显式把 send_message 配进群作用域（SetScopeTools 不校验具体工具名）
+	require.NoError(t, svc.SetScopeTools(ToolScopeGroup, []string{
+		"search_messages", "send_message", "group_summary",
+	}))
+
+	g := &SmartReplyGraph{toolScopes: svc}
+	allowed := g.groupAssistantAllowedTools()
+	assert.NotContains(t, allowed, "send_message")
+	assert.Contains(t, allowed, "search_messages")
+	assert.Contains(t, allowed, "group_summary")
+
+	// 大小写变体同样剔除（与工具注册表大小写不敏感查找对齐）
+	require.NoError(t, svc.SetScopeTools(ToolScopeGroup, []string{"SEND_MESSAGE", "search_messages"}))
+	allowed = g.groupAssistantAllowedTools()
+	assert.NotContains(t, allowed, "SEND_MESSAGE")
+	assert.NotContains(t, allowed, "send_message")
+	assert.Contains(t, allowed, "search_messages")
+}

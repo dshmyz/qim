@@ -257,8 +257,19 @@ func (g *SmartReplyGraph) recentAIMessagesLimit() int {
 
 // groupAssistantAllowedTools 计算群 @AI 实际可用的工具白名单：内置群管理工具
 // + （若开启）外部 MCP 工具。返回新 slice，避免改动包级白名单。
+// 强制剔除 send_message：群路径 callerCtx 不带 ConfirmTools（群助手无确认卡通道），
+// 若 admin 把 send_message 配进群作用域，工具会走无确认直发分支——群助手将获得
+// 「以成员身份静默代发」的能力，超出群管理工具的既有边界。群内代发不属于群 @AI 职责，
+// 拒绝而非降级确认（确认制属 sidebar/bot_dm 入口语义）。
 func (g *SmartReplyGraph) groupAssistantAllowedTools() []string {
-	allowed := append([]string(nil), g.toolScopes.ScopeTools(ToolScopeGroup)...)
+	scopeTools := g.toolScopes.ScopeTools(ToolScopeGroup)
+	allowed := make([]string, 0, len(scopeTools)+8)
+	for _, name := range scopeTools {
+		if strings.EqualFold(name, "send_message") {
+			continue
+		}
+		allowed = append(allowed, name)
+	}
 	if g.mcpGateway != nil && g.mcpGateway.GroupEnabled() {
 		allowed = append(allowed, g.mcpGateway.ListExternalToolNames()...)
 	}
