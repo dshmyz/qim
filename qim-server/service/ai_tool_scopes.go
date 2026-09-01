@@ -42,3 +42,23 @@ var botAllowedTools = []string{
 var groupAssistantToolWhitelist = []string{
 	"group_management", "create_group_task", "search_messages", "group_summary", "system_notification",
 }
+
+// confirmRequiredTools 声明各 AI 入口中「需用户确认后才真正执行」的工具（确认制）。
+// 单一来源：侧边栏 streamCompletionWithTools（ai_handler.go）与 bot DM 流式路径
+// （message_service.go）构造 CallerContext.ConfirmTools 都从这里取——新增确认制工具时
+// 只改这一处，避免逐构造点手改漏改。群入口无确认卡通道，send_message 由
+// groupAssistantAllowedTools 强制剔除兜底（见 smart_reply_graph.go），不入此表。
+var confirmRequiredTools = map[string][]string{
+	ToolScopeSidebar: {"send_message"},
+	ToolScopeBotDM:   {"send_message"},
+}
+
+// ConfirmToolsFor 返回指定入口需用户确认后才真正执行的工具清单。
+// 返回副本，避免调用方修改包级声明。未知入口返回空。
+func ConfirmToolsFor(scope string) []string {
+	src, ok := confirmRequiredTools[scope]
+	if !ok {
+		return nil
+	}
+	return append([]string(nil), src...)
+}

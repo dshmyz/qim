@@ -82,6 +82,7 @@ type AIHandlerDeps struct {
 	PendingActions     *service.AIPendingActionService // send_message 等敏感工具的待确认执行
 	ToolScopes         *service.ToolScopeService       // 工具面配置服务；nil=用代码默认白名单
 	Feedback           *service.AIFeedbackService      // AI 回复用户反馈（👍/👎）
+	ConfigSvc          *service.SystemConfigService    // system_configs 读写（推荐提示词等通用配置键）
 }
 
 // AIHandler AI处理器
@@ -97,6 +98,7 @@ type AIHandler struct {
 	pendingActions     *service.AIPendingActionService
 	toolScopes         *service.ToolScopeService
 	feedback           *service.AIFeedbackService
+	configSvc          *service.SystemConfigService
 }
 
 // NewAIHandler 创建AI处理器。依赖经 Deps 一次性注入，不再逐个 Set*。
@@ -113,6 +115,7 @@ func NewAIHandler(deps AIHandlerDeps) *AIHandler {
 		pendingActions:     deps.PendingActions,
 		toolScopes:         deps.ToolScopes,
 		feedback:           deps.Feedback,
+		configSvc:          deps.ConfigSvc,
 	}
 }
 
@@ -546,8 +549,9 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 	callerCtx := &ai.CallerContext{
 		UserID:         userID,
 		ConversationID: conversationID,
-		// 侧边栏代发消息为确认制：模型只生成待确认请求，用户在确认条点击后才真正发出
-		ConfirmTools: []string{"send_message"},
+		// 确认制工具清单单一来源：service.ConfirmToolsFor(ToolScopeSidebar)
+		// （模型只生成待确认请求，用户在确认条点击后才真正发出）
+		ConfirmTools: service.ConfirmToolsFor(service.ToolScopeSidebar),
 	}
 	// 生效工具面：admin 覆盖配置优先，未覆盖回退代码默认（nil 接收者安全）
 	allowedTools := h.toolScopes.ScopeTools(service.ToolScopeSidebar)

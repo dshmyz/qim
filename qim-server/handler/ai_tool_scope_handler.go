@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
@@ -160,12 +159,11 @@ func normalizeSuggestedPrompts(list []string) ([]string, error) {
 
 // readSuggestedPrompts 读取配置的推荐提示词（未配置返回空列表）。
 func (h *AIHandler) readSuggestedPrompts() []string {
-	if h.toolScopes == nil {
+	if h.configSvc == nil {
 		return []string{}
 	}
-	// 复用 ToolScopeService 的 db（配置同存 system_configs）；读取专用轻量路径
-	var cfg model.SystemConfig
-	if err := h.toolScopes.RawDB().Where("config_key = ?", suggestedPromptsKey).First(&cfg).Error; err != nil {
+	cfg, err := h.configSvc.GetConfig(suggestedPromptsKey)
+	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			// 真读错误（迁移/权限等）必须留痕：静默归空会让自定义提示词停摆而无人察觉
 			logger.WithModule("AIHandler").Error("读取推荐提示词配置失败", "key", suggestedPromptsKey, "error", err)
@@ -194,7 +192,7 @@ type UpdateSuggestedPromptsRequest struct {
 // UpdateSuggestedPrompts PUT /admin/ai/suggested-prompts
 // 配置推荐提示词（空数组=清除，客户端回退内置默认）。
 func (h *AIHandler) UpdateSuggestedPrompts(c *gin.Context) {
-	if h.toolScopes == nil {
+	if h.configSvc == nil {
 		response.InternalServerError(c, "配置服务不可用")
 		return
 	}
@@ -208,7 +206,12 @@ func (h *AIHandler) UpdateSuggestedPrompts(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	if err := h.toolScopes.SaveRawConfig(suggestedPromptsKey, list, "AI 推荐提示词（客户端指令条/示例），空数组=恢复内置默认"); err != nil {
+	value, err := json.Marshal(list)
+	if err != nil {
+		response.InternalServerError(c, "序列化失败")
+		return
+	}
+	if err := h.configSvc.UpsertConfig(suggestedPromptsKey, string(value), "json", "AI 推荐提示词（客户端指令条/示例），空数组=恢复内置默认"); err != nil {
 		response.InternalServerError(c, "保存失败: "+err.Error())
 		return
 	}

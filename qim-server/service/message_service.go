@@ -1006,8 +1006,8 @@ func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot mode
 
 	// 隐私关键：callerCtx 用 talker(userID)，工具按 talker scope 检索任务/知识，不读创建者私有数据。
 	// ConversationID 指向当前 bot 会话：send_message 确认制的默认目标会话（LLM 未显式指定时），
-	// 也是确认卡片的落点。
-	callerCtx := &ai.CallerContext{UserID: userID, ConversationID: convID, ConfirmTools: []string{"send_message"}}
+	// 也是确认卡片的落点。确认制工具清单单一来源：ConfirmToolsFor(ToolScopeBotDM)。
+	callerCtx := &ai.CallerContext{UserID: userID, ConversationID: convID, ConfirmTools: ConfirmToolsFor(ToolScopeBotDM)}
 
 	// contentProduced 跟踪是否已流出正文：用于自定义模型失败时判断是否回退（已流出则保留部分内容，
 	// 流式中途无法干净衔接重试）。与老路径 builder.Len()==0 判断等价。

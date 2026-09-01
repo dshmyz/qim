@@ -167,6 +167,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		PendingActions:     pendingActions,
 		ToolScopes:         toolScopes,
 		Feedback:           aiFeedback,
+		ConfigSvc:          di.GlobalContainer.SystemConfigService,
 	})
 
 	// 注册用户侧 AI 工具（依赖 TaskService/MessageService/SearchGraph/SummaryGraph/PendingActions）

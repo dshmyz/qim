@@ -54,6 +54,19 @@ func (s *SystemConfigService) CreateConfig(config *model.SystemConfig) error {
 	return s.db.Create(config).Error
 }
 
+// UpsertConfig 幂等 upsert 一条 system_configs 配置（存在则更新 value/type，不存在则创建）。
+// 语义与工具面作用域此前经 ToolScopeService.SaveRawConfig 的写入一致，供无缓存的通用
+// 配置键（如推荐提示词）在 handler 层经服务读写，不再裸露 db 句柄。
+func (s *SystemConfigService) UpsertConfig(key, value, configType, desc string) error {
+	cfg := model.SystemConfig{ConfigKey: key, Value: value, Type: configType, Desc: desc}
+	if err := s.db.Where("config_key = ?", key).
+		Assign(model.SystemConfig{Value: value, Type: configType}).
+		FirstOrCreate(&cfg).Error; err != nil {
+		return fmt.Errorf("写入配置失败: %w", err)
+	}
+	return nil
+}
+
 var publicConfigKeys = []string{
 	"enableAI",
 	"enableReadReceipt",

@@ -90,3 +90,18 @@ func TestGroupAssistantAllowedToolsExcludesSendMessage(t *testing.T) {
 	assert.NotContains(t, allowed, "send_message")
 	assert.Contains(t, allowed, "search_messages")
 }
+
+// ConfirmToolsFor 单一来源声明表：侧边栏/bot DM 确认制含 send_message，群入口无确认。
+func TestConfirmToolsFor(t *testing.T) {
+	assert.Equal(t, []string{"send_message"}, ConfirmToolsFor(ToolScopeSidebar))
+	assert.Equal(t, []string{"send_message"}, ConfirmToolsFor(ToolScopeBotDM))
+	// 群入口无确认制（send_message 由 groupAssistantAllowedTools 强制剔除兜底）
+	assert.Nil(t, ConfirmToolsFor(ToolScopeGroup))
+	// 未知入口返回空
+	assert.Nil(t, ConfirmToolsFor("unknown_scope"))
+
+	// 返回副本：调用方修改不污染包级声明
+	got := ConfirmToolsFor(ToolScopeSidebar)
+	got[0] = "hacked"
+	assert.Equal(t, []string{"send_message"}, ConfirmToolsFor(ToolScopeSidebar))
+}

@@ -40,3 +40,30 @@ func TestBatchUpdate_RoundTripInt64(t *testing.T) {
 	require.True(t, ok, "读回应为 int，实际类型 %T", all["file_upload:max_size"])
 	assert.Equal(t, 104857600, n)
 }
+
+// UpsertConfig 幂等 upsert：首次创建，再次写入更新同一行（不新增）。
+func TestSystemConfigUpsertConfigIdempotent(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SystemConfig{}))
+	svc := NewSystemConfigService(db)
+
+	require.NoError(t, svc.UpsertConfig("ai.ui.suggested_prompts", `["a","b"]`, "json", "推荐提示词"))
+	cfg, err := svc.GetConfig("ai.ui.suggested_prompts")
+	require.NoError(t, err)
+	assert.Equal(t, `["a","b"]`, cfg.Value)
+	assert.Equal(t, "json", cfg.Type)
+
+	// 覆盖写入：值更新，行数不变（唯一键存在则更新而非新建）
+	require.NoError(t, svc.UpsertConfig("ai.ui.suggested_prompts", `["a","b","c"]`, "json", "推荐提示词"))
+	cfg, err = svc.GetConfig("ai.ui.suggested_prompts")
+	require.NoError(t, err)
+	assert.Equal(t, `["a","b","c"]`, cfg.Value)
+
+	var count int64
+	db.Model(&model.SystemConfig{}).Count(&count)
+	assert.EqualValues(t, 1, count, "upsert 应更新既有行而非新增")
+
+	// 未配置键 → GetConfig 返回 ErrRecordNotFound
+	_, err = svc.GetConfig("not_configured")
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
