@@ -383,12 +383,7 @@ func CreateChannelMessage(c *gin.Context) {
 		}
 
 		// 客户端版本门槛（普通订阅者）：低于对应平台配置的最低版本禁止发送（与普通消息一致）
-		if blocked, minV, unverifiable := clientSendBlockedRequest(c, uid); blocked {
-			if unverifiable {
-				response.Forbidden(c, "当前客户端版本无法验证，请升级至最新客户端并保持网络连接后再发送消息")
-			} else {
-				response.Forbidden(c, fmt.Sprintf("当前客户端版本过低（需 v%s 及以上），请升级客户端后再发送消息", minV))
-			}
+		if clientRejectSendBlocked(c, uid) {
 			return
 		}
 	}

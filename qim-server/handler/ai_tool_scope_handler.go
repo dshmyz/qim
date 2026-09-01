@@ -6,10 +6,12 @@ import (
 	"strings"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // 工具面作用域的展示元信息（顺序即 admin 界面展示顺序）。
@@ -164,10 +166,15 @@ func (h *AIHandler) readSuggestedPrompts() []string {
 	// 复用 ToolScopeService 的 db（配置同存 system_configs）；读取专用轻量路径
 	var cfg model.SystemConfig
 	if err := h.toolScopes.RawDB().Where("config_key = ?", suggestedPromptsKey).First(&cfg).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			// 真读错误（迁移/权限等）必须留痕：静默归空会让自定义提示词停摆而无人察觉
+			logger.WithModule("AIHandler").Error("读取推荐提示词配置失败", "key", suggestedPromptsKey, "error", err)
+		}
 		return []string{}
 	}
 	var list []string
-	if json.Unmarshal([]byte(cfg.Value), &list) != nil {
+	if err := json.Unmarshal([]byte(cfg.Value), &list); err != nil {
+		logger.WithModule("AIHandler").Error("解析推荐提示词配置失败", "key", suggestedPromptsKey, "error", err)
 		return []string{}
 	}
 	return list

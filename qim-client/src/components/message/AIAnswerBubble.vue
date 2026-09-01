@@ -94,10 +94,12 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
 const batchRatings = inject<AIFeedbackRatings | null>(aiFeedbackRatingsKey, null)
 const fb = ref<1 | -1 | 0>(0)
 if (batchRatings && props.messageId) {
+  // immediate：气泡可能在列表层已批量拉取之后才挂载（会话切换返回、分页重挂载），
+  // 此时 map 引用不会再变，非 immediate 的 watch 永不触发导致选中态静默丢失
   watch(batchRatings, (map) => {
     const r = map.get(props.messageId!)
     if (r === 1 || r === -1) fb.value = r
-  })
+  }, { immediate: true })
 }
 const setFb = async (v: 1 | -1) => {
   const prev = fb.value

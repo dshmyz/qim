@@ -120,7 +120,10 @@ func (h *AIHandler) CancelPendingAction(c *gin.Context) {
 
 	record, handled, err := h.pendingActions.CancelPendingSend(userID, uint(id))
 	if err != nil {
-		if record != nil {
+		// 与 Confirm 对齐：仅终态（并发抢先/已处理）回显；真错误（如 DB 更新失败，
+		// handled=false 且 record 仍 pending）必须落到 mapPendingActionError，
+		// 否则客户端会把 pending 误显示为「已过期」而实际仍可操作
+		if handled && record != nil {
 			pendingActionResponse(c, record, handled)
 			return
 		}

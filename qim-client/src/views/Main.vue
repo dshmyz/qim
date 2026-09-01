@@ -766,7 +766,6 @@ import { useMainMessageLoading } from '../composables/useMainMessageLoading'
 import { useMainMessageSending } from '../composables/useMainMessageSending'
 import { useShareLogic } from '../composables/useShareLogic'
 import { useUserProfile } from '../composables/useUserProfile'
-import { useStreamMessage } from '../composables/useStreamMessage'
 import { useAppLogic } from '../composables/useAppLogic'
 import { decodeToPlainText, parseContent } from '../utils/mentions'
 import { stripMarkdown } from '../utils/messageDisplay'
@@ -2501,12 +2500,8 @@ watch(searchQuery, (newQuery) => {
 
 // 播放消息提示音
 
-// 处理流式消息
-const streamMessage = useStreamMessage(serverUrl)
-const { handleStreamMessage } = streamMessage
-
 // 使用 Main.vue 专用的消息发送 composable
-const mainMessageSending = useMainMessageSending(currentConversationId, messages, currentConversation, isConnected, sessionExpired, handleStreamMessage, () => {
+const mainMessageSending = useMainMessageSending(currentConversationId, messages, currentConversation, isConnected, sessionExpired, () => {
   nextTick(() => chatWindowRef.value?.scrollToBottom())
 }, () => {
   // 会话不在列表中（例如被移除后发消息），重新加载会话列表

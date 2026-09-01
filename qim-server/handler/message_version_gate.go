@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/cache"
 	"github.com/dshmyz/qim/qim-server/di"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/ws"
 
@@ -145,4 +147,20 @@ func clientSendBlockedRequest(c *gin.Context, uid uint) (blocked bool, minV stri
 	// 无在线设备可证 → 对全局门槛 fail-closed（无法验证）
 	minV = minSendVersion(clientPlatform)
 	return clientSendBlocked("", minV), minV, minV != ""
+}
+
+// clientRejectSendBlocked 版本门槛拒绝的统一出口：clientSendBlockedRequest 判定应拦截时，
+// 按"无法验证"与"版本过低"分别输出统一文案并返回 true；未拦截返回 false。
+// 收敛 REST 三处复制块（SendMessage/StreamMessage/CreateChannelMessage），改文案只改这里。
+func clientRejectSendBlocked(c *gin.Context, uid uint) bool {
+	blocked, minV, unverifiable := clientSendBlockedRequest(c, uid)
+	if !blocked {
+		return false
+	}
+	if unverifiable {
+		response.Forbidden(c, "当前客户端版本无法验证，请升级至最新客户端并保持网络连接后再发送消息")
+	} else {
+		response.Forbidden(c, fmt.Sprintf("当前客户端版本过低（需 v%s 及以上），请升级客户端后再发送消息", minV))
+	}
+	return true
 }

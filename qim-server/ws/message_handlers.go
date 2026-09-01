@@ -12,15 +12,25 @@ import (
 	"gorm.io/gorm"
 )
 
+// rejectVersionBlocked 版本门槛拒绝的统一出口：命中 SendVersionGate 时输出统一
+// version_too_low 帧并返回 true。收敛 WS 两处复制块（handleSendMessage/fallbackHandleMessage），
+// 改帧内容只改这里。未注册门槛恒放行。
+func (c *Client) rejectVersionBlocked() bool {
+	if c.hub.SendVersionGate == nil || !c.hub.SendVersionGate(c.version, c.platform) {
+		return false
+	}
+	errMsg := WSMessage{
+		Type: "error",
+		Data: map[string]interface{}{"code": "version_too_low", "message": "当前客户端版本过低，请升级客户端后再发送消息"},
+	}
+	jsonErr, _ := json.Marshal(errMsg)
+	safeSend(c, jsonErr)
+	return true
+}
+
 func handleSendMessage(c *Client, data interface{}) {
 	// 客户端版本门槛：低于对应平台配置的最低版本禁止发送（与 REST SendMessage 同一门槛逻辑）
-	if c.hub.SendVersionGate != nil && c.hub.SendVersionGate(c.version, c.platform) {
-		errMsg := WSMessage{
-			Type: "error",
-			Data: map[string]interface{}{"code": "version_too_low", "message": "当前客户端版本过低，请升级客户端后再发送消息"},
-		}
-		jsonErr, _ := json.Marshal(errMsg)
-		safeSend(c, jsonErr)
+	if c.rejectVersionBlocked() {
 		return
 	}
 
@@ -65,13 +75,7 @@ func handleSendMessage(c *Client, data interface{}) {
 // 保留仅作防御。字段集可能落后于统一构建函数——改动消息字段时请同步此处或直接删除。
 func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quotedMessageID *uint) {
 	// 与 handleSendMessage 一致：客户端版本门槛（防御性，正常路径经 SendVersionGate 已拦）
-	if c.hub.SendVersionGate != nil && c.hub.SendVersionGate(c.version, c.platform) {
-		errMsg := WSMessage{
-			Type: "error",
-			Data: map[string]interface{}{"code": "version_too_low", "message": "当前客户端版本过低，请升级客户端后再发送消息"},
-		}
-		jsonErr, _ := json.Marshal(errMsg)
-		safeSend(c, jsonErr)
+	if c.rejectVersionBlocked() {
 		return
 	}
 

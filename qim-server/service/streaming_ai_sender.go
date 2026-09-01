@@ -125,6 +125,13 @@ func FriendlyToolLabel(tool string) string {
 		return "会话总结"
 	case strings.Contains(tool, "send_message"):
 		return "发送消息"
+	// P1 用户侧工具（与 handler.toolDisplayName 同文案，避免同一工具两处标签不一致）
+	case strings.Contains(tool, "list_calendar_events"):
+		return "查询日程"
+	case strings.Contains(tool, "create_calendar_event"):
+		return "创建日程"
+	case strings.Contains(tool, "search_files"):
+		return "搜索文件"
 	// 外部 MCP 工具（mcp_<conn>_<tool>）
 	case strings.Contains(tool, "calculator"), strings.Contains(tool, "calc"):
 		return "计算"

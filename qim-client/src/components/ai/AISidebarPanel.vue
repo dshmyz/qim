@@ -518,10 +518,15 @@ const doStream = (message: string) => {
         time: formatTime(),
       })
       // 流中已到达的待确认请求服务端已落库且仍然有效，挂到失败消息上保留确认条
+      const last = chatMessages.value[chatMessages.value.length - 1]
       if (streamingPending.value) {
-        const last = chatMessages.value[chatMessages.value.length - 1]
         last.pending = { ...streamingPending.value, status: 'awaiting' }
         streamingPending.value = null
+      }
+      // 已执行的工具轨迹（如失败前完成的 search/create）一并保留，用户可见 AI 做到哪一步
+      if (streamingToolCalls.value.length) {
+        last.toolCalls = [...streamingToolCalls.value]
+        streamingToolCalls.value = []
       }
       streamingContent.value = ''
       isStreaming.value = false
