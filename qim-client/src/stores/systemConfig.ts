@@ -11,6 +11,20 @@ export const useSystemConfigStore = defineStore('systemConfig', () => {
   // 向量库是否可用（服务端运行时注入，决定机器人知识库开关是否生效）
   const vectorEnabled = ref(false)
   const loaded = ref(false)
+  // 服务端下发的客户端更新服务器地址（公开配置 client:update_base_url）。
+  // 非空时覆盖烘焙的 QIM_UPDATE_URL，让管理员可远程校正全量客户端的更新地址。
+  const updateBaseUrl = ref('')
+
+  // 把服务端下发的更新地址同步给主进程：值变化才发送一次（含空值=清除，回退聊天服务器地址）。
+  // 空值必须透传，否则管理员清空配置后运行中的客户端会一直粘住旧推送地址。
+  function applyUpdateBaseUrl(url: unknown) {
+    const clean = (typeof url === 'string' ? url : '').replace(/\/+$/, '')
+    if (clean === updateBaseUrl.value) return
+    updateBaseUrl.value = clean
+    if (window.electron?.ipcRenderer) {
+      window.electron.ipcRenderer.send('set-update-server-url', clean)
+    }
+  }
 
   async function fetchPublicConfig() {
     try {
@@ -21,6 +35,7 @@ export const useSystemConfigStore = defineStore('systemConfig', () => {
       if (data.messageRecallTime !== undefined) messageRecallTime.value = data.messageRecallTime
       if (data.messageRemindTime !== undefined) messageRemindTime.value = data.messageRemindTime
       if (data.vector_enabled !== undefined) vectorEnabled.value = data.vector_enabled === true
+      applyUpdateBaseUrl(data['client:update_base_url'])
       loaded.value = true
     } catch (e) {
       console.warn('获取公开系统配置失败:', e)
@@ -33,6 +48,7 @@ export const useSystemConfigStore = defineStore('systemConfig', () => {
     if (data?.messageRecallTime !== undefined) messageRecallTime.value = data.messageRecallTime
     if (data?.messageRemindTime !== undefined) messageRemindTime.value = data.messageRemindTime
     if (data?.vector_enabled !== undefined) vectorEnabled.value = data.vector_enabled === true
+    applyUpdateBaseUrl(data?.['client:update_base_url'])
   }
 
   function canRecall(messageCreatedAt: number | string | Date): boolean {
@@ -66,6 +82,7 @@ export const useSystemConfigStore = defineStore('systemConfig', () => {
     messageRecallTime,
     messageRemindTime,
     vectorEnabled,
+    updateBaseUrl,
     loaded,
     fetchPublicConfig,
     updateFromServer,

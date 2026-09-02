@@ -29,3 +29,49 @@ func TestMapConfigToFrontend_MaxFileSizeMissing(t *testing.T) {
 	out := mapConfigToFrontend(map[string]interface{}{})
 	assert.Equal(t, 50, out["maxFileSize"])
 }
+
+// TestValidateClientUpdateBaseURL 校验客户端更新服务器地址：空值合法、http(s):// 合法、其余非法。
+func TestValidateClientUpdateBaseURL(t *testing.T) {
+	cases := []struct {
+		name  string
+		value interface{}
+		valid bool
+	}{
+		{"空字符串合法", "", true},
+		{"空白合法", "   ", true},
+		{"非字符串视为未配置", 123, true},
+		{"https 合法", "https://updates.example.com", true},
+		{"http 合法", "http://192.168.1.10:8080", true},
+		{"尾部斜杠合法", "https://updates.example.com/", true},
+		{"缺协议非法", "updates.example.com", false},
+		{"协议拼错非法", "ftp://updates.example.com", false},
+		{"乱串非法", "not-a-url", false},
+		{"裸 https scheme 非法", "https://", false},
+		{"裸 http scheme 非法", "http://", false},
+		{"scheme 后只有斜杠非法", "https:///path", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateClientUpdateBaseURL(tc.value)
+			if tc.valid {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+			}
+		})
+	}
+}
+
+// TestMapConfig_ClientUpdateBaseURL 验证前端字段 clientUpdateBaseUrl 与存储 key
+// client:update_base_url 的双向映射一致（保存与回显闭环）。
+func TestMapConfig_ClientUpdateBaseURL(t *testing.T) {
+	mapped := mapConfigFromFrontend(map[string]interface{}{
+		"clientUpdateBaseUrl": "https://updates.example.com",
+	})
+	assert.Equal(t, "https://updates.example.com", mapped["client:update_base_url"])
+
+	displayed := mapConfigToFrontend(map[string]interface{}{
+		"client:update_base_url": "https://updates.example.com",
+	})
+	assert.Equal(t, "https://updates.example.com", displayed["clientUpdateBaseUrl"])
+}

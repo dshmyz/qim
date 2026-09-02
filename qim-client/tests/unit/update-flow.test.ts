@@ -305,3 +305,105 @@ describe('force auto-update (强制自动升级 - 静默路径)', () => {
     expect(mainDialogs).toContain('v-if="!forceUpdate"')
   })
 })
+
+describe('server-pushed update URL (服务端下发更新地址)', () => {
+  const mainProcess = readFileSync(resolve(__dirname, '../../electron/main.js'), 'utf8')
+  const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
+  const systemConfigStore = readFileSync(resolve(__dirname, '../../src/stores/systemConfig.ts'), 'utf8')
+
+  it('wires a separate set-update-server-url IPC that does not touch persisted chat server config', () => {
+    expect(updateModule).toContain("ipcMain.on('set-update-server-url'")
+    const handler = updateModule.slice(
+      updateModule.indexOf("ipcMain.on('set-update-server-url'"),
+      updateModule.indexOf("ipcMain.on('get-server-url'")
+    )
+    expect(handler).toContain('setServerPushedUpdateUrl')
+    // 关键：不能写 saveServerConfig —— config.json.serverUrl 是聊天服务器地址，不能被更新地址覆盖
+    expect(handler).not.toContain('saveServerConfig')
+  })
+
+  it('gives server-pushed URL priority over chat server and baked env in main process', () => {
+    expect(mainProcess).toContain('let serverPushedUpdateUrl')
+    expect(mainProcess).toContain('getUpdateBaseUrl: () => serverPushedUpdateUrl || currentUpdateBaseUrl')
+    expect(mainProcess).toContain('setServerPushedUpdateUrl')
+  })
+
+  it('reads client:update_base_url from public config and pushes it to main', () => {
+    expect(systemConfigStore).toContain("client:update_base_url")
+    expect(systemConfigStore).toContain("'set-update-server-url'")
+    expect(systemConfigStore).toContain('applyUpdateBaseUrl')
+  })
+
+  it('lets an empty pushed URL clear the override (not just set it)', () => {
+    // store 端空值也透传（不清空会让管理员清字段后运行中客户端粘住旧地址）
+    expect(systemConfigStore).toMatch(/function applyUpdateBaseUrl[\s\S]*?\(typeof url === 'string' \? url : ''\)/)
+    // IPC 端接受空串并清除
+    const handler = updateModule.slice(
+      updateModule.indexOf("ipcMain.on('set-update-server-url'"),
+      updateModule.indexOf("ipcMain.on('get-server-url'")
+    )
+    expect(handler).toContain("if (typeof updateUrl === 'string')")
+    // 切换聊天服务器（set-server-url）时清掉旧服务器的推送地址
+    const setServerHandler = updateModule.slice(
+      updateModule.indexOf("ipcMain.on('set-server-url'"),
+      updateModule.indexOf("ipcMain.on('set-update-server-url'")
+    )
+    expect(setServerHandler).toContain("setServerPushedUpdateUrl('')")
+  })
+
+  it('keeps get-server-url returning the chat server URL, not the effective update URL', () => {
+    expect(mainProcess).toContain('getChatServerUrl: () => currentUpdateBaseUrl')
+    const getServerHandler = updateModule.slice(
+      updateModule.indexOf("ipcMain.on('get-server-url'"),
+      updateModule.indexOf("ipcMain.on('check-for-updates'")
+    )
+    expect(getServerHandler).toContain('getChatServerUrl()')
+    expect(getServerHandler).not.toContain('getUpdateBaseUrl()')
+  })
+})
+
+describe('update check watchdog (检查失败看门狗)', () => {
+  const updateModule = readFileSync(resolve(__dirname, '../../electron/auto-update.js'), 'utf8')
+  const useUI = readFileSync(resolve(__dirname, '../../src/composables/useUI.ts'), 'utf8')
+  const mainDialogs = readFileSync(resolve(__dirname, '../../src/components/modals/MainDialogs.vue'), 'utf8')
+  const mainView = readFileSync(resolve(__dirname, '../../src/views/Main.vue'), 'utf8')
+
+  it('counts consecutive check failures and emits update-unreliable at threshold', () => {
+    expect(updateModule).toContain('let consecutiveCheckFailures = 0')
+    expect(updateModule).toContain('UNRELIABLE_FAILURE_THRESHOLD = 3')
+    expect(updateModule).toContain('function recordCheckFailure')
+    expect(updateModule).toContain("sendToWindow(\n        'update-unreliable'")
+    // 成功时清零，保证故障窗口从最近一次成功重新计算
+    expect(updateModule).toContain('function resetCheckFailures')
+    expect(updateModule).toContain("resetCheckFailures() // 检查成功")
+  })
+
+  it('surfaces the unreliable warning in the renderer update dialog', () => {
+    expect(useUI).toContain("channel: 'update-unreliable'")
+    expect(useUI).toContain('const updateUnreliable = ref(false)')
+    expect(mainView).toContain(':updateUnreliable="updateUnreliable"')
+    expect(mainDialogs).toContain('update-unreliable-warning')
+    expect(mainDialogs).toContain('请前往下载页手动升级客户端')
+  })
+
+  it('keeps the unreliable warning across failed re-checks (persistent, not dismissed at check start)', () => {
+    // update-checking 处理器不应清除 updateUnreliable，否则主进程一次性提示被下一次失败的复检吞掉
+    const checkingHandler = useUI.slice(
+      useUI.indexOf("channel: 'update-checking'"),
+      useUI.indexOf("channel: 'update-available'")
+    )
+    expect(checkingHandler).not.toContain('updateUnreliable.value = false')
+    // 触发时自动打开弹窗，让后台自动检查的失败也可见
+    const unreliableHandler = useUI.slice(
+      useUI.indexOf("channel: 'update-unreliable'"),
+      useUI.indexOf("channel: 'update-progress'")
+    )
+    expect(unreliableHandler).toContain('showUpdateDialog.value = true')
+  })
+
+  it('refuses concurrent checks while one is still in flight (no cross-check contamination)', () => {
+    expect(updateModule).toContain('let checkInFlight = false')
+    expect(updateModule).toContain('checkInFlight) {')
+    expect(updateModule).toContain('checkInFlight = true')
+  })
+})

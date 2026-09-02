@@ -2,8 +2,11 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/middleware"
@@ -53,6 +56,11 @@ func mapConfigToFrontend(raw map[string]interface{}) map[string]interface{} {
 		case "file_upload:allowed_extensions":
 			if s, ok := v.(string); ok {
 				out["allowedFileTypes"] = s
+			}
+		case "client:update_base_url":
+			// 客户端更新服务器地址：存储 key 带冒号命名空间，前端字段用 camelCase
+			if s, ok := v.(string); ok {
+				out["clientUpdateBaseUrl"] = s
 			}
 		default:
 			// 最低发消息版本（含平台专属）经共享查找表映射，平台集由 clientMinSendVersionPlatforms 单源驱动
@@ -145,6 +153,15 @@ func UpdateSystemConfig(c *gin.Context) {
 		}
 	}
 
+	// 客户端更新服务器地址校验：非空必须是 http(s):// 开头，否则拒绝保存——
+	// 非法值会被客户端当作 feed 地址解析失败，且用户侧难以排查。
+	if raw, ok := req["client:update_base_url"]; ok {
+		if err := validateClientUpdateBaseURL(raw); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
+
 	// 最低发消息版本（任一平台）变更后立即可感知（缓存 5s TTL 之外主动失效）。
 	// 平台集由 clientMinSendVersionPlatforms 单源驱动，新增平台自动覆盖。
 	for configKey := range minSendVersionConfigToField {
@@ -212,6 +229,8 @@ func mapConfigFromFrontend(req map[string]interface{}) map[string]interface{} {
 			}
 		case "allowedFileTypes":
 			out["file_upload:allowed_extensions"] = v
+		case "clientUpdateBaseUrl":
+			out["client:update_base_url"] = v
 		default:
 			// 最低发消息版本（含平台专属）经共享查找表映射，平台集由 clientMinSendVersionPlatforms 单源驱动
 			if configKey, ok := minSendVersionFieldToConfig[k]; ok {
@@ -226,4 +245,18 @@ func mapConfigFromFrontend(req map[string]interface{}) map[string]interface{} {
 		}
 	}
 	return out
+}
+
+// validateClientUpdateBaseURL 校验客户端更新服务器地址：空值合法；非空必须是带主机的 http(s):// 地址。
+// 抽成纯函数便于单测（UpdateSystemConfig 依赖 di.GlobalContainer 不便直测）。
+func validateClientUpdateBaseURL(v interface{}) error {
+	s, ok := v.(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return nil
+	}
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("客户端更新服务器地址格式无效（应形如 https://updates.example.com）")
+	}
+	return nil
 }

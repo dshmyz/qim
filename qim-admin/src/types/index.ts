@@ -280,6 +280,8 @@ export interface SystemConfig {
   clientMinSendVersionWindows?: string
   clientMinSendVersionMacos?: string
   clientMinSendVersionLinux?: string
+  // 客户端更新服务器地址：非空时全量客户端检查更新指向该地址，可远程校正烘焙的 QIM_UPDATE_URL
+  clientUpdateBaseUrl?: string
 }
 
 // 版本管理相关

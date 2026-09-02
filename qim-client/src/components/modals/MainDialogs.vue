@@ -102,6 +102,10 @@
             <i v-else class="fas fa-check-circle"></i>
           </div>
           <p class="result-text">{{ updateResult }}</p>
+          <div v-if="updateUnreliable" class="update-unreliable-warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span>更新检查持续失败，请前往下载页手动升级客户端</span>
+          </div>
           <div v-if="hasNewVersion && updateInfo" class="update-info">
             <div class="update-version-compare">
               <div class="update-version-item">
@@ -301,6 +305,7 @@ interface Props {
   forceUpdate: boolean
   silentForce?: boolean
   updateResult: string
+  updateUnreliable?: boolean
   isInstalling?: boolean
   updatePlatform?: string
   updateInfo?: UpdateInfo | null
@@ -1057,6 +1062,23 @@ const onTargetChange = () => {
   border-left: 4px solid #f59e0b;
   border-radius: 10px;
   color: #92400e;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  text-align: left;
+}
+
+/* 看门狗：连续检查失败时提示手动升级，红色警示色区别于普通提示 */
+.update-unreliable-warning {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #ef4444;
+  border-radius: 10px;
+  color: #991b1b;
   font-size: var(--font-size-xs);
   line-height: 1.5;
   text-align: left;

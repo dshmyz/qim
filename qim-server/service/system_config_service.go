@@ -73,6 +73,9 @@ var publicConfigKeys = []string{
 	"messageRecallTime",
 	"messageRemindTime",
 	"messageRemindRepeatCooldown",
+	// 客户端更新服务器地址：随公开配置下发，客户端启动/登录即拉取，
+	// 覆盖打包时烘焙的 QIM_UPDATE_URL，避免更新地址与聊天服务器脱节后无法远程校正。
+	"client:update_base_url",
 }
 
 func (s *SystemConfigService) GetPublicConfigs() (map[string]interface{}, error) {

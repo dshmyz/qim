@@ -43,6 +43,7 @@ func TestSystemConfig_FullRoundTrip(t *testing.T) {
 		"rateLimitLoginMaxAttempts": float64(8),
 		"rateLimitLoginWindow":      float64(90),
 		"rateLimitLoginBan":         float64(1800),
+		"clientUpdateBaseUrl":       "https://updates.example.com",
 	}
 	mapped := mapConfigFromFrontend(frontendPayload)
 	t.Logf("mapConfigFromFrontend 输出: %s", toJSON(mapped))
@@ -74,6 +75,7 @@ func TestSystemConfig_FullRoundTrip(t *testing.T) {
 	assert.Equal(t, false, displayed["enableFileUpload"])
 	assert.Equal(t, 90, displayed["imageQuality"])
 	assert.Equal(t, 600, displayed["rateLimitGlobalRate"])
+	assert.Equal(t, "https://updates.example.com", displayed["clientUpdateBaseUrl"], "clientUpdateBaseUrl 应完整回显")
 }
 
 func toJSON(m map[string]interface{}) string {

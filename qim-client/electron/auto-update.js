@@ -36,7 +36,9 @@ export function createUpdateService({
   ipcMain,
   sendToWindow,
   getUpdateBaseUrl,
+  getChatServerUrl,
   setUpdateBaseUrl,
+  setServerPushedUpdateUrl,
   saveServerConfig
 }) {
   let updatePhase = 'idle'
@@ -59,6 +61,37 @@ export function createUpdateService({
   let silentForceActive = false
   // 本次静默强制流程内是否已经开始自动下载（保证一段静默流程只下载一次）
   let silentDownloadStarted = false
+  // 看门狗：连续检查失败计数与是否已发送「检查不可靠」提示（成功或新一轮检查清零）
+  let consecutiveCheckFailures = 0
+  let unreliabilityReported = false
+  const UNRELIABLE_FAILURE_THRESHOLD = 3
+
+  // 记录一次检查失败（手动超时/请求失败/error 事件），达到阈值时向渲染层发出
+  // 「检查持续失败，请手动升级」提示。checking 阶段外的下载错误不计入检查失败。
+  // unreliabilityReported 在本次故障期内只提示一次，直到一次成功的检查将其复位。
+  function recordCheckFailure() {
+    consecutiveCheckFailures++
+    if (consecutiveCheckFailures >= UNRELIABLE_FAILURE_THRESHOLD && !unreliabilityReported) {
+      unreliabilityReported = true
+      console.warn(`更新检查连续失败 ${consecutiveCheckFailures} 次，提示用户手动升级`)
+      appendUpdateLog(app, `更新检查连续失败 ${consecutiveCheckFailures} 次，提示用户手动升级`)
+      sendToWindow(
+        'update-unreliable',
+        `更新检查连续失败 ${consecutiveCheckFailures} 次，请前往下载页手动升级客户端`
+      )
+    }
+  }
+
+  // 一次检查成功（无论有无新版本）后清零看门狗计数，让故障窗口从最近一次成功重新计算。
+  function resetCheckFailures() {
+    consecutiveCheckFailures = 0
+    unreliabilityReported = false
+  }
+
+  // 底层检查请求是否仍在途（手动 12s 超时并不取消 electron-updater 的请求；若在途时允许新检查，
+  // 会复用同一 promise，旧请求迟到的 error/update-not-available 会被记到新检查头上——跨检查污染）。
+  // 在途期间拒绝新的检查请求，保证同一时刻只有一次检查、迟到事件只属于它自己。
+  let checkInFlight = false
 
   function getOrCreateUpdateClientId() {
     if (updateClientId) return updateClientId
@@ -204,8 +237,8 @@ export function createUpdateService({
   }
 
   function checkForUpdates() {
-    if (updatePhase === 'checking' || updatePhase === 'downloading') {
-      console.log('更新检查已在进行中，忽略重复请求, currentUpdatePhase:', updatePhase)
+    if (updatePhase === 'checking' || updatePhase === 'downloading' || checkInFlight) {
+      console.log('更新检查已在进行中，忽略重复请求, currentUpdatePhase:', updatePhase, 'checkInFlight:', checkInFlight)
       return
     }
     console.log('收到检查更新请求, currentUpdateBaseUrl:', getUpdateBaseUrl(), 'platform:', process.platform)
@@ -232,6 +265,7 @@ export function createUpdateService({
       updatePhase = 'idle'
       console.error(`检查更新超时（${CHECK_UPDATE_TIMEOUT_MS / 1000}秒）`)
       appendUpdateLog(app, `检查更新超时（${CHECK_UPDATE_TIMEOUT_MS / 1000}秒），feed=${feedUrl}`)
+      recordCheckFailure()
       sendToWindow('update-error', '检查更新超时，请检查网络连接或服务器地址')
     }, CHECK_UPDATE_TIMEOUT_MS)
 
@@ -240,15 +274,20 @@ export function createUpdateService({
     autoUpdater.once('update-available', clearTimeoutHandler)
     autoUpdater.once('error', clearTimeoutHandler)
 
+    checkInFlight = true
     autoUpdater.checkForUpdates()
       .then(result => {
+        checkInFlight = false
         clearTimeout(timeout)
         console.log('检查更新结果:', result)
         appendUpdateLog(app, `检查更新完成 feed=${feedUrl} result=${JSON.stringify(result)}`)
       })
       .catch(error => {
+        checkInFlight = false
         clearTimeout(timeout)
         if (errorReported) return // 超时已处理，避免重复报错
+        // 仅记录 checking 阶段的失败（下载/其它阶段的错误由 on('error') 分流，不纳入检查看门狗）
+        if (updatePhase === 'checking') recordCheckFailure()
         errorReported = true
         updatePhase = 'idle'
         console.error('检查更新失败:', error)
@@ -300,6 +339,8 @@ export function createUpdateService({
 
     autoUpdater.on('update-available', (info) => {
       updatePhase = 'available'
+      checkInFlight = false
+      resetCheckFailures() // 检查成功：无论有无新版，看门狗计数从最近一次成功重新计算
       // 仅当新发现的版本不同于已下载版本时才作废旧的下载状态，
       // 避免同一版本被再次广播 update-available 时误清已下载的安装包。
       if (!downloadedUpdateInfo || downloadedUpdateInfo.version !== info.version) {
@@ -336,6 +377,8 @@ export function createUpdateService({
 
     autoUpdater.on('update-not-available', () => {
       updatePhase = 'idle'
+      checkInFlight = false
+      resetCheckFailures() // 检查成功（已是最新），看门狗计数清零
       resetDownloadedUpdate()
       clearForceUpdate()
       currentCheckSource = null
@@ -348,8 +391,12 @@ export function createUpdateService({
       console.error('更新错误:', error)
       appendUpdateLog(app, `更新错误 error=${error?.message || error}`)
       const errorMessage = formatUpdateError(error) // formatUpdateError 依赖当前 phase，需在重置前计算
+      // 检查阶段的错误计入看门狗（下载/安装阶段的 error 不重置也不计入，保持故障窗口连续）
+      const wasChecking = updatePhase === 'checking'
       updatePhase = 'idle'
+      checkInFlight = false
       resetDownloadedUpdate()
+      if (wasChecking) recordCheckFailure()
       if (errorReported) return // 错误已由 timeout 或 .catch 报告，这里只做状态清理
       errorReported = true
       if (silentForceActive) {
@@ -385,8 +432,8 @@ export function createUpdateService({
 
   function checkForUpdatesQuietly(source) {
     if (!app.isPackaged) return
-    if (updatePhase === 'checking' || updatePhase === 'downloading') {
-      console.log(`[自动更新] ${source}跳过：更新检查已在进行中, currentUpdatePhase: ${updatePhase}`)
+    if (updatePhase === 'checking' || updatePhase === 'downloading' || checkInFlight) {
+      console.log(`[自动更新] ${source}跳过：更新检查已在进行中, currentUpdatePhase: ${updatePhase}, checkInFlight: ${checkInFlight}`)
       return
     }
 
@@ -395,10 +442,13 @@ export function createUpdateService({
     errorReported = false
     currentCheckSource = 'auto'
     applyUpdateFeedUrl()
+    checkInFlight = true
     autoUpdater.checkForUpdates().catch(error => {
+      checkInFlight = false
       console.error(`[自动更新] ${source}失败:`, error)
       // 兜底：若 Promise reject 且未触发 error 事件，重置状态避免卡在 checking
       if (updatePhase === 'checking') {
+        recordCheckFailure()
         updatePhase = 'idle'
       }
     })
@@ -441,13 +491,30 @@ export function createUpdateService({
         const nextUrl = serverUrl.replace(/\/+$/, '')
         setUpdateBaseUrl(nextUrl)
         saveServerConfig(nextUrl)
+        // 切换聊天服务器时清掉旧服务器的推送地址：回退到新服务器地址，
+        // 新服务器的 client:update_base_url 会在下一次公开配置拉取时重新下发。
+        setServerPushedUpdateUrl('')
         applyUpdateFeedUrl()
         console.log('更新服务器地址已保存:', nextUrl)
       }
     })
 
+    // 服务端下发的更新地址：仅写内存，不落 config.json（config.json.serverUrl 是聊天服务器地址，
+    // 不能覆盖）。优先级高于聊天服务器地址与烘焙的 QIM_UPDATE_URL，由渲染层从公开配置拉取后写入。
+    // 空串表示清除推送，回退到聊天服务器地址（管理员清空 client:update_base_url 时下发）。
+    ipcMain.on('set-update-server-url', (event, updateUrl) => {
+      if (typeof updateUrl === 'string') {
+        const nextUrl = updateUrl.replace(/\/+$/, '')
+        setServerPushedUpdateUrl(nextUrl)
+        applyUpdateFeedUrl()
+        console.log('服务端下发更新地址已生效:', nextUrl || '（已清空，回退聊天服务器）')
+      }
+    })
+
     ipcMain.on('get-server-url', (event) => {
-      event.sender.send('server-url', getUpdateBaseUrl())
+      // 该通道被渲染层当作「聊天服务器地址」使用（reconcileServerUrlFromMain 会持久化到 localStorage），
+      // 必须返回聊天服务器地址而非有效更新地址，否则全新安装会把更新主机写成聊天服务器。
+      event.sender.send('server-url', getChatServerUrl())
     })
 
     ipcMain.on('check-for-updates', () => {

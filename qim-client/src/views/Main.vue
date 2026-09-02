@@ -618,6 +618,7 @@
       :forceUpdate="forceUpdate"
       :silentForce="silentForce"
       :updateResult="updateResult"
+      :updateUnreliable="updateUnreliable"
       :updateInfo="updateInfo"
       :groupConversations="conversations.filter(c => c.type === 'group')"
       :allEmployees="allEmployees"
@@ -1049,6 +1050,7 @@ const {
   forceUpdate,
   silentForce,
   updateInfo,
+  updateUnreliable,
   openUpdateDialog,
   closeUpdateDialog,
   registerUpdateEventListeners,

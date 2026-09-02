@@ -227,6 +227,10 @@ const savedUrl = loadServerConfig()
 // 未配置时：开发环境回退 localhost 便于本地联调；打包环境保持空，由 checkForUpdates 明确报错“未配置更新服务器”
 let currentUpdateBaseUrl = savedUrl || getUpdateServerUrl() || (!app.isPackaged ? 'http://localhost:8080' : '')
 
+// 服务端下发的更新地址（仅内存，不持久化）：优先级高于聊天服务器地址与烘焙的 QIM_UPDATE_URL。
+// 由渲染层登录/启动时从公开配置拉取后经 IPC 写入，管理员改配置即全量生效，可远程校正烘焙错的更新服务器。
+let serverPushedUpdateUrl = ''
+
 // ==================== Global State ====================
 
 let mainWindow
@@ -235,8 +239,11 @@ const updateService = createUpdateService({
   app,
   ipcMain,
   sendToWindow,
-  getUpdateBaseUrl: () => currentUpdateBaseUrl,
+  getUpdateBaseUrl: () => serverPushedUpdateUrl || currentUpdateBaseUrl,
+  // get-server-url 通道语义是「聊天服务器地址」，不能返回有效的更新地址（可能被服务端推送覆盖为更新主机）
+  getChatServerUrl: () => currentUpdateBaseUrl,
   setUpdateBaseUrl: serverUrl => { currentUpdateBaseUrl = serverUrl },
+  setServerPushedUpdateUrl: url => { serverPushedUpdateUrl = url },
   saveServerConfig
 })
 

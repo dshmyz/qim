@@ -67,3 +67,24 @@ func TestSystemConfigUpsertConfigIdempotent(t *testing.T) {
 	_, err = svc.GetConfig("not_configured")
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 }
+
+// TestPublicConfigs_IncludesClientUpdateBaseURL 验证客户端更新服务器地址在公开配置白名单内。
+// 客户端启动/登录时拉取公开配置并据此校正更新地址，若不在白名单内则该机制静默失效。
+func TestPublicConfigs_IncludesClientUpdateBaseURL(t *testing.T) {
+	found := false
+	for _, k := range publicConfigKeys {
+		if k == "client:update_base_url" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "publicConfigKeys 应包含 client:update_base_url")
+
+	db := setupSystemConfigTestDB(t)
+	svc := NewSystemConfigService(db)
+	require.NoError(t, svc.UpsertConfig("client:update_base_url", "https://updates.example.com", "string", "客户端更新服务器地址"))
+
+	cfg, err := svc.GetPublicConfigs()
+	require.NoError(t, err)
+	assert.Equal(t, "https://updates.example.com", cfg["client:update_base_url"], "公开配置应透出 client:update_base_url 的值")
+}

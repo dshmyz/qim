@@ -85,6 +85,21 @@
           ⚠ 按当前在线分布，将有 <strong>{{ versionGateImpact }}</strong> 台客户端因低于门槛被禁止发送消息；请确认已先发布新版客户端。
         </div>
 
+        <el-form-item
+          label="客户端更新服务器地址"
+          prop="clientUpdateBaseUrl"
+        >
+          <div class="form-item-with-desc">
+            <el-input
+              v-model="configForm.clientUpdateBaseUrl"
+              placeholder="如 https://updates.example.com，留空则跟随聊天服务器"
+              clearable
+              style="width: 320px"
+            />
+            <span class="desc">（非空时全量客户端检查更新指向该地址，可远程校正打包时烘焙的更新服务器，改后客户端下次启动/登录生效）</span>
+          </div>
+        </el-form-item>
+
         <el-divider content-position="left">AI 设置</el-divider>
 
         <el-form-item label="AI 功能总开关">
@@ -314,6 +329,7 @@ const configForm = reactive<SystemConfig>({
   clientMinSendVersionWindows: '',
   clientMinSendVersionMacos: '',
   clientMinSendVersionLinux: '',
+  clientUpdateBaseUrl: '',
 })
 
 // 客户端最低发消息版本字段数组：驱动表单渲染与校验（单一来源，新增平台只改这里）
@@ -344,6 +360,18 @@ const configRules: FormRules = Object.fromEntries(
     [{ validator: (_r: any, v: string, cb: Function) => versionFormatRule(v, cb), trigger: 'blur' }],
   ])
 ) as FormRules
+
+// 客户端更新服务器地址校验：空值或带主机的 http(s):// 地址（与后端 validateClientUpdateBaseURL 一致）
+const updateBaseUrlRule = (v: string, cb: Function) => {
+  if (v && !/^https?:\/\/[^\s/]/.test(v)) {
+    cb(new Error('地址应形如 https://updates.example.com'))
+  } else {
+    cb()
+  }
+}
+configRules.clientUpdateBaseUrl = [
+  { validator: (_r: any, v: string, cb: Function) => updateBaseUrlRule(v, cb), trigger: 'blur' },
+]
 
 // ---- 门槛影响面预览：按当前在线版本分布，实时提示有多少客户端会低于门槛被拦 ----
 const distribution = ref<VersionDistribution[]>([])

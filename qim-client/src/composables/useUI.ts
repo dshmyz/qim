@@ -197,6 +197,8 @@ export function useUI() {
   const updateResult = ref('')
   const hasNewVersion = ref(false)
   const forceUpdate = ref(false)
+  // 看门狗：连续多次检查失败后置真，提示用户手动升级（不随单次检查成功消失，需成功或重新检查恢复）
+  const updateUnreliable = ref(false)
   // 静默强制更新：自动检查发现的强制版本，自动下载并立即自动安装，界面上无手动按钮
   const silentForce = ref(false)
   const updateInfo = ref<UpdateInfo | null>(null)
@@ -564,6 +566,8 @@ export function useUI() {
           downloadTotal.value = 0
           updateInfo.value = null
           updateResult.value = '正在检查更新...'
+          // 注意：不清 updateUnreliable——主进程的 unreliabilityReported 只在一次成功检查后才复位，
+          // 这里若在每次检查开始时清除，失败的复检不会重发 update-unreliable，警告会在故障期间消失。
         }
       },
       {
@@ -589,6 +593,7 @@ export function useUI() {
                 ? `发现新版本 v${info.version}，系统将自动升级，请在弹窗提示后尽快保存工作`
                 : `发现新版本 v${info.version}（需要强制更新）`)
             : `发现新版本 v${info.version}`
+          updateUnreliable.value = false
           // 自动检查发现新版本时，弹出更新提示对话框
           showUpdateDialog.value = true
         }
@@ -608,6 +613,7 @@ export function useUI() {
           silentForce.value = false
           updateInfo.value = null
           updateResult.value = '当前已是最新版本'
+          updateUnreliable.value = false
           // 自动检查无新版本时，不弹窗（仅在用户手动检查时对话框已打开）
         }
       },
@@ -648,6 +654,17 @@ export function useUI() {
 
           updateResult.value = friendlyMessage
           console.error('更新错误:', error)
+        }
+      },
+      {
+        // 看门狗：连续多次检查失败，提示手动升级（常驻，不随单次失败关闭）。
+        // 主进程每个故障期只发一次，这里自动打开弹窗让后台自动检查的失败也可见。
+        channel: 'update-unreliable',
+        handler: (_event: any, message: any) => {
+          isCheckingUpdate.value = false
+          updateUnreliable.value = true
+          updateResult.value = typeof message === 'string' ? message : '更新检查持续失败，请前往下载页手动升级客户端'
+          showUpdateDialog.value = true
         }
       },
       {
@@ -804,6 +821,7 @@ export function useUI() {
     forceUpdate,
     silentForce,
     updateInfo,
+    updateUnreliable,
     showSettingsModal,
     activeSettingsTab,
 
