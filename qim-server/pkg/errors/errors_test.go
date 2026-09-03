@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -57,4 +58,25 @@ func TestNewBusinessError(t *testing.T) {
 	err := NewBusinessError(ErrCodeUserNotFound, "用户不存在")
 	assert.Equal(t, ErrCodeUserNotFound, err.Code)
 	assert.Equal(t, "用户不存在", err.Message)
+}
+
+func TestStatusErrorConstructors(t *testing.T) {
+	assert.Equal(t, http.StatusNotFound, NotFoundError("x").Status)
+	assert.Equal(t, ErrCodeNotFound, NotFoundError("x").Code)
+	assert.Equal(t, http.StatusForbidden, ForbiddenError("x").Status)
+	assert.Equal(t, ErrCodeForbidden, ForbiddenError("x").Code)
+	assert.Equal(t, http.StatusBadRequest, BadRequestError("x").Status)
+	assert.Equal(t, ErrCodeInvalidParams, BadRequestError("x").Code)
+	assert.Equal(t, http.StatusUnauthorized, UnauthorizedError("x").Status)
+	assert.Equal(t, ErrCodeUnauthorized, UnauthorizedError("x").Code)
+	assert.Equal(t, http.StatusConflict, ConflictError("x").Status)
+	assert.Equal(t, ErrCodeConflict, ConflictError("x").Code)
+	assert.Equal(t, http.StatusInternalServerError, InternalError("x").Status)
+	assert.Equal(t, ErrCodeInternalError, InternalError("x").Code)
+
+	custom := NewStatusError(http.StatusGone, ErrCodeNotFound, "已过期")
+	assert.Equal(t, http.StatusGone, custom.Status)
+	assert.Equal(t, ErrCodeNotFound, custom.Code)
+	// 旧构造器不带状态：Status 为 0
+	assert.Equal(t, 0, NewBusinessError(ErrCodeNotFound, "x").Status)
 }

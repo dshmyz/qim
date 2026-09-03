@@ -3,9 +3,11 @@ package service
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	pkgErr "github.com/dshmyz/qim/qim-server/pkg/errors"
 	"gorm.io/gorm"
 )
 
@@ -13,14 +15,15 @@ import (
 // 防止「几小时前的发送请求」被滞后确认后突袭发出。
 const pendingActionTTL = 10 * time.Minute
 
-// 待确认动作服务的哨兵错误。handler 据此映射 HTTP 语义（404/403/409/410）。
+// 待确认动作服务的业务错误：携带 HTTP 状态 + 业务码，经 response.ErrorFrom 统一落响应
+// （替代旧的 handler 逐哨兵 errors.Is 映射，客户端可程序化分支；直接返回时 errors.Is == 仍可用）。
 var (
-	ErrPendingNotFound        = errors.New("待确认请求不存在")
-	ErrPendingForbidden       = errors.New("无权操作该待确认请求")
-	ErrPendingAlreadyHandled  = errors.New("该请求已被处理")
-	ErrPendingExpired         = errors.New("待确认请求已过期")
-	ErrPendingInvalidParams   = errors.New("待确认请求参数不完整")
-	ErrPendingServiceNotReady = errors.New("待确认服务不可用")
+	ErrPendingNotFound        = pkgErr.NotFoundError("待确认请求不存在")
+	ErrPendingForbidden       = pkgErr.ForbiddenError("无权操作该待确认请求")
+	ErrPendingAlreadyHandled  = pkgErr.ConflictError("该请求已被处理")
+	ErrPendingExpired         = pkgErr.NewStatusError(http.StatusGone, pkgErr.ErrCodeNotFound, "待确认请求已过期")
+	ErrPendingInvalidParams   = pkgErr.BadRequestError("待确认请求参数不完整")
+	ErrPendingServiceNotReady = pkgErr.InternalError("待确认服务不可用")
 )
 
 // AIPendingActionService AI 敏感工具调用的待确认执行服务。

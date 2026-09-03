@@ -1,6 +1,7 @@
 package response
 
 import (
+	stderrors "errors"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -156,4 +157,44 @@ func TestErrorWithDetail(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Equal(t, float64(errors.ErrCodeInvalidParams), resp["code"])
 	assert.Equal(t, "参数错误", resp["message"])
+}
+
+func TestErrorFrom_WithStatus(t *testing.T) {
+	c, w := setupTestContext()
+	ErrorFrom(c, errors.NewStatusError(http.StatusGone, errors.ErrCodeNotFound, "已过期"))
+
+	var resp Response
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, http.StatusGone, w.Code)
+	assert.Equal(t, errors.ErrCodeNotFound, resp.Code)
+	assert.Equal(t, "已过期", resp.Message)
+}
+
+func TestErrorFrom_CodeMappingFallback(t *testing.T) {
+	// 无 Status 的 BusinessError：按 code 映射 HTTP 状态（FromBusinessError）
+	c, w := setupTestContext()
+	ErrorFrom(c, errors.NewBusinessError(errors.ErrCodeForbidden, "无权限"))
+
+	var resp Response
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, errors.ErrCodeForbidden, resp.Code)
+}
+
+func TestErrorFrom_UnknownError500(t *testing.T) {
+	c, w := setupTestContext()
+	ErrorFrom(c, stderrors.New("some raw failure"))
+
+	var resp Response
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, errors.ErrCodeInternalError, resp.Code)
+	assert.Equal(t, "服务器内部错误", resp.Message)
+}
+
+func TestErrorFrom_NilNoop(t *testing.T) {
+	c, w := setupTestContext()
+	ErrorFrom(c, nil)
+	assert.Equal(t, http.StatusOK, w.Code) // 未写出任何响应
+	assert.Empty(t, w.Body.String())
 }

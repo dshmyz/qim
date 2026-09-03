@@ -1,6 +1,7 @@
 package response
 
 import (
+	stderrors "errors"
 	"net/http"
 
 	"github.com/dshmyz/qim/qim-server/pkg/errors"
@@ -99,4 +100,23 @@ func FromBusinessError(c *gin.Context, err *errors.BusinessError) {
 		statusCode = http.StatusTooManyRequests
 	}
 	Error(c, statusCode, err.Code, err.Message)
+}
+
+// ErrorFrom 统一错误出口：err 为 *errors.BusinessError 时按其下发（显式 Status 优先，
+// 否则按 code 映射 HTTP 状态），其它错误回退通用 500。service 层返回带状态/码的业务错误后，
+// handler 只需一行 response.ErrorFrom(c, err) 即可下发稳定业务码，客户端可程序化分支。
+func ErrorFrom(c *gin.Context, err error) {
+	if err == nil {
+		return
+	}
+	var be *errors.BusinessError
+	if stderrors.As(err, &be) {
+		if be.Status != 0 {
+			Error(c, be.Status, be.Code, be.Message)
+			return
+		}
+		FromBusinessError(c, be)
+		return
+	}
+	Error(c, http.StatusInternalServerError, errors.ErrCodeInternalError, "服务器内部错误")
 }

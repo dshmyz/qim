@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"net/http"
 	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/di"
@@ -33,25 +32,6 @@ func pendingActionResponse(c *gin.Context, record *model.AIPendingAction, alread
 		"target_name":     record.TargetName,
 		"message_id":      record.MessageID,
 	})
-}
-
-// mapPendingActionError 把服务层哨兵错误映射为 HTTP 语义。
-// 返回 false 表示已写出响应。
-func mapPendingActionError(c *gin.Context, err error) bool {
-	switch {
-	case errors.Is(err, service.ErrPendingNotFound):
-		response.NotFound(c, err.Error())
-	case errors.Is(err, service.ErrPendingForbidden):
-		response.Forbidden(c, err.Error())
-	case errors.Is(err, service.ErrPendingExpired):
-		response.Error(c, http.StatusGone, http.StatusGone, err.Error())
-	case errors.Is(err, service.ErrPendingAlreadyHandled):
-		// 理论上不会走到（loadOperable 已把记录带出），防御性兜底
-		response.Conflict(c, err.Error())
-	default:
-		response.BadRequest(c, err.Error())
-	}
-	return false
 }
 
 // logPendingAction 记录用户操作审计（服务未装配时静默跳过）。
@@ -88,15 +68,16 @@ func (h *AIHandler) runPendingAction(c *gin.Context, action string, gated bool,
 	record, handled, err := fn(userID, uint(id))
 	if err != nil {
 		// 仅终态（并发抢先/已处理/已过期）回显，帮助前端同步状态；真错误（如 DB 更新失败，
-		// handled=false 且 record 仍 pending）必须落到 mapPendingActionError，否则客户端会把
+		// handled=false 且 record 仍 pending）必须落到 response.ErrorFrom，否则客户端会把
 		// pending 误显示为「已过期」而实际仍可操作
 		if handled && record != nil {
 			logger.WithModule("AIHandler").Info("pending send 已终态", "id", id, "status", record.Status)
 			pendingActionResponse(c, record, handled)
 			return
 		}
-		// 发送失败（敏感词/成员校验等）保留 pending 态并把原因带回给用户
-		mapPendingActionError(c, err)
+		// 发送失败（敏感词/成员校验等）保留 pending 态并把原因带回给用户。
+		// 服务层错误已携带 HTTP 状态 + 业务码（BusinessError），统一出口一次下发。
+		response.ErrorFrom(c, err)
 		return
 	}
 
