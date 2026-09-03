@@ -391,6 +391,12 @@ func (s *ConversationService) SetConversationMute(convID, userID uint, muted boo
 }
 
 func (s *ConversationService) SetConversationPin(convID, userID uint, isPinned bool) (*model.ConversationSession, error) {
+	// 与 SetConversationMute 一致：先校验成员资格，防止对未参与的会话写入 session
+	isMember, err := s.convRepo.IsMember(context.Background(), convID, userID)
+	if err != nil || !isMember {
+		return nil, ErrConversationForbidden
+	}
+
 	var session model.ConversationSession
 	result := s.db.Where("user_id = ? AND conversation_id = ?", userID, convID).First(&session)
 

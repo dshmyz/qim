@@ -1493,38 +1493,11 @@ func PinConversation(c *gin.Context) {
 		response.BadRequest(c, "参数错误")
 		return
 	}
-	db := database.GetDB()
-
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限操作")
+	convSvc := service.NewConversationService(database.GetDB())
+	session, err := convSvc.SetConversationPin(uint(convID), userID.(uint), req.IsPinned)
+	if err != nil {
+		response.ErrorFrom(c, err)
 		return
-	}
-
-	var session model.ConversationSession
-	result := db.Where("user_id = ? AND conversation_id = ?", userID, uint(convID)).First(&session)
-
-	if result.Error != nil {
-		session = model.ConversationSession{
-			UserID:         userID.(uint),
-			ConversationID: uint(convID),
-			IsPinned:       req.IsPinned,
-			LastVisitedAt:  time.Now(),
-		}
-		if req.IsPinned {
-			now := time.Now()
-			session.PinnedAt = &now
-		}
-		db.Create(&session)
-	} else {
-		session.IsPinned = req.IsPinned
-		if req.IsPinned {
-			now := time.Now()
-			session.PinnedAt = &now
-		} else {
-			session.PinnedAt = nil
-		}
-		db.Save(&session)
 	}
 
 	response.Success(c, gin.H{
@@ -1556,16 +1529,12 @@ func SetConversationMute(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", uint(convID), userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限操作")
+	convSvc := service.NewConversationService(database.GetDB())
+	member, err := convSvc.SetConversationMute(uint(convID), userID.(uint), req.Muted)
+	if err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
-
-	member.Muted = req.Muted
-	db.Save(&member)
 
 	response.Success(c, gin.H{
 		"message": "操作成功",
