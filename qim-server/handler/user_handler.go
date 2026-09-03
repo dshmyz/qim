@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"strconv"
 	"strings"
 
@@ -452,11 +451,7 @@ func UpdateAIConfig(c *gin.Context) {
 	svc := di.GlobalContainer.AIConfigService
 	config, err := svc.UpdateDefaultConfig(userID, req.Provider, req.APIKey, req.SecretKey, req.SecretID, req.Model, req.BaseURL, req.MaxTokens, req.Temperature)
 	if err != nil {
-		if errors.Is(err, service.ErrUnsupportedProvider) {
-			response.BadRequest(c, "不支持的供应商")
-			return
-		}
-		response.InternalServerError(c, "更新失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 

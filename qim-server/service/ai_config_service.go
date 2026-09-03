@@ -2,9 +2,9 @@ package service
 
 import (
 	"encoding/json"
-	"errors"
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/errors"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"log"
 	"time"
@@ -12,10 +12,10 @@ import (
 	"gorm.io/gorm"
 )
 
-var ErrConfigNotFound = errors.New("config not found")
-var ErrConfigLimitExceeded = errors.New("config limit exceeded")
-var ErrConfigInUse = errors.New("config is in use")
-var ErrUnsupportedProvider = errors.New("unsupported provider")
+var ErrConfigNotFound = errors.NotFoundError("配置不存在")
+var ErrConfigLimitExceeded = errors.BadRequestError("配置数量已达上限（5个）")
+var ErrConfigInUse = errors.BadRequestError("该配置正在被机器人使用，无法删除")
+var ErrUnsupportedProvider = errors.BadRequestError("不支持的供应商")
 
 type AIConfigService struct {
 	db              *gorm.DB

@@ -1,13 +1,11 @@
 package handler
 
 import (
-	"errors"
 	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
-	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -120,11 +118,7 @@ func UpdateGroupMemory(c *gin.Context) {
 		return
 	}
 	if err := memorySvc.UpdateMemory(group.ID, memoryID, req.Content); err != nil {
-		if errors.Is(err, service.ErrMemoryNotFound) {
-			response.NotFound(c, "记忆不存在")
-			return
-		}
-		response.InternalServerError(c, "纠正群记忆失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 	response.SuccessWithMessage(c, "已纠正", nil)

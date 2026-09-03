@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -1082,11 +1081,7 @@ func (h *AvatarHandler) DeleteMemory(c *gin.Context) {
 	}
 
 	if err := memorySvc.DeleteMemory(userID.(uint), memoryID); err != nil {
-		if errors.Is(err, service.ErrMemoryNotFound) {
-			response.NotFound(c, "记忆不存在")
-			return
-		}
-		response.InternalServerError(c, "删除记忆失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 

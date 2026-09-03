@@ -2,12 +2,10 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
-	"github.com/dshmyz/qim/qim-server/service"
 	"strconv"
 	"time"
 
@@ -130,11 +128,7 @@ func (h *UserAIConfigHandler) CreateConfig(c *gin.Context) {
 	overridesJSON, _ := json.Marshal(req.Overrides)
 	config, err := svc.CreateConfig(userID, req.ConfigName, req.Provider, req.APIKey, req.ModelName, req.BaseURL, string(overridesJSON))
 	if err != nil {
-		if errors.Is(err, service.ErrConfigLimitExceeded) {
-			response.BadRequest(c, "配置数量已达上限（5个）")
-			return
-		}
-		response.InternalServerError(c, "创建配置失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -164,11 +158,7 @@ func (h *UserAIConfigHandler) UpdateConfig(c *gin.Context) {
 	svc := di.GlobalContainer.AIConfigService
 	config, err := svc.UpdateConfig(userID, uint(id), req.ConfigName, req.Provider, req.APIKey, req.ModelName, req.BaseURL)
 	if err != nil {
-		if errors.Is(err, service.ErrConfigNotFound) {
-			response.NotFound(c, "配置不存在")
-			return
-		}
-		response.InternalServerError(c, "更新配置失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -192,15 +182,7 @@ func (h *UserAIConfigHandler) DeleteConfig(c *gin.Context) {
 	svc := di.GlobalContainer.AIConfigService
 	err = svc.DeleteConfig(userID, uint(id))
 	if err != nil {
-		if errors.Is(err, service.ErrConfigNotFound) {
-			response.NotFound(c, "配置不存在")
-			return
-		}
-		if errors.Is(err, service.ErrConfigInUse) {
-			response.BadRequest(c, "该配置正在被机器人使用，无法删除")
-			return
-		}
-		response.InternalServerError(c, "删除配置失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -221,11 +203,7 @@ func (h *UserAIConfigHandler) TestConfig(c *gin.Context) {
 	svc := di.GlobalContainer.AIConfigService
 	verified, err := svc.TestConfig(userID, uint(id))
 	if err != nil {
-		if errors.Is(err, service.ErrConfigNotFound) {
-			response.NotFound(c, "配置不存在")
-			return
-		}
-		response.InternalServerError(c, "测试失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 
