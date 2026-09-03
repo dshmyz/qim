@@ -42,6 +42,8 @@ type BusinessError struct {
 	Message string `json:"message"`
 	// HTTP 状态码：response.ErrorFrom 据此统一落响应；0=未指定（沿用旧的 response.Xxx 路径）
 	Status int `json:"-"`
+	// wrapped 由 WithMessage 设置，保持与原哨兵的 errors.Is 身份链
+	wrapped error
 }
 
 func (e *BusinessError) Error() string {
@@ -56,6 +58,24 @@ func NewBusinessError(code int, message string) *BusinessError {
 // （HTTP 状态 + 业务码 + 文案一次性下发），service 层无需再依赖 handler 逐哨兵映射。
 func NewStatusError(status, code int, message string) *BusinessError {
 	return &BusinessError{Code: code, Message: message, Status: status}
+}
+
+// WithMessage 派生带站点文案的业务错误：沿用原错误的 Status/Code（响应形状不变），
+// 仅替换 Message，并通过 Unwrap 保持与原错误的 errors.Is 身份链——
+// 同一语义在不同调用点文案不同时（如"无权限发送"/"只能撤回自己发送的消息"），
+// 各返回点返回 ErrXxx.WithMessage("站点文案")，errors.Is(err, ErrXxx) 仍成立。
+func (e *BusinessError) WithMessage(message string) *BusinessError {
+	return &BusinessError{
+		Code:    e.Code,
+		Message: message,
+		Status:  e.Status,
+		wrapped: e,
+	}
+}
+
+// Unwrap 使 WithMessage 派生的错误与原哨兵保持 errors.Is 兼容。
+func (e *BusinessError) Unwrap() error {
+	return e.wrapped
 }
 
 // 便捷构造：按 HTTP 语义映射到通用业务码，供 service 层返回可被客户端程序化分支的错误。

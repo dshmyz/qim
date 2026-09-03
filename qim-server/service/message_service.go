@@ -18,6 +18,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	pkgErr "github.com/dshmyz/qim/qim-server/pkg/errors"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/utils"
@@ -26,12 +27,14 @@ import (
 	"gorm.io/gorm"
 )
 
-var ErrMessageNotFound = errors.New("message not found")
-var ErrMessageForbidden = errors.New("access forbidden")
-var ErrMessageAlreadyRecalled = errors.New("message already recalled")
-var ErrMessageRecallTimeout = errors.New("message recall timeout")
-var ErrSensitiveWordBlocked = errors.New("message contains sensitive words")
-var ErrMuted = errors.New("you are muted in this conversation")
+// 消息域业务错误：带 HTTP 状态 + 业务码，经 response.ErrorFrom 统一落响应。
+// 同一语义在不同调用点文案不同（如"无权限发送"/"只能撤回"），由各返回点构造带站点文案的错误。
+var ErrMessageNotFound = pkgErr.NotFoundError("消息不存在")
+var ErrMessageForbidden = pkgErr.ForbiddenError("无权限操作该消息")
+var ErrMessageAlreadyRecalled = pkgErr.BadRequestError("消息已经被撤回")
+var ErrMessageRecallTimeout = pkgErr.BadRequestError("消息已超过撤回时限")
+var ErrSensitiveWordBlocked = pkgErr.BadRequestError("消息包含敏感词")
+var ErrMuted = pkgErr.ForbiddenError("你已被禁言")
 
 // memberWithType 用于一次 JOIN 同时拿到成员校验信息和会话类型，
 // 替代原来分两次查询的 member + convType。
@@ -239,7 +242,7 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 
 	if (msgType == "text" || msgType == "markdown") && content != "" {
 		if contains, words := s.CheckSensitiveContent(content); contains {
-			return nil, fmt.Errorf("%w: %v", ErrSensitiveWordBlocked, words)
+			return nil, ErrSensitiveWordBlocked.WithMessage("消息包含敏感词: " + strings.Join(words, "、"))
 		}
 	}
 
@@ -257,7 +260,7 @@ func (s *MessageService) SendMessage(convID, senderID uint, msgType, content str
 		Joins("JOIN conversations c ON c.id = cm.conversation_id").
 		Where("cm.conversation_id = ? AND cm.user_id = ?", convID, senderID).
 		First(&mwt).Error; err != nil {
-		return nil, ErrMessageForbidden
+		return nil, ErrMessageForbidden.WithMessage("无权限发送消息")
 	}
 	member := mwt.ConversationMember
 	convType := mwt.ConvType
@@ -1468,7 +1471,7 @@ func (s *MessageService) RecallMessage(msgID, userID uint) (*model.Message, erro
 	}
 
 	if msg.SenderID != userID {
-		return nil, ErrMessageForbidden
+		return nil, ErrMessageForbidden.WithMessage("只能撤回自己发送的消息")
 	}
 
 	if msg.IsRecalled {
@@ -1541,7 +1544,7 @@ func (s *MessageService) DeleteMessage(msgID, userID uint) error {
 	}
 
 	if msg.SenderID != userID {
-		return ErrMessageForbidden
+		return ErrMessageForbidden.WithMessage("只能删除自己发送的消息")
 	}
 
 	if err := db.Delete(&msg).Error; err != nil {
@@ -1568,7 +1571,7 @@ func (s *MessageService) MarkAsRead(convID, userID uint) error {
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, userID).First(&member).Error; err != nil {
-		return ErrMessageForbidden
+		return ErrMessageForbidden.WithMessage("无权限访问")
 	}
 
 	// 用 per-user 的 message_read_receipts 表判断"该用户尚未读过的消息"，
@@ -1699,7 +1702,7 @@ func (s *MessageService) GetMessageQuoteChain(msgID, userID uint) ([]model.Messa
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", msg.ConversationID, userID).First(&member).Error; err != nil {
-		return nil, ErrMessageForbidden
+		return nil, ErrMessageForbidden.WithMessage("无权限访问")
 	}
 
 	var quoteChain []model.Message
@@ -1728,7 +1731,7 @@ func (s *MessageService) GetMessageReadUsers(msgID, userID uint) ([]model.User, 
 
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", msg.ConversationID, userID).First(&member).Error; err != nil {
-		return nil, 0, ErrMessageForbidden
+		return nil, 0, ErrMessageForbidden.WithMessage("无权限访问")
 	}
 
 	var readReceipts []model.MessageReadReceipt

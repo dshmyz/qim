@@ -615,7 +615,7 @@ func TestMessageService_SendMessage_NotMember(t *testing.T) {
 
 	_, err := svc.SendMessage(conv.ID, user3.ID, "text", "Hello", nil)
 	assert.Error(t, err)
-	assert.Equal(t, ErrMessageForbidden, err)
+	assert.ErrorIs(t, err, ErrMessageForbidden)
 }
 
 func TestMessageService_SendMessage_UsesOnlyStructuredMentionTokens(t *testing.T) {
@@ -736,7 +736,7 @@ func TestMessageService_RecallMessage_NotOwner(t *testing.T) {
 
 	_, err := svc.RecallMessage(msg.ID, user2.ID)
 	assert.Error(t, err)
-	assert.Equal(t, ErrMessageForbidden, err)
+	assert.ErrorIs(t, err, ErrMessageForbidden)
 }
 
 func TestMessageService_DeleteMessage(t *testing.T) {

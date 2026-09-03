@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	pkgErr "github.com/dshmyz/qim/qim-server/pkg/errors"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/utils"
@@ -623,11 +625,12 @@ func SendMessage(c *gin.Context) {
 
 	msg, err := msgSvc.SendMessage(uint(convIDUint), uid, req.Type, req.Content, req.QuotedMessageID)
 	if err != nil {
-		if err == service.ErrMessageForbidden {
-			response.Forbidden(c, "无权限发送消息")
+		var be *pkgErr.BusinessError
+		if !errors.As(err, &be) {
+			response.InternalServerError(c, "消息发送失败")
 			return
 		}
-		response.InternalServerError(c, "消息发送失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1026,23 +1029,12 @@ func RecallMessage(c *gin.Context) {
 
 	msg, err := msgSvc.RecallMessage(uint(msgID), uid)
 	if err != nil {
-		if err == service.ErrMessageNotFound {
-			response.NotFound(c, "消息不存在")
+		var be *pkgErr.BusinessError
+		if !errors.As(err, &be) {
+			response.BadRequest(c, err.Error())
 			return
 		}
-		if err == service.ErrMessageForbidden {
-			response.Forbidden(c, "只能撤回自己发送的消息")
-			return
-		}
-		if err == service.ErrMessageAlreadyRecalled {
-			response.BadRequest(c, "消息已经被撤回")
-			return
-		}
-		if err == service.ErrMessageRecallTimeout {
-			response.BadRequest(c, "消息已超过撤回时限")
-			return
-		}
-		response.BadRequest(c, err.Error())
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1228,15 +1220,12 @@ func DeleteMessage(c *gin.Context) {
 
 	err = msgSvc.DeleteMessage(uint(msgID), uid)
 	if err != nil {
-		if err == service.ErrMessageNotFound {
-			response.NotFound(c, "消息不存在")
+		var be *pkgErr.BusinessError
+		if !errors.As(err, &be) {
+			response.InternalServerError(c, "删除消息失败")
 			return
 		}
-		if err == service.ErrMessageForbidden {
-			response.Forbidden(c, "只能删除自己发送的消息")
-			return
-		}
-		response.InternalServerError(c, "删除消息失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1276,15 +1265,12 @@ func GetMessageReadUsers(c *gin.Context) {
 
 	readUsers, totalMembers, err := msgSvc.GetMessageReadUsers(uint(msgID), uid)
 	if err != nil {
-		if err == service.ErrMessageNotFound {
-			response.NotFound(c, "消息不存在")
+		var be *pkgErr.BusinessError
+		if !errors.As(err, &be) {
+			response.InternalServerError(c, "获取已读用户失败")
 			return
 		}
-		if err == service.ErrMessageForbidden {
-			response.Forbidden(c, "无权限访问")
-			return
-		}
-		response.InternalServerError(c, "获取已读用户失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1363,11 +1349,12 @@ func MarkConversationAsRead(c *gin.Context) {
 
 	err = msgSvc.MarkAsRead(uint(convID), uid)
 	if err != nil {
-		if err == service.ErrMessageForbidden {
-			response.Forbidden(c, "无权限访问")
+		var be *pkgErr.BusinessError
+		if !errors.As(err, &be) {
+			response.InternalServerError(c, "标记已读失败")
 			return
 		}
-		response.InternalServerError(c, "标记已读失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1464,15 +1451,12 @@ func GetMessageQuoteChain(c *gin.Context) {
 
 	quoteChain, err := msgSvc.GetMessageQuoteChain(uint(msgID), uid)
 	if err != nil {
-		if err == service.ErrMessageNotFound {
-			response.NotFound(c, "消息不存在")
+		var be *pkgErr.BusinessError
+		if !errors.As(err, &be) {
+			response.InternalServerError(c, "获取引用链失败")
 			return
 		}
-		if err == service.ErrMessageForbidden {
-			response.Forbidden(c, "无权限访问")
-			return
-		}
-		response.InternalServerError(c, "获取引用链失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 
