@@ -55,7 +55,7 @@ const emit = defineEmits<{
 const languageOptions = [
   'javascript', 'typescript', 'python', 'go', 'java', 'c', 'cpp', 'csharp',
   'rust', 'ruby', 'php', 'swift', 'kotlin', 'sql', 'html', 'css', 'json',
-  'yaml', 'bash', 'shell', 'markdown',
+  'yaml', 'xml', 'bash', 'shell', 'markdown',
 ]
 
 const selectedLanguage = ref('javascript')

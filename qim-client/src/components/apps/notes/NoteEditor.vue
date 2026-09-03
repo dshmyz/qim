@@ -301,7 +301,8 @@ function insertTable() {
 }
 
 type LayoutMode = 'edit' | 'split' | 'preview'
-const layoutMode = ref<LayoutMode>('edit')
+// 初始值跟随父组件 mode（watch 无 immediate，挂载时不触发，写死 'edit' 会忽略 split 默认值）
+const layoutMode = ref<LayoutMode>(props.mode)
 
 watch(() => props.title, (val) => { localTitle.value = val })
 watch(() => props.content, (val) => {
