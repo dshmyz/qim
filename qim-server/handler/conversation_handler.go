@@ -571,10 +571,17 @@ func GetConversation(c *gin.Context) {
 		convID = strings.TrimPrefix(convID, "conv_")
 	}
 
-	db := database.GetDB()
-	var conv model.Conversation
-	if err := db.Preload("Members").Preload("Members.User").First(&conv, convID).Error; err != nil {
-		response.NotFound(c, "会话不存在")
+	convIDUint, err := strconv.ParseUint(convID, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的会话ID")
+		return
+	}
+
+	// 鉴权式加载挪进 service（不存在→404、非成员→403 由 ErrorFrom 统一下发）
+	convSvc := service.NewConversationService(database.GetDB())
+	conv, err := convSvc.GetConversationForUser(uint(convIDUint), userID.(uint))
+	if err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -587,11 +594,8 @@ func GetConversation(c *gin.Context) {
 	}
 	conv.Members = activeMembers
 
-	var member model.ConversationMember
-	if err := db.Where("conversation_id = ? AND user_id = ?", conv.ID, userID).First(&member).Error; err != nil {
-		response.Forbidden(c, "无权限访问")
-		return
-	}
+	// 响应拼装所需的群/bot 身份查询仍留在 handler（纯展示）
+	db := database.GetDB()
 
 	// 对于群聊和讨论组，从Group表获取名称、头像等信息
 	if conv.Type == "group" || conv.Type == "discussion" {

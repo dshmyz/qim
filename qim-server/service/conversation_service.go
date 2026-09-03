@@ -505,6 +505,25 @@ func (s *ConversationService) HideConversation(convID, userID uint) error {
 	return s.db.WithContext(ctx).Save(&session).Error
 }
 
+// GetConversationForUser 加载会话（含成员）并校验当前用户是成员。
+// 会话不存在 → ErrConversationNotFound；非成员 → ErrConversationForbidden。
+// 供 handler 的 GetConversation 使用：把"鉴权式加载"从 handler 内联挪进 service，
+// 响应拼装仍留在 handler。
+func (s *ConversationService) GetConversationForUser(convID, userID uint) (*model.Conversation, error) {
+	ctx := context.Background()
+
+	var conv model.Conversation
+	if err := s.db.WithContext(ctx).Preload("Members").Preload("Members.User").First(&conv, convID).Error; err != nil {
+		return nil, ErrConversationNotFound
+	}
+
+	isMember, err := s.convRepo.IsMember(ctx, convID, userID)
+	if err != nil || !isMember {
+		return nil, ErrConversationForbidden
+	}
+	return &conv, nil
+}
+
 func (s *ConversationService) CreateMember(member *model.ConversationMember) error {
 	ctx := context.Background()
 	return s.db.WithContext(ctx).Create(member).Error
