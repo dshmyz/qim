@@ -330,8 +330,9 @@ const getUnreadCount = (conversation: Conversation): number => {
   background: var(--hover-color);
 }
 
+/* 选中态用柔和主色底（10% 主色 + 透明，随主题自适应），与 hover 的中性底色区分 */
 .conversation-item.active {
-  background: var(--hover-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
 }
 
 .empty-conversations {
