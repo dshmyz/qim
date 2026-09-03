@@ -1,14 +1,12 @@
 package handler
 
 import (
-	"errors"
 	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
-	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -120,14 +118,8 @@ func (h *AIHandler) SetAIMessageFeedback(c *gin.Context) {
 		return
 	}
 	if err := h.feedback.SetFeedback(userID, req.MessageID, req.Rating); err != nil {
-		switch {
-		case errors.Is(err, service.ErrFeedbackNotFound):
-			response.NotFound(c, err.Error())
-		case errors.Is(err, service.ErrFeedbackForbidden), errors.Is(err, service.ErrFeedbackInvalidParam):
-			response.BadRequest(c, err.Error())
-		default:
-			response.InternalServerError(c, "保存反馈失败")
-		}
+		// 服务层错误已带 HTTP 状态 + 业务码（BusinessError），统一出口一次下发
+		response.ErrorFrom(c, err)
 		return
 	}
 	logPendingAction(c, "ai_message_feedback")

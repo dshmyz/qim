@@ -1,12 +1,12 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/pkg/errors"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
 	"github.com/dshmyz/gracedb/pkg/gracedb"
@@ -14,7 +14,7 @@ import (
 )
 
 // ErrMemoryNotFound 表示记忆不存在或不属于当前作用域（防止 IDOR 越权删除）。
-var ErrMemoryNotFound = errors.New("memory not found")
+var ErrMemoryNotFound = errors.NotFoundError("记忆不存在")
 
 // GroupMemoryService 群聊助手的群级长期记忆。
 //

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	pkgErr "github.com/dshmyz/qim/qim-server/pkg/errors"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"gorm.io/gorm"
 )
@@ -183,6 +184,6 @@ func (s *ToolScopeService) loadFromDB(scope string) *[]string {
 
 // 工具面配置服务的哨兵错误。
 var (
-	ErrToolScopeInvalid         = errors.New("非法的工具面作用域")
-	ErrToolScopeServiceNotReady = errors.New("工具面配置服务不可用")
+	ErrToolScopeInvalid         = pkgErr.BadRequestError("非法的工具面作用域")
+	ErrToolScopeServiceNotReady = pkgErr.InternalError("工具面配置服务不可用")
 )

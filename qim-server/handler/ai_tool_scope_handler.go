@@ -118,11 +118,7 @@ func (h *AIHandler) UpdateToolScope(c *gin.Context) {
 	}
 
 	if err := h.toolScopes.SetScopeTools(scope, normalized); err != nil {
-		if errors.Is(err, service.ErrToolScopeInvalid) {
-			response.BadRequest(c, err.Error())
-			return
-		}
-		response.InternalServerError(c, "保存失败: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 	}
 

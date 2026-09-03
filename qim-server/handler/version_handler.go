@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/database"
@@ -100,18 +99,7 @@ func CreateVersion(c *gin.Context) {
 		FileSize:          req.FileSize,
 	})
 	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrVersionExists):
-			response.BadRequest(c, "该版本已存在")
-		case errors.Is(err, service.ErrMissingDownloadURL), errors.Is(err, service.ErrMissingSha256):
-			response.BadRequest(c, err.Error())
-		case errors.Is(err, service.ErrHashComputeFailed):
-			response.BadRequest(c, err.Error())
-		case errors.Is(err, service.ErrInvalidRolloutPercentage):
-			response.BadRequest(c, err.Error())
-		default:
-			response.InternalServerError(c, "创建失败")
-		}
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -149,14 +137,10 @@ func UpdateVersion(c *gin.Context) {
 		FileSize:          req.FileSize,
 	})
 	if err != nil {
-		if errors.Is(err, service.ErrVersionNotFound) {
-			response.NotFound(c, "版本不存在")
-			return
-		}
-		if errors.Is(err, service.ErrInvalidRolloutPercentage) {
-			response.BadRequest(c, err.Error())
-			return
-		}
+		response.ErrorFrom(c, err)
+		return
+		response.ErrorFrom(c, err)
+		return
 		response.InternalServerError(c, "更新失败")
 		return
 	}
@@ -169,10 +153,8 @@ func DeleteVersion(c *gin.Context) {
 
 	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
 	if err := svc.Delete(uint(id)); err != nil {
-		if errors.Is(err, service.ErrVersionNotFound) {
-			response.NotFound(c, "版本不存在")
-			return
-		}
+		response.ErrorFrom(c, err)
+		return
 		response.InternalServerError(c, "删除失败")
 		return
 	}
@@ -194,10 +176,8 @@ func ToggleVersionStatus(c *gin.Context) {
 	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
 	version, err := svc.ToggleStatus(uint(id), req.Status == "active")
 	if err != nil {
-		if errors.Is(err, service.ErrVersionNotFound) {
-			response.NotFound(c, "版本不存在")
-			return
-		}
+		response.ErrorFrom(c, err)
+		return
 		response.InternalServerError(c, "更新失败")
 		return
 	}
@@ -212,10 +192,8 @@ func RollbackVersion(c *gin.Context) {
 
 	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
 	if err := svc.Rollback(uint(id)); err != nil {
-		if errors.Is(err, service.ErrVersionNotFound) {
-			response.NotFound(c, "版本不存在")
-			return
-		}
+		response.ErrorFrom(c, err)
+		return
 		response.InternalServerError(c, "回滚失败")
 		return
 	}
@@ -360,16 +338,7 @@ func CreateCLIVersion(c *gin.Context) {
 		FileSize:          req.FileSize,
 	})
 	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrVersionExists):
-			response.BadRequest(c, "该版本已存在")
-		case errors.Is(err, service.ErrMissingDownloadURL), errors.Is(err, service.ErrMissingSha256):
-			response.BadRequest(c, err.Error())
-		case errors.Is(err, service.ErrInvalidRolloutPercentage):
-			response.BadRequest(c, err.Error())
-		default:
-			response.InternalServerError(c, "创建失败")
-		}
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -409,14 +378,10 @@ func UpdateCLIVersion(c *gin.Context) {
 		FileSize:          req.FileSize,
 	})
 	if err != nil {
-		if errors.Is(err, service.ErrVersionNotFound) {
-			response.NotFound(c, "版本不存在")
-			return
-		}
-		if errors.Is(err, service.ErrInvalidRolloutPercentage) {
-			response.BadRequest(c, err.Error())
-			return
-		}
+		response.ErrorFrom(c, err)
+		return
+		response.ErrorFrom(c, err)
+		return
 		response.InternalServerError(c, "更新失败")
 		return
 	}
@@ -431,10 +396,8 @@ func DeleteCLIVersion(c *gin.Context) {
 
 	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
 	if err := svc.Delete(uint(id)); err != nil {
-		if errors.Is(err, service.ErrVersionNotFound) {
-			response.NotFound(c, "版本不存在")
-			return
-		}
+		response.ErrorFrom(c, err)
+		return
 		response.InternalServerError(c, "删除失败")
 		return
 	}
@@ -458,10 +421,8 @@ func ToggleCLIVersionStatus(c *gin.Context) {
 	svc := service.NewVersionService(database.GetDB(), versionStorageAccessor())
 	version, err := svc.ToggleStatus(uint(id), req.Status == "active")
 	if err != nil {
-		if errors.Is(err, service.ErrVersionNotFound) {
-			response.NotFound(c, "版本不存在")
-			return
-		}
+		response.ErrorFrom(c, err)
+		return
 		response.InternalServerError(c, "更新失败")
 		return
 	}

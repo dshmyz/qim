@@ -1,12 +1,12 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/errors"
 	"gorm.io/gorm"
 )
 
@@ -135,14 +135,14 @@ func downloadFilenameFromCache(v *model.ClientVersion, fileNames map[uint]string
 	return fallbackBinaryName(v.Os, v.Arch)
 }
 
-// 版本相关错误
+// 版本相关错误（带 HTTP 状态 + 业务码，经 response.ErrorFrom 统一落响应）
 var (
-	ErrVersionExists            = errors.New("该版本已存在")
-	ErrVersionNotFound          = errors.New("版本不存在")
-	ErrMissingDownloadURL       = errors.New("下载链接不能为空")
-	ErrMissingSha256            = errors.New("SHA256 不能为空")
-	ErrHashComputeFailed        = errors.New("SHA512 和文件大小计算失败")
-	ErrInvalidRolloutPercentage = errors.New("灰度百分比必须在 0 到 100 之间")
+	ErrVersionExists            = errors.BadRequestError("该版本已存在")
+	ErrVersionNotFound          = errors.NotFoundError("版本不存在")
+	ErrMissingDownloadURL       = errors.BadRequestError("下载链接不能为空")
+	ErrMissingSha256            = errors.BadRequestError("SHA256 不能为空")
+	ErrHashComputeFailed        = errors.BadRequestError("SHA512 和文件大小计算失败")
+	ErrInvalidRolloutPercentage = errors.BadRequestError("灰度百分比必须在 0 到 100 之间")
 )
 
 // CreateVersionInput 创建版本的入参

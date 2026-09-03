@@ -1111,11 +1111,7 @@ func (h *AvatarHandler) UpdateMemory(c *gin.Context) {
 		return
 	}
 	if err := memorySvc.UpdateMemory(userID.(uint), memoryID, req.Content); err != nil {
-		if errors.Is(err, service.ErrMemoryNotFound) {
-			response.NotFound(c, "记忆不存在")
-			return
-		}
-		response.InternalServerError(c, "纠正记忆失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 	response.SuccessWithMessage(c, "记忆已纠正", nil)

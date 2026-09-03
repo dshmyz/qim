@@ -5,13 +5,14 @@ import (
 	"fmt"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	pkgErr "github.com/dshmyz/qim/qim-server/pkg/errors"
 	"gorm.io/gorm"
 )
 
 // AI 消息反馈服务的哨兵错误。
 var (
-	ErrFeedbackNotFound     = errors.New("反馈不存在")
-	ErrFeedbackInvalidParam = errors.New("无效的反馈参数")
+	ErrFeedbackNotFound     = pkgErr.NotFoundError("反馈不存在")
+	ErrFeedbackInvalidParam = pkgErr.BadRequestError("无效的反馈参数")
 )
 
 // AIFeedbackService 用户对 AI 回复的显式反馈（👍/👎）。
@@ -118,6 +119,7 @@ func (s *AIFeedbackService) GetFeedbackBatch(userID uint, messageIDs []uint) (ma
 
 // ErrFeedbackServiceNotReady / ErrFeedbackForbidden 反馈服务哨兵错误。
 var (
-	ErrFeedbackServiceNotReady = errors.New("反馈服务不可用")
-	ErrFeedbackForbidden       = errors.New("无权对该消息反馈")
+	ErrFeedbackServiceNotReady = pkgErr.InternalError("反馈服务不可用")
+	// 保持既有 HTTP 语义（handler 原映射为 400）
+	ErrFeedbackForbidden = pkgErr.BadRequestError("无权对该消息反馈")
 )

@@ -89,11 +89,7 @@ func DeleteGroupMemory(c *gin.Context) {
 		return
 	}
 	if err := memorySvc.DeleteMemory(group.ID, memoryID); err != nil {
-		if errors.Is(err, service.ErrMemoryNotFound) {
-			response.NotFound(c, "记忆不存在")
-			return
-		}
-		response.InternalServerError(c, "删除群记忆失败")
+		response.ErrorFrom(c, err)
 		return
 	}
 	response.SuccessWithMessage(c, "已删除", nil)
