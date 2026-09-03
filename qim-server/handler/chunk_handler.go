@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -11,7 +10,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/pkg/upload"
-	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -109,11 +107,7 @@ func InitUpload(c *gin.Context) {
 		req.UploadID,
 	)
 	if err != nil {
-		if errors.Is(err, service.ErrUploadForbidden) {
-			response.Forbidden(c, err.Error())
-			return
-		}
-		response.InternalServerError(c, "初始化上传失败: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -195,11 +189,7 @@ func UploadChunk(c *gin.Context) {
 
 	err = chunkService.UploadChunk(userID.(uint), uploadID, chunkIndex, chunkData, chunkHash)
 	if err != nil {
-		if errors.Is(err, service.ErrUploadForbidden) {
-			response.Forbidden(c, err.Error())
-			return
-		}
-		response.InternalServerError(c, "上传分片失败: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -259,11 +249,7 @@ func CompleteUpload(c *gin.Context) {
 
 	file, err := chunkService.CompleteUpload(userID.(uint), req.UploadID)
 	if err != nil {
-		if errors.Is(err, service.ErrUploadForbidden) {
-			response.Forbidden(c, err.Error())
-			return
-		}
-		response.InternalServerError(c, "完成上传失败: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -301,11 +287,7 @@ func CancelUpload(c *gin.Context) {
 
 	err := chunkService.CancelUpload(userID.(uint), req.UploadID)
 	if err != nil {
-		if errors.Is(err, service.ErrUploadForbidden) {
-			response.Forbidden(c, err.Error())
-			return
-		}
-		response.InternalServerError(c, "取消上传失败: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 	}
 

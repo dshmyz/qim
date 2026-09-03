@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"strconv"
 	"strings"
 
@@ -262,14 +261,7 @@ func respondGroupFileError(c *gin.Context, err error) bool {
 	if err == nil {
 		return true
 	}
-	if errors.Is(err, service.ErrFileSpaceForbidden) {
-		response.Forbidden(c, "无权访问群文件")
-		return false
-	}
-	if errors.Is(err, service.ErrFileSpaceInvalid) {
-		response.BadRequest(c, "参数错误")
-		return false
-	}
-	response.InternalServerError(c, "群文件操作失败")
+	// 服务层错误已带 HTTP 状态 + 业务码（BusinessError），统一出口一次下发
+	response.ErrorFrom(c, err)
 	return false
 }

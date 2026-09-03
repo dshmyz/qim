@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	pkgErr "github.com/dshmyz/qim/qim-server/pkg/errors"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/upload"
 	"github.com/dshmyz/qim/qim-server/repository"
@@ -136,11 +137,11 @@ func sameFolder(a, b *uint) bool {
 }
 
 // ErrUploadForbidden 表示用户无权操作该上传任务（uploadID 不属于该用户）
-var ErrUploadForbidden = errors.New("无权操作该上传任务")
+var ErrUploadForbidden = pkgErr.ForbiddenError("无权操作该上传任务")
 
 // ErrConcurrentComplete 表示另一个并发 CompleteUpload 请求已完成该任务
 // 用于抢占式状态转换失败时的标识，防止并发重复创建文件记录
-var ErrConcurrentComplete = errors.New("上传任务已被并发请求处理")
+var ErrConcurrentComplete = pkgErr.ConflictError("上传任务已被并发请求处理")
 
 // UploadChunk 上传分片
 // userID 为当前请求用户 ID，必须与任务所属用户一致，否则返回 ErrUploadForbidden

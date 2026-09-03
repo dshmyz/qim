@@ -8,15 +8,16 @@ import (
 	"strings"
 
 	"github.com/dshmyz/qim/qim-server/model"
+	pkgErr "github.com/dshmyz/qim/qim-server/pkg/errors"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"gorm.io/gorm"
 )
 
 var (
 	// ErrFileSpaceForbidden is returned when the actor cannot use the requested space.
-	ErrFileSpaceForbidden = errors.New("file space access forbidden")
+	ErrFileSpaceForbidden = pkgErr.ForbiddenError("无权访问群文件")
 	// ErrFileSpaceInvalid is returned for malformed spaces and invalid folder relationships.
-	ErrFileSpaceInvalid = errors.New("invalid file space request")
+	ErrFileSpaceInvalid = pkgErr.BadRequestError("参数错误")
 )
 
 // FileSpace identifies the owner of a file tree. Group IDs refer to model.Group IDs,
