@@ -152,16 +152,20 @@ func (s *ConversationService) CreateSingleConversation(userID1, userID2 uint) (*
 		return existingConv, nil
 	}
 
+	// 会话 + 成员一次事务提交：避免中途失败留下只有会话没有成员的孤儿行。
 	if userID1 == userID2 {
-		conv := &model.Conversation{Type: "single"}
-		if err := s.convRepo.Create(ctx, conv); err != nil {
+		var conv *model.Conversation
+		if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			conv = &model.Conversation{Type: "single"}
+			if err := tx.Create(conv).Error; err != nil {
+				return err
+			}
+			return tx.Create(&model.ConversationMember{
+				ConversationID: conv.ID, UserID: userID1, Role: "member", JoinedAt: time.Now(),
+			}).Error
+		}); err != nil {
 			return nil, err
 		}
-
-		if err := s.convRepo.AddMember(ctx, conv.ID, userID1, "member"); err != nil {
-			return nil, err
-		}
-
 		return s.convRepo.FindByID(ctx, conv.ID)
 	}
 
@@ -170,88 +174,113 @@ func (s *ConversationService) CreateSingleConversation(userID1, userID2 uint) (*
 		return nil, err
 	}
 
-	conv := &model.Conversation{Type: "single"}
-	if err := s.convRepo.Create(ctx, conv); err != nil {
+	var conv *model.Conversation
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		conv = &model.Conversation{Type: "single"}
+		if err := tx.Create(conv).Error; err != nil {
+			return err
+		}
+		for _, uid := range []uint{userID1, userID2} {
+			if err := tx.Create(&model.ConversationMember{
+				ConversationID: conv.ID, UserID: uid, Role: "member", JoinedAt: time.Now(),
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
-
-	if err := s.convRepo.AddMember(ctx, conv.ID, userID1, "member"); err != nil {
-		return nil, err
-	}
-	if err := s.convRepo.AddMember(ctx, conv.ID, userID2, "member"); err != nil {
-		return nil, err
-	}
-
 	return s.convRepo.FindByID(ctx, conv.ID)
 }
 
 func (s *ConversationService) CreateGroupConversation(name string, creatorID uint, memberIDs []uint, avatar string) (*model.Conversation, error) {
 	ctx := context.Background()
 
-	conv := &model.Conversation{Type: "group"}
-	if err := s.convRepo.Create(ctx, conv); err != nil {
-		return nil, err
-	}
+	// 会话 + 群信息 + 成员一次事务提交，避免中途失败留下孤儿会话/半成品群。
+	var conv *model.Conversation
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		conv = &model.Conversation{Type: "group"}
+		if err := tx.Create(conv).Error; err != nil {
+			return err
+		}
 
-	group := &model.Group{
-		ConversationID:   conv.ID,
-		GroupType:        "group",
-		Name:             name,
-		Avatar:           avatar,
-		CreatorID:        creatorID,
-		InvitePermission: "owner_admin",
-	}
-	if err := s.groupRepo.Create(ctx, group); err != nil {
-		return nil, err
-	}
+		group := &model.Group{
+			ConversationID:   conv.ID,
+			GroupType:        "group",
+			Name:             name,
+			Avatar:           avatar,
+			CreatorID:        creatorID,
+			InvitePermission: "owner_admin",
+		}
+		if err := tx.Create(group).Error; err != nil {
+			return err
+		}
 
-	if err := s.convRepo.AddMember(ctx, conv.ID, creatorID, "owner"); err != nil {
-		return nil, err
-	}
+		if err := tx.Create(&model.ConversationMember{
+			ConversationID: conv.ID, UserID: creatorID, Role: "owner", JoinedAt: time.Now(),
+		}).Error; err != nil {
+			return err
+		}
 
-	for _, mid := range memberIDs {
-		if mid != creatorID {
-			if err := s.convRepo.AddMember(ctx, conv.ID, mid, "member"); err != nil {
-				return nil, err
+		for _, mid := range memberIDs {
+			if mid != creatorID {
+				if err := tx.Create(&model.ConversationMember{
+					ConversationID: conv.ID, UserID: mid, Role: "member", JoinedAt: time.Now(),
+				}).Error; err != nil {
+					return err
+				}
 			}
 		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
-
 	return s.convRepo.FindByID(ctx, conv.ID)
 }
 
 func (s *ConversationService) CreateDiscussionConversation(name string, creatorID uint, memberIDs []uint, avatar string) (*model.Conversation, error) {
 	ctx := context.Background()
 
-	conv := &model.Conversation{Type: "discussion"}
-	if err := s.convRepo.Create(ctx, conv); err != nil {
-		return nil, err
-	}
+	// 与 CreateGroupConversation 同：一次事务提交，避免孤儿会话。
+	var conv *model.Conversation
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		conv = &model.Conversation{Type: "discussion"}
+		if err := tx.Create(conv).Error; err != nil {
+			return err
+		}
 
-	group := &model.Group{
-		ConversationID:   conv.ID,
-		GroupType:        "discussion",
-		Name:             name,
-		Avatar:           avatar,
-		CreatorID:        creatorID,
-		InvitePermission: "owner_admin",
-	}
-	if err := s.groupRepo.Create(ctx, group); err != nil {
-		return nil, err
-	}
+		group := &model.Group{
+			ConversationID:   conv.ID,
+			GroupType:        "discussion",
+			Name:             name,
+			Avatar:           avatar,
+			CreatorID:        creatorID,
+			InvitePermission: "owner_admin",
+		}
+		if err := tx.Create(group).Error; err != nil {
+			return err
+		}
 
-	if err := s.convRepo.AddMember(ctx, conv.ID, creatorID, "owner"); err != nil {
-		return nil, err
-	}
+		if err := tx.Create(&model.ConversationMember{
+			ConversationID: conv.ID, UserID: creatorID, Role: "owner", JoinedAt: time.Now(),
+		}).Error; err != nil {
+			return err
+		}
 
-	for _, mid := range memberIDs {
-		if mid != creatorID {
-			if err := s.convRepo.AddMember(ctx, conv.ID, mid, "member"); err != nil {
-				return nil, err
+		for _, mid := range memberIDs {
+			if mid != creatorID {
+				if err := tx.Create(&model.ConversationMember{
+					ConversationID: conv.ID, UserID: mid, Role: "member", JoinedAt: time.Now(),
+				}).Error; err != nil {
+					return err
+				}
 			}
 		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
-
 	return s.convRepo.FindByID(ctx, conv.ID)
 }
 
@@ -438,6 +467,42 @@ func (s *ConversationService) GetMember(convID, userID uint) (*model.Conversatio
 		return nil, err
 	}
 	return &member, nil
+}
+
+// HideConversation 把会话从当前用户的会话列表隐藏（不删除、不解散）。
+// 注意与 DeleteConversation（群解散：改名 + IsDeleted + 全员广播）语义不同——
+// 这是 per-user 的「移除会话」操作，可作用于任意会话类型，无需群主权限。
+// 复刻原 handler 内联逻辑，避免「同名不同操作」的语义地雷。
+func (s *ConversationService) HideConversation(convID, userID uint) error {
+	ctx := context.Background()
+
+	var conv model.Conversation
+	if err := s.db.WithContext(ctx).First(&conv, convID).Error; err != nil {
+		return ErrConversationNotFound
+	}
+
+	isMember, err := s.convRepo.IsMember(ctx, convID, userID)
+	if err != nil || !isMember {
+		// 保留原 handler 文案（403），不复用通用 ErrConversationForbidden 以免语义混淆
+		return pkgErr.ForbiddenError("您不是该会话的成员")
+	}
+
+	var session model.ConversationSession
+	if err := s.db.WithContext(ctx).Where("user_id = ? AND conversation_id = ?", userID, convID).First(&session).Error; err != nil {
+		session = model.ConversationSession{
+			UserID:         userID,
+			ConversationID: convID,
+			LastVisitedAt:  time.Now(),
+		}
+		if err := s.db.WithContext(ctx).Create(&session).Error; err != nil {
+			return err
+		}
+	}
+
+	now := time.Now()
+	session.IsHidden = true
+	session.HiddenAt = &now
+	return s.db.WithContext(ctx).Save(&session).Error
 }
 
 func (s *ConversationService) CreateMember(member *model.ConversationMember) error {

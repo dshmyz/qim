@@ -1550,44 +1550,17 @@ func DeleteConversation(c *gin.Context) {
 		convID = strings.TrimPrefix(convID, "conv_")
 	}
 
-	db := database.GetDB()
-
 	convIDUint, err := strconv.ParseUint(convID, 10, 32)
 	if err != nil {
 		response.BadRequest(c, "无效的会话ID")
 		return
 	}
 
-	var conv model.Conversation
-	if err := db.First(&conv, uint(convIDUint)).Error; err != nil {
-		response.NotFound(c, "会话不存在")
-		return
-	}
-
-	// 校验当前用户是会话成员，防止对未参与的会话写入 session 记录或探测会话是否存在
-	var memberCount int64
-	db.Model(&model.ConversationMember{}).Where("conversation_id = ? AND user_id = ?", uint(convIDUint), userID).Count(&memberCount)
-	if memberCount == 0 {
-		response.Forbidden(c, "您不是该会话的成员")
-		return
-	}
-
-	var session model.ConversationSession
-	result := db.Where("user_id = ? AND conversation_id = ?", userID, uint(convIDUint)).First(&session)
-	if result.Error != nil {
-		session = model.ConversationSession{
-			UserID:         userID.(uint),
-			ConversationID: uint(convIDUint),
-			LastVisitedAt:  time.Now(),
-		}
-		db.Create(&session)
-	}
-
-	now := time.Now()
-	session.IsHidden = true
-	session.HiddenAt = &now
-	if err := db.Save(&session).Error; err != nil {
-		response.InternalServerError(c, "移除会话失败")
+	// 语义为「从我的会话列表隐藏」（per-user），非群解散。
+	// 走 service.HideConversation（与 DeleteConversation 群解散区分开，避免同名不同操作）。
+	convSvc := service.NewConversationService(database.GetDB())
+	if err := convSvc.HideConversation(uint(convIDUint), userID.(uint)); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
