@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
@@ -14,11 +13,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
-
-// pendingSendFromResult 从确认制工具的返回值中提取待确认发送载荷（委托 service 单一实现）。
-func pendingSendFromResult(result interface{}) *ai.PendingSend {
-	return service.PendingSendFromResult(result)
-}
 
 // pendingActionUserID 从 gin 上下文取认证用户 ID（复用安全断言，避免裸类型断言 panic 风险）。
 func pendingActionUserID(c *gin.Context) uint {
@@ -67,9 +61,10 @@ func logPendingAction(c *gin.Context, action string) {
 	}
 }
 
-// ConfirmPendingAction POST /ai/pending-actions/:id/confirm
-// 用户确认侧边栏 AI 的待确认发送，真正执行消息发送（走正常用户发送路径，非绕过）。
-func (h *AIHandler) ConfirmPendingAction(c *gin.Context) {
+// runPendingAction 确认/取消待确认发送的共享执行骨架：参数校验 → 版本门槛（仅确认）→ 调 service
+// → 终态回显 / 错误映射 → 审计 + 响应。两分支只差 service 方法与审计动作，收敛避免漂移。
+func (h *AIHandler) runPendingAction(c *gin.Context, action string, gated bool,
+	fn func(userID, id uint) (*model.AIPendingAction, bool, error)) {
 	if h.pendingActions == nil {
 		response.InternalServerError(c, "待确认服务不可用")
 		return
@@ -84,17 +79,18 @@ func (h *AIHandler) ConfirmPendingAction(c *gin.Context) {
 		response.Unauthorized(c, "需要登录")
 		return
 	}
-
-	// 版本门槛：确认发送 = 代用户真正发消息，低于 min_send_version 的旧客户端不得借 AI 代发
-	// 绕过消息发送门槛（否则强制升级策略被确认发送路径整体绕过）。
-	if clientRejectSendBlocked(c, userID) {
+	// 版本门槛仅确认需要：确认 = 代用户真正发消息，低于 min_send_version 的旧客户端不得借 AI 代发
+	// 绕过消息发送门槛；取消不发送，低版本客户端也应能取消。
+	if gated && clientRejectSendBlocked(c, userID) {
 		return
 	}
 
-	record, handled, err := h.pendingActions.ConfirmPendingSend(userID, uint(id))
+	record, handled, err := fn(userID, uint(id))
 	if err != nil {
+		// 仅终态（并发抢先/已处理/已过期）回显，帮助前端同步状态；真错误（如 DB 更新失败，
+		// handled=false 且 record 仍 pending）必须落到 mapPendingActionError，否则客户端会把
+		// pending 误显示为「已过期」而实际仍可操作
 		if handled && record != nil {
-			// 已处理/已过期：携带终态回显，帮助前端同步状态
 			logger.WithModule("AIHandler").Info("pending send 已终态", "id", id, "status", record.Status)
 			pendingActionResponse(c, record, handled)
 			return
@@ -104,43 +100,20 @@ func (h *AIHandler) ConfirmPendingAction(c *gin.Context) {
 		return
 	}
 
-	logPendingAction(c, "ai_pending_send_confirmed")
+	logPendingAction(c, action)
 	pendingActionResponse(c, record, handled)
+}
+
+// ConfirmPendingAction POST /ai/pending-actions/:id/confirm
+// 用户确认侧边栏 AI 的待确认发送，真正执行消息发送（走正常用户发送路径，非绕过）。
+func (h *AIHandler) ConfirmPendingAction(c *gin.Context) {
+	h.runPendingAction(c, "ai_pending_send_confirmed", true, h.pendingActions.ConfirmPendingSend)
 }
 
 // CancelPendingAction POST /ai/pending-actions/:id/cancel
 // 用户取消侧边栏 AI 的待确认发送。
 func (h *AIHandler) CancelPendingAction(c *gin.Context) {
-	if h.pendingActions == nil {
-		response.InternalServerError(c, "待确认服务不可用")
-		return
-	}
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err != nil || id == 0 {
-		response.BadRequest(c, "参数错误")
-		return
-	}
-	userID := pendingActionUserID(c)
-	if userID == 0 {
-		response.Unauthorized(c, "需要登录")
-		return
-	}
-
-	record, handled, err := h.pendingActions.CancelPendingSend(userID, uint(id))
-	if err != nil {
-		// 与 Confirm 对齐：仅终态（并发抢先/已处理）回显；真错误（如 DB 更新失败，
-		// handled=false 且 record 仍 pending）必须落到 mapPendingActionError，
-		// 否则客户端会把 pending 误显示为「已过期」而实际仍可操作
-		if handled && record != nil {
-			pendingActionResponse(c, record, handled)
-			return
-		}
-		mapPendingActionError(c, err)
-		return
-	}
-
-	logPendingAction(c, "ai_pending_send_cancelled")
-	pendingActionResponse(c, record, handled)
+	h.runPendingAction(c, "ai_pending_send_cancelled", false, h.pendingActions.CancelPendingSend)
 }
 
 

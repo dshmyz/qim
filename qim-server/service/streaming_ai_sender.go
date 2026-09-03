@@ -102,6 +102,11 @@ func resolveToolLabel(tool string, toolTitles, toolDescriptions map[string]strin
 // 动作名词而非「正在…」进行时；完成/失败由 status + 前端状态徽标体现，避免结束后
 // 卡片仍显示「正在 XX」的奇怪语义。
 func FriendlyToolLabel(tool string) string {
+	// 用户侧工具精确名优先（与侧边栏 toolDisplayName 共用单一来源 tool_label.go）；
+	// 未命中再走分类/关键词/MCP 提取兜底
+	if label, ok := UserToolLabel(tool); ok {
+		return label
+	}
 	switch {
 	// 内置群管理工具
 	case strings.Contains(tool, "group_management"):

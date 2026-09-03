@@ -116,7 +116,7 @@
     <el-card shadow="never" style="margin-top: 24px">
       <div class="toolbar" style="margin-bottom: 16px">
         <div class="toolbar-left">
-          <h2 class="page-title" style="font-size: 16px">工具面配置</h2>
+          <h2 class="page-title">工具面配置</h2>
           <p class="page-desc">配置各 AI 入口可调用的工具白名单，保存后即时生效；「恢复默认」清除覆盖配置</p>
         </div>
       </div>
@@ -152,7 +152,7 @@
     <el-card shadow="never" style="margin-top: 24px">
       <div class="toolbar" style="margin-bottom: 12px">
         <div class="toolbar-left">
-          <h2 class="page-title" style="font-size: 16px">推荐提示词</h2>
+          <h2 class="page-title">推荐提示词</h2>
           <p class="page-desc">下发给客户端的快捷指令（侧边栏指令条 / bot 会话示例）。每行一条，最多 10 条、单条 ≤100 字；清空保存即恢复客户端内置默认</p>
         </div>
       </div>

@@ -41,10 +41,10 @@ func TestFriendlyToolLabel(t *testing.T) {
 		{"user_management", "用户管理"},
 		{"search_messages", "群消息搜索"},
 		{"create_group_task", "创建群待办"},
-		{"list_tasks", "任务管理"},
-		{"create_user_task", "任务管理"},
-		{"search_knowledge", "知识搜索"},
-		{"summarize_conversation", "会话总结"},
+		{"list_tasks", "查询任务"},
+		{"create_user_task", "创建任务"},
+		{"search_knowledge", "搜索知识库"},
+		{"summarize_conversation", "总结会话"},
 		{"send_message", "发送消息"},
 		// 内置工具含已知关键词
 		{"mcp_test_calculator", "计算"},
@@ -86,7 +86,7 @@ func TestNewToolCallFeedback_StartEndPhases(t *testing.T) {
 	assert.Equal(t, "running", sender.events[0].record.Status)
 	assert.Equal(t, "call_1", sender.events[0].record.ID)
 	assert.Equal(t, "list_tasks", sender.events[0].record.ToolName)
-	assert.Equal(t, "任务管理", sender.events[0].record.ToolLabel)
+	assert.Equal(t, "查询任务", sender.events[0].record.ToolLabel)
 	assert.Empty(t, toolCalls, "start 阶段不应收集终态记录")
 
 	// end 阶段（成功）：推 ok 终态事件 + 收集记录
@@ -135,7 +135,7 @@ func TestPersistAIMessageExtra_ServiceLevel(t *testing.T) {
 	t.Run("工具调用与知识来源合并写入", func(t *testing.T) {
 		msg := &model.Message{}
 		PersistAIMessageExtra(func() *model.Message { return msg }, []ToolCallRecord{{
-			ID: "call_1", ToolLabel: "知识搜索", Status: "ok",
+			ID: "call_1", ToolLabel: "搜索知识库", Status: "ok",
 		}}, []KnowledgeSource{{Title: "Q3 规划", Score: 0.92}})
 		require.NotEmpty(t, msg.Extra)
 	})
@@ -163,7 +163,7 @@ func TestResolveToolLabel_TitlePriority(t *testing.T) {
 	// 无标题时用描述
 	assert.Equal(t, "创建一条阻断规则", resolveToolLabel("mcp_demo_create_rule", nil, descs))
 	// 都没有时 fallback 到内置映射
-	assert.Equal(t, "任务管理", resolveToolLabel("list_tasks", nil, nil))
+	assert.Equal(t, "查询任务", resolveToolLabel("list_tasks", nil, nil))
 }
 
 // TestBuildEmptyReplyFallback 验证空回兜底文案按原因细分：

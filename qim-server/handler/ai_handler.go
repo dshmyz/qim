@@ -468,18 +468,18 @@ func (h *AIHandler) DraftReplyStream(c *gin.Context) {
 }
 
 // streamCompletion 将一组消息以 SSE 流式推给前端（GetCompletionStream / DraftReplyStream 共用）
-// streamSSE 设置 SSE 响应头，pump 通过 writeChunk 推送内容块；结束后发 finish 事件。
-// writeChunk 返回 error：客户端断开后写入失败时，pump 可提前终止，避免浪费 AI 调用。
+// streamSSE 设置 SSE 响应头，pump 通过 write 推送任意 StreamChunk 帧（content/pending/tool_event 等）；
+// 结束后发 finish 事件。write 返回 error：客户端断开后写入失败时，pump 可提前终止，避免浪费 AI 调用。
 // pump 返回非 nil error 时改为推送错误事件。供 streamCompletion / streamCompletionFromReader 共用，
 // 避免 SSE 响应头与结束事件逻辑重复。
-func streamSSE(c *gin.Context, pump func(writeChunk func(content string) error) error) {
+func streamSSE(c *gin.Context, pump func(write func(chunk ai.StreamChunk) error) error) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 
-	writeChunk := func(content string) error {
-		data, _ := json.Marshal(ai.StreamChunk{Content: content})
+	write := func(chunk ai.StreamChunk) error {
+		data, _ := json.Marshal(chunk)
 		if _, err := c.Writer.Write([]byte("data: " + string(data) + "\n\n")); err != nil {
 			return err
 		}
@@ -487,7 +487,7 @@ func streamSSE(c *gin.Context, pump func(writeChunk func(content string) error) 
 		return nil
 	}
 
-	if err := pump(writeChunk); err != nil {
+	if err := pump(write); err != nil {
 		errStr := "AI请求失败: " + err.Error()
 		errData, _ := json.Marshal(ai.StreamChunk{Error: &errStr})
 		c.Writer.Write([]byte("data: " + string(errData) + "\n\n"))
@@ -504,10 +504,10 @@ func streamSSE(c *gin.Context, pump func(writeChunk func(content string) error) 
 
 // streamCompletion 流式推送一组 messages（经 aiService.GetCompletionStream）
 func (h *AIHandler) streamCompletion(c *gin.Context, messages []ai.Message) {
-	streamSSE(c, func(writeChunk func(string) error) error {
+	streamSSE(c, func(write func(ai.StreamChunk) error) error {
 		return h.aiService.GetCompletionStream(ai.TaskTypeChat, messages, func(chunk ai.StreamChunk) error {
 			if chunk.Content != "" {
-				return writeChunk(chunk.Content)
+				return write(ai.StreamChunk{Content: chunk.Content})
 			}
 			return nil
 		})
@@ -516,26 +516,12 @@ func (h *AIHandler) streamCompletion(c *gin.Context, messages []ai.Message) {
 
 // toolDisplayName 将工具名映射为用户友好的中文提示
 func toolDisplayName(toolName string) string {
-	switch toolName {
-	case "create_user_task":
-		return "创建任务"
-	case "list_tasks":
-		return "查询任务"
-	case "send_message":
-		return "发送消息"
-	case "search_knowledge":
-		return "搜索知识库"
-	case "summarize_conversation":
-		return "总结会话"
-	case "list_calendar_events":
-		return "查询日程"
-	case "create_calendar_event":
-		return "创建日程"
-	case "search_files":
-		return "搜索文件"
-	default:
-		return toolName
+	// 用户侧工具标签单一来源在 service.tool_label.go（与 bot 卡片 FriendlyToolLabel 共用）；
+	// 未命中时按原语义回退工具原名
+	if label, ok := service.UserToolLabel(toolName); ok {
+		return label
 	}
+	return toolName
 }
 
 // streamCompletionWithTools 执行 ReAct 工具调用，实时推送执行进度，最后流式输出最终答案。
@@ -556,18 +542,9 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 	// 生效工具面：admin 覆盖配置优先，未覆盖回退代码默认（nil 接收者安全）
 	allowedTools := h.toolScopes.ScopeTools(service.ToolScopeSidebar)
 
-	// writeEvent 推送一条结构化 SSE 帧。streamSSE 的 writeChunk 只发 content 帧，
-	// pending 确认帧需携带载荷，故在此直写响应流（帧格式与 streamSSE 一致）。
-	writeEvent := func(chunk ai.StreamChunk) error {
-		data, _ := json.Marshal(chunk)
-		if _, err := c.Writer.Write([]byte("data: " + string(data) + "\n\n")); err != nil {
-			return err
-		}
-		c.Writer.Flush()
-		return nil
-	}
-
-	streamSSE(c, func(writeChunk func(string) error) error {
+	// streamSSE 的 write 直接收 StreamChunk 帧：content 文本帧、pending 确认帧、tool_event 进度帧
+	// 统一走同一个写帧器（此前 writeEvent 是它的重复实现）。
+	streamSSE(c, func(write func(ai.StreamChunk) error) error {
 		// 注意：不再把「🤔 正在思考...」写进流内容——该文字会随回复一起落库、永久残留在
 		// 侧边栏每条回复顶部。思考态改由前端组件 ThinkingIndicator（三点动画）在首个实
 		// 际内容 chunk 到达前渲染，内容到达即自然替换，与主窗口/ BotChatView 保持一致。
@@ -577,8 +554,8 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 		// 确认制 send_message 成功时改推 pending 帧（确认条），不进轨迹避免双份展示。
 		onStep := func(step int, toolCallID, phase, toolName string, args map[string]interface{}, result interface{}, err error) {
 			if phase == "end" && err == nil && toolName == "send_message" {
-				if info := pendingSendFromResult(result); info != nil {
-					_ = writeEvent(ai.StreamChunk{Pending: info})
+				if info := service.PendingSendFromResult(result); info != nil {
+					_ = write(ai.StreamChunk{Pending: info})
 					return
 				}
 			}
@@ -598,7 +575,7 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 			default:
 				ev.Status = "ok"
 			}
-			_ = writeEvent(ai.StreamChunk{ToolEvent: ev})
+			_ = write(ai.StreamChunk{ToolEvent: ev})
 		}
 
 		streamErr := h.aiService.GetCompletionWithToolsStreamMultiStep(
@@ -612,13 +589,13 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 			func(chunk ai.StreamChunk) error {
 				// final 回合内容逐 token 实时流出（真·打字机）
 				if chunk.Content != "" {
-					return writeChunk(chunk.Content)
+					return write(ai.StreamChunk{Content: chunk.Content})
 				}
 				return nil
 			},
 		)
 		if streamErr != nil && !errors.Is(streamErr, ai.ErrStreamingToolsNotSupported) {
-			_ = writeChunk(fmt.Sprintf("\n[错误：%s]", streamErr.Error()))
+			_ = write(ai.StreamChunk{Content: fmt.Sprintf("\n[错误：%s]", streamErr.Error())})
 			return nil
 		}
 
@@ -633,10 +610,10 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 				onStep,
 			)
 			if err != nil {
-				_ = writeChunk(fmt.Sprintf("\n[错误：%s]", err.Error()))
+				_ = write(ai.StreamChunk{Content: fmt.Sprintf("\n[错误：%s]", err.Error())})
 				return nil
 			}
-			if err := writeChunk("\n"); err != nil {
+			if err := write(ai.StreamChunk{Content: "\n"}); err != nil {
 				return err
 			}
 			runes := []rune(finalContent)
@@ -646,7 +623,7 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 				if end > len(runes) {
 					end = len(runes)
 				}
-				if err := writeChunk(string(runes[i:end])); err != nil {
+				if err := write(ai.StreamChunk{Content: string(runes[i:end])}); err != nil {
 					return err
 				}
 			}
@@ -661,7 +638,7 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 // defer Close 确保客户端断开或出错时释放 reader 端资源。
 func streamCompletionFromReader(c *gin.Context, stream *schema.StreamReader[*schema.Message]) {
 	defer stream.Close()
-	streamSSE(c, func(writeChunk func(string) error) error {
+	streamSSE(c, func(write func(ai.StreamChunk) error) error {
 		for {
 			msg, err := stream.Recv()
 			if err != nil {
@@ -671,7 +648,7 @@ func streamCompletionFromReader(c *gin.Context, stream *schema.StreamReader[*sch
 				return err
 			}
 			if msg != nil && msg.Content != "" {
-				if err := writeChunk(msg.Content); err != nil {
+				if err := write(ai.StreamChunk{Content: msg.Content}); err != nil {
 					return err
 				}
 			}

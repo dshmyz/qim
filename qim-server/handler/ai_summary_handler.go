@@ -248,8 +248,8 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 		return
 	}
 	if data.MessagesCount == 0 {
-		streamSSE(c, func(writeChunk func(string) error) error {
-			return writeChunk("该时间段内没有可摘要的消息")
+		streamSSE(c, func(write func(ai.StreamChunk) error) error {
+			return write(ai.StreamChunk{Content: "该时间段内没有可摘要的消息"})
 		})
 		return
 	}
@@ -306,18 +306,18 @@ func (h *AIHandler) GenerateSummaryStream(c *gin.Context) {
 		return
 	}
 	if data.MessagesCount == 0 {
-		streamSSE(c, func(writeChunk func(string) error) error {
-			return writeChunk("该时间段内没有可摘要的消息")
+		streamSSE(c, func(write func(ai.StreamChunk) error) error {
+			return write(ai.StreamChunk{Content: "该时间段内没有可摘要的消息"})
 		})
 		return
 	}
 
 	messages := buildSummaryMessages(data)
 
-	streamSSE(c, func(writeChunk func(string) error) error {
+	streamSSE(c, func(write func(ai.StreamChunk) error) error {
 		return h.aiService.GetCompletionStream(ai.TaskTypeAnalysis, messages, func(chunk ai.StreamChunk) error {
 			if chunk.Content != "" {
-				return writeChunk(chunk.Content)
+				return write(ai.StreamChunk{Content: chunk.Content})
 			}
 			return nil
 		})
