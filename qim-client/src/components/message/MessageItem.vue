@@ -93,7 +93,7 @@
             :tool-calls="message.tool_calls"
             :knowledge-sources="message.knowledge_sources"
             :avatar-sources="message.origin === 'avatar' ? message.sources : undefined"
-            :message-id="typeof message.id === 'number' ? message.id : undefined"
+            :message-id="message.id"
           />
 
           <!-- 图片消息 -->
@@ -201,6 +201,8 @@ import CardMessage from './CardMessage.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
 import { getAvatarUrl as getAvatarUrlUtil } from '../../utils/avatar'
+import { isAIMessage as isAIMessageFn } from '../../utils/aiMessage'
+import { parseCardActionContent } from '../../utils/cardAction'
 import { computed, onBeforeUnmount } from 'vue'
 import { escapeHTML } from '../../utils/sanitize'
 import { useMessageReminder } from '../../composables/useMessageReminder'
@@ -235,12 +237,7 @@ const systemConfigStore = useSystemConfigStore()
 // canSendReminder 复用单一事实源 systemConfigStore.canRemind，与右键菜单显示条件同源
 const canSendReminder = computed((): boolean => systemConfigStore.canRemind(props.message, props.conversationType))
 
-const isAIMessage = computed(() => {
-  const fromOrigin = props.message.origin === 'assistant' || props.message.origin === 'avatar'
-  const fromSenderIsBot = props.message.sender?.type === 'bot' || props.message.sender?.type === 'system'
-  const fromField = props.message.is_ai_message || props.message.isAIMessage
-  return fromOrigin || fromSenderIsBot || fromField
-})
+const isAIMessage = computed(() => isAIMessageFn(props.message))
 
 // 消息发送者头像角标：统一由 buildSenderBadge 构造。
 const senderBadge = computed(() => buildSenderBadge(props.message.sender, isAIMessage.value))
@@ -251,11 +248,8 @@ const messageDisplay = computed(() => resolveMessageDisplay(props.message))
 // content 为 JSON {action_id, action_text, value, card_message_id}。
 const cardActionData = computed(() => {
   if (props.message.type !== 'card_action') return null
-  try {
-    return JSON.parse(props.message.content)
-  } catch {
-    return null
-  }
+  const { ok, data } = parseCardActionContent(props.message.content || '')
+  return ok ? data : null
 })
 
 const quotedMessageSummary = computed(() => props.message.quotedMessage

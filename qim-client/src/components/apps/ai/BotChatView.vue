@@ -242,6 +242,7 @@ import CardMessage from '../../message/CardMessage.vue'
 import { aiPromptAPI } from '../../../api/ai'
 import { getStoredServerUrl } from '../../../composables/useServerUrl'
 import { previewTextToHtml } from '../../../utils/emoji'
+import { parseCardActionContent } from '../../../utils/cardAction'
 import { copyToClipboard } from '../../../utils/clipboard'
 import { useChatUtils } from '../../../composables/useChatUtils'
 import { useAIFeedbackBatch, aiFeedbackRatingsKey, type AIFeedbackRatings } from '../../../composables/useAIFeedbackBatch'
@@ -254,17 +255,9 @@ const chatUtils = useChatUtils()
 // 卡片动作提交的服务端地址（CardMessage 内部 fetch 用，与 useBotChat 的请求同源）
 const serverUrl = getStoredServerUrl()
 
-// card_action 消息的 JSON 载荷解析（与主窗口 MessageItem.cardActionData 同款）：
+// card_action 消息的 JSON 载荷解析（与主窗口 MessageItem 共用同一实现）：
 // 成功解析渲染「✓ 已选择:xxx」，失败（非法 JSON）回退纯文本渲染
-const parseCardAction = (msg: BotMessage): { ok: boolean; data?: { action_text?: string; action_id?: string } } => {
-  if (msg.type !== 'card_action') return { ok: false }
-  try {
-    const p = JSON.parse(msg.content)
-    return p && typeof p === 'object' ? { ok: true, data: p } : { ok: false }
-  } catch {
-    return { ok: false }
-  }
-}
+const parseCardAction = (msg: BotMessage) => parseCardActionContent(msg.content || '')
 
 const chatStore = useChatStore()
 

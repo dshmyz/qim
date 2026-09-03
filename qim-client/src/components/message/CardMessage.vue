@@ -150,16 +150,20 @@ const handleClick = async (btn: CardButton) => {
 // 变化，若盲目重置会让按钮复活，再次点击产生重复气泡与重复结果行。按钮集合本身
 // 变化（新按钮/按钮 id 变了）时才解除禁用。
 const buttonsSignature = () => JSON.stringify((card.value.buttons || []).map(b => b.id))
-let lastButtonsSig = buttonsSignature()
-watch(buttonsSignature, (sig) => {
-  if (sig === lastButtonsSig) return
-  lastButtonsSig = sig
+const resetInteraction = () => {
   submitted.value = false
   submitting.value = false
   selectedId.value = ''
   writePersistedAction('')
+}
+watch(buttonsSignature, (sig, prevSig) => {
+  if (sig !== prevSig) resetInteraction()
 })
-// 内容回写仅更新文本展示；text 长度变化可能切换展开态，无需重置交互。
+// 非确认卡：content 回写即新一轮（服务端 bot_messaging_service 对任意卡片改写删除幂等记录），
+// 随内容重置交互恢复可点；确认卡终态回写不重置，避免按钮复活重复触发。
+watch(() => props.content, () => {
+  if (!isAIConfirm.value) resetInteraction()
+})
 </script>
 
 <style scoped>
@@ -322,14 +326,14 @@ watch(buttonsSignature, (sig) => {
   border: none;
   background: transparent;
   padding: 2px 0;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--el-color-primary, #6366f1);
   cursor: pointer;
 }
 
 .card-jump {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-xxs);
   color: var(--el-color-primary, #6366f1);
   cursor: pointer;
   opacity: 0.85;

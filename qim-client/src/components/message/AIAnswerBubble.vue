@@ -25,7 +25,7 @@
     <AISources v-if="avatarSources && avatarSources.length" :sources="avatarSources" variant="inline" />
 
     <!-- 用户反馈 👍/👎：仅持久化消息（有数字 id）且非流式中显示，主观反馈接入质量闭环 -->
-    <div v-if="messageId && !isStreaming" class="fb-row" :class="{ 'fb-visible': fb !== 0 }">
+    <div v-if="messageIdNum && !isStreaming" class="fb-row" :class="{ 'fb-visible': fb !== 0 }">
       <button
         class="fb-btn"
         :class="{ active: fb === 1 }"
@@ -65,8 +65,9 @@ const props = withDefaults(defineProps<{
   suppressStreamingImages?: boolean
   toolCalls?: ToolCallRecord[]
   knowledgeSources?: AISource[]
-  /** 持久化消息 id：传入才显示 👍/👎 反馈（内存态/流式占位消息无 id 不显示） */
-  messageId?: number
+  /** 持久化消息 id：传入才显示 👍/👎 反馈（内存态/流式占位消息无 id 不显示）。
+      主窗口消息 id 为 string（store 归一化），BotChatView 为 number，两者都接受 */
+  messageId?: number | string
   avatarSources?: AISource[]
 }>(), {
   isSelf: false,
@@ -93,29 +94,37 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
 // 组件响应注入 map 变化；无注入（孤立使用）时回退挂载单条拉取
 const batchRatings = inject<AIFeedbackRatings | null>(aiFeedbackRatingsKey, null)
 const fb = ref<1 | -1 | 0>(0)
-if (batchRatings && props.messageId) {
+// 统一归一化为数字 id（主窗口 string 型 → Number；流式占位串如 stream_xxx → NaN → null 不显示反馈）
+const messageIdNum = computed<number | null>(() => {
+  const v = props.messageId
+  if (v === undefined || v === null || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) && n > 0 ? n : null
+})
+if (batchRatings && messageIdNum.value) {
   // immediate：气泡可能在列表层已批量拉取之后才挂载（会话切换返回、分页重挂载），
   // 此时 map 引用不会再变，非 immediate 的 watch 永不触发导致选中态静默丢失
   watch(batchRatings, (map) => {
-    const r = map.get(props.messageId!)
+    const r = map.get(messageIdNum.value!)
     if (r === 1 || r === -1) fb.value = r
   }, { immediate: true })
 }
 const setFb = async (v: 1 | -1) => {
+  if (!messageIdNum.value) return
   const prev = fb.value
   const next = prev === v ? 0 : v
   fb.value = next
   try {
-    await aiFeedbackAPI.set(props.messageId!, next)
+    await aiFeedbackAPI.set(messageIdNum.value, next)
   } catch {
     fb.value = prev // 失败回滚本地态，允许重试
   }
 }
 onMounted(() => {
-  if (!props.messageId) return
+  if (!messageIdNum.value) return
   // 列表层批量注入存在时不再单条拉取（N+1 消除）
   if (batchRatings) return
-  aiFeedbackAPI.get(props.messageId).then(r => { fb.value = (r === 1 || r === -1) ? r : 0 }).catch(() => {})
+  aiFeedbackAPI.get(messageIdNum.value).then(r => { fb.value = (r === 1 || r === -1) ? r : 0 }).catch(() => {})
 })
 </script>
 
@@ -242,7 +251,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--font-size-xxxs);
   color: var(--text-secondary, #9ca3af);
   transition: all 0.15s;
 }

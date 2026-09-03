@@ -20,11 +20,13 @@ func pendingSendFromResult(result interface{}) *ai.PendingSend {
 	return service.PendingSendFromResult(result)
 }
 
-// pendingActionUserID 从 gin 上下文取认证用户 ID，与 ai_handler 同口径。
+// pendingActionUserID 从 gin 上下文取认证用户 ID（复用安全断言，避免裸类型断言 panic 风险）。
 func pendingActionUserID(c *gin.Context) uint {
-	userIDAny, _ := c.Get("user_id")
-	userID, _ := userIDAny.(uint)
-	return userID
+	uid, ok := getUserIDFromContext(c)
+	if !ok {
+		return 0
+	}
+	return uid
 }
 
 // pendingActionResponse 统一回包：already_handled=true 时携带终态记录供前端回显
@@ -80,6 +82,12 @@ func (h *AIHandler) ConfirmPendingAction(c *gin.Context) {
 	userID := pendingActionUserID(c)
 	if userID == 0 {
 		response.Unauthorized(c, "需要登录")
+		return
+	}
+
+	// 版本门槛：确认发送 = 代用户真正发消息，低于 min_send_version 的旧客户端不得借 AI 代发
+	// 绕过消息发送门槛（否则强制升级策略被确认发送路径整体绕过）。
+	if clientRejectSendBlocked(c, userID) {
 		return
 	}
 

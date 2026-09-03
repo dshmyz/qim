@@ -34,16 +34,25 @@ export interface AIToolEvent {
   error?: string
 }
 
-function handleChunk(chunk: any, options: StreamOptions): 'stop' | null {
+/** SSE 帧内 ai.StreamChunk 的客户端形态（仅消费本文件关心的字段） */
+interface StreamChunk {
+  error?: string
+  pending?: PendingSend
+  tool_event?: AIToolEvent
+  content?: string
+  finish?: 'stop'
+}
+
+function handleChunk(chunk: StreamChunk, options: StreamOptions): 'stop' | null {
   if (chunk.error) {
     options.onError(new Error(chunk.error))
     return 'stop'
   }
   if (chunk.pending) {
-    options.onPending?.(chunk.pending as PendingSend)
+    options.onPending?.(chunk.pending)
   }
   if (chunk.tool_event) {
-    options.onTool?.(chunk.tool_event as AIToolEvent)
+    options.onTool?.(chunk.tool_event)
   }
   if (chunk.content) {
     options.onChunk(chunk.content)

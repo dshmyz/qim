@@ -52,8 +52,11 @@ func (s *AIPendingActionService) CreatePendingSend(userID, contextConvID, target
 		return nil, ErrPendingInvalidParams
 	}
 
-	// 顺带清理已过期记录（低频路径，直接删即可，避免表无限增长）
-	s.db.Where("status = ? AND expires_at < ?", model.AIPendingActionStatusPending, time.Now()).
+	// 顺带清理已过期记录（低频路径，直接删即可，避免表无限增长）。
+	// sending 是瞬时态（同步 SendMessage 一次调用即离开），超过 TTL 的 sending 行
+	// 必然是崩溃残留（消息已发但 confirmed 未落库），一并清理，否则永久卡死且无任何出口。
+	s.db.Where("status IN (?, ?) AND expires_at < ?",
+		model.AIPendingActionStatusPending, model.AIPendingActionStatusSending, time.Now()).
 		Delete(&model.AIPendingAction{})
 
 	record := &model.AIPendingAction{

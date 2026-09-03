@@ -88,10 +88,11 @@ export function createUpdateService({
     unreliabilityReported = false
   }
 
-  // 底层检查请求是否仍在途（手动 12s 超时并不取消 electron-updater 的请求；若在途时允许新检查，
-  // 会复用同一 promise，旧请求迟到的 error/update-not-available 会被记到新检查头上——跨检查污染）。
-  // 在途期间拒绝新的检查请求，保证同一时刻只有一次检查、迟到事件只属于它自己。
-  let checkInFlight = false
+  // 底层检查请求是否仍在途。手动 12s 超时并不取消 electron-updater 的请求；若在途时允许新检查，
+  // 会复用同一 promise，旧请求迟到的 error/update-not-available 会被记到新检查头上——跨检查污染。
+  // 这里直接持有 promise，settle（含 60s socket 超时兜底）后在 finally 单点复位，杜绝「布尔在多处
+  // 手清、漏一处就永久锁死」的写法，也保证同一时刻只有一次检查、迟到事件只属于它自己。
+  let inflightCheck = null
 
   function getOrCreateUpdateClientId() {
     if (updateClientId) return updateClientId
@@ -237,8 +238,8 @@ export function createUpdateService({
   }
 
   function checkForUpdates() {
-    if (updatePhase === 'checking' || updatePhase === 'downloading' || checkInFlight) {
-      console.log('更新检查已在进行中，忽略重复请求, currentUpdatePhase:', updatePhase, 'checkInFlight:', checkInFlight)
+    if (updatePhase === 'checking' || updatePhase === 'downloading' || inflightCheck) {
+      console.log('更新检查已在进行中，忽略重复请求, currentUpdatePhase:', updatePhase)
       return
     }
     console.log('收到检查更新请求, currentUpdateBaseUrl:', getUpdateBaseUrl(), 'platform:', process.platform)
@@ -274,16 +275,17 @@ export function createUpdateService({
     autoUpdater.once('update-available', clearTimeoutHandler)
     autoUpdater.once('error', clearTimeoutHandler)
 
-    checkInFlight = true
-    autoUpdater.checkForUpdates()
+    const checkPromise = autoUpdater.checkForUpdates()
+    inflightCheck = checkPromise
+    // settle（含 60s socket 超时兜底）后在 finally 单点复位，避免布尔多处置位漏清
+    checkPromise.finally(() => { if (inflightCheck === checkPromise) inflightCheck = null })
+    checkPromise
       .then(result => {
-        checkInFlight = false
         clearTimeout(timeout)
         console.log('检查更新结果:', result)
         appendUpdateLog(app, `检查更新完成 feed=${feedUrl} result=${JSON.stringify(result)}`)
       })
       .catch(error => {
-        checkInFlight = false
         clearTimeout(timeout)
         if (errorReported) return // 超时已处理，避免重复报错
         // 仅记录 checking 阶段的失败（下载/其它阶段的错误由 on('error') 分流，不纳入检查看门狗）
@@ -339,7 +341,6 @@ export function createUpdateService({
 
     autoUpdater.on('update-available', (info) => {
       updatePhase = 'available'
-      checkInFlight = false
       resetCheckFailures() // 检查成功：无论有无新版，看门狗计数从最近一次成功重新计算
       // 仅当新发现的版本不同于已下载版本时才作废旧的下载状态，
       // 避免同一版本被再次广播 update-available 时误清已下载的安装包。
@@ -377,7 +378,6 @@ export function createUpdateService({
 
     autoUpdater.on('update-not-available', () => {
       updatePhase = 'idle'
-      checkInFlight = false
       resetCheckFailures() // 检查成功（已是最新），看门狗计数清零
       resetDownloadedUpdate()
       clearForceUpdate()
@@ -394,7 +394,6 @@ export function createUpdateService({
       // 检查阶段的错误计入看门狗（下载/安装阶段的 error 不重置也不计入，保持故障窗口连续）
       const wasChecking = updatePhase === 'checking'
       updatePhase = 'idle'
-      checkInFlight = false
       resetDownloadedUpdate()
       if (wasChecking) recordCheckFailure()
       if (errorReported) return // 错误已由 timeout 或 .catch 报告，这里只做状态清理
@@ -432,8 +431,8 @@ export function createUpdateService({
 
   function checkForUpdatesQuietly(source) {
     if (!app.isPackaged) return
-    if (updatePhase === 'checking' || updatePhase === 'downloading' || checkInFlight) {
-      console.log(`[自动更新] ${source}跳过：更新检查已在进行中, currentUpdatePhase: ${updatePhase}, checkInFlight: ${checkInFlight}`)
+    if (updatePhase === 'checking' || updatePhase === 'downloading' || inflightCheck) {
+      console.log(`[自动更新] ${source}跳过：更新检查已在进行中, currentUpdatePhase: ${updatePhase}`)
       return
     }
 
@@ -442,9 +441,10 @@ export function createUpdateService({
     errorReported = false
     currentCheckSource = 'auto'
     applyUpdateFeedUrl()
-    checkInFlight = true
-    autoUpdater.checkForUpdates().catch(error => {
-      checkInFlight = false
+    const checkPromise = autoUpdater.checkForUpdates()
+    inflightCheck = checkPromise
+    checkPromise.finally(() => { if (inflightCheck === checkPromise) inflightCheck = null })
+    checkPromise.catch(error => {
       console.error(`[自动更新] ${source}失败:`, error)
       // 兜底：若 Promise reject 且未触发 error 事件，重置状态避免卡在 checking
       if (updatePhase === 'checking') {

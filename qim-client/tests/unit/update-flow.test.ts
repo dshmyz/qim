@@ -402,8 +402,9 @@ describe('update check watchdog (检查失败看门狗)', () => {
   })
 
   it('refuses concurrent checks while one is still in flight (no cross-check contamination)', () => {
-    expect(updateModule).toContain('let checkInFlight = false')
-    expect(updateModule).toContain('checkInFlight) {')
-    expect(updateModule).toContain('checkInFlight = true')
+    // 持有在途 promise 并在 finally 单点复位，替代布尔多处置位
+    expect(updateModule).toContain('let inflightCheck = null')
+    expect(updateModule).toContain('inflightCheck) {')
+    expect(updateModule).toContain('.finally(() => { if (inflightCheck === checkPromise) inflightCheck = null })')
   })
 })

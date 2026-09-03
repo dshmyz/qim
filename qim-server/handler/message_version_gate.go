@@ -55,10 +55,11 @@ var (
 		return m
 	}()
 	// minSendVersionFieldToConfig 后台字段名 → 配置 key，供 UpdateSystemConfig 映射。
+	// 由上方 map 直接求逆派生，避免两张表手写、加平台时漏改一处而漂移。
 	minSendVersionFieldToConfig = func() map[string]string {
-		m := make(map[string]string, len(clientMinSendVersionPlatforms))
-		for _, p := range clientMinSendVersionPlatforms {
-			m[p.Field] = minSendVersionConfigKey(p.Platform)
+		m := make(map[string]string, len(minSendVersionConfigToField))
+		for k, v := range minSendVersionConfigToField {
+			m[v] = k
 		}
 		return m
 	}()

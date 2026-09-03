@@ -72,8 +72,13 @@ func (s *ToolScopeService) ScopeTools(scope string) []string {
 	s.mu.RLock()
 	cached, ok := s.cache[scope]
 	s.mu.RUnlock()
-	if ok && cached != nil {
-		return append([]string(nil), (*cached)...)
+	// ok=true 即已查过：cached=nil 表示「已查过但未覆盖（用默认）」，直接返回默认，
+	// 不能因 cached==nil 就回源重查（否则未覆盖作用域每次都多一次 DB 查询）。
+	if ok {
+		if cached != nil {
+			return append([]string(nil), (*cached)...)
+		}
+		return append([]string(nil), defaultScopeTools(scope)...)
 	}
 
 	loaded := s.loadFromDB(scope)

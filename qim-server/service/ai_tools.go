@@ -152,7 +152,7 @@ func (t *SendMessageTool) Execute(params map[string]interface{}, ctx *ai.CallerC
 			TargetConversationID: record.TargetConversationID,
 			TargetName:           record.TargetName,
 			// 1000：确认条/卡片可展开，预览过短会让用户在看不到全文的情况下确认发送
-			Preview:              truncatePreview(content, 1000),
+			Preview:              truncateRunes(content, 1000),
 		}
 		return map[string]interface{}{
 			"status":  "pending_confirmation",
@@ -198,15 +198,6 @@ func PendingSendFromResult(result interface{}) *ai.PendingSend {
 		return nil
 	}
 	return &info
-}
-
-// truncatePreview 截断内容预览（按 rune），供确认条与模型结果共用。
-func truncatePreview(s string, max int) string {
-	runes := []rune(s)
-	if len(runes) <= max {
-		return s
-	}
-	return string(runes[:max]) + "…"
 }
 
 // SearchKnowledgeTool 让 AI 搜索知识库/笔记/历史消息。
