@@ -165,7 +165,7 @@ func RedirectShortLink(c *gin.Context) {
 
 	// 检查是否过期
 	if shortLink.ExpiresAt != nil && time.Now().After(*shortLink.ExpiresAt) {
-		c.JSON(http.StatusGone, gin.H{"code": 410, "message": "短链接已过期"})
+		response.Error(c, http.StatusGone, 410, "短链接已过期")
 		return
 	}
 

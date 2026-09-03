@@ -818,19 +818,13 @@ func DeleteFolder(c *gin.Context) {
 
 	childCount, _ := svc.GetFolderChildCount(uid, fid)
 	if childCount > 0 && !recursive {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "文件夹包含子文件夹，请使用递归删除或先移走子文件夹",
-		})
+		response.BadRequest(c, "文件夹包含子文件夹，请使用递归删除或先移走子文件夹")
 		return
 	}
 
 	fileCount, _ := svc.GetFolderFileCount(uid, fid)
 	if fileCount > 0 && !recursive {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "文件夹包含文件，请使用递归删除或先移走文件",
-		})
+		response.BadRequest(c, "文件夹包含文件，请使用递归删除或先移走文件")
 		return
 	}
 

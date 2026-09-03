@@ -205,7 +205,7 @@ func (h *AIHandler) GetCompletion(c *gin.Context) {
 	// 获取AI完成
 	result, err := h.aiService.GetCompletion(ai.TaskTypeChat, req.Messages)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI请求失败: " + err.Error()})
+		response.InternalServerError(c, "AI请求失败：" + ai.UserMessage(err))
 		return
 	}
 
@@ -257,7 +257,7 @@ func (h *AIHandler) DraftReply(c *gin.Context) {
 			}
 			stream, err := h.draftReplyAvatarStream(c, userID, req, target, &avatarCfg)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "生成回复失败: " + err.Error()})
+				response.InternalServerError(c, "生成回复失败: " + err.Error())
 				return
 			}
 			defer stream.Close()
@@ -266,7 +266,7 @@ func (h *AIHandler) DraftReply(c *gin.Context) {
 				msg, recvErr := stream.Recv()
 				if recvErr != nil {
 					if !errors.Is(recvErr, io.EOF) {
-						c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "生成回复失败: " + recvErr.Error()})
+						response.InternalServerError(c, "生成回复失败: " + recvErr.Error())
 						return
 					}
 					break
@@ -292,7 +292,7 @@ func (h *AIHandler) DraftReply(c *gin.Context) {
 
 	result, err := h.aiService.GetCompletion(ai.TaskTypeChat, messages)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "AI请求失败: " + err.Error()})
+		response.InternalServerError(c, "AI请求失败：" + ai.UserMessage(err))
 		return
 	}
 
@@ -488,7 +488,7 @@ func streamSSE(c *gin.Context, pump func(write func(chunk ai.StreamChunk) error)
 	}
 
 	if err := pump(write); err != nil {
-		errStr := "AI请求失败: " + err.Error()
+		errStr := "AI请求失败：" + ai.UserMessage(err)
 		errData, _ := json.Marshal(ai.StreamChunk{Error: &errStr})
 		c.Writer.Write([]byte("data: " + string(errData) + "\n\n"))
 		c.Writer.Flush()

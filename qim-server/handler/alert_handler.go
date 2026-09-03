@@ -8,6 +8,7 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -25,10 +26,7 @@ func (h *AlertHandler) GetAlertRules(c *gin.Context) {
 	var rules []model.AlertRule
 	if err := h.db.Order("created_at desc").Find(&rules).Error; err != nil {
 		logger.WithModule("alert").Error("获取告警规则失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "获取告警规则失败",
-		})
+		response.InternalServerError(c, "获取告警规则失败")
 		return
 	}
 
@@ -51,10 +49,7 @@ func (h *AlertHandler) CreateAlertRule(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误: " + err.Error(),
-		})
+		response.BadRequest(c, "参数错误: " + err.Error())
 		return
 	}
 
@@ -76,10 +71,7 @@ func (h *AlertHandler) CreateAlertRule(c *gin.Context) {
 
 	if err := h.db.Create(&rule).Error; err != nil {
 		logger.WithModule("alert").Error("创建告警规则失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "创建告警规则失败",
-		})
+		response.InternalServerError(c, "创建告警规则失败")
 		return
 	}
 
@@ -94,10 +86,7 @@ func (h *AlertHandler) UpdateAlertRule(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "无效的 ID",
-		})
+		response.BadRequest(c, "无效的 ID")
 		return
 	}
 
@@ -113,19 +102,13 @@ func (h *AlertHandler) UpdateAlertRule(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误: " + err.Error(),
-		})
+		response.BadRequest(c, "参数错误: " + err.Error())
 		return
 	}
 
 	var rule model.AlertRule
 	if err := h.db.First(&rule, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    404,
-			"message": "告警规则不存在",
-		})
+		response.NotFound(c, "告警规则不存在")
 		return
 	}
 
@@ -160,10 +143,7 @@ func (h *AlertHandler) UpdateAlertRule(c *gin.Context) {
 
 	if err := h.db.Model(&rule).Updates(updates).Error; err != nil {
 		logger.WithModule("alert").Error("更新告警规则失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "更新告警规则失败",
-		})
+		response.InternalServerError(c, "更新告警规则失败")
 		return
 	}
 
@@ -180,19 +160,13 @@ func (h *AlertHandler) DeleteAlertRule(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "无效的 ID",
-		})
+		response.BadRequest(c, "无效的 ID")
 		return
 	}
 
 	if err := h.db.Delete(&model.AlertRule{}, id).Error; err != nil {
 		logger.WithModule("alert").Error("删除告警规则失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "删除告警规则失败",
-		})
+		response.InternalServerError(c, "删除告警规则失败")
 		return
 	}
 
@@ -225,10 +199,7 @@ func (h *AlertHandler) GetAlertHistory(c *gin.Context) {
 	offset := (page - 1) * pageSize
 	if err := query.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&history).Error; err != nil {
 		logger.WithModule("alert").Error("获取告警历史失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "获取告警历史失败",
-		})
+		response.InternalServerError(c, "获取告警历史失败")
 		return
 	}
 

@@ -129,7 +129,7 @@ func (s *AIService) HasVisionRoute() bool {
 func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrides ...Override) (string, error) {
 	provider, modelName, err := s.selectProvider(taskType, overrides...)
 	if err != nil {
-		return "", err
+		return "", WrapCompletionError(err)
 	}
 	filteredMessages := s.filterMessages(messages)
 	start := time.Now()
@@ -172,7 +172,10 @@ func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrid
 		s.usageSink(taskType, provider.Name(), modelName, usage, duration)
 	}
 
-	return result, err
+	if err != nil {
+		return "", WrapCompletionError(err)
+	}
+	return result, nil
 }
 
 func (s *AIService) GetCompletionStream(taskType TaskType, messages []Message, onChunk func(chunk StreamChunk) error, overrides ...Override) error {

@@ -209,7 +209,7 @@ func (h *AIHandler) GenerateSummaryMeta(c *gin.Context) {
 			response.Forbidden(c, "无权访问该会话")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取摘要元数据失败: " + err.Error()})
+		response.InternalServerError(c, "获取摘要元数据失败: " + err.Error())
 		return
 	}
 
@@ -244,7 +244,7 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 			response.Forbidden(c, "无权访问该会话")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "摘要生成失败: " + err.Error()})
+		response.InternalServerError(c, "摘要生成失败: " + err.Error())
 		return
 	}
 	if data.MessagesCount == 0 {
@@ -257,7 +257,7 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 	messages := buildSummaryMessages(data)
 	summary, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "摘要生成失败: " + err.Error()})
+		response.InternalServerError(c, "摘要生成失败：" + ai.UserMessage(err))
 		return
 	}
 
@@ -302,7 +302,7 @@ func (h *AIHandler) GenerateSummaryStream(c *gin.Context) {
 			response.Forbidden(c, "无权访问该会话")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "摘要生成失败: " + err.Error()})
+		response.InternalServerError(c, "摘要生成失败: " + err.Error())
 		return
 	}
 	if data.MessagesCount == 0 {

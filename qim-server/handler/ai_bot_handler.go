@@ -9,6 +9,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -36,10 +37,7 @@ func (h *AIBotHandler) GetAIBots(c *gin.Context) {
 	offset := (page - 1) * pageSize
 	if err := query.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&bots).Error; err != nil {
 		logger.WithModule("aibot").Error("获取 AI 机器人失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "获取 AI 机器人失败",
-		})
+		response.InternalServerError(c, "获取 AI 机器人失败")
 		return
 	}
 
@@ -122,10 +120,7 @@ func (h *AIBotHandler) CreateAIBot(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误: " + err.Error(),
-		})
+		response.BadRequest(c, "参数错误: " + err.Error())
 		return
 	}
 
@@ -154,10 +149,7 @@ func (h *AIBotHandler) CreateAIBot(c *gin.Context) {
 
 	if err := h.db.Create(&bot).Error; err != nil {
 		logger.WithModule("aibot").Error("创建 AI 机器人失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "创建 AI 机器人失败",
-		})
+		response.InternalServerError(c, "创建 AI 机器人失败")
 		return
 	}
 
@@ -172,10 +164,7 @@ func (h *AIBotHandler) UpdateAIBot(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "无效的 ID",
-		})
+		response.BadRequest(c, "无效的 ID")
 		return
 	}
 
@@ -191,19 +180,13 @@ func (h *AIBotHandler) UpdateAIBot(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误: " + err.Error(),
-		})
+		response.BadRequest(c, "参数错误: " + err.Error())
 		return
 	}
 
 	var bot model.Bot
 	if err := h.db.Where("id = ? AND type IN (?, ?)", id, model.BotTypeAssistant, model.BotTypeGroupAssistant).First(&bot).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    404,
-			"message": "AI 机器人不存在",
-		})
+		response.NotFound(c, "AI 机器人不存在")
 		return
 	}
 
@@ -250,10 +233,7 @@ func (h *AIBotHandler) UpdateAIBot(c *gin.Context) {
 
 	if err := h.db.Model(&bot).Updates(updates).Error; err != nil {
 		logger.WithModule("aibot").Error("更新 AI 机器人失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "更新 AI 机器人失败",
-		})
+		response.InternalServerError(c, "更新 AI 机器人失败")
 		return
 	}
 
@@ -270,19 +250,13 @@ func (h *AIBotHandler) DeleteAIBot(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "无效的 ID",
-		})
+		response.BadRequest(c, "无效的 ID")
 		return
 	}
 
 	var bot model.Bot
 	if err := h.db.Where("id = ? AND type IN (?, ?)", id, model.BotTypeAssistant, model.BotTypeGroupAssistant).First(&bot).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    404,
-			"message": "AI 机器人不存在",
-		})
+		response.NotFound(c, "AI 机器人不存在")
 		return
 	}
 
@@ -290,10 +264,7 @@ func (h *AIBotHandler) DeleteAIBot(c *gin.Context) {
 	// 否则被删的 bot 仍会残留在群成员列表里，对其发起私聊会因 virtual_user_id 反查失败返回 404「机器人不存在」。
 	if err := di.GlobalContainer.BotService.DeleteBot(uint(id)); err != nil {
 		logger.WithModule("aibot").Error("删除 AI 机器人失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "删除 AI 机器人失败",
-		})
+		response.InternalServerError(c, "删除 AI 机器人失败")
 		return
 	}
 
@@ -307,10 +278,7 @@ func (h *AIBotHandler) ToggleAIBotStatus(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "无效的 ID",
-		})
+		response.BadRequest(c, "无效的 ID")
 		return
 	}
 
@@ -319,19 +287,13 @@ func (h *AIBotHandler) ToggleAIBotStatus(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误: " + err.Error(),
-		})
+		response.BadRequest(c, "参数错误: " + err.Error())
 		return
 	}
 
 	var bot model.Bot
 	if err := h.db.Where("id = ? AND type IN (?, ?)", id, model.BotTypeAssistant, model.BotTypeGroupAssistant).First(&bot).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    404,
-			"message": "AI 机器人不存在",
-		})
+		response.NotFound(c, "AI 机器人不存在")
 		return
 	}
 
@@ -340,10 +302,7 @@ func (h *AIBotHandler) ToggleAIBotStatus(c *gin.Context) {
 
 	if err := h.db.Save(&bot).Error; err != nil {
 		logger.WithModule("aibot").Error("切换 AI 机器人状态失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "切换状态失败",
-		})
+		response.InternalServerError(c, "切换状态失败")
 		return
 	}
 

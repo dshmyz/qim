@@ -49,10 +49,7 @@ func (h *CrashLogHandler) GetCrashLogs(c *gin.Context) {
 	offset := (page - 1) * pageSize
 	if err := query.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&crashLogs).Error; err != nil {
 		logger.WithModule("crash").Error("获取崩溃日志失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "获取崩溃日志失败",
-		})
+		response.InternalServerError(c, "获取崩溃日志失败")
 		return
 	}
 
@@ -71,19 +68,13 @@ func (h *CrashLogHandler) GetCrashDetail(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "无效的 ID",
-		})
+		response.BadRequest(c, "无效的 ID")
 		return
 	}
 
 	var crashLog model.CrashLog
 	if err := h.db.First(&crashLog, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    404,
-			"message": "崩溃日志不存在",
-		})
+		response.NotFound(c, "崩溃日志不存在")
 		return
 	}
 
@@ -105,10 +96,7 @@ func (h *CrashLogHandler) CreateCrashLog(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误: " + err.Error(),
-		})
+		response.BadRequest(c, "参数错误: " + err.Error())
 		return
 	}
 
@@ -133,10 +121,7 @@ func (h *CrashLogHandler) CreateCrashLog(c *gin.Context) {
 
 	if err := h.db.Create(&crashLog).Error; err != nil {
 		logger.WithModule("crash").Error("创建崩溃日志失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "创建崩溃日志失败",
-		})
+		response.InternalServerError(c, "创建崩溃日志失败")
 		return
 	}
 
@@ -249,10 +234,7 @@ func (h *FeedbackHandler) GetFeedbacks(c *gin.Context) {
 	offset := (page - 1) * pageSize
 	if err := query.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&feedbacks).Error; err != nil {
 		logger.WithModule("feedback").Error("获取用户反馈失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "获取用户反馈失败",
-		})
+		response.InternalServerError(c, "获取用户反馈失败")
 		return
 	}
 
@@ -273,19 +255,13 @@ func (h *FeedbackHandler) GetFeedbackDetail(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "无效的 ID",
-		})
+		response.BadRequest(c, "无效的 ID")
 		return
 	}
 
 	var feedback model.UserFeedback
 	if err := h.db.First(&feedback, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    404,
-			"message": "反馈不存在",
-		})
+		response.NotFound(c, "反馈不存在")
 		return
 	}
 
@@ -301,10 +277,7 @@ func (h *FeedbackHandler) UpdateFeedback(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "无效的 ID",
-		})
+		response.BadRequest(c, "无效的 ID")
 		return
 	}
 
@@ -315,19 +288,13 @@ func (h *FeedbackHandler) UpdateFeedback(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误: " + err.Error(),
-		})
+		response.BadRequest(c, "参数错误: " + err.Error())
 		return
 	}
 
 	var feedback model.UserFeedback
 	if err := h.db.First(&feedback, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    404,
-			"message": "反馈不存在",
-		})
+		response.NotFound(c, "反馈不存在")
 		return
 	}
 
@@ -351,10 +318,7 @@ func (h *FeedbackHandler) UpdateFeedback(c *gin.Context) {
 
 	if err := h.db.Model(&feedback).Updates(updates).Error; err != nil {
 		logger.WithModule("feedback").Error("更新用户反馈失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "更新用户反馈失败",
-		})
+		response.InternalServerError(c, "更新用户反馈失败")
 		return
 	}
 
@@ -380,10 +344,7 @@ func (h *FeedbackHandler) CreateFeedback(c *gin.Context) {
 	reqContent := c.PostForm("content")
 
 	if reqType == "" || reqContent == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误: type 和 content 不能为空",
-		})
+		response.BadRequest(c, "参数错误: type 和 content 不能为空")
 		return
 	}
 
@@ -455,10 +416,7 @@ func (h *FeedbackHandler) CreateFeedback(c *gin.Context) {
 
 	if err := h.db.Create(&feedback).Error; err != nil {
 		logger.WithModule("feedback").Error("创建用户反馈失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "创建用户反馈失败",
-		})
+		response.InternalServerError(c, "创建用户反馈失败")
 		return
 	}
 
@@ -473,10 +431,7 @@ func (h *FeedbackHandler) CreateFeedback(c *gin.Context) {
 func (h *FeedbackHandler) GetMyFeedbacks(c *gin.Context) {
 	userIDAny, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"code":    401,
-			"message": "未登录",
-		})
+		response.Unauthorized(c, "未登录")
 		return
 	}
 	userID := userIDAny.(uint)
@@ -493,10 +448,7 @@ func (h *FeedbackHandler) GetMyFeedbacks(c *gin.Context) {
 	offset := (page - 1) * pageSize
 	if err := query.Order("created_at desc").Offset(offset).Limit(pageSize).Find(&feedbacks).Error; err != nil {
 		logger.WithModule("feedback").Error("获取我的反馈失败", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "获取反馈列表失败",
-		})
+		response.InternalServerError(c, "获取反馈列表失败")
 		return
 	}
 

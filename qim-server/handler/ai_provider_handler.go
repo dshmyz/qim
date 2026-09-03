@@ -45,7 +45,7 @@ func GetAIProviders(c *gin.Context) {
 
 	var providers []model.AIProvider
 	if err := db.Order("priority ASC").Find(&providers).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": -1, "message": "查询失败"})
+		response.InternalServerError(c, "查询失败")
 		return
 	}
 

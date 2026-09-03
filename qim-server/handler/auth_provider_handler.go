@@ -9,6 +9,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/auth/provider"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -91,11 +92,7 @@ func NewAuthProviderHandler() *AuthProviderHandler {
 func (h *AuthProviderHandler) GetProviders(c *gin.Context) {
 	var providers []model.AuthProvider
 	if err := h.db.Order("priority ASC").Find(&providers).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    1,
-			"message": "查询认证提供者失败",
-			"data":    nil,
-		})
+		response.InternalServerError(c, "查询认证提供者失败")
 		return
 	}
 	// 脱敏：Config 中含 LDAP bind_password / OAuth client_secret 等密钥，不可回显
@@ -113,20 +110,12 @@ func (h *AuthProviderHandler) GetProviders(c *gin.Context) {
 func (h *AuthProviderHandler) CreateProvider(c *gin.Context) {
 	var provider model.AuthProvider
 	if err := c.ShouldBindJSON(&provider); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    1,
-			"message": err.Error(),
-			"data":    nil,
-		})
+		response.BadRequest(c, err.Error())
 		return
 	}
 
 	if !model.ValidAuthProviderProtocols[provider.Protocol] {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    1,
-			"message": "不支持的协议类型，支持: ldap, oauth, cas",
-			"data":    nil,
-		})
+		response.BadRequest(c, "不支持的协议类型，支持: ldap, oauth, cas")
 		return
 	}
 
@@ -140,11 +129,7 @@ func (h *AuthProviderHandler) CreateProvider(c *gin.Context) {
 	}
 
 	if err := h.db.Create(&provider).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    1,
-			"message": "创建认证提供者失败",
-			"data":    nil,
-		})
+		response.InternalServerError(c, "创建认证提供者失败")
 		return
 	}
 
@@ -161,40 +146,24 @@ func (h *AuthProviderHandler) CreateProvider(c *gin.Context) {
 func (h *AuthProviderHandler) UpdateProvider(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    1,
-			"message": "invalid id",
-			"data":    nil,
-		})
+		response.BadRequest(c, "invalid id")
 		return
 	}
 
 	var provider model.AuthProvider
 	if err := h.db.First(&provider, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    1,
-			"message": "provider not found",
-			"data":    nil,
-		})
+		response.NotFound(c, "provider not found")
 		return
 	}
 
 	var updateData model.AuthProvider
 	if err := c.ShouldBindJSON(&updateData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    1,
-			"message": "参数错误",
-			"data":    nil,
-		})
+		response.BadRequest(c, "参数错误")
 		return
 	}
 
 	if updateData.Protocol != "" && !model.ValidAuthProviderProtocols[updateData.Protocol] {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    1,
-			"message": "不支持的协议类型，支持: ldap, oauth, cas",
-			"data":    nil,
-		})
+		response.BadRequest(c, "不支持的协议类型，支持: ldap, oauth, cas")
 		return
 	}
 
@@ -203,11 +172,7 @@ func (h *AuthProviderHandler) UpdateProvider(c *gin.Context) {
 	updateData.Config = preserveSecretFields(provider.Config, updateData.Config)
 
 	if err := h.db.Model(&provider).Updates(updateData).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    1,
-			"message": "更新认证提供者失败",
-			"data":    nil,
-		})
+		response.InternalServerError(c, "更新认证提供者失败")
 		return
 	}
 
@@ -226,20 +191,12 @@ func (h *AuthProviderHandler) UpdateProvider(c *gin.Context) {
 func (h *AuthProviderHandler) DeleteProvider(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    1,
-			"message": "invalid id",
-			"data":    nil,
-		})
+		response.BadRequest(c, "invalid id")
 		return
 	}
 
 	if err := h.db.Delete(&model.AuthProvider{}, id).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    1,
-			"message": "删除认证提供者失败",
-			"data":    nil,
-		})
+		response.InternalServerError(c, "删除认证提供者失败")
 		return
 	}
 
@@ -256,21 +213,13 @@ func (h *AuthProviderHandler) DeleteProvider(c *gin.Context) {
 func (h *AuthProviderHandler) TestProvider(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    1,
-			"message": "invalid id",
-			"data":    nil,
-		})
+		response.BadRequest(c, "invalid id")
 		return
 	}
 
 	var authProvider model.AuthProvider
 	if err := h.db.First(&authProvider, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    1,
-			"message": "provider not found",
-			"data":    nil,
-		})
+		response.NotFound(c, "provider not found")
 		return
 	}
 
@@ -286,11 +235,7 @@ func (h *AuthProviderHandler) TestProvider(c *gin.Context) {
 		case model.AuthProviderProtocolLDAP:
 			ldapProvider, err := provider.NewLDAPProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"code":    1,
-					"message": "创建LDAP提供者失败: " + err.Error(),
-					"data":    nil,
-				})
+				response.InternalServerError(c, "创建LDAP提供者失败: " + err.Error())
 				return
 			}
 
@@ -321,11 +266,7 @@ func (h *AuthProviderHandler) TestProvider(c *gin.Context) {
 		case model.AuthProviderProtocolOAuth:
 			oauthProvider, err := provider.NewOAuthProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"code":    1,
-					"message": "创建OAuth提供者失败: " + err.Error(),
-					"data":    nil,
-				})
+				response.InternalServerError(c, "创建OAuth提供者失败: " + err.Error())
 				return
 			}
 
@@ -368,11 +309,7 @@ func (h *AuthProviderHandler) TestProvider(c *gin.Context) {
 		case model.AuthProviderProtocolCAS:
 			casProvider, err := provider.NewCASProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"code":    1,
-					"message": "创建CAS提供者失败: " + err.Error(),
-					"data":    nil,
-				})
+				response.InternalServerError(c, "创建CAS提供者失败: " + err.Error())
 				return
 			}
 
@@ -421,11 +358,7 @@ func (h *AuthProviderHandler) GetProviderLoginURL(c *gin.Context) {
 
 	var authProvider model.AuthProvider
 	if err := h.db.Where("name = ? AND enabled = ?", providerName, true).First(&authProvider).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    1,
-			"message": "认证提供者不存在或未启用",
-			"data":    nil,
-		})
+		response.NotFound(c, "认证提供者不存在或未启用")
 		return
 	}
 
@@ -433,22 +366,14 @@ func (h *AuthProviderHandler) GetProviderLoginURL(c *gin.Context) {
 	case model.AuthProviderProtocolOAuth:
 		oauthProvider, err := provider.NewOAuthProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"code":    1,
-				"message": "创建OAuth提供者失败: " + err.Error(),
-				"data":    nil,
-			})
+			response.InternalServerError(c, "创建OAuth提供者失败: " + err.Error())
 			return
 		}
 
 		// 接收前端生成的 state 并存入 store，回调时校验（防 OAuth 登录 CSRF）
 		state := c.Query("state")
 		if state == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"code":    1,
-				"message": "缺少 state 参数",
-				"data":    nil,
-			})
+			response.BadRequest(c, "缺少 state 参数")
 			return
 		}
 		storeOAuthState(state, authProvider.Name)
@@ -467,11 +392,7 @@ func (h *AuthProviderHandler) GetProviderLoginURL(c *gin.Context) {
 	case model.AuthProviderProtocolCAS:
 		casProvider, err := provider.NewCASProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"code":    1,
-				"message": "创建CAS提供者失败: " + err.Error(),
-				"data":    nil,
-			})
+			response.InternalServerError(c, "创建CAS提供者失败: " + err.Error())
 			return
 		}
 
@@ -488,10 +409,6 @@ func (h *AuthProviderHandler) GetProviderLoginURL(c *gin.Context) {
 		})
 
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    1,
-			"message": "该认证类型不支持获取登录URL",
-			"data":    nil,
-		})
+		response.BadRequest(c, "该认证类型不支持获取登录URL")
 	}
 }

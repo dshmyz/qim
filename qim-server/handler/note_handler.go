@@ -69,7 +69,7 @@ func AnalyzeNote(c *gin.Context) {
 
 	result, err := aiSvc.GetCompletion(ai.TaskTypeAnalysis, messages)
 	if err != nil {
-		response.InternalServerError(c, "AI 分析失败")
+		response.InternalServerError(c, "AI 分析失败："+ai.UserMessage(err))
 		return
 	}
 
@@ -162,7 +162,8 @@ func FormatNote(c *gin.Context) {
 
 	result, err := aiSvc.GetCompletion(ai.TaskTypeAnalysis, messages)
 	if err != nil {
-		response.InternalServerError(c, "AI 格式化失败")
+		// 按错误类型给出可操作文案（网关未起/超时/鉴权/限流…），而非笼统的「请稍后重试」
+		response.InternalServerError(c, "AI 格式化失败："+ai.UserMessage(err))
 		return
 	}
 

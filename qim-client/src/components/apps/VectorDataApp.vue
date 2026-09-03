@@ -107,7 +107,7 @@ async function fetchCollections() {
   try {
     const { serverUrl, headers } = getApi()
     const res = await axios.get(`${serverUrl}/api/v1/admin/vector/collections`, { headers })
-    if (res.data.code === 200) {
+    if (res.data.code === 0) {
       collections.value = res.data.data || []
     } else {
       error.value = res.data.message || '获取失败'
@@ -126,7 +126,7 @@ async function selectCollection(name: string) {
   try {
     const { serverUrl, headers } = getApi()
     const res = await axios.get(`${serverUrl}/api/v1/admin/vector/collections/${name}`, { headers })
-    if (res.data.code === 200) {
+    if (res.data.code === 0) {
       entries.value = res.data.data?.entries || []
     } else {
       error.value = res.data.message || '获取失败'

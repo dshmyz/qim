@@ -171,12 +171,13 @@ export function useMainMessageSending(
         onMessageSent?.()
       } else {
         let errorMessage = '消息发送失败'
-        if (response.code === 401) {
+        // 后端 response.* 辅助统一使用 BusinessError 码（1002=未授权 / 1003=无权限 / 1004=不存在）
+        if (response.code === 1002) {
           errorMessage = '登录已过期，请重新登录'
           sessionExpired.value = true
-        } else if (response.code === 403) {
+        } else if (response.code === 1003) {
           errorMessage = '没有发送消息的权限'
-        } else if (response.code === 404) {
+        } else if (response.code === 1004) {
           errorMessage = '会话不存在或已被解散'
         } else if (response.message) {
           errorMessage = response.message

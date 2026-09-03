@@ -251,7 +251,7 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 	var req CreateAvatarConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.WithModule("AvatarHandler").Error("Create avatar config bind error", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误: " + err.Error()})
+		response.BadRequest(c, "参数错误: " + err.Error())
 		return
 	}
 

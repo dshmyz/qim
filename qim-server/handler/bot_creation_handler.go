@@ -147,10 +147,7 @@ func CreateBot(c *gin.Context) {
 	var count int64
 	db.Model(&model.Bot{}).Where("creator_id = ? AND type IN ?", userID, []string{model.BotTypeCustom, model.BotTypeAssistant}).Count(&count)
 	if count >= getMaxBotsPerUser(db) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "已达到创建上限，请联系管理员",
-		})
+		response.BadRequest(c, "已达到创建上限，请联系管理员")
 		return
 	}
 
