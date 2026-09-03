@@ -75,7 +75,7 @@ func TestUserService_GetUser(t *testing.T) {
 
 	_, err = svc.GetUser(99999)
 	assert.Error(t, err)
-	assert.Equal(t, ErrUserNotFound, err)
+	assert.ErrorIs(t, err, ErrUserNotFound)
 }
 
 func TestUserService_GetUserByUsername(t *testing.T) {
@@ -346,7 +346,7 @@ func TestConversationService_GetConversationWithAccessCheck(t *testing.T) {
 
 	_, err = svc.GetConversationWithAccessCheck(conv.ID, user3.ID)
 	assert.Error(t, err)
-	assert.Equal(t, ErrConversationForbidden, err)
+	assert.ErrorIs(t, err, ErrConversationForbidden)
 }
 
 func TestConversationService_SetConversationMute(t *testing.T) {

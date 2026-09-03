@@ -9,15 +9,18 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/cache"
 	"github.com/dshmyz/qim/qim-server/model"
+	pkgErr "github.com/dshmyz/qim/qim-server/pkg/errors"
 	"github.com/dshmyz/qim/qim-server/repository"
 	"github.com/dshmyz/qim/qim-server/ws"
 
 	"gorm.io/gorm"
 )
 
-var ErrConversationNotFound = errors.New("conversation not found")
-var ErrConversationForbidden = errors.New("access forbidden")
-var ErrNotConversationOwner = errors.New("only owner can perform this action")
+// 会话域业务错误（带 HTTP 状态 + 业务码）。当前 handler 内联查库不消费这些哨兵，
+// 升级为 BusinessError 仅为与全局错误模型对齐；未来 handler 迁移 ErrorFrom 时可直接下发。
+var ErrConversationNotFound = pkgErr.NotFoundError("会话不存在")
+var ErrConversationForbidden = pkgErr.ForbiddenError("无权限访问")
+var ErrNotConversationOwner = pkgErr.ForbiddenError("只有群主可以执行此操作")
 
 type ConversationService struct {
 	db        *gorm.DB

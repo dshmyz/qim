@@ -3,19 +3,19 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/cache"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/errors"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/repository"
 
 	"gorm.io/gorm"
 )
 
-var ErrUserNotFound = errors.New("user not found")
+var ErrUserNotFound = errors.NotFoundError("用户不存在")
 
 type UserService struct {
 	db       *gorm.DB
