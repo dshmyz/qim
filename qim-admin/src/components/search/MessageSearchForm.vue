@@ -12,25 +12,11 @@
       </el-form-item>
 
       <el-form-item label="发送者">
-        <el-select
-          v-model="form.senderId"
-          placeholder="输入姓名/用户名搜索"
-          clearable
-          filterable
-          remote
-          :remote-method="remoteSearchUsers"
-          :loading="userLoading"
-          style="width: 220px"
-          @clear="loadInitialUsers"
-          @change="handleSenderChange"
-        >
-          <el-option
-            v-for="u in senderOptions"
-            :key="u.id"
-            :label="u.name"
-            :value="u.id"
-          />
-        </el-select>
+        <UserRemoteSelect v-model="form.senderId" />
+      </el-form-item>
+
+      <el-form-item label="接收者">
+        <UserRemoteSelect v-model="form.receiverId" placeholder="仅单聊（对端）" />
       </el-form-item>
 
       <el-form-item label="消息类型">
@@ -93,9 +79,9 @@ export const messageTypeOptions: Array<{ value: string; label: string }> = [
 </script>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
-import { getUsers } from '@/api/users'
+import { reactive, onMounted } from 'vue'
 import type { MessageSearchParams } from '@/types/message'
+import UserRemoteSelect from './UserRemoteSelect.vue'
 
 // 默认时间范围：最近 7 天（初始与重置都回落到该范围，避免每次手选）
 const DEFAULT_DAYS = 7
@@ -109,15 +95,11 @@ const emit = defineEmits<Emits>()
 const form = reactive({
   keyword: '',
   senderId: undefined as number | undefined,
+  receiverId: undefined as number | undefined,
   messageType: '',
   conversationType: '',
   timeRange: [] as Date[],
 })
-
-const senderOptions = ref<Array<{ id: number; name: string }>>([])
-const userLoading = ref(false)
-const selectedSenderName = ref('')
-let userSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 function defaultTimeRange(): Date[] {
   const end = new Date()
@@ -125,54 +107,11 @@ function defaultTimeRange(): Date[] {
   return [start, end]
 }
 
-function formatUserOptions(list: Array<{ id: number; nickname?: string; username: string }>) {
-  return list.map((u) => ({ id: u.id, name: u.nickname || u.username }))
-}
-
-async function loadInitialUsers() {
-  try {
-    const { data } = await getUsers({ page: 1, pageSize: 20 })
-    senderOptions.value = formatUserOptions(data.data.list ?? [])
-  } catch {
-    senderOptions.value = []
-  }
-}
-
-// 选中项记名：远程列表刷新后补回，保证回显名称而不是裸 id
-function handleSenderChange(id: number | undefined) {
-  if (id == null) {
-    selectedSenderName.value = ''
-    return
-  }
-  const hit = senderOptions.value.find((u) => u.id === id)
-  if (hit) selectedSenderName.value = hit.name
-}
-
-function ensureSelectedOption() {
-  if (form.senderId == null || !selectedSenderName.value) return
-  if (!senderOptions.value.some((u) => u.id === form.senderId)) {
-    senderOptions.value.unshift({ id: form.senderId, name: selectedSenderName.value })
-  }
-}
-
-function remoteSearchUsers(keyword: string) {
-  if (userSearchTimer) clearTimeout(userSearchTimer)
-  userSearchTimer = setTimeout(async () => {
-    userLoading.value = true
-    try {
-      const { data } = await getUsers({ page: 1, pageSize: 20, keyword })
-      senderOptions.value = formatUserOptions(data.data.list ?? [])
-      ensureSelectedOption()
-    } finally {
-      userLoading.value = false
-    }
-  }, 300)
-}
-
 function handleSearch() {
   const params: Partial<MessageSearchParams> = {
     keyword: form.keyword || undefined,
     senderId: form.senderId,
+    receiverId: form.receiverId,
     messageType: form.messageType || undefined,
     conversationType: (form.conversationType as MessageSearchParams['conversationType']) || undefined,
     startTime: form.timeRange[0]?.toISOString(),
@@ -184,6 +123,7 @@ function handleSearch() {
 function handleReset() {
   form.keyword = ''
   form.senderId = undefined
+  form.receiverId = undefined
   form.messageType = ''
   form.conversationType = ''
   form.timeRange = defaultTimeRange()
@@ -192,7 +132,6 @@ function handleReset() {
 
 onMounted(() => {
   form.timeRange = defaultTimeRange()
-  loadInitialUsers()
 })
 </script>
 

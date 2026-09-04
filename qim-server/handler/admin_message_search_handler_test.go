@@ -202,3 +202,52 @@ func TestAdminSearchMessagesFillsGroupNameForMultipleGroupMessages(t *testing.T)
 		_ = groupNameByID
 	}
 }
+
+func TestAdminSearchMessagesReceiverFilter(t *testing.T) {
+	r, db := setupAdminMessageSearchRouter(t)
+	alice := createAdminConversationUser(t, db, "alice", "张三")
+	bob := createAdminConversationUser(t, db, "bob", "李四")
+	now := time.Now().Truncate(time.Second)
+
+	singleConv := &model.Conversation{Type: "single"}
+	require.NoError(t, db.Create(singleConv).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: singleConv.ID, UserID: alice.ID, Role: "member"}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: singleConv.ID, UserID: bob.ID, Role: "member"}).Error)
+	// alice → bob（bob 是接收者）
+	msgToBob := &model.Message{ConversationID: singleConv.ID, SenderID: alice.ID, Type: "text", Content: "发给 bob 的消息", CreatedAt: now}
+	require.NoError(t, db.Create(msgToBob).Error)
+	// bob → alice（alice 是接收者，bob 不是）
+	require.NoError(t, db.Create(&model.Message{ConversationID: singleConv.ID, SenderID: bob.ID, Type: "text", Content: "bob 发出", CreatedAt: now}).Error)
+
+	// 群聊消息：接收者过滤不应命中（群无单一接收者）
+	groupConv := &model.Conversation{Type: "group"}
+	require.NoError(t, db.Create(groupConv).Error)
+	require.NoError(t, db.Create(&model.Group{ConversationID: groupConv.ID, GroupType: "group", Name: "群", CreatorID: alice.ID}).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: groupConv.ID, UserID: bob.ID, Role: "member"}).Error)
+	require.NoError(t, db.Create(&model.Message{ConversationID: groupConv.ID, SenderID: alice.ID, Type: "text", Content: "群消息", CreatedAt: now}).Error)
+
+	query := url.Values{}
+	query.Set("receiverId", fmt.Sprint(bob.ID))
+	query.Set("page", "1")
+	query.Set("pageSize", "10")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/messages/search?"+query.Encode(), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			List []struct {
+				ID      uint   `json:"id"`
+				Content string `json:"content"`
+			} `json:"list"`
+			Total int64 `json:"total"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, int64(1), resp.Data.Total, "只应命中 alice→bob 的单聊消息，排除 bob 发出的与群消息")
+	require.Len(t, resp.Data.List, 1)
+	assert.Equal(t, msgToBob.ID, resp.Data.List[0].ID)
+	assert.Equal(t, "发给 bob 的消息", resp.Data.List[0].Content)
+}

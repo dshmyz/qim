@@ -569,6 +569,16 @@ func AdminSearchMessages(c *gin.Context) {
 		senderID = uint(id)
 	}
 
+	var receiverID uint
+	if receiverIDStr := c.Query("receiverId"); receiverIDStr != "" {
+		id, err := strconv.ParseUint(receiverIDStr, 10, 32)
+		if err != nil {
+			response.BadRequest(c, "无效的接收者ID")
+			return
+		}
+		receiverID = uint(id)
+	}
+
 	parseTimeQuery := func(key string) (*time.Time, bool) {
 		value := c.Query(key)
 		if value == "" {
@@ -597,6 +607,7 @@ func AdminSearchMessages(c *gin.Context) {
 		PageSize:         pageSize,
 		Keyword:          c.Query("keyword"),
 		SenderID:         senderID,
+		ReceiverID:       receiverID,
 		MessageType:      c.Query("messageType"),
 		ConversationType: c.Query("conversationType"),
 		StartTime:        startTime,

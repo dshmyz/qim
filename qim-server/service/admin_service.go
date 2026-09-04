@@ -53,6 +53,7 @@ type AdminMessageSearchQuery struct {
 	PageSize         int
 	Keyword          string
 	SenderID         uint
+	ReceiverID       uint
 	MessageType      string
 	ConversationType string
 	StartTime        *time.Time
@@ -204,6 +205,16 @@ func (s *AdminService) SearchMessages(query AdminMessageSearchQuery) ([]AdminMes
 	}
 	if query.SenderID > 0 {
 		dbQuery = dbQuery.Where("messages.sender_id = ?", query.SenderID)
+	}
+	if query.ReceiverID > 0 {
+		// 接收者语义：单聊会话中"不是发送者"的另一方。Message 表无 receiver_id 列，
+		// 接收者是展示时从单聊对端推导的，故按"该用户是单聊成员且非发送者"过滤；
+		// 群聊无单一接收者（用群组列），不适用此过滤。
+		dbQuery = dbQuery.Where(`c.type = 'single' AND EXISTS (
+			SELECT 1 FROM conversation_members cm2
+			WHERE cm2.conversation_id = messages.conversation_id
+			  AND cm2.user_id = ? AND cm2.user_id != messages.sender_id
+		)`, query.ReceiverID)
 	}
 	if query.MessageType != "" {
 		dbQuery = dbQuery.Where("messages.type = ?", query.MessageType)
