@@ -7,7 +7,7 @@
         </div>
       </template>
 
-      <MessageSearchForm :users="users" @search="handleSearch" />
+      <MessageSearchForm @search="handleSearch" />
 
       <el-table
         v-loading="messageStore.loading"
@@ -19,17 +19,16 @@
         <el-table-column prop="senderName" label="发送者" width="120" />
         <el-table-column prop="receiverName" label="接收者" width="120" />
         <el-table-column prop="groupName" label="群组" width="120" />
-        <el-table-column prop="channelName" label="频道" width="120" />
-        <el-table-column prop="messageType" label="类型" width="80">
+        <el-table-column prop="messageType" label="类型" width="100">
           <template #default="{ row }">
             <el-tag :type="getMessageTypeTag(row.messageType)">
               {{ getMessageTypeLabel(row.messageType) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="内容" min-width="200" show-overflow-tooltip>
+        <el-table-column label="内容" min-width="260">
           <template #default="{ row }">
-            {{ formatMessageContent(row.content) }}
+            <MessageContentCell :type="row.messageType" :content="row.content" />
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="时间" width="180">
@@ -37,7 +36,7 @@
             {{ formatTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="90" fixed="right">
           <template #default="{ row }">
             <el-button class="detail-action-button" size="small" type="primary" @click="handleViewDetail(row)">
               详情
@@ -74,14 +73,11 @@
         <el-descriptions-item label="群组">
           {{ currentMessage?.groupName || '-' }}
         </el-descriptions-item>
-        <el-descriptions-item label="频道">
-          {{ currentMessage?.channelName || '-' }}
-        </el-descriptions-item>
         <el-descriptions-item label="发送时间" :span="2">
           {{ formatTime(currentMessage?.createdAt) }}
         </el-descriptions-item>
         <el-descriptions-item label="消息内容" :span="2">
-          {{ formatMessageContent(currentMessage?.content) }}
+          <MessageContentCell :type="currentMessage?.messageType" :content="currentMessage?.content" />
         </el-descriptions-item>
       </el-descriptions>
     </el-dialog>
@@ -91,13 +87,11 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useMessageStore } from '@/stores/message'
-import MessageSearchForm from '@/components/search/MessageSearchForm.vue'
-import { getUsers } from '@/api/users'
+import MessageSearchForm, { messageTypeOptions } from '@/components/search/MessageSearchForm.vue'
+import MessageContentCell from '@/components/search/MessageContentCell.vue'
 import type { Message, MessageSearchParams } from '@/types/message'
-import { decodeMentionTokens } from '@/utils/mentions'
 
 const messageStore = useMessageStore()
-const users = ref<Array<{ id: number; name: string }>>([])
 const detailVisible = ref(false)
 const currentMessage = ref<Message | null>(null)
 
@@ -109,21 +103,8 @@ const pagination = reactive({
 const searchParams = ref<Partial<MessageSearchParams>>({})
 
 onMounted(() => {
-  loadUsers()
   handleSearch({})
 })
-
-async function loadUsers() {
-  try {
-    const { data } = await getUsers({ page: 1, pageSize: 100 })
-    users.value = (data.data.list ?? []).map((u) => ({
-      id: u.id,
-      name: u.nickname || u.username,
-    }))
-  } catch {
-    users.value = []
-  }
-}
 
 async function handleSearch(params: Partial<MessageSearchParams>) {
   searchParams.value = params
@@ -152,33 +133,27 @@ function handleViewDetail(message: Message) {
 function getMessageTypeTag(type: string) {
   const map: Record<string, string> = {
     text: '',
+    markdown: '',
     image: 'success',
     file: 'warning',
     audio: 'info',
     video: 'danger',
+    card: 'warning',
+    share: 'info',
+    news: 'info',
+    miniApp: 'info',
+    system: 'info',
   }
   return map[type] || ''
 }
 
 function getMessageTypeLabel(type?: string) {
-  const map: Record<string, string> = {
-    text: '文本',
-    image: '图片',
-    file: '文件',
-    audio: '音频',
-    video: '视频',
-  }
-  return map[type || ''] || type
+  return messageTypeOptions.find((t) => t.value === type)?.label || type || '-'
 }
 
 function formatTime(time?: string) {
   if (!time) return '-'
   return new Date(time).toLocaleString('zh-CN')
-}
-
-function formatMessageContent(content?: string) {
-  if (!content) return ''
-  return decodeMentionTokens(content)
 }
 </script>
 

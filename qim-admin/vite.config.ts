@@ -27,6 +27,16 @@ export default defineConfig(({ mode }) => {
           target: 'http://localhost:8080',
           changeOrigin: true,
         },
+        // 消息内容里的图片/文件 URL（/static 与旧版 /uploads 前缀）在开发时透传后端，
+        // 生产环境 admin 与后端同源天然可用。
+        '/static': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+        },
+        '/uploads': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+        },
       },
     },
     base: '/admin/',
