@@ -9,7 +9,7 @@ describe('admin module configuration', () => {
     expect(routePaths).toContain('users')
     expect(routePaths).toContain('ai-config')
     expect(routePaths).toContain('server-monitor')
-    expect(routePaths).toHaveLength(31)
+    expect(routePaths).toHaveLength(33)
   })
 
   it('uses clearer top-level groups for the sidebar', () => {

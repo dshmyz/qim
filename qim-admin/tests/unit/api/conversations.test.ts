@@ -31,7 +31,7 @@ describe('conversations API', () => {
 
       const response = await getConversations({ page: 1, pageSize: 10 })
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/conversations', method: 'get', params: { page: 1, pageSize: 10 } })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/conversations', method: 'get', params: { page: 1, pageSize: 10 } })
       expect(response.data.data.list).toHaveLength(1)
     })
 
@@ -69,7 +69,7 @@ describe('conversations API', () => {
 
       const response = await deleteConversation(1)
 
-      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/conversations/1', method: 'delete' })
+      expect(mockRequest).toHaveBeenCalledWith({ url: '/v1/admin/conversations/1', method: 'delete' })
       expect(response.data.code).toBe(0)
     })
   })
