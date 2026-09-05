@@ -50,7 +50,7 @@ func evaluateRemember(aiService *ai.AIService, taskPrompt string, message string
 内容：` + message
 
 	aiMessages := []ai.Message{{Role: "user", Content: prompt}}
-	result, err := aiService.GetCompletion(ai.TaskTypeAnalysis, aiMessages)
+	result, err := aiService.GetCompletion(ai.TaskTypeDigest, aiMessages)
 	if err != nil {
 		return verdict, err
 	}

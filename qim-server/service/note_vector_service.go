@@ -179,7 +179,7 @@ func extractNoteEntities(aiService *ai.AIService, content string) []string {
 ` + content
 
 	msgs := []ai.Message{{Role: "user", Content: prompt}}
-	out, err := aiService.GetCompletion(ai.TaskTypeAnalysis, msgs)
+	out, err := aiService.GetCompletion(ai.TaskTypeDigest, msgs)
 	if err != nil {
 		return nil
 	}

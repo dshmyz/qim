@@ -255,7 +255,7 @@ func (h *AIHandler) GenerateSummary(c *gin.Context) {
 	}
 
 	messages := buildSummaryMessages(data)
-	summary, err := h.aiService.GetCompletion(ai.TaskTypeAnalysis, messages)
+	summary, err := h.aiService.GetCompletion(ai.TaskTypeDigest, messages)
 	if err != nil {
 		response.InternalServerError(c, "摘要生成失败：" + ai.UserMessage(err))
 		return
@@ -315,7 +315,7 @@ func (h *AIHandler) GenerateSummaryStream(c *gin.Context) {
 	messages := buildSummaryMessages(data)
 
 	streamSSE(c, func(write func(ai.StreamChunk) error) error {
-		return h.aiService.GetCompletionStream(ai.TaskTypeAnalysis, messages, func(chunk ai.StreamChunk) error {
+		return h.aiService.GetCompletionStream(ai.TaskTypeDigest, messages, func(chunk ai.StreamChunk) error {
 			if chunk.Content != "" {
 				return write(ai.StreamChunk{Content: chunk.Content})
 			}

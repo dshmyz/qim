@@ -45,7 +45,7 @@ func inferMemoryMergeKind(aiService *ai.AIService, newMemo, oldMemo string) (Mem
 	if aiService == nil {
 		return MemoryMergeNew, nil
 	}
-	out, err := aiService.GetCompletion(ai.TaskTypeAnalysis, []ai.Message{{Role: "user", Content: memoryMergePrompt(newMemo, oldMemo)}})
+	out, err := aiService.GetCompletion(ai.TaskTypeDigest, []ai.Message{{Role: "user", Content: memoryMergePrompt(newMemo, oldMemo)}})
 	if err != nil {
 		return MemoryMergeNew, err
 	}

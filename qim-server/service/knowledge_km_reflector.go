@@ -76,7 +76,7 @@ func reflectStructure(aiService *ai.AIService, message string, memories []string
 		return MemoryReflection{}, false
 	}
 	aiMessages := []ai.Message{{Role: "user", Content: reflectionExtractPrompt(message, memories, knowledge, context)}}
-	out, err := aiService.GetCompletion(ai.TaskTypeAnalysis, aiMessages)
+	out, err := aiService.GetCompletion(ai.TaskTypeDigest, aiMessages)
 	if err != nil {
 		return MemoryReflection{}, false
 	}
