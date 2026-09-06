@@ -11,6 +11,9 @@ func TestIsComplexQuery(t *testing.T) {
 		{"空串", "", false},
 		{"简单问候", "你好", false},
 		{"短问题", "几点下班", false},
+		{"短口语含关键词不误路由", "如何下载", false},
+		{"口语为什么不带问号不误路由", "为什么今天这么累", false},
+		{"口语建议不带问号不误路由", "有什么建议", false},
 		{"长问题触发", "我需要根据过去三个季度的销售数据、团队产能和外部市场环境，制定一个能落地的明年增长规划，并给出分阶段的执行顺序和风险预案，同时评估每个阶段的投入产出比", true},
 		{"推理词", "为什么数据同步会失败？", true},
 		{"多问句", "这个接口为什么慢？是网络还是代码问题？", true},
@@ -30,7 +33,7 @@ func TestIsComplexQuery(t *testing.T) {
 func TestChatTaskType_UsesLastUserMessage(t *testing.T) {
 	svc := &AIService{}
 	// 最后一条 user 消息复杂 → digest
-	if got := svc.ChatTaskType([]Message{{Role: "system", Content: "x"}, {Role: "user", Content: "为什么这么慢"}}); got != TaskTypeDigest {
+	if got := svc.ChatTaskType([]Message{{Role: "system", Content: "x"}, {Role: "user", Content: "为什么数据同步会失败？"}}); got != TaskTypeDigest {
 		t.Errorf("复杂问题应路由 digest, got %s", got)
 	}
 	// 简单 → chat

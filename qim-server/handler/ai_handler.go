@@ -464,7 +464,7 @@ func (h *AIHandler) DraftReplyStream(c *gin.Context) {
 		return
 	}
 
-	h.streamCompletion(c, messages)
+	h.streamCompletion(c, messages, ai.TaskTypeChat)
 }
 
 // streamCompletion 将一组消息以 SSE 流式推给前端（GetCompletionStream / DraftReplyStream 共用）
@@ -503,9 +503,9 @@ func streamSSE(c *gin.Context, pump func(write func(chunk ai.StreamChunk) error)
 }
 
 // streamCompletion 流式推送一组 messages（经 aiService.GetCompletionStream，按复杂度分级路由）
-func (h *AIHandler) streamCompletion(c *gin.Context, messages []ai.Message) {
+func (h *AIHandler) streamCompletion(c *gin.Context, messages []ai.Message, taskType ai.TaskType) {
 	streamSSE(c, func(write func(ai.StreamChunk) error) error {
-		return h.aiService.GetCompletionStream(h.aiService.ChatTaskType(messages), messages, func(chunk ai.StreamChunk) error {
+		return h.aiService.GetCompletionStream(taskType, messages, func(chunk ai.StreamChunk) error {
 			if chunk.Content != "" {
 				return write(ai.StreamChunk{Content: chunk.Content})
 			}
@@ -945,7 +945,7 @@ func (h *AIHandler) GetCompletionStream(c *gin.Context) {
 		return
 	}
 
-	h.streamCompletion(c, req.Messages)
+	h.streamCompletion(c, req.Messages, h.aiService.ChatTaskType(req.Messages))
 }
 
 // ListTools 列出所有 AI 工具
