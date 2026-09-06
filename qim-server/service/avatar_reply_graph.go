@@ -281,6 +281,17 @@ func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, 
 			return "", input.Sources, fmt.Errorf("reply quality check unavailable: %w", verr)
 		}
 		if !verdict.ShouldSend() {
+			// 质量门"差则重生成一次"：把审核意见（verdict.Reason）喂回去改进回复，改进后再核验。
+			// 只有改进后通过才采纳；改进失败或仍未通过时维持原"拒绝自动发送"语义，避免劣质回复外发。
+			improved, ierr := g.aiService.ImproveReply(message, evidence, reply, verdict.Reason)
+			if ierr == nil && strings.TrimSpace(improved) != "" {
+				improved = truncateReply(input, improved)
+				v2, v2err := g.aiService.ValidateReply(message, evidence, improved)
+				if v2err == nil && v2.ShouldSend() {
+					logger.WithModule("diag").Info(fmt.Sprintf("[Diag] 分身回复质量自检后改进通过: userID=%d convID=%d", userID, conversationID))
+					return improved, input.Sources, nil
+				}
+			}
 			reason := verdict.Reason
 			if reason == "" {
 				reason = "回复未通过相关性或事实依据核验"

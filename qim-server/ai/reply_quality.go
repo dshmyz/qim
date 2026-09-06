@@ -54,3 +54,24 @@ AI 回复：
 func (v ReplyQualityVerdict) ShouldSend() bool {
 	return v.Relevant && v.Supported && !v.Hallucinate
 }
+
+// ImproveReply 根据质量审核意见改进回复：仅修正切题性/事实依据/幻觉问题，
+// 保持原有语气与意图，不重写无关内容。供质量门"差则重生成一次"使用。
+func (s *AIService) ImproveReply(question, evidence, reply, critique string) (string, error) {
+	prompt := `你是回复改写器。基于质量审核意见，仅修正回复的切题性、事实依据与幻觉问题，
+保持原有语气和风格，不要重写无关内容，不要改变回复意图。
+若意见指出编造了资料中不存在的事实，删除或改为资料支持的表述；资料为空时保留通用常识。
+只输出改进后的回复正文，不要任何解释、不要"以下是改进后的回复"之类的前后缀。
+
+用户问题：` + question + `
+
+可用资料：
+` + evidence + `
+
+原回复：
+` + reply + `
+
+审核意见：
+` + critique
+	return s.GetCompletion(TaskTypeChat, []Message{{Role: "user", Content: prompt}})
+}
