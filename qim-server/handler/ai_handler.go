@@ -202,8 +202,8 @@ func (h *AIHandler) GetCompletion(c *gin.Context) {
 		return
 	}
 
-	// 获取AI完成
-	result, err := h.aiService.GetCompletion(ai.TaskTypeChat, req.Messages)
+	// 获取AI完成（按查询复杂度路由：复杂→digest 思考模型，简单→chat 快模型）
+	result, err := h.aiService.GetCompletion(h.aiService.ChatTaskType(req.Messages), req.Messages)
 	if err != nil {
 		response.InternalServerError(c, "AI请求失败：" + ai.UserMessage(err))
 		return
@@ -502,10 +502,10 @@ func streamSSE(c *gin.Context, pump func(write func(chunk ai.StreamChunk) error)
 	c.Writer.Flush()
 }
 
-// streamCompletion 流式推送一组 messages（经 aiService.GetCompletionStream）
+// streamCompletion 流式推送一组 messages（经 aiService.GetCompletionStream，按复杂度分级路由）
 func (h *AIHandler) streamCompletion(c *gin.Context, messages []ai.Message) {
 	streamSSE(c, func(write func(ai.StreamChunk) error) error {
-		return h.aiService.GetCompletionStream(ai.TaskTypeChat, messages, func(chunk ai.StreamChunk) error {
+		return h.aiService.GetCompletionStream(h.aiService.ChatTaskType(messages), messages, func(chunk ai.StreamChunk) error {
 			if chunk.Content != "" {
 				return write(ai.StreamChunk{Content: chunk.Content})
 			}

@@ -126,6 +126,20 @@ func (s *AIService) HasVisionRoute() bool {
 	return router.HasExplicitRoute(TaskTypeVision)
 }
 
+// ChatTaskType 按最后一条用户消息的复杂度选择聊天任务路由：
+// 复杂问题 → digest（管理员可配思考/推理模型），简单 → chat（快模型）。
+func (s *AIService) ChatTaskType(messages []Message) TaskType {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			if IsComplexQuery(messages[i].Content) {
+				return TaskTypeDigest
+			}
+			return TaskTypeChat
+		}
+	}
+	return TaskTypeChat
+}
+
 func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrides ...Override) (string, error) {
 	provider, modelName, err := s.selectProvider(taskType, overrides...)
 	if err != nil {
