@@ -135,8 +135,8 @@
             <el-col :span="8">
               <div class="feature-card">
                 <h4>群聊总结</h4>
-                <p>每日 22:00 自动生成群聊日报，包含热门话题、待办和决策</p>
-                <el-tag type="warning" size="small">定时任务</el-tag>
+                <p>@AI 可随时总结指定时间范围的群聊内容（按需调用）</p>
+                <el-tag type="success" size="small">已启用</el-tag>
               </div>
             </el-col>
           </el-row>

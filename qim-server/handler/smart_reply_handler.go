@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
-	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/utils"
@@ -553,47 +551,6 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// RateLimiter 简易令牌桶限流器
-type RateLimiter struct {
-	ticker *time.Ticker
-	ch     chan struct{}
-	once   sync.Once
-}
-
-// NewRateLimiter 创建限流器，interval 为两次放行间隔，burst 为突发上限
-func NewRateLimiter(interval time.Duration, burst int) *RateLimiter {
-	rl := &RateLimiter{
-		ticker: time.NewTicker(interval),
-		ch:     make(chan struct{}, burst),
-	}
-	// 预填令牌
-	for i := 0; i < burst; i++ {
-		rl.ch <- struct{}{}
-	}
-	go func() {
-		for range rl.ticker.C {
-			select {
-			case rl.ch <- struct{}{}:
-			default:
-			}
-		}
-	}()
-	return rl
-}
-
-// Wait 阻塞直到获取一个令牌
-func (rl *RateLimiter) Wait() {
-	<-rl.ch
-}
-
-// Stop 停止限流器
-func (rl *RateLimiter) Stop() {
-	rl.once.Do(func() {
-		rl.ticker.Stop()
-		close(rl.ch)
-	})
 }
 
 // isAIMention 判断消息是否 @ 了群 AI 助手。委托纯函数 groupAIMentionsAI，
@@ -1256,150 +1213,6 @@ func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uin
 	}
 
 	log.Printf("[SmartReply] @AI 流式回复已完成")
-}
-
-// GroupSummaryJob 群聊总结定时任务
-type GroupSummaryJob struct {
-	aiService *ai.AIService
-}
-
-// NewGroupSummaryJob 创建群聊总结任务
-func NewGroupSummaryJob(aiService *ai.AIService) *GroupSummaryJob {
-	return &GroupSummaryJob{
-		aiService: aiService,
-	}
-}
-
-// GenerateDailySummaries 生成所有群的每日总结
-func (j *GroupSummaryJob) GenerateDailySummaries() {
-	if j.aiService == nil || !j.aiService.IsConfigured() {
-		log.Printf("[GroupSummary] AI 服务未配置，跳过总结")
-		return
-	}
-
-	db := database.GetDB()
-
-	var groups []model.Conversation
-	db.Where("type = ?", "group").Find(&groups)
-
-	log.Printf("[GroupSummary] 开始为 %d 个群生成每日总结", len(groups))
-
-	const workerCount = 5
-	sem := make(chan struct{}, workerCount)
-	// 共享令牌桶：每秒 2 次 AI 调用，突发上限 1
-	rl := NewRateLimiter(500*time.Millisecond, 1)
-	// 函数结束后停止限流器，释放 ticker 和 goroutine，避免每日执行累积泄露
-	defer rl.Stop()
-	var wg sync.WaitGroup
-	successCount := 0
-	failCount := 0
-	var mu sync.Mutex
-
-	for _, group := range groups {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(g model.Conversation) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			rl.Wait() // 等待令牌，只在真正调用 AI 前阻塞
-			if j.generateGroupSummary(&g) {
-				mu.Lock()
-				successCount++
-				mu.Unlock()
-			} else {
-				mu.Lock()
-				failCount++
-				mu.Unlock()
-			}
-		}(group)
-	}
-
-	wg.Wait()
-	log.Printf("[GroupSummary] 每日总结生成完成，成功: %d, 失败: %d", successCount, failCount)
-}
-
-// generateGroupSummary 生成单个群的总结
-func (j *GroupSummaryJob) generateGroupSummary(group *model.Conversation) bool {
-	db := database.GetDB()
-
-	var groupInfo model.Group
-	if err := db.Where("conversation_id = ?", group.ID).First(&groupInfo).Error; err != nil {
-		log.Printf("[GroupSummary] 获取群聊信息失败: %v", err)
-		return false
-	}
-
-	today := time.Now().Truncate(24 * time.Hour)
-	yesterday := today.Add(-24 * time.Hour)
-
-	var messages []model.Message
-	db.Where("conversation_id = ? AND created_at >= ? AND created_at < ?",
-		group.ID, yesterday, today).
-		Preload("Sender").
-		Order("created_at ASC").
-		Limit(200).
-		Find(&messages)
-
-	if len(messages) < 5 {
-		return false
-	}
-
-	messagesText := ""
-	for _, msg := range messages {
-		senderName := msg.Sender.Nickname
-		if senderName == "" {
-			senderName = msg.Sender.Username
-		}
-		messagesText += senderName + ": " + msg.Content + "\n"
-	}
-
-	systemPrompt := aiprompt.CurrentTimeLine() + "\n\n" + `你是一个群聊总结助手。请分析以下群聊记录，生成简洁的每日总结。
-
-总结格式：
-📋 【群聊日报】- {日期}
-
-📊 概览
-- 今日消息数：X 条
-- 活跃成员：X 人
-
-🔥 热门话题
-1. 话题一（参与人数）
-2. 话题二（参与人数）
-
-✅ 待办事项
-- [ ] 待办一（负责人）
-- [ ] 待办二（负责人）
-
-💡 重要决策
-- 决策一
-- 决策二
-
-请只输出总结内容，不要其他说明。`
-
-	messages_input := []ai.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: messagesText},
-	}
-
-	summary, err := j.aiService.GetCompletion(ai.TaskTypeDigest, messages_input)
-	if err != nil {
-		log.Printf("[GroupSummary] 群 %d 总结生成失败: %v", group.ID, err)
-		return false
-	}
-
-	summaryMsg := model.SystemMessage{
-		Title:      "📋 群聊日报 - " + groupInfo.Name,
-		Content:    summary,
-		SenderID:   1,
-		Status:     "active",
-		TargetType: "group",
-		TargetID:   &group.ID,
-		CreatedAt:  time.Now(),
-	}
-	db.Create(&summaryMsg)
-
-	log.Printf("[GroupSummary] 群 %d (%s) 总结已生成", group.ID, groupInfo.Name)
-	return true
 }
 
 // maybeRememberSenderMessage 异步把"发送者本人发的消息"择要写入发送者记忆库。

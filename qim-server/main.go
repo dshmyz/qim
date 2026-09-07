@@ -39,12 +39,6 @@ func main() {
 
 	// 启动统一调度器（基于 robfig/cron/v3，管理所有定时任务）
 	sched := scheduler.New()
-	if err := sched.AddDailyJob("group-summary", "22:00", func(ctx context.Context) {
-		summaryJob := handler.NewGroupSummaryJob(app.GetAIService())
-		summaryJob.GenerateDailySummaries()
-	}); err != nil {
-		logger.L().Error("注册群聊总结 cron job 失败", "error", err)
-	}
 	// 提醒调度：每 30 秒扫描日历事件 + 待办任务的到期提醒
 	if err := sched.AddIntervalJob("reminders", 30*time.Second, func(ctx context.Context) {
 		di.GlobalContainer.EventService.ProcessReminders()
