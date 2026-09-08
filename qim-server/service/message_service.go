@@ -943,31 +943,22 @@ func (s *MessageService) sendBotTextReply(userID, convID uint, bot model.Bot, re
 
 // botAllowedTools 白名单已收敛到 ai_tool_scopes.go（各 AI 入口工具面单一来源）。
 
-// aiReplyTimeout 返回 bot AI 回复的超时预算：多模态（带图）请求 + 多步 ReAct 显著更慢，
-// 60s 会被图片消息耗尽（实测图片触发工具循环时第 3 步模型请求已 context deadline exceeded）。
-// 按是否含图放宽：文本保持 60s（不拖长普通提问的等待），带图放宽到 180s。
-func aiReplyTimeout(aiMessages []ai.Message) time.Duration {
+// aiReplyTimeout 返回 bot AI 回复的超时预算。按放宽因素逐项判断：
+//   - 带图（多模态）+ 多步 ReAct 显著更慢，60s 会被图片消息耗尽（实测图片触发工具循环时
+//     第 3 步模型请求已 context deadline exceeded）；
+//   - 复杂问题经分级路由走 digest（思考模型）同样显著更慢，与带图同档放宽到 180s。
+//
+// 普通文本保持 60s（不拖长简单提问的等待）。
+func aiReplyTimeout(aiMessages []ai.Message, taskType ai.TaskType) time.Duration {
+	if taskType == ai.TaskTypeVision || taskType == ai.TaskTypeDigest {
+		return 180 * time.Second
+	}
 	for _, m := range aiMessages {
 		if m.ImageURL != "" || len(m.ImageURLs) > 0 {
 			return 180 * time.Second
 		}
 	}
 	return 60 * time.Second
-}
-
-// botReplyTaskType 返回 bot 回复的任务路由：带图请求且配置了视觉路由 -> TaskTypeVision
-// （图片走专门的视觉模型，否则纯文本 chat 模型收到 base64 必然 400）；其余走默认 TaskTypeChat。
-// 与群 AI resolveQuotedImageTaskType 的路由选择一致。
-func botReplyTaskType(aiMessages []ai.Message, aiSvc *ai.AIService) ai.TaskType {
-	if aiSvc == nil || !aiSvc.HasVisionRoute() {
-		return ai.TaskTypeChat
-	}
-	for _, m := range aiMessages {
-		if m.ImageURL != "" || len(m.ImageURLs) > 0 {
-			return ai.TaskTypeVision
-		}
-	}
-	return ai.TaskTypeChat
 }
 
 // handleBotMessageStreaming 专属机器人 1:1 流式 + 工具调用回复。
@@ -1033,14 +1024,15 @@ func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot mode
 		}
 	}
 
-	// 任务路由：带图请求走 TaskTypeVision（视觉模型），否则 TaskTypeChat。
-	// 群 AI 引用图片即按此路由（resolveQuotedImageTaskType）；bot 图片此前一直发 TaskTypeChat，
+	// 任务路由（统一内核 ai.ResolveReplyTaskType）：带图走 TaskTypeVision（视觉模型），
+	// 纯文本按复杂度分级（复杂 -> digest 思考模型，与 /ai/completion 同一条规则）。
+	// 群 AI 引用图片即按视觉路由（resolveQuotedImageTaskType）；bot 图片此前一直发 TaskTypeChat，
 	// 纯文本 chat 模型收到 base64 秒回 400 兜底「AI 服务不可用」。
-	taskType := botReplyTaskType(aiMessages, s.aiService)
+	taskType := s.aiService.ResolveReplyTaskType(aiMessages)
 
-	// 超时预算：带图（多模态）+ 多步 ReAct 显著更慢，60s 会被图片请求耗尽（实测第 3 步即
-	// context deadline exceeded）；按是否含图放宽，文本保持 60s 不拖长普通提问的等待。
-	ctx, cancel := context.WithTimeout(context.Background(), aiReplyTimeout(aiMessages))
+	// 超时预算：带图（多模态）+ 多步 ReAct + digest 思考模型显著更慢，60s 会被耗尽（实测第 3 步即
+	// context deadline exceeded）；按放宽因素放宽（aiReplyTimeout），普通文本保持 60s。
+	ctx, cancel := context.WithTimeout(context.Background(), aiReplyTimeout(aiMessages, taskType))
 	defer cancel()
 
 	var streamErr error
@@ -1132,11 +1124,11 @@ func (s *MessageService) handleBotMessageLegacy(userID, convID uint, bot model.B
 			}
 		}
 
-		// 任务路由与流式路径一致：带图走 TaskTypeVision（视觉模型）。
-		taskType := botReplyTaskType(aiMessages, s.aiService)
+		// 任务路由与流式路径一致（统一内核 ai.ResolveReplyTaskType）：带图走视觉，纯文本按复杂度分级。
+		taskType := s.aiService.ResolveReplyTaskType(aiMessages)
 
-		// 超时预算与流式路径一致：带图请求放宽（aiReplyTimeout），文本保持 60s。
-		ctx, cancel := context.WithTimeout(context.Background(), aiReplyTimeout(aiMessages))
+		// 超时预算与流式路径一致：带图/digest 思考模型放宽（aiReplyTimeout），普通文本保持 60s。
+		ctx, cancel := context.WithTimeout(context.Background(), aiReplyTimeout(aiMessages, taskType))
 		defer cancel()
 
 		done := make(chan struct{})

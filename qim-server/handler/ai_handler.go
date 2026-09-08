@@ -35,6 +35,9 @@ type AIResponse struct {
 
 var errConversationAccessDenied = errors.New("conversation access denied")
 
+// errNoVisionRouteMsg 未配置视觉路由时对带图请求的诚实提示。流式/非流式端点共用同一文案。
+const errNoVisionRouteMsg = "当前未配置「视觉理解」任务路由（管理后台 → AI 模型配置 → 模型路由），无法识别图片"
+
 func ensureConversationAccess(db *gorm.DB, conversationID, userID uint) error {
 	if conversationID == 0 || userID == 0 {
 		return errConversationAccessDenied
@@ -202,8 +205,16 @@ func (h *AIHandler) GetCompletion(c *gin.Context) {
 		return
 	}
 
-	// 获取AI完成（按查询复杂度路由：复杂→digest 思考模型，简单→chat 快模型）
-	result, err := h.aiService.GetCompletion(h.aiService.ChatTaskType(req.Messages), req.Messages)
+	// 获取AI完成（统一回复路由 ResolveReplyTaskType：带图走视觉模型；纯文本按复杂度分级，
+	// 复杂→digest 思考模型，简单→chat 快模型）
+	// 带图但 ResolveReplyTaskType 仍返回 chat，即未配置视觉路由：诚实提示，
+	// 而不是把 base64 塞给纯文本模型吃 400。
+	taskType := h.aiService.ResolveReplyTaskType(req.Messages)
+	if taskType == ai.TaskTypeChat && ai.HasImages(req.Messages) {
+		response.BadRequest(c, errNoVisionRouteMsg)
+		return
+	}
+	result, err := h.aiService.GetCompletion(taskType, req.Messages)
 	if err != nil {
 		response.InternalServerError(c, "AI请求失败：" + ai.UserMessage(err))
 		return
@@ -402,8 +413,19 @@ func buildDraftReplyMessages(req DraftReplyRequest, currentUserID uint) ([]ai.Me
 		}
 	}
 
+	// 图片目标：content 是 {"url":...} JSON，直接塞给模型只会让它对着 JSON 胡编。
+	// 此路径无存储访问读不了图，换成可读占位文案让草稿至少指向图片本身。
+	targetContent := target.Content
+	if target.Type == "image" {
+		if _, name, ok := parseDraftImageMeta(target.Content); ok && name != "" {
+			targetContent = fmt.Sprintf("（对方发来一张图片「%s」，当前无法识别图片内容，请结合对话上下文起草回复。）", name)
+		} else {
+			targetContent = "（对方发来一张图片，当前无法识别图片内容，请结合对话上下文起草回复。）"
+		}
+	}
+
 	userPrompt := fmt.Sprintf("%s需要回复的消息（来自 %s）：\n%s",
-		contextText, targetName, target.Content)
+		contextText, targetName, targetContent)
 
 	return []ai.Message{
 		{Role: "system", Content: fmt.Sprintf("%s\n\n你是%s，需要以第一人称回复对方的消息。根据下面的对话上下文，起草一条回复。语气自然、简短，直接返回回复内容，不要加任何前缀、引号或解释。", aiprompt.CurrentTimeLine(), myName)},
@@ -502,7 +524,7 @@ func streamSSE(c *gin.Context, pump func(write func(chunk ai.StreamChunk) error)
 	c.Writer.Flush()
 }
 
-// streamCompletion 流式推送一组 messages（经 aiService.GetCompletionStream，按复杂度分级路由）
+// streamCompletion 流式推送一组 messages（经 aiService.GetCompletionStream，统一回复路由 ResolveReplyTaskType）
 func (h *AIHandler) streamCompletion(c *gin.Context, messages []ai.Message, taskType ai.TaskType) {
 	streamSSE(c, func(write func(ai.StreamChunk) error) error {
 		return h.aiService.GetCompletionStream(taskType, messages, func(chunk ai.StreamChunk) error {
@@ -945,7 +967,13 @@ func (h *AIHandler) GetCompletionStream(c *gin.Context) {
 		return
 	}
 
-	h.streamCompletion(c, req.Messages, h.aiService.ChatTaskType(req.Messages))
+	// 带图但 ResolveReplyTaskType 仍返回 chat，即未配置视觉路由：诚实提示而非硬塞 400（与非流式端点一致）
+	taskType := h.aiService.ResolveReplyTaskType(req.Messages)
+	if taskType == ai.TaskTypeChat && ai.HasImages(req.Messages) {
+		response.BadRequest(c, errNoVisionRouteMsg)
+		return
+	}
+	h.streamCompletion(c, req.Messages, taskType)
 }
 
 // ListTools 列出所有 AI 工具

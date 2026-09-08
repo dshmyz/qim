@@ -47,9 +47,9 @@ func (m *EinoChatModel) Generate(ctx context.Context, input []*schema.Message, o
 	}
 	callerCtx := &ai.CallerContext{UserID: uid}
 	if m.useTools {
-		reply, err = m.aiService.GetCompletionWithTools(m.taskType, aiMessages, callerCtx)
+		reply, err = m.aiService.GetCompletionWithTools(m.taskTypeFromCtx(ctx), aiMessages, callerCtx)
 	} else {
-		reply, err = m.aiService.GetCompletion(m.taskType, aiMessages)
+		reply, err = m.aiService.GetCompletion(m.taskTypeFromCtx(ctx), aiMessages)
 	}
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opt
 	go func() {
 		defer sw.Close()
 
-		err := m.aiService.GetCompletionStreamWithContext(ctx, m.taskType, aiMessages, func(chunk ai.StreamChunk) error {
+		err := m.aiService.GetCompletionStreamWithContext(ctx, m.taskTypeFromCtx(ctx), aiMessages, func(chunk ai.StreamChunk) error {
 			msg := &schema.Message{
 				Role:    schema.Assistant,
 				Content: chunk.Content,
@@ -151,4 +151,23 @@ func UserIDToCtx(ctx context.Context, userID uint) context.Context {
 func UserIDFromCtx(ctx context.Context) (uint, bool) {
 	uid, ok := ctx.Value(userIDCtxKey{}).(uint)
 	return uid, ok
+}
+
+// taskTypeCtxKey 与 userIDCtxKey 同理：编译图（SmartReplyGraph.buildReplyGraph）的 model 节点
+// 在编译期静态绑定了 taskType（TaskTypeChat 回退值），无法按消息动态路由。调用方
+// （SmartReplyGraph.Execute）在 Invoke 前用 TaskTypeToCtx 注入按复杂度分级解析出的
+// taskType，模型节点运行时优先取 ctx 覆盖。未注入时维持构造时的静态值，零行为变化。
+type taskTypeCtxKey struct{}
+
+// TaskTypeToCtx 把按次解析的任务路由注入 ctx。
+func TaskTypeToCtx(ctx context.Context, taskType ai.TaskType) context.Context {
+	return context.WithValue(ctx, taskTypeCtxKey{}, taskType)
+}
+
+// taskTypeFromCtx 返回本次调用实际使用的任务路由：ctx 有覆盖用覆盖，否则用构造时静态值。
+func (m *EinoChatModel) taskTypeFromCtx(ctx context.Context) ai.TaskType {
+	if tt, ok := ctx.Value(taskTypeCtxKey{}).(ai.TaskType); ok && tt != "" {
+		return tt
+	}
+	return m.taskType
 }

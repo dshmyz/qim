@@ -334,7 +334,8 @@ func (g *AvatarReplyGraph) ExecuteWithImageSources(ctx context.Context, userID u
 
 	// 把 user 消息替换为携带图片的 MultiContent 多模态消息：
 	// 原文本保留（包含对话上下文与"对方说"），追加图片识别指令，并携带 base64 data URL。
-	messageList = injectSingleImage(messageList, imageURL, fmt.Sprintf("📷 用户发送了一张图片「%s」，请识别图片内容并结合以上对话与图片回复。", imageName))
+	// 系统配置分支未配视觉路由时降级为诚实说明（injectSingleImageOrDegrade）。
+	messageList = g.injectSingleImageOrDegrade(input, messageList, imageURL, fmt.Sprintf("📷 用户发送了一张图片「%s」，请识别图片内容并结合以上对话与图片回复。", imageName))
 
 	return g.completeReply(input, einoMessagesToAIMessages(messageList))
 }
@@ -377,8 +378,9 @@ func (g *AvatarReplyGraph) ExecuteBatchWithImagesSources(ctx context.Context, us
 		return "", nil, err
 	}
 
-	// 把 user 消息替换为携带批内全部图片的 MultiContent 多模态消息
-	messageList = injectMultiImage(messageList, imageURLs, "📷 对方连发了一组消息（含图片），请整体理解这些内容并结合对话回复。")
+	// 把 user 消息替换为携带批内全部图片的 MultiContent 多模态消息；
+	// 系统配置分支未配视觉路由时降级为诚实说明（injectMultiImageOrDegrade）。
+	messageList = g.injectMultiImageOrDegrade(input, messageList, imageURLs, "📷 对方连发了一组消息（含图片），请整体理解这些内容并结合对话回复。")
 
 	return g.completeReply(input, einoMessagesToAIMessages(messageList))
 }
@@ -441,7 +443,8 @@ func (g *AvatarReplyGraph) completeReply(input *AvatarReplyContext, aiMessages [
 	if input.CustomProvider != nil {
 		reply, err = g.aiService.GetCompletionWithProviderConfig(ai.TaskTypeChat, aiMessages, input.CustomProvider.ProviderName, input.CustomProvider.Config)
 	} else {
-		reply, err = g.aiService.GetCompletion(ai.TaskTypeChat, aiMessages)
+		// 系统配置分支：带图走视觉路由（avatarTaskType），纯文本走 chat。
+		reply, err = g.aiService.GetCompletion(avatarTaskType(g.aiService, aiMessages), aiMessages)
 	}
 	if err != nil {
 		return "", input.Sources, err
@@ -592,8 +595,9 @@ func (g *AvatarReplyGraph) ExecuteStreamWithImageSources(ctx context.Context, us
 
 	// 把 user 消息替换为携带图片的 MultiContent 多模态消息：原文本保留，追加草稿语境
 	// 的图片识别指令，并携带 base64 data URL。由 executeStream（EinoChatModel.Stream →
-	// einoMessagesToAIMessages）提取图片透传给模型。
-	messageList = injectSingleImage(messageList, imageURL, fmt.Sprintf("📷 对方发来了一张图片「%s」，请识别图片内容并结合以上对话起草一条回复。", imageName))
+	// einoMessagesToAIMessages）提取图片透传给模型。系统配置分支未配视觉路由时降级为
+	// 诚实说明（injectSingleImageOrDegrade），不把 base64 发给纯文本 chat 模型。
+	messageList = g.injectSingleImageOrDegrade(input, messageList, imageURL, fmt.Sprintf("📷 对方发来了一张图片「%s」，请识别图片内容并结合以上对话起草一条回复。", imageName))
 
 	return g.executeStream(ctx, input, messageList)
 }
@@ -622,8 +626,59 @@ func (g *AvatarReplyGraph) executeStream(ctx context.Context, input *AvatarReply
 		return sr, nil
 	}
 
-	chatModel := NewEinoChatModelNoTools(g.aiService, ai.TaskTypeChat, input.UserID)
+	chatModel := NewEinoChatModelNoTools(g.aiService, avatarTaskType(g.aiService, einoMessagesToAIMessages(messageList)), input.UserID)
 	return chatModel.Stream(ctx, messageList)
+}
+
+// degradeImageInstruct 系统配置分支未配视觉路由时追加的诚实降级说明。
+const degradeImageInstruct = "（当前无法识别图片内容，请基于以上对话上下文回复，不要假装看过图片。）"
+
+// injectSingleImageOrDegrade 按分支决定单图注入方式：
+//   - 自选模型分支（CustomProvider != nil）或配置了视觉路由：注入 base64（前者由用户所选
+//     模型的多模态能力决定，后者走 avatarTaskType 的视觉路由）；
+//   - 系统配置分支且未配视觉路由：不注入——base64 发给纯文本 chat 模型必然 400
+//     （与 bot 带图发 TaskTypeChat 同款坑），在最后一条 user 消息追加诚实说明，
+//     降级为纯文本回复，防止模型假装看过图。
+func (g *AvatarReplyGraph) injectSingleImageOrDegrade(input *AvatarReplyContext, messageList []*schema.Message, imageURL, instruct string) []*schema.Message {
+	if input.CustomProvider != nil || g.aiService.HasVisionRoute() {
+		return injectSingleImage(messageList, imageURL, instruct)
+	}
+	return appendDegradeNote(messageList, degradeImageInstruct)
+}
+
+// injectMultiImageOrDegrade 与 injectSingleImageOrDegrade 同判定的批量版。
+func (g *AvatarReplyGraph) injectMultiImageOrDegrade(input *AvatarReplyContext, messageList []*schema.Message, imageURLs []string, instruct string) []*schema.Message {
+	if input.CustomProvider != nil || g.aiService.HasVisionRoute() {
+		return injectMultiImage(messageList, imageURLs, instruct)
+	}
+	return appendDegradeNote(messageList, degradeImageInstruct)
+}
+
+// appendDegradeNote 在最后一条 user 消息追加降级说明（替换骨架与 injectSingleImage 一致，仅不携带图片）。
+func appendDegradeNote(messageList []*schema.Message, note string) []*schema.Message {
+	out := make([]*schema.Message, len(messageList))
+	copy(out, messageList)
+	for i := len(out) - 1; i >= 0; i-- {
+		if string(out[i].Role) != "user" {
+			continue
+		}
+		out[i] = &schema.Message{Role: schema.User, Content: out[i].Content + "\n\n" + note}
+		break
+	}
+	return out
+}
+
+// avatarTaskType 分身的任务路由：只做「带图 → 视觉」最小路由，不做复杂度分级
+// （分身自选模型门控优先，分级会覆盖用户选择的模型，见 ai/reply_routing.go 不适用范围）。
+// 带图且配置了视觉路由 -> TaskTypeVision：纯文本 chat 模型收到 base64 必然 400
+// （与 bot 带图发 TaskTypeChat 秒回 400 同款坑）；其余 -> TaskTypeChat。
+// 仅用于系统配置分支；自选模型分支保持 TaskTypeChat——用户所选模型的多模态能力
+// 由用户的选择决定，系统不代为路由。
+func avatarTaskType(aiSvc *ai.AIService, messages []ai.Message) ai.TaskType {
+	if ai.HasImages(messages) && aiSvc.HasVisionRoute() {
+		return ai.TaskTypeVision
+	}
+	return ai.TaskTypeChat
 }
 
 // prepare 加载分身配置、用户、知识范围与历史，并判定是否命中"不回复"策略。

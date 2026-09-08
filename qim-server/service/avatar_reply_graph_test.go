@@ -485,7 +485,12 @@ func TestAvatarReplyGraph_ExecuteWithImageSources(t *testing.T) {
 
 	capProv := &capturingAvatarProvider{}
 	capProv.reply = "识别到图片：一只猫" // 继承 fakeAvatarProvider.reply 字段
-	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	// 图片路径依赖视觉路由（avatarTaskType 带图切 vision），测试服务显式配置视觉路由
+	aiSvc := ai.NewAIService(&ai.AIConfig{Router: ai.RouterConfig{
+		Routes: map[ai.TaskType]ai.Route{
+			ai.TaskTypeVision: {Provider: "fake-avatar"},
+		},
+	}})
 	aiSvc.SetProviderForTesting("fake-avatar", capProv)
 
 	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
@@ -596,7 +601,12 @@ func TestAvatarReplyGraph_ExecuteStreamWithImageSources(t *testing.T) {
 
 	capProv := &streamingAvatarProvider{}
 	capProv.reply = "识别到图片：一只猫"
-	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	// 图片路径依赖视觉路由（avatarTaskType 带图切 vision），测试服务显式配置视觉路由
+	aiSvc := ai.NewAIService(&ai.AIConfig{Router: ai.RouterConfig{
+		Routes: map[ai.TaskType]ai.Route{
+			ai.TaskTypeVision: {Provider: "fake-avatar"},
+		},
+	}})
 	aiSvc.SetProviderForTesting("fake-avatar", capProv)
 
 	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
@@ -633,6 +643,44 @@ func TestAvatarReplyGraph_ExecuteStreamWithImageSources(t *testing.T) {
 	}
 	assert.Equal(t, dataURL, lastUser.ImageURL, "分身流式图片路径应把 base64 data URL 作为 ImageURL 交给模型")
 	assert.Contains(t, lastUser.Content, "cat.png", "分身流式图片路径应提示模型识别该图片")
+}
+
+// TestAvatarReplyGraph_ExecuteWithImageSources_NoVisionRouteDegrade 系统配置分支未配视觉路由时，
+// 图片 base64 不应注入（发给纯文本 chat 模型必然 400），应降级为诚实说明文本。
+func TestAvatarReplyGraph_ExecuteWithImageSources_NoVisionRouteDegrade(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Migrator().CreateTable(&model.AvatarConfig{}))
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "u", PasswordHash: "h"}).Error)
+	cfg := model.AvatarConfig{
+		UserID:             1,
+		Enabled:            true,
+		Name:               "分身",
+		KnowledgeScopeJSON: `{}`,
+		ReplyStrategyJSON:  `{"replyOutOfScope":false}`,
+	}
+	require.NoError(t, db.Create(&cfg).Error)
+
+	capProv := &capturingAvatarProvider{}
+	capProv.reply = "看不到图片内容"
+	aiSvc := ai.NewAIService(&ai.AIConfig{}) // 无任何路由 → 无视觉路由
+	aiSvc.SetProviderForTesting("fake-avatar", capProv)
+
+	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)
+	require.NoError(t, g.BuildGraph())
+
+	reply, _, err := g.ExecuteWithImageSources(context.Background(), 1, 1, `{"id":1,"url":"/files/x.png"}`, "data:image/png;base64,cccc", "cat.png", &cfg, false)
+	require.NoError(t, err)
+	assert.Equal(t, "看不到图片内容", reply)
+
+	var lastUser ai.Message
+	for _, m := range capProv.lastMessages {
+		if m.Role == "user" {
+			lastUser = m
+		}
+	}
+	assert.Empty(t, lastUser.ImageURL, "未配视觉路由时不应把 base64 交给纯文本模型")
+	assert.Empty(t, lastUser.ImageURLs, "未配视觉路由时 ImageURLs 同样不应携带图片")
+	assert.Contains(t, lastUser.Content, "无法识别图片内容", "应降级为诚实说明，防止模型假装看过图")
 }
 
 // TestAvatarReplyGraph_ExecuteStream_HistoryAnchored 验证草稿模式的历史锚定：
@@ -721,7 +769,12 @@ func TestAvatarReplyGraph_ExecuteBatchWithImagesSources(t *testing.T) {
 
 	capProv := &capturingAvatarProvider{}
 	capProv.reply = "识别到两张图：猫和狗"
-	aiSvc := ai.NewAIService(&ai.AIConfig{})
+	// 图片路径依赖视觉路由（avatarTaskType 带图切 vision），测试服务显式配置视觉路由
+	aiSvc := ai.NewAIService(&ai.AIConfig{Router: ai.RouterConfig{
+		Routes: map[ai.TaskType]ai.Route{
+			ai.TaskTypeVision: {Provider: "fake-avatar"},
+		},
+	}})
 	aiSvc.SetProviderForTesting("fake-avatar", capProv)
 
 	g := NewAvatarReplyGraph(aiSvc, db, nil, nil, nil)

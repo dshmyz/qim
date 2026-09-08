@@ -296,6 +296,8 @@ func (g *SmartReplyGraph) buildReplyGraph() error {
 	// 直接构建 Messages 节点（避免 ChatTemplate 变量替换问题）
 	graph.AddLambdaNode("build_messages", g.createBuildMessagesNode())
 
+	// taskType 静态值仅为回退：SmartReplyGraph.Execute 运行时按触发消息复杂度分级
+	// 经 TaskTypeToCtx 覆盖（编译图节点无法按消息动态绑定）。
 	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, ai.TaskTypeChat, 0))
 
 	graph.AddLambdaNode("format", g.createFormatReplyNode())
@@ -338,15 +340,20 @@ func (g *SmartReplyGraph) ExecuteStream(ctx context.Context, input *SmartReplyCo
 	return chatModel.Stream(ctx, historyMessages)
 }
 
-// resolveQuotedImageTaskType 处理被引用图片的任务路由与降级。
-// 配置了视觉路由 -> TaskTypeVision（多模态识别）；否则 TaskTypeVision 会回退到
-// defaultTask（纯文本 chat 模型），把图片 base64 发给它必然 400，此时把被引用图片
-// 降级为 QuotedFailed 提示语并在常规对话任务下走完，让 AI 诚实说明"当前模型不支持
-// 看图"，而不触发模型调用错误。流式路径（ExecuteStream）与带工具路径
-// （ExecuteWithTools/Stream，经 preparedHistory）共用，避免带工具路径丢图直接 400。
+// resolveQuotedImageTaskType 处理被引用图片的任务路由与降级，并对纯文本按复杂度分级：
+//   - 被引用图片且配置了视觉路由 -> TaskTypeVision（多模态识别）；否则 TaskTypeVision 会
+//     回退到 defaultTask（纯文本 chat 模型），把图片 base64 发给它必然 400，此时把被引用
+//     图片降级为 QuotedFailed 提示语并在 chat 任务下走完，让 AI 诚实说明"当前模型不支持
+//     看图"，而不触发模型调用错误。降级文本按简单问题走 chat 快模型，不参与复杂度分级
+//     （避免把图片降级场景路由进 digest 思考模型）。
+//   - 无被引用图片 -> 按触发消息（input.Message）复杂度分级：复杂 -> digest，简单 -> chat，
+//     与 /ai/completion、bot 回复共用同一套判定（ai.ChatTaskType）。
+//
+// 流式路径（ExecuteStream）与带工具路径（ExecuteWithTools/Stream，经 preparedHistory）共用，
+// 避免带工具路径丢图直接 400。
 func (g *SmartReplyGraph) resolveQuotedImageTaskType(input *SmartReplyContext) ai.TaskType {
 	if input.Quoted == nil || input.Quoted.Kind != QuotedImage {
-		return ai.TaskTypeChat
+		return g.aiService.ChatTaskType([]ai.Message{{Role: "user", Content: input.Message}})
 	}
 	if g.aiService.HasVisionRoute() {
 		return ai.TaskTypeVision
@@ -1194,6 +1201,13 @@ func (g *SmartReplyGraph) Execute(ctx context.Context, input *SmartReplyContext)
 	// 让编译期写死 userID=0 的 model 节点拿到真实提问用户，
 	// 使工具执行时 isSystemAdmin 校验生效（堵权限绕过）。
 	ctx = UserIDToCtx(ctx, input.UserID)
+	// 编译图 model 节点编译期静态绑定 TaskTypeChat（无法按消息路由），此处按触发消息
+	// 复杂度分级解析出实际 taskType 经 ctx 注入（TaskTypeToCtx），与提及/带工具路径共用
+	// 同一条分级规则（ai.ChatTaskType）。自动回复路径无被引用图片（媒体走 handleAIMention
+	// 提及路径），故不需视觉判定。
+	// 防空：若未来让自动回复支持引用图片，此判定必须改为 resolveQuotedImageTaskType
+	// （含视觉路由 + 无路由降级），否则带图会被静默路由进 chat 走偏。
+	ctx = TaskTypeToCtx(ctx, g.aiService.ChatTaskType([]ai.Message{{Role: "user", Content: input.Message}}))
 
 	startTime := time.Now()
 	result, err := g.replyGraph.Invoke(ctx, input)
