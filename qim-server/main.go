@@ -84,7 +84,7 @@ func main() {
 
 	jobCtx, jobCancel := context.WithCancel(context.Background())
 	sched.Start(jobCtx)
-	logger.L().Info("统一调度器已启动（群聊总结 22:00 / 事件提醒 30s / OrgSync 配置驱动）")
+	logger.L().Info("统一调度器已启动（事件提醒 30s / OrgSync 配置驱动）")
 
 	// 使用 gin.New() 替代 gin.Default()，避免 Logger 中间件的 stdout IO 瓶颈
 	r := gin.New()
@@ -105,7 +105,7 @@ func main() {
 	go func() {
 		<-quit
 		logger.L().Info("收到退出信号，正在优雅关闭...")
-		jobCancel()  // 停止统一调度器（所有 Job：群聊总结 / 事件提醒 / OrgSync）
+		jobCancel()  // 停止统一调度器（所有 Job：事件提醒 / OrgSync）
 		sched.Stop() // 等待所有 Job 退出
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
