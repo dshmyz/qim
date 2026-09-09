@@ -27,6 +27,20 @@ import (
 	"gorm.io/gorm"
 )
 
+// useFulltextForMessageKeyword 仅让 ASCII 关键词走 MySQL FULLTEXT。
+// MySQL 默认全文解析器对中文分词不可靠，中文及混合关键词必须走 LIKE。
+func useFulltextForMessageKeyword(keyword string) bool {
+	if keyword == "" {
+		return false
+	}
+	for _, r := range keyword {
+		if r > 127 {
+			return false
+		}
+	}
+	return true
+}
+
 // 消息域业务错误：带 HTTP 状态 + 业务码，经 response.ErrorFrom 统一落响应。
 // 同一语义在不同调用点文案不同（如"无权限发送"/"只能撤回"），由各返回点构造带站点文案的错误。
 var ErrMessageNotFound = pkgErr.NotFoundError("消息不存在")
@@ -1379,7 +1393,7 @@ func (s *MessageService) GetMessagesByFilter(query MessageQuery) (*MessageResult
 
 	// 优化：使用全文索引搜索
 	if query.Keyword != "" {
-		if database.D.SupportsFulltext() {
+		if database.D.SupportsFulltext() && useFulltextForMessageKeyword(query.Keyword) {
 			dbQuery = dbQuery.Where("MATCH(content) AGAINST(? IN BOOLEAN MODE)", query.Keyword)
 		} else {
 			// SQLite / TiDB 降级：LIKE 搜索
