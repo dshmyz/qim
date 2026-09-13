@@ -646,7 +646,8 @@ function shouldHideMainWindowForScreenshot() {
 // QIM_SCREENSHOT_LINUX_HIDE_SETTLE_MS 环境变量按环境调大（80~1500ms）。
 function getWindowHideSettleMs() {
   const raw = Number(process.env.QIM_SCREENSHOT_LINUX_HIDE_SETTLE_MS)
-  if (!Number.isFinite(raw)) return 250
+  // 空串/非数字/非正值（Number('') === 0）都回落默认 250ms
+  if (!Number.isFinite(raw) || raw <= 0) return 250
   return Math.max(80, Math.min(1500, raw))
 }
 
