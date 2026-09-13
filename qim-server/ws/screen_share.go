@@ -268,9 +268,10 @@ func handleScreenShareRequest(c *Client, data interface{}) {
 		return
 	}
 
-	// 方向模式：broadcast=请求者共享自己；view=请求者申请查看对方（被查看方采集推送）
+	// 方向模式：broadcast=请求者共享自己；view=请求者申请查看对方（被查看方采集推送）。
+	// 白名单归一：仅认 'view'，其余（含任意脏值）一律按 broadcast 处理
 	mode := "broadcast"
-	if m, ok := msgData["mode"].(string); ok && m != "" {
+	if m, ok := msgData["mode"].(string); ok && m == "view" {
 		mode = m
 	}
 
@@ -339,9 +340,10 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 		return
 	}
 
-	// 方向模式透传（broadcast/view），让请求者区分"我共享了"还是"我申请查看对方"
+	// 方向模式透传（broadcast/view），让请求者区分"我共享了"还是"我申请查看对方"。
+	// 与 request 侧同款白名单归一：仅认 'view'
 	mode := "broadcast"
-	if m, ok := msgData["mode"].(string); ok && m != "" {
+	if m, ok := msgData["mode"].(string); ok && m == "view" {
 		mode = m
 	}
 
