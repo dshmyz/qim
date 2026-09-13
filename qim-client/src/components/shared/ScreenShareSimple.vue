@@ -544,6 +544,13 @@ const confirmShare = async () => {
 const cancelShare = () => {
   showSourcePicker.value = false
   selectedSource.value = null
+  // view 共享者中途取消源选择：必须回发拒绝，否则申请方已解除 60s 倒计时，
+  // 会一直停在「对方已接受查看申请」等待态直到手动取消
+  if (viewSharerTargetId.value && incomingRequestInfo.value) {
+    screenShare.rejectRequest(incomingRequestInfo.value.fromUserId, incomingRequestInfo.value.conversationId, 'view')
+    resetViewSharerState()
+    incomingRequestInfo.value = null
+  }
 }
 
 const switchSource = async () => {
@@ -554,15 +561,20 @@ const switchSource = async () => {
   }
 }
 
+// view 共享者放弃推流（主动取消/获取源失败）后的公共复位；回发拒绝由调用方负责
+const resetViewSharerState = () => {
+  viewSharerTargetId.value = null
+  requestAccepted.value = false
+  screenShare.setShareMode('broadcast')
+}
+
 // view 接受后拿不到屏幕源：必须回发拒绝让申请方立刻收到失败，
 // 否则对方会一直等到超时才看到"未响应"；同时复位本端已接受状态
 const failViewAccept = (fromUserId: number, convId: number) => {
   console.error('[ScreenShareSimple] 接受查看申请后未获取到屏幕源')
   QMessage.error('无法获取屏幕源，请检查屏幕采集权限')
   screenShare.rejectRequest(fromUserId, convId, 'view')
-  viewSharerTargetId.value = null
-  requestAccepted.value = false
-  screenShare.setShareMode('broadcast')
+  resetViewSharerState()
 }
 
 const handleAccept = async () => {
@@ -821,6 +833,11 @@ const handleFullscreenChange = () => {
 }
 
 const handleStop = () => {
+  // view 共享者尚未推流（仍在源选择器）就中止：回发拒绝让申请方立即收到失败，
+  // 而不是只能靠 stop 信号猜；已建连后正常走 stop 信号即可
+  if (viewSharerTargetId.value && showSourcePicker.value && incomingRequestInfo.value) {
+    screenShare.rejectRequest(incomingRequestInfo.value.fromUserId, incomingRequestInfo.value.conversationId, 'view')
+  }
   screenShare.stopSharing()
   showSourcePicker.value = false
   showIncomingRequest.value = false
