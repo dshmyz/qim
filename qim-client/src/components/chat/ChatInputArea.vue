@@ -39,6 +39,7 @@
     @start-voice-call="emit('start-voice-call')"
     @start-video-call="emit('start-video-call')"
     @start-screen-share="emit('start-screen-share')"
+    @view-screen-share="emit('view-screen-share')"
     @insert-emoji="emit('insert-emoji', $event)"
     @close-at-members-panel="emit('close-at-members-panel')"
     @select-at-member="emit('select-at-member', $event)"
@@ -119,6 +120,7 @@ const emit = defineEmits<{
   'start-voice-call': []
   'start-video-call': []
   'start-screen-share': []
+  'view-screen-share': []
   'insert-emoji': [emoji: string]
   'close-at-members-panel': []
   'select-at-member': [member: { id: string; name: string; username?: string; avatar: string }]

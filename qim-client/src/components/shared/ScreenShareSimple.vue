@@ -102,12 +102,16 @@
           </div>
         </div>
 
-        <div v-else-if="showIncomingRequest" class="incoming-request">
+        <div v-else-if="showIncomingRequest" class="incoming-request" :class="{ 'view-request': isViewMode }">
           <div class="incoming-icon">
-            <i class="fas fa-desktop"></i>
+            <i :class="isViewMode ? 'fas fa-eye' : 'fas fa-desktop'"></i>
           </div>
           <div class="incoming-text">
-            <span class="incoming-title">{{ incomingRequestInfo?.fromUserName || props.senderName || '对方' }} 邀请你观看屏幕共享</span>
+            <div v-if="isViewMode" class="incoming-title-block">
+              <span class="incoming-title">「{{ incomingRequestInfo?.fromUserName || props.senderName || '对方' }}」申请查看你的屏幕</span>
+              <span class="incoming-sub">对方只能观看，不能操作你的电脑</span>
+            </div>
+            <span v-else class="incoming-title">{{ incomingRequestInfo?.fromUserName || props.senderName || '对方' }} 邀请你观看屏幕共享</span>
           </div>
           <div class="incoming-actions">
             <button class="btn-reject" @click="handleReject">拒绝</button>
@@ -117,13 +121,14 @@
 
         <div v-else-if="showWaitingAccept" class="waiting-accept">
           <div class="waiting-icon">
-            <i class="fas fa-clock"></i>
+            <i :class="waitingAccepted ? 'fas fa-hourglass-half' : 'fas fa-clock'"></i>
           </div>
           <div class="waiting-text">
-            <div class="waiting-title">正在等待 <strong>{{ props.senderName || '对方' }}</strong> 接受</div>
-            <div class="waiting-sub">对方将收到屏幕共享邀请</div>
+            <div v-if="waitingAccepted" class="waiting-title">对方已接受查看申请</div>
+            <div v-else class="waiting-title">正在等待 <strong>{{ props.senderName || '对方' }}</strong> 接受</div>
+            <div class="waiting-sub">{{ waitingAccepted ? '等待对方开始共享…' : (isViewerRequester ? '对方将收到查看申请' : '对方将收到屏幕共享邀请') }}</div>
           </div>
-          <div class="waiting-countdown" :class="{ urgent: waitingCountdown <= 10 }">
+          <div v-if="!waitingAccepted" class="waiting-countdown" :class="{ urgent: waitingCountdown <= 10 }">
             <i class="fas fa-hourglass-half"></i>
             <span>{{ waitingCountdown }}s 后自动取消</span>
           </div>
@@ -251,7 +256,7 @@
           <div class="info-top">
             <div class="minimized-status" :class="{ paused: isInitiator && isPaused }">
               <span class="pulse-dot" :class="{ active: sessionState === 'active' && !(isInitiator && isPaused) }"></span>
-              <span>{{ isInitiator ? (isPaused ? '已暂停' : '共享中') : '观看中' }}</span>
+              <span>{{ isInitiator ? (isPaused ? '已暂停' : (isViewMode ? '被查看中' : '共享中')) : '观看中' }}</span>
             </div>
             <div class="minimized-duration">{{ formattedDuration }}</div>
             <div class="minimized-name">{{ screenShareName || '屏幕共享' }}</div>
@@ -323,9 +328,19 @@ const selectedSource = ref<ScreenSource | null>(null)
 const showIncomingRequest = ref(false)
 const showWaitingAccept = ref(false)
 const pendingOffer = ref<{ signal: RTCSessionDescriptionInit; fromUserId: number } | null>(null)
-const incomingRequestInfo = ref<{ fromUserId: number; conversationId: number; fromUserName: string } | null>(null)
+const incomingRequestInfo = ref<{ fromUserId: number; conversationId: number; fromUserName: string; mode?: string } | null>(null)
 const requestAccepted = ref(false)
 const savedStream = ref<MediaStream | null>(null)
+
+// ---- 查看方向（view）相关 ----
+// view 模式：请求者是查看方（不采集、只收流），被查看方(同意方)采集并推送。
+const isViewMode = computed(() => screenShare.shareMode.value === 'view')
+// 本端是否为"主动申请查看对方"的查看方请求者（view 模式发起端）
+const isViewerRequester = ref(false)
+/** view 请求方：对方已接受（倒计时已解除），等待对方选源并推送 */
+const waitingAccepted = ref(false)
+// view 模式共享者记住"把屏幕推给谁"（即查看方 id）
+const viewSharerTargetId = ref<number | null>(null)
 
 /* ---- 等待接受倒计时 ---- */
 const WAITING_TIMEOUT = 60 // 秒
@@ -346,6 +361,10 @@ const remoteStream = computed(() => screenShare.remoteStream.value)
 const isPaused = computed(() => screenShare.isPaused.value)
 
 const isInitiator = computed(() => {
+  // view 模式的查看方请求者不采集、无本地流，绝不能是共享者（否则空视频帧）
+  if (isViewerRequester.value) {
+    return false
+  }
   if (showSourcePicker.value || showWaitingAccept.value) {
     return true
   }
@@ -362,18 +381,22 @@ const togglePause = () => {
 
 const title = computed(() => {
   if (showIncomingRequest.value) {
-    return '屏幕共享邀请'
+    return incomingRequestInfo.value?.mode === 'view' ? '屏幕查看申请' : '屏幕共享邀请'
   }
   if (showSourcePicker.value) {
-    return '选择共享来源'
+    return '选择要共享的屏幕'
   }
   if (showWaitingAccept.value) {
-    return '等待对方接受...'
+    return isViewerRequester.value ? '正在申请查看对方屏幕…' : '等待对方接受...'
   }
   if (isInitiator.value) {
-    return isPaused.value ? '共享已暂停' : '正在共享屏幕'
+    return isPaused.value
+      ? '共享已暂停'
+      : (isViewMode.value ? `正在共享屏幕给${props.senderName || '对方'}` : '正在共享屏幕')
   }
-  return `${props.senderName || '对方'}的屏幕共享`
+  return isViewMode.value
+    ? `正在查看${props.senderName || '对方'}的屏幕`
+    : `${props.senderName || '对方'}的屏幕共享`
 })
 
 const formattedDuration = computed(() => {
@@ -464,6 +487,27 @@ const initiateShare = async () => {
   }
 }
 
+// 申请查看对方屏幕：view 查看方请求者发起。不采集、不选源，直接发申请，
+// 等被查看方同意后由其采集并推送 offer，我在 handleIncomingOffer 里 join 收流。
+const initiateView = async () => {
+  // 已有共享会话（含最小化悬浮）时不允许再发起查看，否则后续 offer 会被静默丢弃
+  if (screenShare.sessionState.value !== 'idle') {
+    console.warn('[ScreenShareSimple] initiateView: session not idle, ignore. State:', screenShare.sessionState.value)
+    QMessage.warning('当前已有屏幕共享会话，请先结束后再申请')
+    return
+  }
+  if (!props.receiverId || !props.conversationId) {
+    console.warn('[ScreenShareSimple] Missing receiverId or conversationId for view request')
+    QMessage.warning('会话信息不完整，无法申请查看对方屏幕')
+    return
+  }
+  isViewerRequester.value = true
+  waitingAccepted.value = false
+  screenShareName.value = '申请查看对方屏幕'
+  screenShare.sendViewRequest(props.receiverId, props.conversationId)
+  showWaitingAccept.value = true
+}
+
 const confirmShare = async () => {
   if (!selectedSource.value) return
 
@@ -483,10 +527,14 @@ const confirmShare = async () => {
 
     savedStream.value = stream
 
-    if (props.receiverId && props.conversationId) {
+    if (isViewMode.value && viewSharerTargetId.value) {
+      // view 共享者：直接把屏幕发起(offer)给查看方；同意已由 handleAccept 发出
+      await screenShare.startConnectionWithStream(viewSharerTargetId.value, stream)
+      startDurationTimer()
+    } else if (props.receiverId && props.conversationId) {
       screenShare.sendRequest(props.receiverId, props.conversationId, stream)
+      showWaitingAccept.value = true
     }
-    showWaitingAccept.value = true
   } catch (error) {
     console.error('[ScreenShareSimple] 开始共享失败:', error)
     showSourcePicker.value = true
@@ -504,6 +552,17 @@ const switchSource = async () => {
     screenSources.value = sources
     showSourcePicker.value = true
   }
+}
+
+// view 接受后拿不到屏幕源：必须回发拒绝让申请方立刻收到失败，
+// 否则对方会一直等到超时才看到"未响应"；同时复位本端已接受状态
+const failViewAccept = (fromUserId: number, convId: number) => {
+  console.error('[ScreenShareSimple] 接受查看申请后未获取到屏幕源')
+  QMessage.error('无法获取屏幕源，请检查屏幕采集权限')
+  screenShare.rejectRequest(fromUserId, convId, 'view')
+  viewSharerTargetId.value = null
+  requestAccepted.value = false
+  screenShare.setShareMode('broadcast')
 }
 
 const handleAccept = async () => {
@@ -527,8 +586,32 @@ const handleAccept = async () => {
   } else if (incomingRequestInfo.value) {
     const convId = incomingRequestInfo.value.conversationId
     const fromUserId = incomingRequestInfo.value.fromUserId
-    screenShare.acceptRequest(fromUserId, convId)
+    const mode = incomingRequestInfo.value.mode || 'broadcast'
+    screenShare.acceptRequest(fromUserId, convId, mode as any)
     requestAccepted.value = true
+
+    if (mode === 'view') {
+      // view：我同意被查看 → 我是共享者，记录查看方 id，弹出源选择器，选完后由我采集并推送
+      viewSharerTargetId.value = fromUserId
+      isViewerRequester.value = false
+      savedStream.value = null
+      try {
+        let sources = await getScreenSources()
+        if (sources.length === 0 && window.electron?.ipcRenderer) {
+          // Electron 下首查偶发为空，重试一次
+          sources = await getScreenSources()
+        }
+        if (sources.length > 0) {
+          screenSources.value = sources
+          showSourcePicker.value = true
+        } else {
+          failViewAccept(fromUserId, convId)
+        }
+      } catch (error) {
+        console.error('[ScreenShareSimple] 接受查看申请后获取屏幕源失败:', error)
+        failViewAccept(fromUserId, convId)
+      }
+    }
   }
 }
 
@@ -538,17 +621,35 @@ const handleReject = () => {
   if (incomingRequestInfo.value) {
     const convId = incomingRequestInfo.value.conversationId
     const fromUserId = incomingRequestInfo.value.fromUserId
-    screenShare.rejectRequest(fromUserId, convId)
+    const mode = incomingRequestInfo.value.mode || 'broadcast'
+    screenShare.rejectRequest(fromUserId, convId, mode as any)
   }
 
   pendingOffer.value = null
   incomingRequestInfo.value = null
   requestAccepted.value = false
+  viewSharerTargetId.value = null
 }
 
 const handleIncomingOffer = (signal: RTCSessionDescriptionInit, fromUserId: number) => {
   if (screenShare.sessionState.value !== 'idle') {
     console.log('[ScreenShareSimple] Session not idle, ignoring offer. State:', screenShare.sessionState.value)
+    return
+  }
+
+  // view 查看方请求者：对方（我主动查看的白名单内对象）一开始推送，直接 join 收流，不弹确认窗。
+  // 只 join、不复发 screen-share.response——否则会给对方(共享者)多送一次 accepted，
+  // 触发对方 stopWaitingAccept 时误报"已有共享连接"。
+  if (isViewerRequester.value && isViewMode.value && screenShare.pendingTargetUserId.value === fromUserId) {
+    isViewerRequester.value = false
+    screenShare.acceptShare(signal, fromUserId).catch((error: unknown) => {
+      // join 失败必须让共享方（被查看方）知道，否则对方一直挂着等观看者接入：
+      // rejectShare 回发 rejected，同时复位本端等待态
+      console.error('[ScreenShareSimple] 加入屏幕查看失败:', error)
+      screenShare.rejectShare(fromUserId, props.conversationId)
+      QMessage.error('加入屏幕查看失败')
+      handleStop()
+    })
     return
   }
 
@@ -568,13 +669,15 @@ const handleIncomingRequest = (data: any) => {
   const fromUserId = data.from_user_id || data.user_id
   const conversationId = data.conversation_id
   const fromUserName = data.from_user_name || props.senderName || '对方'
+  const mode = data.mode || 'broadcast'
 
-  incomingRequestInfo.value = {
-    fromUserId,
-    conversationId,
-    fromUserName
+  // view 请求对我而言是"对方申请查看我的屏幕"：我是被查看方（共享者/采集方）
+  if (mode === 'view') {
+    isViewerRequester.value = false
+    screenShare.setShareMode('view')
   }
 
+  incomingRequestInfo.value = { fromUserId, conversationId, fromUserName, mode }
   showIncomingRequest.value = true
 }
 
@@ -726,6 +829,8 @@ const handleStop = () => {
   pendingOffer.value = null
   incomingRequestInfo.value = null
   requestAccepted.value = false
+  isViewerRequester.value = false
+  viewSharerTargetId.value = null
   selectedSource.value = null
   screenShareName.value = ''
   if (savedStream.value) {
@@ -759,7 +864,7 @@ const startWaitingTimer = () => {
     waitingCountdown.value--
     if (waitingCountdown.value <= 0) {
       stopWaitingTimer()
-      QMessage.warning('对方未响应，屏幕共享已取消')
+      QMessage.warning(isViewerRequester.value ? '对方未响应，查看申请已取消' : '对方未响应，屏幕共享已取消')
       handleStop()
     }
   }, 1000)
@@ -803,6 +908,7 @@ watch(showWaitingAccept, (waiting) => {
     startWaitingTimer()
   } else {
     stopWaitingTimer()
+    waitingAccepted.value = false
     if (localStream.value && isInitiator.value) {
       nextTick(() => {
         if (localVideoRef.value) {
@@ -859,6 +965,18 @@ initFullscreenListener()
 
 const stopWaitingAccept = async () => {
   console.log('[ScreenShareSimple] stopWaitingAccept called')
+
+  // view 查看方请求者：我不采集、无本地流，收到"对方同意"后不建连，保持等待态，
+  // 等被查看方(共享者)推送 offer 后由 handleIncomingOffer 走 join 收流。
+  // 此刻对方已接受，必须解除 60s"未响应"倒计时（后续等对方选源/推流可能较久），
+  // 停留在等待 UI（切换为"已接受"文案），期间可手动取消
+  if (isViewerRequester.value) {
+    screenShareName.value = '等待对方开始共享…'
+    waitingAccepted.value = true
+    stopWaitingTimer()
+    return
+  }
+
   console.log('[ScreenShareSimple] savedStream.value:', !!savedStream.value)
   console.log('[ScreenShareSimple] props.receiverId:', props.receiverId)
   console.log('[ScreenShareSimple] screenShare.pendingStream.value:', !!screenShare.pendingStream.value)
@@ -904,6 +1022,7 @@ defineExpose({
   startSharing: screenShare.startSharing,
   startSharingWithStream: screenShare.startSharingWithStream,
   initiateShare,
+  initiateView,
   handleIncomingOffer,
   handleIncomingRequest,
   stopWaitingAccept,
@@ -1238,6 +1357,23 @@ defineExpose({
   color: #fff;
   font-size: var(--font-size-base);
   font-weight: 500;
+}
+
+/* 查看申请（被看）为警示态：琥珀色图标 + 副文案 */
+.view-request .incoming-icon {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.incoming-title-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.incoming-sub {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: var(--font-size-xxs);
 }
 
 .incoming-actions {

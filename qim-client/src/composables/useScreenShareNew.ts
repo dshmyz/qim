@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useSession } from './useSession'
 import { useSignaling } from './useSignaling'
+import type { ScreenShareMode } from '@/types/realtime'
 
 function getScreenShareErrorMessage(error: any): string {
   if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
@@ -32,6 +33,15 @@ function createScreenShare() {
   
   const selectedSource = ref<DisplayMediaStreamOptions | null>(null)
   const isPaused = ref(false)
+
+  // 本次共享/查看的方向：broadcast=我共享给目标；view=我申请查看目标。
+  // 决定"谁采集 + 谁发 WebRTC offer"：broadcast 由请求者采集/发 offer，
+  // view 由被查看方（同意方）采集/发 offer，请求者只收流。
+  const shareMode = ref<ScreenShareMode>('broadcast')
+
+  const setShareMode = (mode: ScreenShareMode) => {
+    shareMode.value = mode
+  }
   
   const selectSource = async () => {
     console.log('[ScreenShare] Selecting source')
@@ -101,14 +111,28 @@ function createScreenShare() {
   const pendingTargetUserId = ref<number | null>(null)
   const pendingConversationId = ref<number | null>(null)
 
-  const sendRequest = (targetUserId: number, conversationId: number, stream: MediaStream) => {
-    console.log('[ScreenShare] Sending request to user:', targetUserId, 'conversation:', conversationId)
+  const sendRequest = (targetUserId: number, conversationId: number, stream: MediaStream, mode: ScreenShareMode = 'broadcast') => {
+    console.log('[ScreenShare] Sending request to user:', targetUserId, 'conversation:', conversationId, 'mode:', mode)
 
+    shareMode.value = mode
     pendingStream.value = stream
     pendingTargetUserId.value = targetUserId
     pendingConversationId.value = conversationId
 
-    signaling.sendScreenShareRequest(targetUserId, conversationId)
+    signaling.sendScreenShareRequest(targetUserId, conversationId, mode)
+  }
+
+  // 申请查看对方屏幕：view 模式下我不采集（不提供 stream），只发申请，
+  // 由被查看方采集并向我推送。pendingStream/pendingTarget 仅记录上下文，供停止清理用。
+  const sendViewRequest = (targetUserId: number, conversationId: number) => {
+    console.log('[ScreenShare] Sending view request to user:', targetUserId, 'conversation:', conversationId)
+
+    shareMode.value = 'view'
+    pendingStream.value = null
+    pendingTargetUserId.value = targetUserId
+    pendingConversationId.value = conversationId
+
+    signaling.sendScreenShareRequest(targetUserId, conversationId, 'view')
   }
 
   const startConnection = async () => {
@@ -164,6 +188,7 @@ function createScreenShare() {
     pendingStream.value = null
     pendingTargetUserId.value = null
     pendingConversationId.value = null
+    shareMode.value = 'broadcast'
   }
 
   const startSharing = async (targetUserId: number, conversationId: number) => {
@@ -198,14 +223,16 @@ function createScreenShare() {
     }
   }
   
-  const acceptRequest = (fromUserId: number, conversationId: number) => {
-    console.log('[ScreenShare] Accepting request (sending response only) from user:', fromUserId)
-    signaling.sendScreenShareResponse(conversationId, fromUserId, true)
+  const acceptRequest = (fromUserId: number, conversationId: number, mode: ScreenShareMode = 'broadcast') => {
+    console.log('[ScreenShare] Accepting request (sending response only) from user:', fromUserId, 'mode:', mode)
+    shareMode.value = mode
+    signaling.sendScreenShareResponse(conversationId, fromUserId, true, mode)
   }
 
-  const rejectRequest = (fromUserId: number, conversationId: number) => {
-    console.log('[ScreenShare] Rejecting request from user:', fromUserId)
-    signaling.sendScreenShareResponse(conversationId, fromUserId, false)
+  const rejectRequest = (fromUserId: number, conversationId: number, mode: ScreenShareMode = 'broadcast') => {
+    console.log('[ScreenShare] Rejecting request from user:', fromUserId, 'mode:', mode)
+    shareMode.value = mode
+    signaling.sendScreenShareResponse(conversationId, fromUserId, false, mode)
   }
 
   const acceptShare = async (signal: RTCSessionDescriptionInit, fromUserId: number, conversationId?: number) => {
@@ -239,12 +266,13 @@ function createScreenShare() {
   
   const stopSharing = () => {
     console.log('[ScreenShare] Stopping share')
-    
+
     signaling.sendScreenShareStop()
     session.end()
     selectedSource.value = null
     isPaused.value = false
-    
+    shareMode.value = 'broadcast'
+
     console.log('[ScreenShare] Share stopped successfully')
   }
   
@@ -286,11 +314,14 @@ function createScreenShare() {
     ...session,
     selectedSource,
     isPaused,
+    shareMode,
+    setShareMode,
     pendingStream,
     pendingTargetUserId,
     pendingConversationId,
     selectSource,
     sendRequest,
+    sendViewRequest,
     startConnection,
     startConnectionWithStream,
     cancelPendingRequest,

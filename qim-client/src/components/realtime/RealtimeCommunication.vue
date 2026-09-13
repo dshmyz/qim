@@ -140,6 +140,71 @@ const startScreenShare = async () => {
   }
 }
 
+// 申请查看对方屏幕（view）：对方采集并推送，我作为查看方收流。复用 startScreenShare 的
+// 单聊+真人校验与会话解析，仅发起路径不同（不选源，直接发查看申请）。
+const startScreenShareView = async () => {
+  if (!props.currentConversation) {
+    QMessage.warning('请先选择一个会话')
+    return
+  }
+
+  const user = getCurrentUser()
+  if (!user || !user.id) {
+    QMessage.warning('用户信息未加载，无法申请查看对方屏幕')
+    return
+  }
+
+  const conv = props.currentConversation
+  if (conv?.type === 'group' || conv?.type === 'discussion') {
+    QMessage.warning('暂不支持在群聊中申请查看对方屏幕')
+    return
+  }
+  if (isConversationPeerNonHuman(conv)) {
+    QMessage.warning('AI 助手不支持查看屏幕')
+    return
+  }
+  if (conv?.type !== 'single') {
+    QMessage.warning('当前会话类型不支持查看对方屏幕')
+    return
+  }
+  if (conv?.type === 'single') {
+    const otherMemberId = (conv as any).other_member_id
+    if (otherMemberId) {
+      screenShareReceiverId.value = Number(otherMemberId)
+      screenShareConversationId.value = Number(conv.id)
+      remoteScreenUserName.value = (conv as any).other_member_name || conv.name || '未知用户'
+    } else if (conv.members && conv.members.length === 2) {
+      const otherMember = conv.members.find(m => String(m.id) !== String(user.id))
+      if (otherMember) {
+        screenShareReceiverId.value = Number(otherMember.id)
+        screenShareConversationId.value = Number(conv.id)
+        remoteScreenUserName.value = otherMember.name || '未知用户'
+      }
+    } else {
+      // 解析不到对端：清掉上一会话残留值，避免把查看申请发给错误用户
+      screenShareReceiverId.value = undefined
+      screenShareConversationId.value = undefined
+    }
+  }
+  if (!screenShareReceiverId.value) {
+    QMessage.warning('无法确定对方，无法申请查看对方屏幕')
+    return
+  }
+
+  showScreenShare.value = true
+
+  await nextTick()
+
+  if (screenShareRef.value?.initiateView) {
+    try {
+      await screenShareRef.value.initiateView()
+    } catch (error) {
+      console.error('[RealtimeCommunication] 申请查看对方屏幕失败:', error)
+      showScreenShare.value = false
+    }
+  }
+}
+
 const handleScreenShareStart = (data: any) => {
   console.log('[RealtimeCommunication] 收到屏幕共享开始', data)
   emit('screen-share.start', {
@@ -388,7 +453,12 @@ const handleScreenShareAccepted = async (data: any) => {
   console.log('[RealtimeCommunication] screenShareRef.value:', !!screenShareRef.value)
   console.log('[RealtimeCommunication] screenShareRef.value.stopWaitingAccept:', !!screenShareRef.value?.stopWaitingAccept)
 
-  QMessage.success('对方已接受屏幕共享')
+  // view 模式：请求者是查看方，对方同意后即等其推送，无需 toast"接受共享"
+  if (screenShare.shareMode.value === 'view') {
+    QMessage.success('对方已同意，正在开启查看')
+  } else {
+    QMessage.success('对方已接受屏幕共享')
+  }
 
   showScreenShare.value = true
 
@@ -402,7 +472,13 @@ const handleScreenShareAccepted = async (data: any) => {
 const handleScreenShareRejected = (data: any) => {
   console.log('[RealtimeCommunication] 收到屏幕共享拒绝', data)
 
-  QMessage.warning('对方拒绝了屏幕共享')
+  // view 模式：请求者是查看方，拒绝的是"查看申请"
+  const mode = data?.mode || screenShare.shareMode.value
+  if (mode === 'view') {
+    QMessage.warning('对方拒绝了查看申请')
+  } else {
+    QMessage.warning('对方拒绝了屏幕共享')
+  }
 
   screenShare.cancelPendingRequest()
   showScreenShare.value = false
@@ -473,6 +549,7 @@ onMounted(() => {
 
 defineExpose({
   startScreenShare,
+  startScreenShareView,
   startCall,
   handleWebRTCOffer,
   handleWebRTCAnswer,

@@ -1,4 +1,4 @@
-import type { MediaType, WebRTCSignalingMessage } from '@/types/realtime'
+import type { MediaType, ScreenShareMode, WebRTCSignalingMessage } from '@/types/realtime'
 
 export function useSignaling() {
   const sendMessage = (type: string, data: any) => {
@@ -78,18 +78,20 @@ export function useSignaling() {
     sendMessage(type, message.data)
   }
   
-  const sendScreenShareRequest = (targetUserId: number, conversationId: number) => {
+  const sendScreenShareRequest = (targetUserId: number, conversationId: number, mode: ScreenShareMode = 'broadcast') => {
     sendMessage('screen-share.request', {
       target_user_id: targetUserId,
-      conversation_id: conversationId
+      conversation_id: conversationId,
+      mode
     })
   }
-  
-  const sendScreenShareResponse = (conversationId: number, requesterId: number, accepted: boolean) => {
+
+  const sendScreenShareResponse = (conversationId: number, requesterId: number, accepted: boolean, mode: ScreenShareMode = 'broadcast') => {
     sendMessage('screen-share.response', {
       conversation_id: conversationId,
       requester_id: requesterId,
-      status: accepted ? 'accepted' : 'rejected'
+      status: accepted ? 'accepted' : 'rejected',
+      mode
     })
   }
   

@@ -12,12 +12,18 @@
       </button>
       <UniversalContextMenu menuId="call" :items="callMenuItems" />
     </div>
-    <ChatToolbarButton
-      v-if="canCall"
-      icon="fas fa-desktop"
-      title="屏幕共享"
-      @click="$emit('start-screen-share')"
-    />
+    <div v-if="canCall" class="call-dropdown">
+      <ChatToolbarButton
+        class="share-btn"
+        icon="fas fa-desktop"
+        title="屏幕共享/查看"
+        @click="$emit('start-screen-share')"
+      />
+      <button class="call-dropdown-trigger" data-menu-trigger @click="toggleScreenShareMenu($event)" title="更多共享/查看选项">
+        <i class="fas fa-caret-down"></i>
+      </button>
+      <UniversalContextMenu menuId="screenShare" :items="screenShareMenuItems" />
+    </div>
     <ChatToolbarButton
       icon="fas fa-smile"
       title="表情"
@@ -107,6 +113,13 @@ const callMenuItems = computed(() => [
   { label: '语音通话', icon: 'fas fa-phone-alt', action: () => { emit('start-voice-call'); closeMenu() } },
   { label: '视频通话', icon: 'fas fa-video', action: () => { emit('start-video-call'); closeMenu() } }
 ])
+
+// 屏幕共享/查看：广播=分享我的屏；view=申请查看对方屏（对方采集推送，我看对方）
+const screenShareMenuItems = computed(() => [
+  { label: '分享我的屏幕', icon: 'fas fa-desktop', action: () => { emit('start-screen-share'); closeMenu() } },
+  { label: '申请查看对方屏幕', icon: 'fas fa-eye', action: () => { emit('view-screen-share'); closeMenu() } }
+])
+const showScreenShareMenu = computed(() => activeMenu.value === 'screenShare')
 const showScreenshotShortcutTooltip = ref(false)
 const shortcuts = ref<ShortcutsConfig>(DEFAULT_SHORTCUTS)
 
@@ -174,6 +187,11 @@ const toggleCallMenu = (event: MouseEvent) => {
   else openMenu('call', event.clientX, event.clientY)
 }
 
+const toggleScreenShareMenu = (event: MouseEvent) => {
+  if (showScreenShareMenu.value) closeMenu()
+  else openMenu('screenShare', event.clientX, event.clientY)
+}
+
 const showScreenshotTooltip = () => {
   showScreenshotShortcutTooltip.value = true
   void loadScreenshotShortcut()
@@ -194,6 +212,7 @@ const emit = defineEmits<{
   'start-voice-call': []
   'start-video-call': []
   'start-screen-share': []
+  'view-screen-share': []
   'toggle-emoji-panel': []
   'select-file': []
   'select-image': []

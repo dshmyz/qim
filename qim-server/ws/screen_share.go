@@ -268,6 +268,12 @@ func handleScreenShareRequest(c *Client, data interface{}) {
 		return
 	}
 
+	// 方向模式：broadcast=请求者共享自己；view=请求者申请查看对方（被查看方采集推送）
+	mode := "broadcast"
+	if m, ok := msgData["mode"].(string); ok && m != "" {
+		mode = m
+	}
+
 	// 查询发送者昵称
 	var senderNickname string
 	if err := db.Model(&model.User{}).Where("id = ?", c.userID).Select("nickname").First(&senderNickname).Error; err != nil {
@@ -283,6 +289,7 @@ func handleScreenShareRequest(c *Client, data interface{}) {
 			"user_id":         c.userID,
 			"from_user_id":    c.userID,
 			"from_user_name":  senderNickname,
+			"mode":            mode,
 			"timestamp":       time.Now().Unix(),
 		},
 	}
@@ -332,6 +339,12 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 		return
 	}
 
+	// 方向模式透传（broadcast/view），让请求者区分"我共享了"还是"我申请查看对方"
+	mode := "broadcast"
+	if m, ok := msgData["mode"].(string); ok && m != "" {
+		mode = m
+	}
+
 	// 验证是否为会话成员
 	var member model.ConversationMember
 	if err := db.Where("conversation_id = ? AND user_id = ?", convID, c.userID).First(&member).Error; err != nil {
@@ -345,6 +358,7 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 			Data: map[string]interface{}{
 				"conversation_id": convID,
 				"user_id":         c.userID,
+				"mode":            mode,
 				"timestamp":       time.Now().Unix(),
 			},
 		}
@@ -364,6 +378,7 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 				"user_id":         requesterID,
 				"from_user_id":    requesterID,
 				"from_user_name":  requesterName,
+				"mode":            mode,
 				"timestamp":       time.Now().Unix(),
 			},
 		}
@@ -376,6 +391,7 @@ func handleScreenShareResponse(c *Client, data interface{}) {
 			Data: map[string]interface{}{
 				"conversation_id": convID,
 				"user_id":         c.userID,
+				"mode":            mode,
 				"timestamp":       time.Now().Unix(),
 			},
 		}

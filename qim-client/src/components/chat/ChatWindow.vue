@@ -134,6 +134,7 @@
       @start-voice-call="startVoiceCall"
       @start-video-call="startVideoCall"
       @start-screen-share="startScreenShare"
+      @view-screen-share="startScreenShareView"
       @insert-emoji="insertEmoji"
       @close-at-members-panel="closeAtMembersPanel"
       @select-at-member="selectAtMember"
@@ -660,6 +661,7 @@ const emit = defineEmits<{
   'start-screen-share': []
   'start-voice-call': []
   'start-video-call': []
+  'view-screen-share': []
 }>()
 
 const unreadAtMentionCount = computed(() => {
@@ -734,6 +736,11 @@ const remoteScreenUserId = ref<number | null>(null)
 
 const startScreenShare = () => {
   emit('start-screen-share')
+}
+
+// 申请查看对方屏幕：仅转发给 Main（Main 里 realtimeRef.startScreenShareView 处理）
+const startScreenShareView = () => {
+  emit('view-screen-share')
 }
 
 const inputMessage = ref('')

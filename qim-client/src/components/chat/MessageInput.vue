@@ -22,6 +22,7 @@
       @start-voice-call="$emit('start-voice-call')"
       @start-video-call="$emit('start-video-call')"
       @start-screen-share="$emit('start-screen-share')"
+      @view-screen-share="$emit('view-screen-share')"
       @toggle-emoji-panel="$emit('toggle-emoji-panel')"
       @select-file="handleSelectFile"
       @select-image="$emit('select-image')"
@@ -227,6 +228,7 @@ const emit = defineEmits<{
   (e: 'start-voice-call'): void
   (e: 'start-video-call'): void
   (e: 'start-screen-share'): void
+  (e: 'view-screen-share'): void
   (e: 'insert-emoji', emoji: string): void
   (e: 'close-at-members-panel'): void
   (e: 'select-at-member', member: Member): void

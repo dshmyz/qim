@@ -144,6 +144,7 @@
             @start-voice-call="handleStartVoiceCall"
             @start-video-call="handleStartVideoCall"
             @start-screen-share="handleStartScreenShare"
+            @view-screen-share="handleViewScreenShare"
           />
           <div v-else class="right-content">
             <div class="panel-header">
@@ -3370,6 +3371,16 @@ const handleStartScreenShare = async () => {
   logger.log('Main: 开始屏幕共享')
   if (realtimeRef.value) {
     await realtimeRef.value.startScreenShare()
+  } else {
+    QMessage.error('实时通信组件未初始化')
+  }
+}
+
+// 处理"申请查看对方屏幕"：view 模式下由对方采集推送，我作为查看方
+const handleViewScreenShare = async () => {
+  logger.log('Main: 申请查看对方屏幕')
+  if (realtimeRef.value) {
+    await realtimeRef.value.startScreenShareView()
   } else {
     QMessage.error('实时通信组件未初始化')
   }

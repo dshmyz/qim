@@ -3,6 +3,11 @@
 // 媒体类型
 export type MediaType = 'screen' | 'video' | 'audio'
 
+// 屏幕共享/查看模式
+// - broadcast：请求者把自己的屏幕共享出来（现有行为）
+// - view：请求者申请查看对方的屏幕（由被查看方采集并推送画面）
+export type ScreenShareMode = 'broadcast' | 'view'
+
 // 会话类型
 export type SessionType = 'screen-share' | 'video-call' | 'audio-call'
 
