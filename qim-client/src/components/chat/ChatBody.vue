@@ -181,7 +181,8 @@ const thinkingSenderBadge = computed(() => buildSenderBadge(aiThinkingSender.val
 const sidebarMembers = computed<Member[]>(() => {
   return (props.conversation?.members || []).map(user => ({
     id: user.id,
-    name: user.name,
+    // name 兜底 nickname/username：added_to_group 未归一化的成员载荷可能只有 nickname/username
+    name: user.name || user.nickname || user.username || '',
     avatar: getAvatarUrl(user.avatar, user.name || '用户', props.serverUrl),
     role: user.role as Member['role'] ?? 'member',
     type: (user as any).type,

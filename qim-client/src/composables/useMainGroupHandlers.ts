@@ -36,6 +36,20 @@ export function useMainGroupHandlers(
   const handleAddedToGroup = (data: any) => {
     logger.log('被添加到群聊:', data)
     
+    // 归一化后端的 added_to_group 成员载荷 {id, nickname, username, avatar}，
+    // 补齐 name / role / type 等字段，保证与 processConversation 产出的成员结构一致，
+    // 否则 sidebarMembers（读 member.name）会把本会话成员显示成「未知用户」，
+    // 直到一次全量会话列表刷新（processConversation 替换成员）才修正。
+    const members = (data.members || []).map((m: any) => ({
+      id: String(m.id ?? ''),
+      name: m.name || m.nickname || m.username || '',
+      nickname: m.nickname || '',
+      username: m.username || '',
+      avatar: m.avatar || '',
+      role: m.role || 'member',
+      type: m.type || ''
+    }))
+
     const groupConversation = {
       id: data.conversation_id.toString(),
       name: data.group_name,
@@ -44,14 +58,14 @@ export function useMainGroupHandlers(
       unread_count: 0,
       timestamp: Date.now(),
       type: 'group' as const,
-      members: data.members || []
+      members
     }
     
     const existingIndex = conversations.value.findIndex(c => c.id === groupConversation.id)
     if (existingIndex === -1) {
       chatStore.addConversation(groupConversation as any)
     } else {
-      chatStore.patchConversation(groupConversation.id, { members: data.members || [] })
+      chatStore.patchConversation(groupConversation.id, { members })
     }
     
     showMessage({
