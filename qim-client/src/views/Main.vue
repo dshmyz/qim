@@ -2275,20 +2275,30 @@ const handleNewMessage = async (msg: any) => {
     }
 
     if (canShowDesktopNotification) {
-      // C2: 通知内容预览 — 'simple' 模式只显示"新消息"，不泄露内容
-      const notificationBody = messageSettings.value.notificationPreview === 'simple'
+      // conv 可能在会话被隐藏后首次拉取前为空，触发时再兜底查一次
+      const convNow = conv || conversations.value.find(c => sameConversationId(c.id, conversationId))
+      // 通知标题显示消息来源：群聊/讨论组显示群名，单聊/bot 显示发送者昵称
+      const isGroupChat = convNow?.type === 'group' || convNow?.type === 'discussion'
+      const sourceTitle = isGroupChat
+        ? (convNow?.name || convNow?.other_member_name || '群聊')
+        : (senderName || convNow?.name || convNow?.other_member_name || '新消息')
+      // C2: 通知内容预览 — 'simple' 模式只显示"新消息"，不泄露内容（来源仍在标题展示）
+      const contentPreview = messageSettings.value.notificationPreview === 'simple'
         ? '新消息'
         : formatNotificationContent(newMessage)
+      const notificationBody = isGroupChat && senderName && contentPreview !== '新消息'
+        ? `${senderName}：${contentPreview}`
+        : contentPreview
       // payload 携带会话信息，点击通知可跳转到对应消息
       const payload = {
         type: 'message',
         actionPayload: {
           conversationId: newMessage.conversationId,
           messageId: newMessage.id,
-          conversationType: newMessage.conversationType
+          conversationType: convNow?.type
         }
       }
-      showReminder('新消息', notificationBody, payload, getAvatarUrl(newMessage.sender?.avatar, senderName, serverUrl.value))
+      showReminder(sourceTitle, notificationBody, payload, getAvatarUrl(newMessage.sender?.avatar, senderName, serverUrl.value))
     }
   }
   
