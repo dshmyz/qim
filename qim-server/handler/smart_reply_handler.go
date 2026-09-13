@@ -1507,6 +1507,7 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 				IsGroupChat:    isGroupChat,
 				GroupName:      groupName,
 				TriggerName:    sender.Nickname,
+				TriggerAt:      time.Now(), // 供 worker 做「主人已亲自回复，分身让位」判断
 			}
 
 			if err := e.avatarWorkerPool.Submit(task); err != nil {

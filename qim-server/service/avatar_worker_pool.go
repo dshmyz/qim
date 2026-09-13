@@ -59,6 +59,9 @@ type AvatarTask struct {
 	// BatchItems 合并窗口聚合后的批内消息。单条触发时恰 1 项；多连发合并时为全部。
 	// worker 据此走批量路径（多文本+多图多模态），非空时优先于 TriggerMessage。
 	BatchItems []AvatarBatchItem
+	// TriggerAt 触发消息到达时间（提交侧打点）：生成/仿真人延迟期间主人可能已亲自发言，
+	// worker 据此做「主人已回复，分身让位」判断。零值时 worker 降级用处理开始时间。
+	TriggerAt time.Time
 }
 
 // avatarSendMeta 分身回复发送所需的分身侧元数据。
@@ -252,10 +255,15 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	logger.WithModule("AvatarWorkerPool").Info("开始处理分身任务", "userID", task.UserID, "convID", task.ConversationID, "triggerUserID", task.TriggerUserID)
 	GlobalAIReplyMetrics.RecordAutoAttempt()
 
-	var session model.AvatarSession
-	err := p.db.Where("user_id = ? AND conversation_id = ?", task.UserID, task.ConversationID).First(&session).Error
-	if err == nil && session.TakeoverUntil != nil && session.TakeoverUntil.After(time.Now()) {
-		logger.WithModule("AvatarWorkerPool").Info("分身接管期内，跳过回复", "userID", task.UserID, "takeoverUntil", session.TakeoverUntil)
+	// 触发后状态可能已变（接管/主人亲自回复/已被新批次覆盖）：生成前先过让位门，省一次 LLM 调用。
+	// session 供发送阶段更新 last_reply_at 复用；零值（合成默认开会话无行）时该更新自然 no-op。
+	triggerAt := task.TriggerAt
+	if triggerAt.IsZero() {
+		triggerAt = time.Now()
+	}
+	session, down, reason := p.standDown(task, triggerAt)
+	if down {
+		logger.WithModule("AvatarWorkerPool").Info("分身让位", "user", task.UserID, "conv", task.ConversationID, "reason", reason)
 		return
 	}
 
@@ -269,6 +277,7 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	// 生成回复。三种形态优先级：批量合并(>1条) > 单条图片 > 单条文本。
 	var reply string
 	var sources []KnowledgeSource
+	var err error
 
 	// 合并窗口聚合后的批量任务（批内多条消息）：整批走批量生成，分身只回一条。
 	// 批内可含文本+图片（多模态）；任一图片读图失败/模型不支持时按「尽力而为，失败则跳过」。
@@ -321,6 +330,11 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	}
 	// 发送逻辑抽成闭包，便于延迟发送时异步执行而不阻塞 worker
 	send := func() {
+		// 生成/仿真人延迟期间状态可能已变：发送是唯一不可撤销动作，权威复查让位门
+		if _, down, reason := p.standDown(task, triggerAt); down {
+			logger.WithModule("AvatarWorkerPool").Info("分身让位（发送前复查）", "user", task.UserID, "conv", task.ConversationID, "reason", reason)
+			return
+		}
 		meta := avatarSendMeta{
 			avatarCfgName:   avatarCfgName,
 			disclaimerStyle: replyStrategy.DisclaimerStyle,
@@ -363,6 +377,48 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	} else {
 		send()
 	}
+}
+
+// standDown 判断分身任务是否应让位（单源权威判定，生成前经济门与发送前权威门共用）。
+// 触发决策在 T0 做出，而发送发生在 T0+Δ（合并窗口+排队+LLM 生成+仿真人延迟，可达数十秒），
+// 期间状态可能全部改变——所有取消条件收口于此，任一命中即让位：
+//  1. takeover     — 会话接管期内（实时查 session 行；无行=合成默认开会话，无接管状态）
+//  2. ownerReplied — 主人在触发后已亲自发言（真实消息，排除分身自身/机器人消息）
+//  3. superseded   — 分身在触发后已代答过（本次触发已被更晚批次覆盖，一波连发只回一条）
+//
+// DB 异常按未命中处理（fail-open），不因基础设施问题吞掉回复。
+// 返回的 session 供调用方更新 last_reply_at 复用；让位时同样返回（此时为最新状态或零值）。
+func (p *AvatarWorkerPool) standDown(task AvatarTask, triggerAt time.Time) (model.AvatarSession, bool, string) {
+	if p.db == nil {
+		return model.AvatarSession{}, false, ""
+	}
+
+	var session model.AvatarSession
+	if err := p.db.Where("user_id = ? AND conversation_id = ?", task.UserID, task.ConversationID).First(&session).Error; err == nil {
+		if session.TakeoverUntil != nil && session.TakeoverUntil.After(time.Now()) {
+			return session, true, "接管期内"
+		}
+	}
+
+	var ownerReplies int64
+	p.db.Model(&model.Message{}).
+		Where("conversation_id = ? AND sender_id = ? AND origin NOT IN ? AND created_at > ?",
+			task.ConversationID, task.UserID, []string{"avatar", "assistant", "bot"}, triggerAt).
+		Count(&ownerReplies)
+	if ownerReplies > 0 {
+		return session, true, "主人已亲自发言"
+	}
+
+	var avatarReplies int64
+	p.db.Model(&model.Message{}).
+		Where("conversation_id = ? AND sender_id = ? AND origin = ? AND created_at > ?",
+			task.ConversationID, task.UserID, "avatar", triggerAt).
+		Count(&avatarReplies)
+	if avatarReplies > 0 {
+		return session, true, "分身已代答过"
+	}
+
+	return session, false, ""
 }
 
 // notifyQualitySkip 只把质量门控相关的跳过原因反馈给用户，普通的范围外静默仍保持安静。
