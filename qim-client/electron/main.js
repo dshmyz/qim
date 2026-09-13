@@ -640,18 +640,30 @@ function shouldHideMainWindowForScreenshot() {
   return process.platform === 'linux' || (process.platform === 'win32' && getWindowsVersion() <= 6)
 }
 
+// 主窗口 hide() 之后，给合成器留出真正把窗口从合成输出里摘掉的安定时间。
+// 正常桌面 1~2 帧（≈16-32ms）就够，但信创/软渲染/远程桌面这类合成器重绘滞后可达数百毫秒，
+// 固定 100ms 不够，采集仍会残留主窗口 → 默认放宽到 250ms，并像 paintDelayMs 一样支持
+// QIM_SCREENSHOT_LINUX_HIDE_SETTLE_MS 环境变量按环境调大（80~1500ms）。
+function getWindowHideSettleMs() {
+  const raw = Number(process.env.QIM_SCREENSHOT_LINUX_HIDE_SETTLE_MS)
+  if (!Number.isFinite(raw)) return 250
+  return Math.max(80, Math.min(1500, raw))
+}
+
 function waitForWindowHiddenBeforeScreenshot(win) {
   if (!win || win.isDestroyed()) return Promise.resolve()
 
+  const settleMs = getWindowHideSettleMs()
+
   // 窗口已隐藏，等合成器稳定
   if (!win.isVisible()) {
-    return new Promise(resolve => setTimeout(resolve, 100))
+    return new Promise(resolve => setTimeout(resolve, settleMs))
   }
 
   return new Promise((resolve) => {
     win.once('hide', () => {
-      // hide 事件触发后再等一帧，确保合成器完成渲染
-      setTimeout(resolve, 100)
+      // hide 事件触发后再等多帧，确保合成器完成摘除主窗口的重新合成
+      setTimeout(resolve, settleMs)
     })
     win.hide()
   })
