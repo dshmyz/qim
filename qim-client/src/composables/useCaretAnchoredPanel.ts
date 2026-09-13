@@ -125,12 +125,23 @@ export const useCaretAnchoredPanel = (options: CaretAnchoredPanelOptions) => {
   const style = ref<CSSProperties | undefined>()
   const maxHeight = ref<number | undefined>(undefined)
 
+  // 防首帧闪烁：面板可见性翻转 true 时（渲染前）先置 hidden，等 reposition 给出
+  // 真实定位后再由 placement 覆盖显示。refs 未就绪等异常路径也保持隐藏不裸奔。
+  watch(visible, (v) => {
+    if (v) style.value = { visibility: 'hidden' }
+  })
+
   const reposition = () => {
     const ta = inputRef.value
     const area = areaRef.value
-    if (!visible() || !ta || !area) {
+    if (!visible()) {
       style.value = undefined
       maxHeight.value = undefined
+      return
+    }
+    if (!ta || !area) {
+      // 引用未就绪：保持隐藏，等下一次触发再定位
+      style.value = { visibility: 'hidden' }
       return
     }
     const areaRect = area.getBoundingClientRect()
