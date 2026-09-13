@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="slash-cmd-panel" role="listbox" :aria-label="title">
+  <div v-if="visible" class="slash-cmd-panel" role="listbox" :aria-label="title" :style="panelRootStyle">
     <div class="slash-cmd-panel__header">
       <span>{{ title }}</span>
     </div>
@@ -47,6 +47,8 @@ const props = defineProps<{
   footerLabel?: string
   /** 底部操作按钮图标 class。可选 */
   footerIcon?: string
+  /** 面板最大高度（px）。跟随光标弹出时按可用空间收缩，列表内部滚动；不传则不限 */
+  maxHeight?: number
 }>()
 
 const emit = defineEmits<{
@@ -57,6 +59,11 @@ const emit = defineEmits<{
 
 const listRef = ref<HTMLDivElement | null>(null)
 const activeIndex = ref(0)
+
+/** maxHeight 传入时限制面板总高（含头部/底栏），列表区 flex 收缩内部滚动 */
+const panelRootStyle = computed(() =>
+  props.maxHeight ? { maxHeight: `${props.maxHeight}px` } : undefined
+)
 
 /**
  * 按 searchQuery 过滤。
@@ -131,12 +138,15 @@ defineExpose({ handleKeyDown })
 
 <style scoped>
 .slash-cmd-panel {
+  display: flex;
+  flex-direction: column;
   background: var(--list-bg, var(--card-bg, #fff));
   border: 1px solid var(--border-color, #e4e7ed);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   overflow: hidden;
   max-width: 420px;
+  min-width: 360px;
 }
 
 .slash-cmd-panel__header {
@@ -147,6 +157,8 @@ defineExpose({ handleKeyDown })
 }
 
 .slash-cmd-panel__list {
+  flex: 1 1 auto;
+  min-height: 0;
   max-height: 240px;
   overflow-y: auto;
   padding: 4px;

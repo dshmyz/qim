@@ -48,10 +48,11 @@
       <EmojiPanel @select="handleEmojiSelect" />
     </div>
     
-    <div v-if="showAtMembersPanel && (conversation?.type === 'group' || conversation?.type === 'discussion')" class="at-members-panel-container">
+    <div v-if="showAtMembersPanel && (conversation?.type === 'group' || conversation?.type === 'discussion')" ref="atPanelContainerRef" class="at-members-panel-container" :style="atPanelStyle">
       <div class="at-members-panel-backdrop" @click="$emit('close-at-members-panel')"></div>
       <div
         class="at-members-panel"
+        :style="atPanelMaxHeight ? { maxHeight: `${atPanelMaxHeight}px` } : undefined"
         role="listbox"
         aria-label="选择提及成员"
         @keydown="handleAtMembersKeyDown"
@@ -90,7 +91,7 @@
     </div>
 
     <!-- 斜杠命令补全面板 -->
-    <div v-if="showSlashPanel" class="task-mention-panel-container">
+    <div v-if="showSlashPanel" ref="slashPanelContainerRef" class="task-mention-panel-container" :style="slashPanelStyle">
       <div class="task-mention-panel-backdrop" @click="$emit('close-slash-panel')"></div>
       <SlashCommandPanel
         ref="slashPanelRef"
@@ -101,6 +102,7 @@
         :item-component="slashItemComponent!"
         :footer-label="slashFooterLabel"
         :footer-icon="slashFooterIcon"
+        :max-height="slashPanelMaxHeight"
         @select="$emit('select-slash-item', $event)"
         @close="$emit('close-slash-panel')"
         @footer-action="$emit('slash-footer-action')"
@@ -166,6 +168,7 @@ import AIQuickActions from '../ai/AIQuickActions.vue'
 import ChatToolbar from './ChatToolbar.vue'
 import UniversalContextMenu from '../shared/UniversalContextMenu.vue'
 import { openMenu } from '../../composables/useUI'
+import { useCaretAnchoredPanel } from '../../composables/useCaretAnchoredPanel'
 import PendingFilesPreview from './PendingFilesPreview.vue'
 import { generateAvatar } from '../../utils/avatar'
 import Avatar from '../shared/Avatar.vue'
@@ -263,6 +266,32 @@ const isResizing = ref(false)
 const inputAreaHeight = ref<number | null>(null)
 const showMiniAppListLocal = computed({ get: () => props.showMiniAppList, set: (val) => emit('update:showMiniAppList', val) })
 const inputMessageLocal = computed({ get: () => props.inputMessage, set: (val) => emit('update:inputMessage', val) })
+
+/**
+ * 补全面板跟随光标定位（IDE 式）与放置触发/尺寸纠正均收敛在 useCaretAnchoredPanel，
+ * 斜杠命令面板与 @ 成员面板各取一份实例（模板绑定的 ref 名保持不变）。
+ */
+const slashPanelContainerRef = ref<HTMLElement | null>(null)
+const atPanelContainerRef = ref<HTMLElement | null>(null)
+const { style: slashPanelStyle, maxHeight: slashPanelMaxHeight } = useCaretAnchoredPanel({
+  visible: () => props.showSlashPanel,
+  inputRef: messageInputRef,
+  areaRef: inputAreaRef,
+  containerRef: slashPanelContainerRef,
+  innerPanelSelector: '.slash-cmd-panel',
+  // 斜杠面板最宽 420px
+  maxWidth: 420,
+  repositionSources: () => [props.showSlashPanel, props.inputMessage]
+})
+const { style: atPanelStyle, maxHeight: atPanelMaxHeight } = useCaretAnchoredPanel({
+  visible: () => props.showAtMembersPanel,
+  inputRef: messageInputRef,
+  areaRef: inputAreaRef,
+  containerRef: atPanelContainerRef,
+  innerPanelSelector: '.at-members-panel',
+  maxWidth: 320,
+  repositionSources: () => [props.showAtMembersPanel, props.inputMessage]
+})
 
 const minInputAreaHeight = 150
 const maxInputAreaHeight = 420
@@ -888,37 +917,23 @@ defineExpose({ messageInputRef })
   cursor: not-allowed;
 }
 
-/* @成员面板 */
-.at-members-panel-container {
-  position: relative;
-  z-index: 1000;
-  margin-top: 8px;
-}
-
-.at-members-panel-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.1);
-  z-index: -1;
-}
-
-/* /task 任务补全面板（复用 @ 成员面板的定位结构） */
+/* @成员面板：与斜杠面板同款光标跟随定位，不参与文档流 */
+/* 光标锚定浮层容器（斜杠命令/@ 成员面板共用）：绝对定位跟随光标（位置由 useCaretAnchoredPanel 动态给出），不参与文档流 */
+.at-members-panel-container,
 .task-mention-panel-container {
-  position: relative;
+  position: absolute;
   z-index: 1000;
-  margin-top: 8px;
 }
 
+/* 透明点击层：点面板外关闭，不做视觉暗化（IDE 式贴光标弹窗不遮罩） */
+.at-members-panel-backdrop,
 .task-mention-panel-backdrop {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.1);
+  background: transparent;
   z-index: -1;
 }
 
@@ -930,7 +945,7 @@ defineExpose({ messageInputRef })
   max-height: 300px;
   overflow-y: auto;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
-  min-width: 200px;
+  min-width: 320px;
 }
 
 .at-members-header {
