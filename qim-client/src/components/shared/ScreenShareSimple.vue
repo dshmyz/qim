@@ -683,6 +683,16 @@ const handleIncomingRequest = (data: any) => {
   const fromUserName = data.from_user_name || props.senderName || '对方'
   const mode = data.mode || 'broadcast'
 
+  // 忙碌闸：已有进行中的共享/查看会话或挂起的出向请求时不弹新邀请、不覆盖本端状态，
+  // 直接回发拒绝（带 mode）。shareMode/isViewerRequester 是单例状态，双向并发
+  // （我申请查看对方挂起中，对方又申请查看我）若不挡会互相踩，破坏发起中的请求。
+  if (screenShare.sessionState.value !== 'idle' || showSourcePicker.value || showIncomingRequest.value || showWaitingAccept.value) {
+    console.warn('[ScreenShareSimple] 本端忙碌，自动拒绝屏幕请求', { fromUserId, mode })
+    screenShare.rejectRequest(fromUserId, conversationId, mode as any)
+    QMessage.warning(mode === 'view' ? '正在使用屏幕共享/查看，已自动拒绝对方的查看申请' : '正在使用屏幕共享/查看，已自动拒绝对方的共享邀请')
+    return
+  }
+
   // view 请求对我而言是"对方申请查看我的屏幕"：我是被查看方（共享者/采集方）
   if (mode === 'view') {
     isViewerRequester.value = false
