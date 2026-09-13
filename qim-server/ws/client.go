@@ -119,6 +119,8 @@ func (c *Client) readPump() {
 		switch msg.Type {
 		case "heartbeat":
 			// 心跳，无需处理
+		case "ping":
+			// 客户端应用层心跳（useWebSocket.ts 每心跳周期发 {type:'ping'}），无需处理
 		case "acknowledge_sync":
 			// 客户端确认已收到 sync_hint 并完成增量拉取，清除溢出标记。
 			// 同时归零 syncHintStartedAt：若不复位，本次溢出已开始的重试窗口会残留，
@@ -183,7 +185,7 @@ func (c *Client) readPump() {
 		case "realtime:webrtc:ice":
 			HandleRealtimeWebRTCIce(c, msg.Data)
 		default:
-			logger.WithModule("WS").Warn("未知消息类型", "type", msg.Type)
+			logger.WithModule("WS").Warn("未知消息类型", "userID", c.userID, "type", msg.Type)
 		}
 	}
 }
