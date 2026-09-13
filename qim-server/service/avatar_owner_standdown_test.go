@@ -112,6 +112,13 @@ func TestAvatarStandDown(t *testing.T) {
 	_, down, _ = p.standDown(task, triggerAt)
 	assert.False(t, down)
 
+	// 主人的系统消息（群事件 sender 挂主人）触发后 → 不算亲自发言，不让位
+	reset()
+	insertMsg(ownerID, "", triggerAt.Add(time.Second))
+	db.Model(&model.Message{}).Where("1=1").Update("type", "system")
+	_, down, _ = p.standDown(task, triggerAt)
+	assert.False(t, down, "系统消息不算主人亲自发言")
+
 	// 主人消息在触发前 → 不让位（历史发言）
 	reset()
 	insertMsg(ownerID, "user", triggerAt.Add(-time.Second))

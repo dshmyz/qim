@@ -401,9 +401,11 @@ func (p *AvatarWorkerPool) standDown(task AvatarTask, triggerAt time.Time) (mode
 	}
 
 	var ownerReplies int64
+	// 排除 type=system：主人触发的群事件（改名/踢人等）产生的系统消息 sender_id 可能挂主人，
+	// 不能算「主人亲自发言」；软删消息由 GORM 默认过滤。
 	p.db.Model(&model.Message{}).
-		Where("conversation_id = ? AND sender_id = ? AND origin NOT IN ? AND created_at > ?",
-			task.ConversationID, task.UserID, []string{"avatar", "assistant", "bot"}, triggerAt).
+		Where("conversation_id = ? AND sender_id = ? AND type != ? AND origin NOT IN ? AND created_at > ?",
+			task.ConversationID, task.UserID, "system", []string{"avatar", "assistant", "bot"}, triggerAt).
 		Count(&ownerReplies)
 	if ownerReplies > 0 {
 		return session, true, "主人已亲自发言"
