@@ -545,8 +545,10 @@ const cancelShare = () => {
   showSourcePicker.value = false
   selectedSource.value = null
   // view 共享者中途取消源选择：必须回发拒绝，否则申请方已解除 60s 倒计时，
-  // 会一直停在「对方已接受查看申请」等待态直到手动取消
-  if (viewSharerTargetId.value && incomingRequestInfo.value) {
+  // 会一直停在「对方已接受查看申请」等待态直到手动取消。
+  // 仅限尚未推流（savedStream 为空）的放弃；推流中切源弹出的选择器取消时
+  // 不得回发 rejected，否则会误杀正在观看的查看方。
+  if (viewSharerTargetId.value && !savedStream.value && incomingRequestInfo.value) {
     screenShare.rejectRequest(incomingRequestInfo.value.fromUserId, incomingRequestInfo.value.conversationId, 'view')
     resetViewSharerState()
     incomingRequestInfo.value = null
@@ -844,8 +846,9 @@ const handleFullscreenChange = () => {
 
 const handleStop = () => {
   // view 共享者尚未推流（仍在源选择器）就中止：回发拒绝让申请方立即收到失败，
-  // 而不是只能靠 stop 信号猜；已建连后正常走 stop 信号即可
-  if (viewSharerTargetId.value && showSourcePicker.value && incomingRequestInfo.value) {
+  // 而不是只能靠 stop 信号猜；已建连后正常走 stop 信号即可（推流中切源弹出的
+  // 选择器里点停止同样走 stop，不回发 rejected 误杀查看方）
+  if (viewSharerTargetId.value && !savedStream.value && showSourcePicker.value && incomingRequestInfo.value) {
     screenShare.rejectRequest(incomingRequestInfo.value.fromUserId, incomingRequestInfo.value.conversationId, 'view')
   }
   screenShare.stopSharing()
