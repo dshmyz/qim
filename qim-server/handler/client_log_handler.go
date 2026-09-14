@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/pkg/upload"
+	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -320,6 +322,40 @@ func (h *FeedbackHandler) UpdateFeedback(c *gin.Context) {
 		logger.WithModule("feedback").Error("更新用户反馈失败", "error", err)
 		response.InternalServerError(c, "更新用户反馈失败")
 		return
+	}
+
+	// 管理员回复反馈时通知提交者：落库 Notification + WS 推送，让用户无需主动打开
+	// "我的反馈"就能知道反馈被处理了。仅在提交者存在且回复内容有实际变化时通知，
+	// 避免只改状态/优先级或重复保存同一回复时打扰用户。通知失败不影响回复本身。
+	replyText := ""
+	if req.Reply != nil {
+		replyText = strings.TrimSpace(*req.Reply)
+	}
+	if replyText != "" && feedback.UserID != nil && strings.TrimSpace(feedback.Reply) != replyText {
+		// 内容带原反馈摘要，多条反馈时用户能分辨是哪条被回复了
+		content := replyText
+		if excerpt := strings.TrimSpace(feedback.Content); excerpt != "" {
+			runes := []rune(excerpt)
+			if len(runes) > 40 {
+				runes = append(runes[:40:40], '…')
+			}
+			content = fmt.Sprintf("「%s」的回复：%s", string(runes), replyText)
+		}
+		notification := model.Notification{
+			UserID:        *feedback.UserID,
+			Type:          "feedback_reply",
+			Title:         "您的反馈有新回复",
+			Content:       content,
+			ActionType:    "open_feedback",
+			ActionPayload: fmt.Sprintf(`{"feedback_id":%d}`, id),
+		}
+		if err := h.db.Create(&notification).Error; err != nil {
+			logger.WithModule("feedback").Warn("反馈回复通知落库失败",
+				"feedbackID", id, "userID", *feedback.UserID, "error", err)
+		} else if ws.GlobalHub != nil {
+			notifMsg, _ := json.Marshal(ws.WSMessage{Type: "new_notification", Data: notification})
+			ws.GlobalHub.SendToUser(*feedback.UserID, notifMsg)
+		}
 	}
 
 	h.db.First(&feedback, id)
