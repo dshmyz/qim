@@ -3,7 +3,7 @@ import { getStoredServerUrl } from '../composables/useServerUrl'
 import { APP_CONFIG } from '../config/appConfig'
 import { detectPlatform } from '../utils/platform'
 import type { ApiResponse } from '../composables/useRequest'
-import { onUnauthorized } from '../composables/useRequest'
+import { onUnauthorized, refreshWithSingleFlight } from '../composables/useRequest'
 import { requestInterceptor } from '../utils/requestInterceptor'
 
 export class ApiError extends Error {
@@ -90,45 +90,7 @@ api.interceptors.request.use(
 )
 
 // 响应拦截器 - 统一错误处理
-let isRefreshing = false
-let refreshSubscribers: Array<(token: string) => void> = []
-
-function onTokenRefreshed(newToken: string) {
-  refreshSubscribers.forEach(cb => cb(newToken))
-  refreshSubscribers = []
-}
-
-function addRefreshSubscriber(cb: (token: string) => void) {
-  refreshSubscribers.push(cb)
-}
-
-async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = localStorage.getItem('refresh_token')
-  if (!refreshToken) return null
-
-  try {
-    const baseURL = getStoredServerUrl()
-    const response = await axios.post(`${baseURL}/api/v1/auth/refresh`, {}, {
-      headers: { 'Authorization': `Bearer ${refreshToken}` }
-    })
-
-    if (response.data?.code === 0 && response.data?.data?.token) {
-      const newToken = response.data.data.token
-      const newRefreshToken = response.data.data.refresh_token
-
-      localStorage.setItem('token', newToken)
-      if (newRefreshToken) {
-        localStorage.setItem('refresh_token', newRefreshToken)
-      }
-
-      return newToken
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
+// refresh 单飞逻辑收敛到 useRequest 的 refreshWithSingleFlight（与 fetch 栈共享，并发 401 只刷一次）
 api.interceptors.response.use(
   (response: AxiosResponse<ApiResponse>) => {
     // blob/arraybuffer 等非 JSON 响应（文件下载/预览）直接放行，不解析业务 code
@@ -153,52 +115,21 @@ api.interceptors.response.use(
     const config = error.config as RequestConfig
 
     if (error.response?.status === 401) {
-      // 如果是 refresh 请求失败，直接登出
+      // refresh 请求自身的 401 表示 refresh_token 也失效，直接登出
       if (config?.url?.includes('/auth/refresh')) {
         onUnauthorized()
         throw new ApiError('登录已过期，请重新登录', 401, 401)
       }
 
-      // 尝试用 refresh_token 刷新
-      if (!isRefreshing) {
-        isRefreshing = true
-        try {
-          const newToken = await refreshAccessToken()
-          if (newToken) {
-            onTokenRefreshed(newToken)
-            // 用新 token 重试原请求
-            if (config) {
-              config.headers = config.headers || {}
-              config.headers.Authorization = `Bearer ${newToken}`
-              return api.request(config)
-            }
-          } else {
-            // 刷新失败，清理排队请求并登出
-            refreshSubscribers = []
-            onUnauthorized()
-            throw new ApiError('登录已过期，请重新登录', 401, 401)
-          }
-        } catch (err) {
-          // 异常时清理排队请求
-          refreshSubscribers = []
-          if (err instanceof ApiError) throw err
-          onUnauthorized()
-          throw new ApiError('登录已过期，请重新登录', 401, 401)
-        } finally {
-          isRefreshing = false
-        }
-      } else {
-        // 正在刷新中，排队等待
-        return new Promise((resolve) => {
-          addRefreshSubscriber((newToken: string) => {
-            if (config) {
-              config.headers = config.headers || {}
-              config.headers.Authorization = `Bearer ${newToken}`
-              resolve(api.request(config))
-            }
-          })
-        })
+      // 尝试用 refresh_token 刷新（单飞，并发 401 只发起一次），成功则重试原请求
+      const newToken = await refreshWithSingleFlight()
+      if (newToken && config) {
+        config.headers = config.headers || {}
+        config.headers.Authorization = `Bearer ${newToken}`
+        return api.request(config)
       }
+      onUnauthorized()
+      throw new ApiError('登录已过期，请重新登录', 401, 401)
     }
 
     if (error.response?.status === 403) {
