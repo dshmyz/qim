@@ -30,6 +30,7 @@ import { useRealtimeMessaging } from '../../composables/useRealtimeMessaging'
 import { useUserStatus } from '../../composables/useUserStatus'
 import { getCurrentUser, isConversationPeerNonHuman } from '../../utils/user'
 import QMessage from '../../utils/qmessage'
+import { resolveScreenShareTarget } from '../../utils/screenSharePeer'
 
 interface Props {
   currentConversation?: {
@@ -109,21 +110,20 @@ const startScreenShare = async () => {
     return
   }
   if (conv?.type === 'single') {
-    // 优先使用后端返回的 other_member_id 字段
-    const otherMemberId = (conv as any).other_member_id
-    if (otherMemberId) {
-      screenShareReceiverId.value = Number(otherMemberId)
-      screenShareConversationId.value = Number(conv.id)
-      remoteScreenUserName.value = (conv as any).other_member_name || conv.name || '未知用户'
-    } else if (conv.members && conv.members.length === 2) {
-      // 降级方案
-      const otherMember = conv.members.find(m => String(m.id) !== String(user.id))
-      if (otherMember) {
-        screenShareReceiverId.value = Number(otherMember.id)
-        screenShareConversationId.value = Number(conv.id)
-        remoteScreenUserName.value = otherMember.name || '未知用户'
-      }
+    const target = resolveScreenShareTarget(conv, user.id)
+    if (target) {
+      screenShareReceiverId.value = target.receiverId
+      screenShareConversationId.value = target.conversationId
+      remoteScreenUserName.value = target.peerName
+    } else {
+      // 解析不到对端：清掉上一会话残留值，避免把共享申请发给错误用户
+      screenShareReceiverId.value = undefined
+      screenShareConversationId.value = undefined
     }
+  }
+  if (!screenShareReceiverId.value) {
+    QMessage.warning('无法确定对方，无法发起屏幕共享')
+    return
   }
 
   showScreenShare.value = true
@@ -168,18 +168,11 @@ const startScreenShareView = async () => {
     return
   }
   if (conv?.type === 'single') {
-    const otherMemberId = (conv as any).other_member_id
-    if (otherMemberId) {
-      screenShareReceiverId.value = Number(otherMemberId)
-      screenShareConversationId.value = Number(conv.id)
-      remoteScreenUserName.value = (conv as any).other_member_name || conv.name || '未知用户'
-    } else if (conv.members && conv.members.length === 2) {
-      const otherMember = conv.members.find(m => String(m.id) !== String(user.id))
-      if (otherMember) {
-        screenShareReceiverId.value = Number(otherMember.id)
-        screenShareConversationId.value = Number(conv.id)
-        remoteScreenUserName.value = otherMember.name || '未知用户'
-      }
+    const target = resolveScreenShareTarget(conv, user.id)
+    if (target) {
+      screenShareReceiverId.value = target.receiverId
+      screenShareConversationId.value = target.conversationId
+      remoteScreenUserName.value = target.peerName
     } else {
       // 解析不到对端：清掉上一会话残留值，避免把查看申请发给错误用户
       screenShareReceiverId.value = undefined
