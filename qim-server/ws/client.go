@@ -21,6 +21,12 @@ func (c *Client) sendJSON(m WSMessage) {
 	safeSend(c, data)
 }
 
+// handlePing 回应客户端应用层心跳：前端 connectionMonitor 发 {type:'ping'} 并等
+// {type:'pong'} 复位 pendingPong 才会发下一次心跳；不回 pong 监控会在首个心跳后假死。
+func (c *Client) handlePing() {
+	c.sendJSON(WSMessage{Type: "pong", Data: map[string]interface{}{"timestamp": time.Now().Unix()}})
+}
+
 func (c *Client) handleAuth(data interface{}) {
 	dataMap, ok := data.(map[string]interface{})
 	if !ok {
@@ -120,7 +126,9 @@ func (c *Client) readPump() {
 		case "heartbeat":
 			// 心跳，无需处理
 		case "ping":
-			// 客户端应用层心跳（useWebSocket.ts 每心跳周期发 {type:'ping'}），无需处理
+			// 客户端应用层心跳（useWebSocket.ts 每心跳周期发 {type:'ping'}），须回 pong
+			// 供 connectionMonitor.recordPong 复位，否则心跳循环永久假死
+			c.handlePing()
 		case "acknowledge_sync":
 			// 客户端确认已收到 sync_hint 并完成增量拉取，清除溢出标记。
 			// 同时归零 syncHintStartedAt：若不复位，本次溢出已开始的重试窗口会残留，
