@@ -230,7 +230,12 @@ func InitTestData(db *gorm.DB) {
 	// 检查是否已有部门数据
 	var deptCount int64
 	db.Model(&model.Department{}).Count(&deptCount)
-	if deptCount == 0 {
+	// 部门/会话初始化假设 users 有 7 个种子用户（users[0..6]）。userCount 把 bot
+	// 虚拟用户也算在内，而 else 分支按 type 过滤后真人数可能远少于 7，若不设守卫
+	// 会在 users[1] 处越界 panic，故不足 7 时跳过本块。
+	if deptCount == 0 && len(users) < 7 {
+		log.Printf("可用用户不足 7 个（实际 %d 个），跳过部门/会话测试数据初始化", len(users))
+	} else if deptCount == 0 {
 		log.Println("初始化部门数据...")
 
 		// 创建部门
