@@ -6,6 +6,8 @@ export interface DownloadUrlOptions {
   token?: string | null
   saveDir?: string
   downloadId?: string
+  /** content.id 接口 400/404（迁移数据 id 失效）时回退的原始 url */
+  fallbackUrl?: string
 }
 
 export interface DownloadResult {
@@ -32,6 +34,7 @@ export async function downloadUrl(options: DownloadUrlOptions): Promise<Download
       fileName: options.filename,
       saveDir: options.saveDir,
       downloadId: options.downloadId,
+      fallbackUrl: options.fallbackUrl,
     })
     return { mode: 'electron' }
   }

@@ -2969,13 +2969,19 @@ const saveDownloadedFile = (id: string, path: string) => {
 
 // 解析聊天文件消息的下载地址。
 // 优先走 /api/v1/files/{id}/download：该接口返回 Content-Length，主进程 getTotalBytes() 非 0，能算真百分比。
-// 历史/旧消息 content 无 id 时回退到存储里的 url（/static/uploads/...，无 Content-Length）。
+// 历史/旧消息 content 无 id 时回退到存储里的 url（/static/uploads/...）。
 const resolveFileUrl = (parsedContent: any): string => {
-  const server = serverUrl.value.replace(/\/$/, '')
   const fileId = Number(parsedContent?.id)
   if (fileId > 0) {
-    return `${server}/api/v1/files/${fileId}/download`
+    return `${serverUrl.value.replace(/\/$/, '')}/api/v1/files/${fileId}/download`
   }
+  return resolveStorageUrl(parsedContent)
+}
+
+// content.url 指向的存储文件（完整 URL 或 /static 路径）。
+// 迁移数据的 content.id 是旧系统 ID，新库查不到，id 接口会 400/404 —— 用它做下载回退目标。
+const resolveStorageUrl = (parsedContent: any): string => {
+  const server = serverUrl.value.replace(/\/$/, '')
   const stored = parsedContent?.url || ''
   if (!stored) return ''
   return stored.startsWith('http') ? stored : `${server}/${stored.replace(/^\//, '')}`
@@ -3004,12 +3010,14 @@ const downloadFile = async (fileContent: string, messageId?: string) => {
         beginDownload(lockKey)
         downloadProgress.value[lockKey] = 0
       }
+      const fallback = resolveStorageUrl(parsedContent)
       window.electron.ipcRenderer.send('download-file', {
         url: fileUrl,
         token: getToken() || '',
         fileName: finalFileName,
         saveDir: props.messageSettings?.defaultSaveDirectory,
-        downloadId: lockKey || undefined
+        downloadId: lockKey || undefined,
+        fallbackUrl: fallback && fallback !== fileUrl ? fallback : undefined
       })
       return
     }
@@ -3069,12 +3077,14 @@ const saveFileAs = async (fileContent: string, messageId?: string) => {
         beginDownload(lockKey)
         downloadProgress.value[lockKey] = 0
       }
+      const fallback = resolveStorageUrl(parsedContent)
       window.electron.ipcRenderer.send('save-file-as', {
         url: fileUrl,
         token: getToken() || '',
         fileName: finalFileName,
         savePath: dialogResult.filePath,
-        downloadId: lockKey || undefined
+        downloadId: lockKey || undefined,
+        fallbackUrl: fallback && fallback !== fileUrl ? fallback : undefined
       })
       return
     }

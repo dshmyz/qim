@@ -1,6 +1,6 @@
 // ==================== Imports & Setup ====================
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session, shell, Notification, clipboard } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, desktopCapturer, dialog, screen, systemPreferences, session, shell, Notification, clipboard, net } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url'
 import { createRequire } from 'node:module'
 import { createUpdateService } from './auto-update.js'
 import { registerSecurePasswordIpc } from './secure-password.js'
-import { DownloadRegistry } from './download-registry.js'
+import { DownloadManager } from './download-manager.js'
 
 const require = createRequire(import.meta.url)
 const screenshots = require('./screenshots/lib/index.cjs').default
@@ -259,104 +259,41 @@ let normalTrayIcon = null
 let blankTrayIcon = null
 let hasUnread = false
 
-// ==================== File Download (built-in download manager) ====================
-// 用 Electron 内置下载管理器流式写盘，内存恒定，不受大文件影响。
-// 每次下载生成唯一 requestUrl，避免同一文件并发下载互相覆盖元信息。
-const downloadRegistry = new DownloadRegistry()
-let downloadHandlerRegistered = false
+// ==================== File Download (explicit HTTP) ====================
+// 显式下载而非 webContents.downloadURL：downloadURL 是 fire-and-forget，服务端连不上时
+// Electron 不派发 DownloadItem、will-download 不触发，前端永远收不到终态而卡在 0%。
+// 改为 net.request 显式请求→流式写盘，成功/失败/进度全部明确回传。
+const downloadManager = new DownloadManager({
+  requestFn: (opts) => net.request(opts),
+  getDownloadsDir: () => app.getPath('downloads')
+})
 
-function registerDownloadHandlers(sess) {
-  if (downloadHandlerRegistered) return
-  downloadHandlerRegistered = true
-
-  sess.webRequest.onBeforeSendHeaders({ urls: ['<all_urls>'] }, (details, cb) => {
-    const authorization = downloadRegistry.getAuthHeader(details.url)
-    if (!authorization) {
-      cb({ requestHeaders: details.requestHeaders })
-      return
-    }
-    cb({ requestHeaders: { ...details.requestHeaders, Authorization: authorization } })
-  })
-
-  sess.on('will-download', (event, item) => {
-    const actualUrl = item.getURL()
-    const meta = downloadRegistry.consume(actualUrl)
-    if (!meta) return
-
-    const name = meta.fileName || item.getFilename()
-    if (meta.savePath) {
-      // 前端已选好路径（另存为模式），直接用
-      item.setSavePath(meta.savePath)
-    } else {
-      const targetDir = meta.saveDir && meta.saveDir !== '~/Downloads' ? meta.saveDir : app.getPath('downloads')
-      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true })
-      item.setSavePath(path.join(targetDir, name))
-    }
-
-    const sendProgress = (percent, state) => {
-      if (meta.downloadId == null || !mainWindow || mainWindow.isDestroyed()) return
-      mainWindow.webContents.send('download-progress', {
-        downloadId: meta.downloadId,
-        percent,
-        received: item.getReceivedBytes(),
-        total: item.getTotalBytes(),
-        state
-      })
-    }
-
-    item.on('updated', (_e, state) => {
-      if (state !== 'progressing') return
-      const total = item.getTotalBytes()
-      const received = item.getReceivedBytes()
-      // total 为 0（无 Content-Length / chunked / 压缩流）：无法算百分比，
-      // 改发 indeterminate，前端用流动条表示"仍在下载"，避免误以为卡在 0%。
-      const indeterminate = total <= 0
-      const percent = indeterminate ? 0 : Math.floor((received / total) * 100)
-      sendProgress(percent, indeterminate ? 'indeterminate' : 'progressing')
-    })
-
-    item.once('done', (_e, state) => {
-      console.log('[download] done state:', state, 'downloadId:', meta.downloadId, 'path:', item.getSavePath())
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        sendProgress(state === 'completed' ? 100 : 0, state)
-        if (state === 'completed') {
-          const payload = {
-            success: true,
-            filePath: item.getSavePath(),
-            downloadId: meta.downloadId
-          }
-          mainWindow.webContents.send(meta.completeChannel, payload)
-        } else if (state === 'cancelled') {
-          mainWindow.webContents.send(meta.completeChannel, {
-            success: false,
-            cancelled: true,
-            downloadId: meta.downloadId
-          })
-        } else {
-          mainWindow.webContents.send(meta.completeChannel, {
-            success: false,
-            error: state === 'interrupted' ? '下载中断' : state,
-            downloadId: meta.downloadId
-          })
-        }
-      }
-      // 收尾清理：该 URL 无更多待下载实例时移除 token 记录
-      downloadRegistry.finalize(meta.url)
-    })
-  })
+function sendDownloadIpc(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload)
+  }
 }
 
-function triggerDownload({ url, token, fileName, saveDir, savePath, downloadId, completeChannel }) {
+function triggerDownload({ url, token, fileName, saveDir, savePath, downloadId, fallbackUrl, completeChannel }) {
   try {
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    const contents = mainWindow.webContents
-    const sess = contents.session
-    registerDownloadHandlers(sess)
-    const meta = downloadRegistry.create({ url, token, fileName, saveDir, savePath, downloadId, completeChannel })
-    contents.downloadURL(meta.requestUrl)
+    downloadManager.start({
+      url,
+      token,
+      fileName,
+      saveDir,
+      savePath,
+      downloadId,
+      fallbackUrl,
+      onProgress: (id, percent, received, total, state) => {
+        sendDownloadIpc('download-progress', { downloadId: id, percent, received, total, state })
+      },
+      onDone: (id, result) => {
+        sendDownloadIpc(completeChannel, { ...result, downloadId: id })
+      }
+    })
   } catch (error) {
     console.error('文件下载失败:', error)
-    mainWindow?.webContents.send(completeChannel, { success: false, error: error.message })
+    sendDownloadIpc(completeChannel, { success: false, error: error.message, downloadId })
   }
 }
 
@@ -1107,8 +1044,8 @@ function registerIPC() {
     }
   })
 
-  ipcMain.on('download-file', (event, { url, token, fileName, saveDir, downloadId }) => {
-    triggerDownload({ url, token, fileName, saveDir, downloadId, completeChannel: 'download-complete' })
+  ipcMain.on('download-file', (event, { url, token, fileName, saveDir, downloadId, fallbackUrl }) => {
+    triggerDownload({ url, token, fileName, saveDir, downloadId, fallbackUrl, completeChannel: 'download-complete' })
   })
 
   ipcMain.handle('show-save-dialog', async (event, { defaultPath }) => {
@@ -1120,8 +1057,8 @@ function registerIPC() {
     return result
   })
 
-  ipcMain.on('save-file-as', (event, { url, token, fileName, savePath, downloadId }) => {
-    triggerDownload({ url, token, fileName, savePath, downloadId, completeChannel: 'save-file-complete' })
+  ipcMain.on('save-file-as', (event, { url, token, fileName, savePath, downloadId, fallbackUrl }) => {
+    triggerDownload({ url, token, fileName, savePath, downloadId, fallbackUrl, completeChannel: 'save-file-complete' })
   })
 
   // 用系统默认应用打开文件

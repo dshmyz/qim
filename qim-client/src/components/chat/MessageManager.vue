@@ -509,7 +509,7 @@ const parseContentId = (content: string): number => {
   }
 }
 
-const downloadMedia = async (url: string, filename: string, successMessage: string, errorMessage: string) => {
+const downloadMedia = async (url: string, filename: string, successMessage: string, errorMessage: string, fallbackUrl?: string) => {
   if (!url) {
     QMessage.error(errorMessage)
     return
@@ -519,6 +519,7 @@ const downloadMedia = async (url: string, filename: string, successMessage: stri
       url,
       filename,
       token: getToken(),
+      fallbackUrl,
     })
     QMessage.success(successMessage)
   } catch (error) {
@@ -527,9 +528,17 @@ const downloadMedia = async (url: string, filename: string, successMessage: stri
   }
 }
 
-// 下载文件
+// 下载文件（id 接口 400/404 时回退到 content.url 指向的存储文件）
 const downloadFile = async (message: any) => {
-  await downloadMedia(resolveDownloadUrl(message), getFileName(message), '文件下载已开始', '文件下载失败')
+  const primary = resolveDownloadUrl(message)
+  const fallback = resolveMediaUrl(message)
+  await downloadMedia(
+    primary,
+    getFileName(message),
+    '文件下载已开始',
+    '文件下载失败',
+    fallback && fallback !== primary ? fallback : undefined
+  )
 }
 
 // 预览图片
@@ -562,11 +571,12 @@ const handleMediaClick = (message: any, event: MouseEvent) => {
   openMenu('media', event.clientX, event.clientY)
 }
 
-// 下载图片
+// 下载图片（id 接口 400/404 时回退到展示用的 /static 地址）
 const downloadImage = async () => {
   const url = previewImageDownloadUrl.value || previewImageUrl.value
   if (!url) return
-  await downloadMedia(url, previewImageFilename.value, '图片下载已开始', '图片下载失败')
+  const fb = previewImageUrl.value && previewImageUrl.value !== url ? previewImageUrl.value : undefined
+  await downloadMedia(url, previewImageFilename.value, '图片下载已开始', '图片下载失败', fb)
 }
 
 // 获取文件名
