@@ -4,19 +4,34 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, d
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
-import { fileURLToPath } from 'url'
+import { pathToFileURL } from 'url'
 import { createRequire } from 'node:module'
 import { createUpdateService } from './auto-update.js'
 import { registerSecurePasswordIpc } from './secure-password.js'
 import { DownloadManager } from './download-manager.js'
 
-const require = createRequire(import.meta.url)
+// 资源路径以 app.getAppPath() 为锚点：打包（win7/正式）与开发、bundle/loader 下都稳定，
+// 不依赖 import.meta.url/__filename——win7 的 CJS 入口动态加载 ESM 时这些不可靠（会 undefined 或指错目录）。
+const __dirname = path.join(app.getAppPath(), 'electron')
+const __filename = path.join(__dirname, 'main.js')
+const require = createRequire(__filename)
 const screenshots = require('./screenshots/lib/index.cjs').default
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+// 打包后（尤其 win7）主进程 stderr 不可见，任何未捕获错误写日志文件便于离线定位
+process.on('uncaughtException', (err) => {
+  try {
+    fs.appendFileSync(path.join(os.tmpdir(), 'qim-main-error.log'), `[${new Date().toISOString()}] ${err?.stack || err}\n`)
+  } catch { /* 日志写失败忽略 */ }
+})
 
 const SCREENSHOT_CAPTURE_TIMEOUT_MS = 12000
+
+// win7 老显卡 GPU 合成失败常导致窗口黑屏，必须尽早关硬件加速（os.release() "6.1.xxxx" = Win7）
+const isWin7 = process.platform === 'win32' && /^6\.1\./.test(os.release())
+if (isWin7) {
+  app.disableHardwareAcceleration()
+  console.log('win7 detected, hardware acceleration disabled')
+}
 
 // ==================== Single Instance & Protocol ====================
 
@@ -310,14 +325,16 @@ function createWindow() {
   const icon = loadIcon(256)
   const isMac = process.platform === 'darwin'
   const isLinux = process.platform === 'linux'
+  // win7 透明窗口合成失败渲染成黑屏，splash 改不透明（同 Linux 处理）
+  const splashOpaque = isLinux || isWin7
 
   // Splash
   const splashWindow = new BrowserWindow({
     width: 360,
     height: 320,
     frame: false,
-    backgroundColor: isLinux ? '#e8ecf1' : '#00000000',
-    transparent: !isLinux,
+    backgroundColor: splashOpaque ? '#e8ecf1' : '#00000000',
+    transparent: !splashOpaque,
     alwaysOnTop: true,
     resizable: false,
     skipTaskbar: true,
@@ -368,9 +385,11 @@ function createWindow() {
   // 主进程无需在此全局拦截，避免与逐应用策略冲突。
 
   const isDev = !app.isPackaged
+  // 打包后主界面用 file:// 加载 dist。必须经 pathToFileURL 转成合法 file URL：
+  // Windows 下 path.join 返回反斜杠路径，直接拼 `file://${path}` 会得到非法 URL 而加载失败。
   const url = isDev
     ? 'http://localhost:3000'
-    : `file://${path.join(__dirname, '../dist/index.html')}`
+    : pathToFileURL(path.join(__dirname, '../dist/index.html')).href
 
   mainWindow.loadURL(url)
   console.log(`Loading URL: ${url}`)
@@ -385,6 +404,24 @@ function createWindow() {
     if (updateService.isForceUpdateActive() && lastForceUpdateInfo) {
       sendToWindow('update-available', lastForceUpdateInfo)
     }
+  })
+
+  // 渲染进程报错/崩溃也写进排障日志（打包后看不见 devtools，靠这个定位黑屏/白屏）
+  // 同时收集到内存，供"主窗口就绪超时"时用原生对话框直接弹出（win7 黑屏也能看到）
+  const startupErrors = []
+  mainWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+    if (level >= 3) {
+      startupErrors.push(`[renderer] ${sourceId}:${line} ${message}`.slice(0, 400))
+      try { fs.appendFileSync(path.join(os.tmpdir(), 'qim-main-error.log'), `[${new Date().toISOString()}] ${startupErrors[startupErrors.length - 1]}\n`) } catch { /* 忽略 */ }
+    }
+  })
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    const line = `[renderer-gone] reason=${details.reason} exitCode=${details.exitCode}`
+    startupErrors.push(line)
+    try { fs.appendFileSync(path.join(os.tmpdir(), 'qim-main-error.log'), `[${new Date().toISOString()}] ${line}\n`) } catch { /* 忽略 */ }
+  })
+  mainWindow.webContents.on('did-fail-load', (_e, errorCode, errorDescription) => {
+    startupErrors.push(`[did-fail-load] ${errorDescription} (${errorCode})`)
   })
 
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -430,6 +467,9 @@ function createWindow() {
         console.error('关闭splash窗口失败:', e)
       }
       mainWindow.show()
+      // 主窗口就绪超时：把收集到的渲染错误用原生对话框直接弹出（win7 黑屏也能看到，无需访问日志文件）
+      const detail = startupErrors.slice(-6).join('\n') || '（无渲染错误记录）'
+      dialog.showErrorBox('QIM 启动异常', `主界面在 10 秒内未能加载。\n\n${detail}\n\n请把本框内容发给技术支持。`)
     }
   }, 10000)
 
