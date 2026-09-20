@@ -6,3 +6,6 @@ vite.config.js.map
 
 # npm 运行时产物
 .npm/
+
+# 主进程打包产物（每次构建由 scripts/build-main.cjs 重新生成）
+/electron/main.bundle.cjs

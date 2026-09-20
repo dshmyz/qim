@@ -20,17 +20,18 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:all": "npm run test:unit && npm run test:e2e",
-    "electron:build": "electron-builder",
-    "electron:build:win7": "electron-builder --win --x64 -c electron-builder.win7.json --publish never",
-    "electron:build:win10": "electron-builder --win --x64",
-    "electron:build:linux": "electron-builder --linux",
-    "electron:build:mac": "electron-builder --mac",
+    "electron:build": "node scripts/build-main.cjs && electron-builder",
+    "electron:build:win7": "node scripts/build-main.cjs && electron-builder --win --x64 -c electron-builder.win7.json --publish never",
+    "electron:build:win10": "node scripts/build-main.cjs && electron-builder --win --x64",
+    "electron:build:linux": "node scripts/build-main.cjs && electron-builder --linux",
+    "electron:build:mac": "node scripts/build-main.cjs && electron-builder --mac",
     "electron:build:all": "bash scripts/build-all.sh",
     "icon:generate": "node electron/icons/generate-all-icons.js"
   },
   "build": {
     "appId": "com.qim.app",
     "extraMetadata": {
+      "main": "electron/main.cjs",
       "productNameCN": "青雀",
       "copyrightYear": "2026",
       "releaseDate": "2026-04-11",

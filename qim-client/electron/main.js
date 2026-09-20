@@ -10,12 +10,16 @@ import { createUpdateService } from './auto-update.js'
 import { registerSecurePasswordIpc } from './secure-password.js'
 import { DownloadManager } from './download-manager.js'
 
-// 资源路径以 app.getAppPath() 为锚点：打包（win7/正式）与开发、bundle/loader 下都稳定，
-// 不依赖 import.meta.url/__filename——win7 的 CJS 入口动态加载 ESM 时这些不可靠（会 undefined 或指错目录）。
-const __dirname = path.join(app.getAppPath(), 'electron')
-const __filename = path.join(__dirname, 'main.js')
-const require = createRequire(__filename)
-const screenshots = require('./screenshots/lib/index.cjs').default
+// electronDir 以 app.getAppPath() 为锚点：打包 = <app.asar>/electron，开发 = <项目根>/electron。
+// 兜底：入口文件被直接启动（app path 即 electron/ 目录本身）时退回 appPath，
+// 避免拼出 electron/electron 双层目录。
+const appPath = app.getAppPath()
+const electronDir = fs.existsSync(path.join(appPath, 'electron', 'preload.cjs'))
+  ? path.join(appPath, 'electron')
+  : appPath
+const mainEntryPath = path.join(electronDir, 'main.js')
+const requireCjs = createRequire(mainEntryPath)
+const screenshots = requireCjs('./screenshots/lib/index.cjs').default
 
 // 打包后（尤其 win7）主进程 stderr 不可见，任何未捕获错误写日志文件便于离线定位
 process.on('uncaughtException', (err) => {
@@ -94,7 +98,7 @@ app.setAsDefaultProtocolClient('qim')
 // ==================== Icons ====================
 
 function getIconPath(size = 512) {
-  const iconDir = path.join(__dirname, 'icons')
+  const iconDir = path.join(electronDir, 'icons')
   return path.join(iconDir, `icon_${size}x${size}.png`)
 }
 
@@ -344,7 +348,7 @@ function createWindow() {
     }
   })
 
-  const splashPath = path.join(__dirname, 'splash.html')
+  const splashPath = path.join(electronDir, 'splash.html')
   splashWindow.loadFile(splashPath)
   console.log(`Loading splash for version: v${app.getVersion()}`)
 
@@ -357,7 +361,7 @@ function createWindow() {
     backgroundColor: '#e8ecf1',
     transparent: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
+      preload: path.join(electronDir, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
@@ -389,7 +393,7 @@ function createWindow() {
   // Windows 下 path.join 返回反斜杠路径，直接拼 `file://${path}` 会得到非法 URL 而加载失败。
   const url = isDev
     ? 'http://localhost:3000'
-    : pathToFileURL(path.join(__dirname, '../dist/index.html')).href
+    : pathToFileURL(path.join(electronDir, '../dist/index.html')).href
 
   mainWindow.loadURL(url)
   console.log(`Loading URL: ${url}`)
@@ -753,16 +757,14 @@ function createTray() {
     tray.setToolTip('QIM 应用')
     tray.setContextMenu(contextMenu)
 
+    // toggle 仅用于正常可见状态；闪烁中/最小化/隐藏一律唤起并聚焦。
+    // Linux 下 show() 不保证置顶聚焦（焦点防抢占），必须显式 focus()。
     tray.on('click', () => {
-      if (mainWindow) {
-        if (mainWindow.isVisible()) {
-          mainWindow.hide()
-        } else {
-          mainWindow.show()
-        }
-      } else {
-        createWindow()
-      }
+      if (!mainWindow) return createWindow()
+      if (mainWindow.isVisible() && !mainWindow.isMinimized() && !hasUnread) return mainWindow.hide()
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
     })
 
     console.log('托盘图标创建成功')

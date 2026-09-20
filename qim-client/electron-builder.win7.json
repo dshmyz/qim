@@ -3,7 +3,7 @@
   "productName": "青雀 QIM",
   "electronVersion": "22.3.27",
   "extraMetadata": {
-    "main": "electron/main.win7.cjs",
+    "main": "electron/main.cjs",
     "productNameCN": "青雀",
     "copyrightYear": "2026"
   },
@@ -17,8 +17,7 @@
   ],
   "files": [
     "dist/**/*",
-    "electron/**/*",
-    "electron/main.win7.cjs"
+    "electron/**/*"
   ],
   "directories": {
     "output": "electron-dist/win7",
