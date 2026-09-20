@@ -2,7 +2,8 @@
   <!-- AI 渲染能力统一 —— 统一 AI 回答气泡体。
        IM 气泡与 BotChat 独立聊天共用同一组件：markdown 正文（思考占位 + typing dots +
        流式 partial-md）+ 附属反馈行（工具卡片 / 知识来源 / 分身依据）。取代两处各自手写的
-       正文/思考/来源/工具渲染。正文排版统一走 useMarkdownRender + markdown-content.css。 -->
+       正文/思考/来源/工具渲染。正文排版统一走 useMarkdownRender + markdown-content.css。
+       👍/👎 用户反馈已抽到 AIFeedbackButtons（MessageItem.meta 行 / BotChatView 内联使用）。 -->
   <div :class="['ai-answer-bubble', variant, { self: isSelf }]" @click="handleLinkClick">
     <!-- AI 还没吐第一个字（content 空 + 仍在流）：显示「思考中」+ dots 同行占位，首段到达后自然替换 -->
     <div v-if="showThinking && isStreaming && !content" class="thinking-placeholder">
@@ -23,32 +24,14 @@
     <AISources v-if="knowledgeSources && knowledgeSources.length" :sources="knowledgeSources" variant="list" />
     <ToolCallTrace v-if="toolCalls && toolCalls.length" :calls="toolCalls" :open="isStreaming" />
     <AISources v-if="avatarSources && avatarSources.length" :sources="avatarSources" variant="inline" />
-
-    <!-- 用户反馈 👍/👎：仅持久化消息（有数字 id）且非流式中显示，主观反馈接入质量闭环 -->
-    <div v-if="messageIdNum && !isStreaming" class="fb-row" :class="{ 'fb-visible': fb !== 0 }">
-      <button
-        class="fb-btn"
-        :class="{ active: fb === 1 }"
-        :title="fb === 1 ? '取消点赞' : '赞，有帮助'"
-        @click.stop="setFb(1)"
-      ><i class="fas fa-thumbs-up"></i></button>
-      <button
-        class="fb-btn"
-        :class="{ active: fb === -1 }"
-        :title="fb === -1 ? '取消点踩' : '踩，没帮助'"
-        @click.stop="setFb(-1)"
-      ><i class="fas fa-thumbs-down"></i></button>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, inject, watch, onMounted } from 'vue'
+import { computed, ref } from 'vue'
 import { useMarkdownRender, handleLinkClick } from '../../composables/useMarkdownRender'
 import ToolCallTrace from './ToolCallTrace.vue'
 import AISources from './AISources.vue'
-import { aiFeedbackAPI } from '../../api/ai'
-import { aiFeedbackRatingsKey, type AIFeedbackRatings } from '../../composables/useAIFeedbackBatch'
 import type { ToolCallRecord, AISource } from '../../types'
 import './markdown-content.css'
 
@@ -65,9 +48,6 @@ const props = withDefaults(defineProps<{
   suppressStreamingImages?: boolean
   toolCalls?: ToolCallRecord[]
   knowledgeSources?: AISource[]
-  /** 持久化消息 id：传入才显示 👍/👎 反馈（内存态/流式占位消息无 id 不显示）。
-      主窗口消息 id 为 string（store 归一化），BotChatView 为 number，两者都接受 */
-  messageId?: number | string
   avatarSources?: AISource[]
 }>(), {
   isSelf: false,
@@ -88,44 +68,6 @@ const { html, containerRef: bodyEl } = useMarkdownRender(
     suppressImages: props.suppressStreamingImages,
   }))
 )
-
-// ── 用户反馈 👍/👎：本地选中态 + 服务端 upsert（再点同键 = 撤销） ──
-// 选中态恢复：列表层（MessageListView/BotChatView）批量拉取后经 provide 注入；
-// 组件响应注入 map 变化；无注入（孤立使用）时回退挂载单条拉取
-const batchRatings = inject<AIFeedbackRatings | null>(aiFeedbackRatingsKey, null)
-const fb = ref<1 | -1 | 0>(0)
-// 统一归一化为数字 id（主窗口 string 型 → Number；流式占位串如 stream_xxx → NaN → null 不显示反馈）
-const messageIdNum = computed<number | null>(() => {
-  const v = props.messageId
-  if (v === undefined || v === null || v === '') return null
-  const n = typeof v === 'number' ? v : Number(v)
-  return Number.isFinite(n) && n > 0 ? n : null
-})
-if (batchRatings && messageIdNum.value) {
-  // immediate：气泡可能在列表层已批量拉取之后才挂载（会话切换返回、分页重挂载），
-  // 此时 map 引用不会再变，非 immediate 的 watch 永不触发导致选中态静默丢失
-  watch(batchRatings, (map) => {
-    const r = map.get(messageIdNum.value!)
-    if (r === 1 || r === -1) fb.value = r
-  }, { immediate: true })
-}
-const setFb = async (v: 1 | -1) => {
-  if (!messageIdNum.value) return
-  const prev = fb.value
-  const next = prev === v ? 0 : v
-  fb.value = next
-  try {
-    await aiFeedbackAPI.set(messageIdNum.value, next)
-  } catch {
-    fb.value = prev // 失败回滚本地态，允许重试
-  }
-}
-onMounted(() => {
-  if (!messageIdNum.value) return
-  // 列表层批量注入存在时不再单条拉取（N+1 消除）
-  if (batchRatings) return
-  aiFeedbackAPI.get(messageIdNum.value).then(r => { fb.value = (r === 1 || r === -1) ? r : 0 }).catch(() => {})
-})
 </script>
 
 <style>
@@ -225,44 +167,5 @@ onMounted(() => {
 @keyframes aitb-typing {
   0%, 80%, 100% { transform: scale(0); }
   40% { transform: scale(1); }
-}
-
-/* ── 用户反馈 👍/👎：默认半透明，hover 或已选时显现 ── */
-.fb-row {
-  display: flex;
-  gap: 4px;
-  margin-top: 6px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.ai-answer-bubble:hover .fb-row,
-.fb-row.fb-visible {
-  opacity: 1;
-}
-
-.fb-btn {
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  border-radius: 5px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-size-xxxs);
-  color: var(--text-secondary, #9ca3af);
-  transition: all 0.15s;
-}
-
-.fb-btn:hover {
-  background: color-mix(in srgb, var(--primary-color, #6366f1) 10%, transparent);
-  color: var(--primary-color, #6366f1);
-}
-
-.fb-btn.active {
-  color: var(--primary-color, #6366f1);
-  background: color-mix(in srgb, var(--primary-color, #6366f1) 14%, transparent);
 }
 </style>

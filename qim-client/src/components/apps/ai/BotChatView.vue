@@ -147,6 +147,10 @@
                 <span v-else v-html="previewTextToHtml(msg.content)"></span>
               </div>
             </div>
+            <!-- AI 反馈 👍/👎：气泡正下方内联，hover 消息行显现（与 IM meta 行同款组件） -->
+            <div v-if="msg.senderType === 'bot' && !msg.isStreaming" class="botchat-fb-row">
+              <AIFeedbackButtons :message-id="typeof msg.id === 'number' ? msg.id : undefined" />
+            </div>
             <!-- AI 失败态：展示重试（重新填回上一次提问） -->
             <div v-if="msg.isError" class="failed-bar">
               <span class="failed-hint"><i class="fas fa-exclamation-triangle"></i> AI 回答失败</span>
@@ -238,6 +242,7 @@ import { ref, computed, provide, nextTick, watch, onScopeDispose, type Ref } fro
 import Avatar from '../../shared/Avatar.vue'
 import ThinkingIndicator from '../../shared/ThinkingIndicator.vue'
 import AIAnswerBubble from '../../message/AIAnswerBubble.vue'
+import AIFeedbackButtons from '../../message/AIFeedbackButtons.vue'
 import CardMessage from '../../message/CardMessage.vue'
 import { aiPromptAPI } from '../../../api/ai'
 import { getStoredServerUrl } from '../../../composables/useServerUrl'
@@ -1006,6 +1011,18 @@ watch(() => props.isStreaming, () => {
 .message-wrapper.user .failed-bar {
   justify-content: flex-end;
   padding-left: 0;
+}
+
+/* AI 反馈 👍/👎 行：气泡正下方内联，hover 消息行显现（与 IM meta 行同款组件） */
+.botchat-fb-row {
+  display: flex;
+  margin-top: 2px;
+  padding-left: 10px;
+}
+
+.message-wrapper:hover .botchat-fb-row :deep(.fb-btn),
+.botchat-fb-row :deep(.fb-btn.active) {
+  opacity: 1;
 }
 
 .failed-hint {

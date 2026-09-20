@@ -165,6 +165,11 @@
             <AvatarReplyBadge v-if="message.origin === 'avatar'" :variant="(message.disclaimer_style as 'badge' | 'footer' | 'both') || 'footer'" :user-name="message.sender.name || ''" :avatar-name="message.avatar_name || ''" :is-own="isSelf" />
           </span>
           <div class="message-time">{{ formatTime(message.timestamp) }}</div>
+          <!-- AI 消息 👍/👎：与时间同行、垂直居中对齐（时间对 AI 消息常显，见样式） -->
+          <AIFeedbackButtons
+            v-if="isAIMessage && !message.isStreaming"
+            :message-id="message.id"
+          />
           <div v-if="isSelf && message.isFailed" class="message-read-status failed" title="发送失败">
             <i class="fas fa-exclamation-circle"></i> 发送失败
             <span class="retry-btn" @click.stop="$emit('retrySendMessage', message)"><i class="fas fa-redo"></i></span>
@@ -197,6 +202,7 @@ import SystemMessage from './SystemMessage.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
 import MergedForwardMessage from './MergedForwardMessage.vue'
 import AIAnswerBubble from './AIAnswerBubble.vue'
+import AIFeedbackButtons from './AIFeedbackButtons.vue'
 import CardMessage from './CardMessage.vue'
 import AIMessageBadge from '../ai/AIMessageBadge.vue'
 import AvatarReplyBadge from '../avatar/AvatarReplyBadge.vue'
@@ -586,6 +592,16 @@ const convertUrlsToLinks = (text: string): string => {
   font-size: var(--font-size-xxxs);
   padding-left: 10px;
   color: var(--text-secondary);
+}
+
+/* AI 消息 👍/👎：与时间同行，推到 meta 行最右端（分身 self 侧镜像推到最左） */
+.message-item.ai .ai-fb {
+  margin-left: auto;
+}
+
+.message-item.self.ai .ai-fb {
+  margin-left: 0;
+  margin-right: auto;
 }
 
 .message-item.self .message-meta {
