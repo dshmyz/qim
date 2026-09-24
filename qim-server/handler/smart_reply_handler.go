@@ -14,6 +14,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/utils"
@@ -36,6 +37,20 @@ type SmartReplyEngine struct {
 	smartReplyGraph    *service.SmartReplyGraph
 	qualityGateEnabled bool
 	convReplyWorker    *service.ReplyOrchestrator // 群助手回复的并发控制（限并发+会话串行）
+	decisionLog        *service.AvatarDecisionLogService
+	failureCases       *service.FailureCaseService
+}
+
+// SetFailureCaseService 注入失败案例记录服务（差评/质量门拒绝时快照案例）。
+func SetFailureCaseService(svc *service.FailureCaseService) {
+	GetSmartReplyEngine().failureCases = svc
+}
+
+// recordFailureCase 在质量门拒绝时快照自包含案例（问题+坏回复+类别+场景）。
+func (e *SmartReplyEngine) recordFailureCase(category string, convID uint, question, badReply string) {
+	if e.failureCases != nil {
+		e.failureCases.Record(category, service.ReplySceneGroupAuto, convID, question, badReply)
+	}
 }
 
 // AvatarTriggerDecider decides whether a configured avatar should reply.
@@ -61,6 +76,7 @@ func NewSmartReplyEngine(aiService *ai.AIService, detector *ai.IntentDetector) *
 			Serialize: true, // 群助手：按会话串行
 		}),
 		qualityGateEnabled: true,
+		decisionLog:        service.NewAvatarDecisionLogService(database.GetDB()),
 	}
 }
 
@@ -184,7 +200,7 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 	log.Printf("[SmartReply] 会话类型: %s", conv.Type)
 
 	if e.avatarWorkerPool != nil {
-		e.checkAvatarTriggers(userID, &conv, content, msg.Type, mentionUserIDs)
+		e.checkAvatarTriggers(userID, &conv, content, msg.Type, mentionUserIDs, msg.ID)
 	}
 
 	if conv.Type == "bot" {
@@ -298,6 +314,9 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 
 	if !shouldReply {
 		log.Printf("[SmartReply] 意图类型 %s (confidence=%.2f) 不触发 AI 回复", intent.Type, intent.Confidence)
+		// 触发门未过也落终态事件（not_triggered）：看板据此展示智能拦截率与
+		// 各意图类型分布，区分"AI 沉默是因为判断不需要"而非"系统没反应"
+		e.recordNotTriggered(service.ReplySceneGroupAuto, conversationID)
 		// 只有 AI 明确判断这是发给 AI 的请求、但置信度/策略仍不足时才广播原因；
 		// 普通陈述和 human_group 闲聊只记日志，避免群内每条消息都弹提示。
 		if intent.ShouldReply != nil && *intent.ShouldReply {
@@ -393,6 +412,7 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 	result, err := e.smartReplyGraph.Execute(ctx, input)
 	if err != nil {
 		log.Printf("[SmartReplyGraph] AI 回复生成失败: %v", err)
+		e.recordReplyOutcome(service.ReplySceneGroupAuto, true, conversationID, 0, "error")
 		return
 	}
 
@@ -409,6 +429,7 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 		if verr != nil {
 			service.GlobalAIReplyMetrics.RecordQualityCheckFailed()
 			log.Printf("[SmartReplyQuality] 核验失败，拒绝自动发送: %v", verr)
+			e.recordReplyOutcome(service.ReplySceneGroupAuto, true, conversationID, 0, "quality")
 			e.messageSender.NotifyReplyDecision(conversationID, SmartReplyDecision{
 				Action: SmartReplyAskUser, ReasonCode: "quality_check_unavailable",
 				Reason: "回复质量核验暂时不可用，未自动发送，请由你决定是否重试", Confidence: 0,
@@ -423,6 +444,8 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 				reason = "回复未通过相关性或事实依据核验"
 			}
 			log.Printf("[SmartReplyQuality] 拒绝发送: relevant=%v supported=%v hallucinate=%v reason=%s", verdict.Relevant, verdict.Supported, verdict.Hallucinate, reason)
+			e.recordFailureCase("quality", conversationID, userContent, result.Reply)
+			e.recordReplyOutcome(service.ReplySceneGroupAuto, true, conversationID, 0, "quality")
 			e.messageSender.NotifyReplyDecision(conversationID, SmartReplyDecision{
 				Action: SmartReplyAskUser, ReasonCode: "quality_rejected",
 				Reason: reason, Confidence: verdict.Confidence,
@@ -437,9 +460,11 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 	err = e.messageSender.SendAIMessage(conversationID, result.Reply, "AI助手", knowledgeSourcesExtra(input.KnowledgeSources))
 	if err != nil {
 		log.Printf("[SmartReply] 发送 AI 消息失败: %v", err)
+		e.recordReplyOutcome(service.ReplySceneGroupAuto, true, conversationID, 0, "error")
 		return
 	}
 	service.GlobalAIReplyMetrics.RecordAutoReply()
+	e.recordReplyOutcome(service.ReplySceneGroupAuto, false, conversationID, 0, "")
 
 	log.Printf("[SmartReplyGraph] 已发送智能回复到会话 %d", conversationID)
 }
@@ -481,6 +506,7 @@ func (e *SmartReplyEngine) validateReplyBeforeSend(input *service.SmartReplyCont
 		reason = "回复未通过相关性或事实依据核验"
 	}
 	log.Printf("[SmartReplyQuality] @AI 拒绝发送: reason=%s", reason)
+	e.recordFailureCase("quality", input.ConversationID, input.Message, reply)
 	e.messageSender.NotifyReplyDecision(input.ConversationID, SmartReplyDecision{
 		Action: SmartReplyAskUser, ReasonCode: "quality_rejected",
 		Reason: reason, Confidence: verdict.Confidence,
@@ -694,7 +720,8 @@ func extractAIQuestion(content string, assistantName string) string {
 // handleAIMention 处理 @AI 触发回复
 // origMsg 为触发这条 @AI 的原始消息（透传完整对象，供读取引用消息等属性）。
 func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, question string, originalContent string, conv *model.Conversation, assistantName string, origMsg *model.Message) {
-	log.Printf("[SmartReply] @AI 触发回复: userID=%d, convID=%d, question=%s", userID, conversationID, question[:min(50, len(question))])
+	logger.WithModule("SmartReply").Info("@AI 触发回复",
+		"userID", userID, "convID", conversationID, "question", question[:min(50, len(question))])
 
 	if e.aiService == nil || !e.aiService.IsConfigured() {
 		log.Printf("[SmartReply] AI 服务未配置")
@@ -709,6 +736,22 @@ func (e *SmartReplyEngine) handleAIMention(userID uint, conversationID uint, que
 	e.handleAIMentionLegacy(userID, conversationID, question, originalContent, conv, assistantName)
 }
 
+// recordReplyOutcome 记录一条回复终态事件（供治理看板统计完成率/中断原因）。
+func (e *SmartReplyEngine) recordReplyOutcome(scene string, interrupted bool, convID, msgID uint, reason string) {
+	svc := service.NewAIReplyEventService(database.GetDB())
+	if interrupted {
+		svc.RecordInterrupted(scene, 0, convID, msgID, reason)
+	} else {
+		svc.RecordCompleted(scene, 0, convID, msgID)
+	}
+}
+
+// recordNotTriggered 记录触发门智能拦截（看板区分"判断不需要"与"系统无反应"）。
+func (e *SmartReplyEngine) recordNotTriggered(scene string, convID uint) {
+	service.NewAIReplyEventService(database.GetDB()).RecordNotTriggered(scene, convID)
+}
+
+// handleAIMentionWithGraph 处理显式 @AI：无工具默认走纯流式。
 func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID uint, question string, originalContent string, assistantName string, origMsg *model.Message) {
 	ctx := context.Background()
 	// AI 开始处理：先推开始事件供前端「思考中」占位。放在分支前统一覆盖三分支——
@@ -755,13 +798,13 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 
 	stream, err := e.smartReplyGraph.ExecuteStream(ctx, input)
 	if err != nil {
-		log.Printf("[SmartReplyGraph] @AI 流式回复失败: %v", err)
+		logger.WithModule("SmartReply").Error("@AI 流式回复失败", "error", err)
 		return
 	}
 
 	sendChunk, getMsg, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
-		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
+		logger.WithModule("SmartReply").Error("创建流式消息失败", "error", err)
 		return
 	}
 
@@ -797,13 +840,14 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		sendChunk(cleanContent)
 	}
 
-	log.Printf("[SmartReplyGraph] @AI 流式回复完成: %d 个 chunk, 总长度 %d 字符, streamErr=%v", chunkCount, totalLen, streamErr)
+	logger.WithModule("SmartReply").Info("@AI 流式回复完成",
+		"chunks", chunkCount, "totalLen", totalLen, "streamErr", streamErr)
 
 	// 模型调用出错：不再静默无回复。SendStreamingAIMessage 采用懒创建——
 	// 首个非空正文块才创建消息，因此若 chunkCount == 0 则无消息残留；
 	// 若已产出部分内容则发送兜底文案收尾，保证用户得到反馈。
 	if streamErr != nil {
-		log.Printf("[SmartReplyGraph] @AI 流式回复出错: %v", streamErr)
+		logger.WithModule("SmartReply").Error("@AI 流式回复出错", "error", streamErr)
 		if chunkCount == 0 {
 			prefix := ""
 			if mentionPrefix != "" {
@@ -811,12 +855,23 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 				mentionPrefix = ""
 			}
 			if err := sendChunk(service.BuildEmptyReplyFallback(nil, true, prefix)); err != nil {
-				log.Printf("[SmartReplyGraph] 发送兜底文案失败: %v", err)
+				logger.WithModule("SmartReply").Error("发送兜底文案失败", "error", err)
 			}
 		}
 		// 与 handleAIMentionWithTools 错误路径一致：若已收集到知识来源，仍需把 Extra 落库，
 		// 否则刷新/REST 回放后「知识来源」徽章丢失。
 		e.persistAIMessageExtra(getMsg, nil, input.KnowledgeSources)
+		var msgID uint
+		if m := getMsg(); m != nil {
+			msgID = m.ID
+		}
+		if chunkCount > 0 {
+			// 截断标记已随上游最后一个 chunk 送达
+			e.recordReplyOutcome(service.ReplySceneGroupMention, true, conversationID, msgID,
+				ai.InterruptReasonFromError(streamErr))
+		} else {
+			e.recordReplyOutcome(service.ReplySceneGroupMention, false, conversationID, msgID, "")
+		}
 		finish()
 		return
 	}
@@ -829,7 +884,12 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 			mentionPrefix = ""
 		}
 		_ = sendChunk(service.BuildEmptyReplyFallback(nil, false, prefix))
-		log.Printf("[SmartReplyGraph] AI 回复内容为空，已补兜底文案")
+		logger.WithModule("SmartReply").Warn("AI 回复内容为空，已补兜底文案")
+		var msgID uint
+		if m := getMsg(); m != nil {
+			msgID = m.ID
+		}
+		e.recordReplyOutcome(service.ReplySceneGroupMention, false, conversationID, msgID, "")
 		finish()
 		return
 	}
@@ -838,12 +898,14 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	// 已由注入前 reranker 过滤误召回，徽章展示通过的真实来源。
 	e.persistAIMessageExtra(getMsg, nil, input.KnowledgeSources)
 
-	if finish() == nil {
-		log.Printf("[SmartReplyGraph] 完成流式消息失败")
+	finalMsg := finish()
+	if finalMsg == nil {
+		logger.WithModule("SmartReply").Error("完成流式消息失败")
 		return
 	}
+	e.recordReplyOutcome(service.ReplySceneGroupMention, false, conversationID, finalMsg.ID, "")
 
-	log.Printf("[SmartReplyGraph] @AI 流式回复已完成")
+	logger.WithModule("SmartReply").Info("@AI 流式回复已完成")
 }
 
 // handleAIMentionWithTools 带工具的 @AI 回复，用于管理操作指令（踢人/加人/禁言等）与
@@ -864,7 +926,7 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 
 	sendChunk, getMsg, finish, err := e.messageSender.SendStreamingAIMessage(conversationID, assistantName)
 	if err != nil {
-		log.Printf("[SmartReply] 创建流式消息失败: %v", err)
+		logger.WithModule("SmartReply").Error("创建流式消息失败", "error", err)
 		return
 	}
 
@@ -892,7 +954,7 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 			return nil
 		})
 		if serr != nil && !errors.Is(serr, ai.ErrStreamingToolsNotSupported) {
-			log.Printf("[SmartReplyGraph] @AI %s工具流式回复失败: %v", kind, serr)
+			logger.WithModule("SmartReply").Error("@AI 带工具流式回复失败", "kind", kind, "error", serr)
 			// 流式中途失败：若已产出正文/工具、且拿到了知识来源，仍需把 Extra 落库，
 			// 否则刷新/REST 回放后工具卡片与「知识来源」徽章丢失（正文已由 finish 收尾）。
 			e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
@@ -906,6 +968,17 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 				}
 				_ = sendChunk(service.BuildEmptyReplyFallback(toolCalls, true, prefix))
 			}
+			var evID uint
+			if m := getMsg(); m != nil {
+				evID = m.ID
+			}
+			hadOutcome := len(toolCalls) > 0 || strings.TrimSpace(mention.StripTokens(sentBody.String())) != ""
+			if hadOutcome {
+				e.recordReplyOutcome(service.ReplySceneGroupMention, true, conversationID, evID,
+					ai.InterruptReasonFromError(serr))
+			} else {
+				e.recordReplyOutcome(service.ReplySceneGroupMention, false, conversationID, evID, "")
+			}
 			finish()
 			return
 		}
@@ -913,6 +986,11 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 			hasBody := strings.TrimSpace(mention.StripTokens(sentBody.String())) != ""
 			if hasBody {
 				if !e.validateReplyBeforeSend(input, sentBody.String()) {
+					var evID uint
+					if m := getMsg(); m != nil {
+						evID = m.ID
+					}
+					e.recordReplyOutcome(service.ReplySceneGroupMention, true, conversationID, evID, "quality")
 					finish()
 					return
 				}
@@ -925,7 +1003,7 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 						mentionPending = false
 					}
 					if sendErr := sendChunk(chunk); sendErr != nil {
-						log.Printf("[SmartReplyGraph] 发送核验通过的流式回复失败: %v", sendErr)
+						logger.WithModule("SmartReply").Error("发送核验通过的流式回复失败", "error", sendErr)
 						break
 					}
 				}
@@ -946,26 +1024,33 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 					e.persistAIMessageExtra(getMsg, toolCalls, nil)
 				}
 			}
-			if finish() == nil {
-				log.Printf("[SmartReplyGraph] 完成流式消息失败")
+			if finishMsg := finish(); finishMsg == nil {
+				logger.WithModule("SmartReply").Error("完成流式消息失败")
 			} else {
-				log.Printf("[SmartReplyGraph] @AI %s工具流式回复已完成, %d 次工具调用", kind, len(toolCalls))
+				e.recordReplyOutcome(service.ReplySceneGroupMention, false, conversationID, finishMsg.ID, "")
+				logger.WithModule("SmartReply").Info("@AI 带工具流式回复已完成",
+					"kind", kind, "toolCalls", len(toolCalls))
 			}
 			return
 		}
 		// streamed=false（Provider 不支持流式 tool-call）→ 降级到下面非流式路径。
-		log.Printf("[SmartReplyGraph] @AI %s工具流式不可用，降级到非流式回复", kind)
+		logger.WithModule("SmartReply").Info("@AI 带工具流式不可用，降级到非流式回复", "kind", kind)
 	}
 
 	reply, err := exec(ctx, input, feedback)
 	if err != nil {
-		log.Printf("[SmartReplyGraph] @AI %s工具回复失败: %v", kind, err)
+		logger.WithModule("SmartReply").Error("@AI 带工具回复失败", "kind", kind, "error", err)
 	}
 	reply = mention.StripTokens(reply)
 	hasReply := strings.TrimSpace(reply) != ""
 
 	if hasReply {
 		if !e.validateReplyBeforeSend(input, reply) {
+			var evID uint
+			if m := getMsg(); m != nil {
+				evID = m.ID
+			}
+			e.recordReplyOutcome(service.ReplySceneGroupMention, true, conversationID, evID, "quality")
 			finish()
 			return
 		}
@@ -980,7 +1065,7 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 				mentionPending = false
 			}
 			if serr := sendChunk(chunk); serr != nil {
-				log.Printf("[SmartReplyGraph] 发送回复分块失败: %v", serr)
+				logger.WithModule("SmartReply").Error("发送回复分块失败", "error", serr)
 				break
 			}
 		}
@@ -998,14 +1083,17 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 		if len(toolCalls) > 0 {
 			e.persistAIMessageExtra(getMsg, toolCalls, nil)
 		}
-		log.Printf("[SmartReplyGraph] @AI %s工具回复内容为空，已补兜底文案", kind)
+		logger.WithModule("SmartReply").Warn("@AI 带工具回复内容为空，已补兜底文案", "kind", kind)
 	}
 
-	if finish() == nil {
-		log.Printf("[SmartReplyGraph] 完成流式消息失败")
+	if finalM := finish(); finalM == nil {
+		logger.WithModule("SmartReply").Error("完成流式消息失败")
 		return
+	} else {
+		e.recordReplyOutcome(service.ReplySceneGroupMention, false, conversationID, finalM.ID, "")
 	}
-	log.Printf("[SmartReplyGraph] @AI %s工具回复已完成, %d 次工具调用", kind, len(toolCalls))
+	logger.WithModule("SmartReply").Info("@AI 带工具回复已完成",
+		"kind", kind, "toolCalls", len(toolCalls))
 }
 
 // handleAIMentionWithExternalTools 普通提问（非管理指令）走带外部 MCP 工具的流式 ReAct
@@ -1420,7 +1508,7 @@ func isLowSignalNoise(s string) bool {
 }
 
 // checkAvatarTriggers 检查是否有用户的分身需要触发
-func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conversation, content string, triggerMsgType string, mentionUserIDs []uint) {
+func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conversation, content string, triggerMsgType string, mentionUserIDs []uint, triggerMessageID uint) {
 	db := database.GetDB()
 
 	// 会话级覆盖：有 session 行=显式（AvatarEnabled=true→opt-in / false→opt-out），无行=跟随全局默认
@@ -1486,35 +1574,53 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 			log.Printf("[AvatarTrigger] 跳过自己的分身: userID=%d == senderID=%d", session.UserID, senderID)
 			continue
 		}
-		triggered := e.shouldTriggerAvatar(session, content, isGroupChat, mentionUserIDs, senderName)
-		log.Printf("[AvatarTrigger] 触发判断结果: userID=%d triggered=%v (isGroupChat=%v mentionUserIDs=%v)", session.UserID, triggered, isGroupChat, mentionUserIDs)
+		triggered, reason := e.shouldTriggerAvatar(session, content, isGroupChat, mentionUserIDs, senderName)
+		log.Printf("[AvatarTrigger] 触发判断结果: userID=%d triggered=%v reason=%s (isGroupChat=%v mentionUserIDs=%v)", session.UserID, triggered, reason, isGroupChat, mentionUserIDs)
 
-		if triggered {
-			groupName := ""
-			if isGroupChat {
-				var group model.Group
-				if err := db.Where("conversation_id = ?", conv.ID).First(&group).Error; err == nil {
-					groupName = group.Name
-				}
+		if !triggered {
+			// 触发阶段未过：落一条 skipped 留痕，主人可在运行记录看到具体原因
+			if err := e.decisionLog.Record(service.AvatarDecisionInput{
+				OwnerID:          session.UserID,
+				ConversationID:   conv.ID,
+				TriggerMessageID: triggerMessageID,
+				TriggerUserID:    senderID,
+				TriggerName:      senderName,
+				MessageSnippet:   content,
+				Decision:         "skipped",
+				Stage:            "trigger",
+				Reason:           reason,
+			}); err != nil {
+				log.Printf("[AvatarTrigger] 写入决策留痕失败: userID=%d err=%v", session.UserID, err)
 			}
+			continue
+		}
 
-			task := service.AvatarTask{
-				UserID:         session.UserID,
-				ConversationID: conv.ID,
-				TriggerMessage: content,
-				TriggerMsgType: triggerMsgType,
-				TriggerUserID:  senderID,
-				IsGroupChat:    isGroupChat,
-				GroupName:      groupName,
-				TriggerName:    sender.Nickname,
-				TriggerAt:      time.Now(), // 供 worker 做「主人已亲自回复，分身让位」判断
+		groupName := ""
+		if isGroupChat {
+			var group model.Group
+			if err := db.Where("conversation_id = ?", conv.ID).First(&group).Error; err == nil {
+				groupName = group.Name
 			}
+		}
 
-			if err := e.avatarWorkerPool.Submit(task); err != nil {
-				log.Printf("[AvatarTrigger] 提交分身任务失败: %v", err)
-			} else {
-				log.Printf("[AvatarTrigger] 已触发用户 %d 的分身 (convID=%d triggerUserID=%d)", session.UserID, conv.ID, senderID)
-			}
+		task := service.AvatarTask{
+			UserID:           session.UserID,
+			ConversationID:   conv.ID,
+			TriggerMessage:   content,
+			TriggerMessageID: triggerMessageID,
+			TriggerMsgType:   triggerMsgType,
+			TriggerUserID:    senderID,
+			IsGroupChat:      isGroupChat,
+			GroupName:        groupName,
+			TriggerName:      sender.Nickname,
+			TriggerReason:    reason,
+			TriggerAt:        time.Now(), // 供 worker 做「主人已亲自回复，分身让位」判断
+		}
+
+		if err := e.avatarWorkerPool.Submit(task); err != nil {
+			log.Printf("[AvatarTrigger] 提交分身任务失败: %v", err)
+		} else {
+			log.Printf("[AvatarTrigger] 已触发用户 %d 的分身 (convID=%d triggerUserID=%d)", session.UserID, conv.ID, senderID)
 		}
 	}
 }
@@ -1522,30 +1628,31 @@ func (e *SmartReplyEngine) checkAvatarTriggers(senderID uint, conv *model.Conver
 // shouldTriggerAvatar 判断是否应该触发分身。
 // 排除列表/时间窗/模式分发全部委托给 AvatarTriggerService.DecideReply 统一决策，
 // 这里只保留会话级 takeover 早退与配置加载，避免与触发服务重复判断。
-func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, content string, isGroupChat bool, mentionUserIDs []uint, senderName string) bool {
+// 返回的 reason 为决策原因：不回复时供调用方落「运行记录」，回复时随任务带到发送阶段。
+func (e *SmartReplyEngine) shouldTriggerAvatar(session *model.AvatarSession, content string, isGroupChat bool, mentionUserIDs []uint, senderName string) (bool, string) {
 	db := database.GetDB()
 
 	if session.TakeoverUntil != nil && session.TakeoverUntil.After(time.Now()) {
 		log.Printf("[AvatarTrigger] 分身接管期内，不触发: userID=%d takeoverUntil=%v", session.UserID, session.TakeoverUntil)
-		return false
+		return false, "接管期内"
 	}
 
 	var config model.AvatarConfig
 	if err := db.Where("user_id = ?", session.UserID).First(&config).Error; err != nil {
 		log.Printf("[AvatarTrigger] 分身配置未找到: userID=%d err=%v", session.UserID, err)
-		return false
+		return false, "分身配置不存在"
 	}
 
 	if e.avatarTriggerSvc == nil {
 		log.Printf("[AvatarTrigger] 触发决策服务未初始化: userID=%d", session.UserID)
-		return false
+		return false, "触发决策服务未初始化"
 	}
 
 	shouldReply, reason, err := e.avatarTriggerSvc.DecideReply(config, session.ConversationID, content, senderName, isGroupChat, mentionUserIDs)
 	if err != nil {
 		log.Printf("[AvatarTrigger] 触发决策失败: userID=%d err=%v", session.UserID, err)
-		return false
+		return false, "触发决策失败"
 	}
 	log.Printf("[AvatarTrigger] 触发判断结果: userID=%d shouldReply=%v reason=%s (isGroupChat=%v mentionUserIDs=%v)", session.UserID, shouldReply, reason, isGroupChat, mentionUserIDs)
-	return shouldReply
+	return shouldReply, reason
 }

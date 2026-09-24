@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -13,8 +14,11 @@ import (
 )
 
 // aiLog 把 AI 日志路由到 module="AI" 的目标（ai.log），同时仍打到 qim.log/stdout。
-// 模块名沿用 ai 包既有约定（ai/provider.go 同样用 WithModule("AI")）。
-var aiLog = logger.WithModule("AI")
+// 必须在调用时（函数内）取 logger：包级变量会在包初始化时绑定当时的默认 logger，
+// 那时只有 stdout 兜底，main 后续 Configure 的文件输出对旧引用不生效，日志永远不进文件。
+func aiLog() *slog.Logger {
+	return logger.WithModule("AI")
+}
 
 type AIService struct {
 	config       *AIConfig
@@ -25,6 +29,27 @@ type AIService struct {
 	mu           sync.RWMutex
 	toolRegistry *ToolRegistry
 	usageSink    func(taskType TaskType, provider, model string, usage *TokenUsage, durationMs int64) // 异步落库回调
+	// modelCallSink 每次模型调用结束（成功/失败/截断）触发，落调用事实供健康聚合
+	modelCallSink func(provider, model, taskType, finishReason string, success bool, durationMs int64)
+	// routerHealthChecker 健康门控：router（含热更重建）始终持有，避免 UpdateRouter 后丢失
+	routerHealthChecker HealthChecker
+}
+
+// SetModelCallSink 注入模型调用事实回调（由 di 落 ai_model_calls）。
+func (s *AIService) SetModelCallSink(fn func(provider, model, taskType, finishReason string, success bool, durationMs int64)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.modelCallSink = fn
+}
+
+// emitModelCall 异步触发调用事实回调（sink 内部自行异步，此处仅非空调用）。
+func (s *AIService) emitModelCall(provider, model string, taskType TaskType, finishReason string, success bool, durationMs int64) {
+	s.mu.RLock()
+	sink := s.modelCallSink
+	s.mu.RUnlock()
+	if sink != nil {
+		sink(provider, model, string(taskType), finishReason, success, durationMs)
+	}
 }
 
 func NewAIService(cfg *AIConfig) *AIService {
@@ -39,18 +64,18 @@ func NewAIService(cfg *AIConfig) *AIService {
 	for name, providerCfg := range cfg.AllProviders() {
 		provider, err := svc.factory.CreateProviderByName(name, providerCfg)
 		if err != nil {
-			aiLog.Error("provider init failed", "name", name, "error", err)
+			aiLog().Error("provider init failed", "name", name, "error", err)
 			continue
 		}
 		svc.pool[name] = provider
 		svc.configPool[name] = provider
-		aiLog.Info("provider initialized", "name", name)
+		aiLog().Info("provider initialized", "name", name)
 	}
 
 	if len(svc.pool) == 0 {
-		aiLog.Warn("no AI providers initialized")
+		aiLog().Warn("no AI providers initialized")
 	} else {
-		aiLog.Info("AI providers initialized", "count", len(svc.pool))
+		aiLog().Info("AI providers initialized", "count", len(svc.pool))
 	}
 
 	return svc
@@ -177,7 +202,7 @@ func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrid
 	if err != nil {
 		status = "error"
 	}
-	aiLog.Info("ai usage",
+	aiLog().Info("ai usage",
 		"task", taskType, "provider", provider.Name(), "model", modelName,
 		"durationMs", duration, "status", status)
 
@@ -198,23 +223,50 @@ func (s *AIService) GetCompletionStream(taskType TaskType, messages []Message, o
 
 // GetCompletionStreamWithContext 支持 context 取消的流式请求（用于超时控制）
 func (s *AIService) GetCompletionStreamWithContext(ctx context.Context, taskType TaskType, messages []Message, onChunk func(chunk StreamChunk) error, overrides ...Override) error {
+	// 流式 client 不设整体超时，这里给 10 分钟兜底，防止上游静默挂起连接永不结束；
+	// 调用方传入更短 deadline（如 bot 回复 60/180s）时以更短者为准。
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
 	provider, modelName, err := s.selectProvider(taskType, overrides...)
 	if err != nil {
 		return err
 	}
 	filteredMessages := s.filterMessages(messages)
 	start := time.Now()
-	if modelName != "" {
-		err = provider.WithModel(modelName).ChatStreamWithContext(ctx, filteredMessages, onChunk)
-	} else {
-		err = provider.ChatStreamWithContext(ctx, filteredMessages, onChunk)
+
+	// 主流：finish=length/无 DONE 断连时自动续写一次，仍不完整则追加可见截断标记
+	primary := func(callCtx context.Context, cb func(StreamChunk) error) error {
+		if modelName != "" {
+			return provider.WithModel(modelName).ChatStreamWithContext(callCtx, filteredMessages, cb)
+		}
+		return provider.ChatStreamWithContext(callCtx, filteredMessages, cb)
 	}
+	continuation := func(callCtx context.Context, partial string, cb func(StreamChunk) error) error {
+		contMsgs := make([]Message, 0, len(filteredMessages)+1)
+		contMsgs = append(contMsgs, filteredMessages...)
+		contMsgs = append(contMsgs, Message{Role: "assistant", Content: partial})
+		if modelName != "" {
+			return provider.WithModel(modelName).ChatStreamWithContext(callCtx, contMsgs, cb)
+		}
+		return provider.ChatStreamWithContext(callCtx, contMsgs, cb)
+	}
+	var lastFinish string
+	err = runStreamWithContinuation(ctx, primary, continuation, func(chunk StreamChunk) error {
+		if chunk.Finish != nil {
+			lastFinish = *chunk.Finish
+		}
+		return onChunk(chunk)
+	})
+
 	duration := time.Since(start).Milliseconds()
 	status := "success"
 	if err != nil {
 		status = "error"
 	}
-	aiLog.Info("ai usage",
+	// 调用事实：续写算同一次逻辑调用；成功以最终无错误为准
+	s.emitModelCall(provider.Name(), modelName, taskType, lastFinish, err == nil, duration)
+	aiLog().Info("ai usage",
 		"task", taskType, "provider", provider.Name(), "model", modelName,
 		"durationMs", duration, "status", status)
 	return err
@@ -253,7 +305,7 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 		})
 	}
 
-	aiLog.Info("try native function calling", "tools", len(toolDefs))
+	aiLog().Info("try native function calling", "tools", len(toolDefs))
 	var resp *ChatResponse
 	if modelName != "" {
 		resp, err = provider.WithModel(modelName).ChatWithTools(messages, toolDefs)
@@ -261,16 +313,16 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 		resp, err = provider.ChatWithTools(messages, toolDefs)
 	}
 	if err != nil {
-		aiLog.Warn("native function calling not supported, falling back to prompt engineering", "error", err)
+		aiLog().Warn("native function calling not supported, falling back to prompt engineering", "error", err)
 		return s.getCompletionWithToolsPromptEngineering(taskType, messages, callerCtx, allowed, overrides...)
 	}
 
 	if len(resp.ToolCalls) == 0 {
-		aiLog.Info("native function calling - no tool call, direct reply")
+		aiLog().Info("native function calling - no tool call, direct reply")
 		return resp.Content, nil
 	}
 
-	aiLog.Info("native function calling detected tool calls", "count", len(resp.ToolCalls))
+	aiLog().Info("native function calling detected tool calls", "count", len(resp.ToolCalls))
 
 	newMessages := make([]Message, len(messages))
 	copy(newMessages, messages)
@@ -285,13 +337,13 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 		if len(allowedSet) > 0 && !allowedSet[strings.ToLower(tc.Name)] {
 			return "", fmt.Errorf("tool %s is not allowed", tc.Name)
 		}
-		aiLog.Info("executing tool", "name", tc.Name, "args", tc.Arguments)
+		aiLog().Info("executing tool", "name", tc.Name, "args", tc.Arguments)
 		result, execErr := toolRegistry.ExecuteTool(tc.Name, tc.Arguments, callerCtx)
 		if execErr != nil {
-			aiLog.Error("tool execution failed", "name", tc.Name, "error", execErr)
+			aiLog().Error("tool execution failed", "name", tc.Name, "error", execErr)
 			return "", execErr
 		}
-		aiLog.Info("tool execution succeeded", "name", tc.Name, "result", result)
+		aiLog().Info("tool execution succeeded", "name", tc.Name, "result", result)
 
 		resultJSON, _ := json.Marshal(result)
 		newMessages = append(newMessages, Message{
@@ -301,7 +353,7 @@ func (s *AIService) getCompletionWithToolsCore(taskType TaskType, messages []Mes
 		})
 	}
 
-	aiLog.Info("native function calling - requesting final reply")
+	aiLog().Info("native function calling - requesting final reply")
 	var finalResp *ChatResponse
 	if modelName != "" {
 		finalResp, err = provider.WithModel(modelName).ChatWithTools(newMessages, toolDefs)
@@ -391,7 +443,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 		if err != nil {
 			// 首轮即失败时降级到 prompt engineering（与单轮行为一致）
 			if step == 1 {
-				aiLog.Warn("react native function calling not supported, falling back", "error", err)
+				aiLog().Warn("react native function calling not supported, falling back", "error", err)
 				return s.getCompletionWithToolsPromptEngineering(taskType, messages, callerCtx, allowed, overrides...)
 			}
 			return "", fmt.Errorf("react step %d provider error: %w", step, err)
@@ -399,11 +451,11 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 
 		// 无工具调用 → 最终回答
 		if len(resp.ToolCalls) == 0 {
-			aiLog.Info("react completed", "steps", step-1)
+			aiLog().Info("react completed", "steps", step-1)
 			return resp.Content, nil
 		}
 
-		aiLog.Info("react step", "step", step, "toolCalls", len(resp.ToolCalls))
+		aiLog().Info("react step", "step", step, "toolCalls", len(resp.ToolCalls))
 
 		// 追加 assistant 消息（含 tool_calls）
 		workMsgs = append(workMsgs, Message{
@@ -424,7 +476,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 				if onStep != nil {
 					onStep(step, callID, "end", tc.Name, tc.Arguments, nil, execErr)
 				}
-				aiLog.Warn("react tool execution failed", "name", tc.Name, "error", execErr)
+				aiLog().Warn("react tool execution failed", "name", tc.Name, "error", execErr)
 				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				workMsgs = append(workMsgs, Message{
 					Role:       "tool",
@@ -435,7 +487,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 			}
 			// 熔断检查：同一工具连续失败超过阈值时跳过，避免反复执行失败工具污染上下文
 			if cb.isTripped(tc.Name) {
-				aiLog.Warn("react tool circuit breaker tripped", "name", tc.Name, "failures", cb.failures[tc.Name])
+				aiLog().Warn("react tool circuit breaker tripped", "name", tc.Name, "failures", cb.failures[tc.Name])
 				workMsgs = append(workMsgs, Message{
 					Role:       "tool",
 					Content:    cb.circuitMessage(tc.Name),
@@ -453,7 +505,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 			}
 			if execErr != nil {
 				cb.recordFailure(tc.Name)
-				aiLog.Warn("react tool execution failed", "name", tc.Name, "error", execErr, "failures", cb.failures[tc.Name])
+				aiLog().Warn("react tool execution failed", "name", tc.Name, "error", execErr, "failures", cb.failures[tc.Name])
 				// 将错误作为 tool 结果返回给 LLM，让它决定如何处理（而非直接中断）
 				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				workMsgs = append(workMsgs, Message{
@@ -474,7 +526,7 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 	}
 
 	// 达到最大步数仍未结束，做最后一次无工具调用获取总结
-	aiLog.Info("react reached max steps, requesting final summary", "maxSteps", maxSteps)
+	aiLog().Info("react reached max steps, requesting final summary", "maxSteps", maxSteps)
 	finalResp, err := callProvider(workMsgs)
 	if err != nil {
 		return "", fmt.Errorf("react final summary error: %w", err)
@@ -540,19 +592,38 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 	// 熔断器：跟踪每个工具的连续失败次数，超过阈值时跳过执行。
 	cb2 := newToolCircuitBreaker(2)
 
-	// callProviderStream 执行本轮流式调用，onChunk 侧实时累积内容与工具增量。
-	callProviderStream := func(msgs []Message, onChunk func(chunk StreamChunk) error) error {
+	// primary 执行本步带工具的流式调用：每步独立超时（不与外层/前序步骤累计）。
+	primary := func(stepCtx context.Context, cb func(chunk StreamChunk) error) error {
+		callCtx, cancelStep := context.WithTimeout(stepCtx, stepModelTimeout(taskType))
+		defer cancelStep()
 		if modelName != "" {
-			return provider.WithModel(modelName).ChatStreamWithTools(ctx, msgs, toolDefs, onChunk)
+			return provider.WithModel(modelName).ChatStreamWithTools(callCtx, workMsgs, toolDefs, cb)
 		}
-		return provider.ChatStreamWithTools(ctx, msgs, toolDefs, onChunk)
+		return provider.ChatStreamWithTools(callCtx, workMsgs, toolDefs, cb)
+	}
+	// continuation length 触顶/静默断连后续写：携带 partial，不再带工具定义（纯接续生成）。
+	continuation := func(stepCtx context.Context, partial string, cb func(chunk StreamChunk) error) error {
+		callCtx, cancelStep := context.WithTimeout(stepCtx, stepModelTimeout(taskType))
+		defer cancelStep()
+		contMsgs := make([]Message, 0, len(workMsgs)+1)
+		contMsgs = append(contMsgs, workMsgs...)
+		contMsgs = append(contMsgs, Message{Role: "assistant", Content: partial})
+		if modelName != "" {
+			return provider.WithModel(modelName).ChatStreamWithContext(callCtx, contMsgs, cb)
+		}
+		return provider.ChatStreamWithContext(callCtx, contMsgs, cb)
 	}
 
 	for step := 1; step <= maxSteps; step++ {
 		var bufContent strings.Builder
 		var toolCallsByIndex = make(map[int]*toolCallAccumulator)
+		stepStart := time.Now()
+		var stepFinish string
 
-		err := callProviderStream(workMsgs, func(chunk StreamChunk) error {
+		err := runStreamWithContinuation(ctx, primary, continuation, func(chunk StreamChunk) error {
+			if chunk.Finish != nil {
+				stepFinish = *chunk.Finish
+			}
 			if chunk.Content != "" {
 				bufContent.WriteString(chunk.Content)
 				// final 回合实时转发：逐 token 打字。工具回合罕见的前置正文亦会流出（见函数注释取舍）。
@@ -581,8 +652,12 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 			if step == 1 && errors.Is(err, ErrStreamingToolsNotSupported) {
 				return ErrStreamingToolsNotSupported
 			}
+			// 该步模型调用失败：落调用事实（成功=false）
+			s.emitModelCall(provider.Name(), modelName, taskType, stepFinish, false, time.Since(stepStart).Milliseconds())
 			return fmt.Errorf("react stream step %d provider error: %w", step, err)
 		}
+		// 该步模型调用成功（含正常 tool_calls 回合与 final stop 回合）
+		s.emitModelCall(provider.Name(), modelName, taskType, stepFinish, true, time.Since(stepStart).Milliseconds())
 
 		// 组装本回合 tool calls（arguments 是跨 chunk 拼接的原始 JSON，回合终了整体解析）
 		// 用 maxIndex+1 作为上界遍历，避免非连续 index 时 len(map) < maxIndex+1 导致丢失
@@ -612,11 +687,11 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 
 		// 无工具调用 → final 回合：内容已逐 token 流出，结束
 		if len(toolCalls) == 0 {
-			aiLog.Info("react(stream) completed", "steps", step-1)
+			aiLog().Info("react(stream) completed", "steps", step-1)
 			return nil
 		}
 
-		aiLog.Info("react(stream) step", "step", step, "toolCalls", len(toolCalls))
+		aiLog().Info("react(stream) step", "step", step, "toolCalls", len(toolCalls))
 
 		// 追加 assistant 消息（含 tool_calls 与实时流出的前置正文，供模型上下文一致）
 		workMsgs = append(workMsgs, Message{
@@ -631,14 +706,14 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 				if onStep != nil {
 					onStep(step, tc.ID, "end", tc.Name, tc.Arguments, nil, execErr)
 				}
-				aiLog.Warn("react(stream) tool not allowed", "name", tc.Name)
+				aiLog().Warn("react(stream) tool not allowed", "name", tc.Name)
 				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				workMsgs = append(workMsgs, Message{Role: "tool", Content: string(errJSON), ToolCallID: tc.ID})
 				continue
 			}
 			// 熔断检查：同一工具连续失败超过阈值时跳过
 			if cb2.isTripped(tc.Name) {
-				aiLog.Warn("react(stream) tool circuit breaker tripped", "name", tc.Name, "failures", cb2.failures[tc.Name])
+				aiLog().Warn("react(stream) tool circuit breaker tripped", "name", tc.Name, "failures", cb2.failures[tc.Name])
 				workMsgs = append(workMsgs, Message{Role: "tool", Content: cb2.circuitMessage(tc.Name), ToolCallID: tc.ID})
 				cb2.recordFailure(tc.Name)
 				continue
@@ -652,7 +727,7 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 			}
 			if execErr != nil {
 				cb2.recordFailure(tc.Name)
-				aiLog.Warn("react(stream) tool execution failed", "name", tc.Name, "error", execErr, "failures", cb2.failures[tc.Name])
+				aiLog().Warn("react(stream) tool execution failed", "name", tc.Name, "error", execErr, "failures", cb2.failures[tc.Name])
 				errJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				workMsgs = append(workMsgs, Message{Role: "tool", Content: string(errJSON), ToolCallID: tc.ID})
 				continue
@@ -664,8 +739,17 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 	}
 
 	// 达到最大步数仍未结束：做最后一次无工具调用获取总结并逐 token 流出
-	aiLog.Info("react(stream) reached max steps, requesting final summary", "maxSteps", maxSteps)
+	aiLog().Info("react(stream) reached max steps, requesting final summary", "maxSteps", maxSteps)
 	return s.GetCompletionStreamWithContext(ctx, taskType, workMsgs, onChunk, overrides...)
+}
+
+// stepModelTimeout 单次模型流式调用的超时预算：视觉/思考模型显著更慢给 180s，其余 90s。
+// 每步独立计时，多步 ReAct 耗时不累计；外层 ctx 负责整体硬天花板。
+func stepModelTimeout(taskType TaskType) time.Duration {
+	if taskType == TaskTypeVision || taskType == TaskTypeDigest {
+		return 180 * time.Second
+	}
+	return 90 * time.Second
 }
 
 func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, messages []Message, callerCtx *CallerContext, allowed []string, overrides ...Override) (string, error) {
@@ -722,27 +806,27 @@ func (s *AIService) getCompletionWithToolsPromptEngineering(taskType TaskType, m
 		}
 	}
 
-	aiLog.Info("tool prompt - sending request to AI", "tools", len(filteredTools))
+	aiLog().Info("tool prompt - sending request to AI", "tools", len(filteredTools))
 	reply, err := s.GetCompletion(taskType, newMessages, overrides...)
 	if err != nil {
-		aiLog.Error("tool prompt - AI request failed", "error", err)
+		aiLog().Error("tool prompt - AI request failed", "error", err)
 		return "", err
 	}
-	aiLog.Info("tool prompt - AI reply", "reply", reply[:min(200, len(reply))])
+	aiLog().Info("tool prompt - AI reply", "reply", reply[:min(200, len(reply))])
 
 	toolCall, err := parseToolCall(reply)
 	if err != nil || toolCall == nil {
-		aiLog.Info("tool prompt - no tool call detected")
+		aiLog().Info("tool prompt - no tool call detected")
 		return reply, nil
 	}
 
-	aiLog.Info("tool prompt - tool call detected", "name", toolCall.Name, "args", toolCall.Arguments)
+	aiLog().Info("tool prompt - tool call detected", "name", toolCall.Name, "args", toolCall.Arguments)
 	if !isToolAllowed(toolCall.Name, allowedSet) {
 		return "", fmt.Errorf("tool %s is not allowed", toolCall.Name)
 	}
 	result, err := toolRegistry.ExecuteTool(toolCall.Name, toolCall.Arguments, callerCtx)
 	if err != nil {
-		aiLog.Error("tool execution failed", "name", toolCall.Name, "error", err)
+		aiLog().Error("tool execution failed", "name", toolCall.Name, "error", err)
 		return "", err
 	}
 
@@ -795,12 +879,13 @@ func (s *AIService) UpdateConfig(cfg *AIConfig) {
 	for name, providerCfg := range cfg.AllProviders() {
 		provider, err := s.factory.CreateProviderByName(name, providerCfg)
 		if err != nil {
-			aiLog.Error("failed to update provider", "name", name, "error", err)
+			aiLog().Error("failed to update provider", "name", name, "error", err)
 			continue
 		}
 		s.pool[name] = provider
 	}
 	s.router = NewModelRouter(cfg.Router)
+	s.router.SetHealthChecker(s.routerHealthChecker)
 }
 
 // UpdateRouter 用给定 RouterConfig 重建运行时 router（不重建 provider pool、不触碰 config.yaml）。
@@ -814,6 +899,17 @@ func (s *AIService) UpdateRouter(rc RouterConfig) {
 	}
 	s.config.Router = rc
 	s.router = NewModelRouter(rc)
+	s.router.SetHealthChecker(s.routerHealthChecker)
+}
+
+// SetRouterHealthChecker 注入健康门控并应用到当前 router；后续 router 热更也自动保留。
+func (s *AIService) SetRouterHealthChecker(hc HealthChecker) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.routerHealthChecker = hc
+	if s.router != nil {
+		s.router.SetHealthChecker(hc)
+	}
 }
 
 // DBProviderInfo 数据库 Provider 的纯数据描述，避免 ai 包依赖 model 包。
@@ -846,32 +942,47 @@ func (s *AIService) ReloadProvidersFromDB(providers []DBProviderInfo) {
 		if len(p.Models) > 0 {
 			model = p.Models[0]
 		}
+		// 系统级生成参数随 DB provider 透传：否则工厂只补默认值，config.yaml 的
+		// max_tokens/temperature 对 DB 配置的供应商不生效。
+		maxTokens, temperature := 8192, 0.7
+		if s.config != nil {
+			if s.config.MaxTokens > 0 {
+				maxTokens = s.config.MaxTokens
+			}
+			if s.config.Temperature > 0 {
+				temperature = s.config.Temperature
+			}
+		}
 		providerCfg := ProviderConfig{
 			APIKey:  p.APIKey,
 			Model:   model,
 			BaseURL: p.Endpoint,
+			ExtraParams: map[string]interface{}{
+				"max_tokens":  maxTokens,
+				"temperature": temperature,
+			},
 		}
 		provider, err := s.factory.CreateProviderByName(p.APIType, providerCfg)
 		if err != nil {
-			aiLog.Error("failed to load DB provider", "name", p.Name, "type", p.APIType, "error", err)
+			aiLog().Error("failed to load DB provider", "name", p.Name, "type", p.APIType, "error", err)
 			continue
 		}
 		// 使用小写 name 作为 pool key，与 config.yaml 中的 provider 命名保持一致
 		poolKey := strings.ToLower(p.Name)
 		newPool[poolKey] = provider
-		aiLog.Info("DB provider loaded", "name", p.Name, "poolKey", poolKey, "type", p.APIType, "model", model)
+		aiLog().Info("DB provider loaded", "name", p.Name, "poolKey", poolKey, "type", p.APIType, "model", model)
 	}
 
 	if len(newPool) > 0 {
 		s.pool = newPool
-		aiLog.Info("reloaded providers from DB", "count", len(newPool))
+		aiLog().Info("reloaded providers from DB", "count", len(newPool))
 	} else {
 		// DB 中没有已启用的 Provider，回退到 config.yaml 初始化的 pool
 		s.pool = make(map[string]Provider)
 		for k, v := range s.configPool {
 			s.pool[k] = v
 		}
-		aiLog.Warn("no enabled DB providers, restored config.yaml pool", "count", len(s.pool))
+		aiLog().Warn("no enabled DB providers, restored config.yaml pool", "count", len(s.pool))
 	}
 }
 
@@ -968,10 +1079,10 @@ func (s *AIService) IsConfigured() bool {
 func (s *AIService) Embed(text string) ([]float32, error) {
 	provider, modelName, err := s.selectProvider(TaskTypeEmbedding)
 	if err != nil {
-		aiLog.Error("embedding selectProvider 失败", "error", err)
+		aiLog().Error("embedding selectProvider 失败", "error", err)
 		return nil, err
 	}
-	aiLog.Info("embedding 路由选择", "provider", provider.Name(), "model", modelName)
+	aiLog().Info("embedding 路由选择", "provider", provider.Name(), "model", modelName)
 	// 用 router 返回的 embedding 模型（embedding 路由单独指定），
 	// 与 chat/vision 等任务一致，统一从 router 读模型，不再依赖 provider 内部 embedding_model。
 	if modelName != "" {
@@ -1023,7 +1134,7 @@ func (s *AIService) GetCompletionWithProviderConfig(taskType TaskType, messages 
 	if err != nil {
 		status = "error"
 	}
-	aiLog.Info("ai usage",
+	aiLog().Info("ai usage",
 		"task", taskType, "provider", provider.Name(), "model", cfg.Model,
 		"source", "custom", "durationMs", duration, "status", status)
 
@@ -1065,7 +1176,7 @@ func (s *AIService) ChatStreamWithProviderConfig(ctx context.Context, taskType T
 	if err != nil {
 		status = "error"
 	}
-	aiLog.Info("ai usage",
+	aiLog().Info("ai usage",
 		"task", taskType, "provider", provider.Name(), "model", cfg.Model,
 		"source", "custom", "durationMs", duration, "status", status)
 

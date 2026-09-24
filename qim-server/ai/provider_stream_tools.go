@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
@@ -59,21 +61,23 @@ func streamChatWithToolsOpenAICompat(ctx context.Context, bp *BaseProvider, base
 	}
 	req.Header.Set("Accept", "text/event-stream")
 
-	resp, err := bp.Client.Do(req)
+	resp, err := bp.StreamClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("streaming API request failed: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		resp.Body.Close()
-		return fmt.Errorf("streaming API returned non-200 status: %d", resp.StatusCode)
+		return fmt.Errorf("streaming API returned non-200 status: %d, body: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	return bp.ReadSSEStream(resp.Body, func(data string) error {
 		var chunk struct {
 			Choices []struct {
 				Delta struct {
-					Content   string `json:"content"`
-					ToolCalls []struct {
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"`
+					ToolCalls        []struct {
 						Index    int    `json:"index"`
 						ID       string `json:"id"`
 						Function struct {
@@ -93,8 +97,9 @@ func streamChatWithToolsOpenAICompat(ctx context.Context, bp *BaseProvider, base
 			return nil
 		}
 		sc := StreamChunk{
-			Content: chunk.Choices[0].Delta.Content,
-			Finish:  chunk.Choices[0].FinishReason,
+			Content:          chunk.Choices[0].Delta.Content,
+			ReasoningContent: chunk.Choices[0].Delta.ReasoningContent,
+			Finish:           chunk.Choices[0].FinishReason,
 		}
 		for _, tc := range chunk.Choices[0].Delta.ToolCalls {
 			sc.ToolCalls = append(sc.ToolCalls, ToolCallDelta{
@@ -104,7 +109,7 @@ func streamChatWithToolsOpenAICompat(ctx context.Context, bp *BaseProvider, base
 				Arguments: tc.Function.Arguments,
 			})
 		}
-		if sc.Content != "" || sc.Finish != nil || len(sc.ToolCalls) > 0 {
+		if sc.Content != "" || sc.ReasoningContent != "" || sc.Finish != nil || len(sc.ToolCalls) > 0 {
 			return onChunk(sc)
 		}
 		return nil

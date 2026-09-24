@@ -58,7 +58,21 @@
             </label>
           </template>
         </MessageItem>
+
+        <!-- 分身待审批草稿：锚定在触发消息下方 -->
+        <AvatarDraftCard
+          v-for="draft in draftsForTrigger(message)"
+          :key="`draft-${draft.id}`"
+          :draft="draft"
+        />
       </div>
+
+      <!-- 触发消息不在当前加载范围的草稿：仍展示在末尾，不丢失 -->
+      <AvatarDraftCard
+        v-for="draft in orphanDrafts"
+        :key="`draft-orphan-${draft.id}`"
+        :draft="draft"
+      />
 
       <!-- AI 思考中指示器 -->
       <slot name="thinking-indicator" />
@@ -79,9 +93,12 @@ import Viewer from 'viewerjs'
 import 'viewerjs/dist/viewer.css'
 import type { Message, User } from '../../types'
 import MessageItem from '../message/MessageItem.vue'
+import AvatarDraftCard from '../avatar/AvatarDraftCard.vue'
 import { useChatUtils } from '../../composables/useChatUtils'
 import { isMessageSelectionEligible } from '../../utils/messageSelection'
 import { useAIFeedbackBatch, aiFeedbackRatingsKey, type AIFeedbackRatings } from '../../composables/useAIFeedbackBatch'
+import { useAvatarDraftApproval } from '../../composables/useAvatarDraftApproval'
+import type { AvatarReplyDraft } from '../../types/avatar'
 
 const { formatTime, shouldShowTimeDivider } = useChatUtils()
 
@@ -89,6 +106,7 @@ interface Props {
   messages: Message[]
   hasMoreMessages: boolean
   conversationType: string
+  conversationId?: string | number
   readUsersMap: Record<string, { read_users: User[]; total_members: number }>
   showReadReceipt: boolean
   serverUrl: string
@@ -119,6 +137,18 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+// 分身待审批草稿：锚定触发消息的在消息下方渲染，未匹配到的沉到列表末尾
+const { draftsFor } = useAvatarDraftApproval()
+const pendingDrafts = computed<AvatarReplyDraft[]>(() => draftsFor(props.conversationId ?? ''))
+const anchoredDraftIds = computed(() => new Set(pendingDrafts.value
+  .filter(d => props.messages.some(m => String(m.id) === String(d.trigger_message_id)))
+  .map(d => d.id)))
+
+function draftsForTrigger(message: Message): AvatarReplyDraft[] {
+  return pendingDrafts.value.filter(d => String(d.trigger_message_id) === String(message.id))
+}
+const orphanDrafts = computed(() => pendingDrafts.value.filter(d => !anchoredDraftIds.value.has(d.id)))
 
 // AI 反馈选中态批量拉取（消除每条 AI 消息挂载时各自 GET 的 N+1），provide 给 AIAnswerBubble
 const feedbackRatings = useAIFeedbackBatch(computed(() => props.messages) as unknown as Ref<{ id: number | string }[]>)

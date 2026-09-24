@@ -761,6 +761,7 @@ import { useUI, closeMenu, openMenu } from '../composables/useUI'
 import { useConversation } from '../composables/useConversation'
 import { useOrganizationLogic } from '../composables/useOrganizationLogic'
 import { useMainWebSocketHandlers } from '../composables/useMainWebSocketHandlers'
+import { useAvatarDraftApproval } from '../composables/useAvatarDraftApproval'
 import { useMainConversationLogic } from '../composables/useMainConversationLogic'
 import { useMainGroupHandlers } from '../composables/useMainGroupHandlers'
 import { useMainMessageHandlers } from '../composables/useMainMessageHandlers'
@@ -1122,6 +1123,8 @@ const {
 
 // Main.vue 专用的 WebSocket handlers（需要 currentConversationId 和 messages）
 const mainWsHandlers = useMainWebSocketHandlers(currentConversationId, messages)
+// 分身待审批草稿：WS 推送质量拒否时重新拉取，让会话内卡片出现
+const draftApproval = useAvatarDraftApproval()
 
 // Main.vue 专用的会话逻辑
 const mainConvLogic = useMainConversationLogic(updateConversations, mergeConversations, processConversation, conversations)
@@ -1834,15 +1837,10 @@ const connectWebSocket = () => {
       }, 5000)
     },
     'avatar_reply_skipped': (data: any) => {
+      // 质量核验被拒：草稿已落库，重新拉取该会话让审批卡片出现（不打断、不弹全局 toast）
       if (data?.reason !== 'quality_rejected') return
-      showMessage({
-        message: data?.message || '分身未通过回复质量核验，未自动发送。你可以调整设置或手动处理。',
-        type: 'info',
-        duration: 6000
-      })
-      window.setTimeout(() => {
-        sendMessage({ type: 'ai_reply_decision_feedback', data: { action: 'ignore' } })
-      }, 6000)
+      const cid = data?.conversation_id
+      if (cid != null) draftApproval.loadForConversation(cid)
     },
     'sync_hint': async (data: any) => {
       // 服务端缓冲区溢出时发送 sync_hint，触发离线消息增量拉取补偿

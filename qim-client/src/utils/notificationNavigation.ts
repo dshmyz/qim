@@ -44,6 +44,11 @@ export function resolveNotificationNav(notification: NotificationLike): Notifica
     return { kind: 'conversation', conversationId: String(payload.conversation_id) }
   }
 
+  // 分身待审批草稿：进入对应会话，审批卡片在消息流内
+  if (notification.type === 'avatar_reply_draft' && payload.conversation_id !== undefined) {
+    return { kind: 'conversation', conversationId: String(payload.conversation_id) }
+  }
+
   // 新成员加入：payload 无会话 id，退而切到群组面板
   if (notification.type === 'group_member_added') {
     return { kind: 'groups' }

@@ -35,6 +35,15 @@ const result = esbuild.buildSync({
   outfile: path.join(root, 'electron', 'main.bundle.cjs'),
   sourcemap: false,
   logLevel: 'warning',
+  // CJS 输出里 esbuild 会把 import.meta 编译成空对象（import.meta.url = undefined）。
+  // banner 注入当前 bundle 文件的 file URL，再用 define 把所有 import.meta.url
+  // 替换成它——bundle 里 import.meta.url 语义与原生 ESM 一致（指向运行的主文件自身）。
+  banner: {
+    js: "var __qimImportMetaUrl = require('url').pathToFileURL(__filename).href;",
+  },
+  define: {
+    'import.meta.url': '__qimImportMetaUrl',
+  },
 })
 
 if (result.errors.length > 0) {

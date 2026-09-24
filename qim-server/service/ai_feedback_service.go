@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/dshmyz/qim/qim-server/model"
 	pkgErr "github.com/dshmyz/qim/qim-server/pkg/errors"
@@ -26,15 +27,41 @@ func NewAIFeedbackService(db *gorm.DB) *AIFeedbackService {
 	return &AIFeedbackService{db: db}
 }
 
-// SetFeedback 设置/修改/撤销（rating=0）用户对消息的反馈。
+// FeedbackInput 设置反馈的入参（rating=0 撤销）。
+type FeedbackInput struct {
+	Rating         int
+	ReasonCategory string
+	Comment        string
+}
+
+// 允许的原因分类集合。
+var feedbackReasonCategories = map[string]struct{}{
+	model.FeedbackReasonOffTopic:     {},
+	model.FeedbackReasonHallucinated: {},
+	model.FeedbackReasonWrongTrigger: {},
+	model.FeedbackReasonIncomplete:   {},
+	model.FeedbackReasonFactualError: {},
+	model.FeedbackReasonBadTone:      {},
+	model.FeedbackReasonOther:        {},
+}
+
+// SetFeedback 设置/修改/撤销（Rating=0）用户对消息的反馈。
 // 校验消息存在且用户在其会话内（防止对不可见消息刷反馈）。
-func (s *AIFeedbackService) SetFeedback(userID, messageID uint, rating int) error {
+func (s *AIFeedbackService) SetFeedback(userID, messageID uint, in FeedbackInput) error {
 	if s.db == nil {
 		return ErrFeedbackServiceNotReady
 	}
+	rating := in.Rating
 	if rating != 0 && rating != 1 && rating != -1 {
 		return ErrFeedbackInvalidParam
 	}
+	reason := strings.TrimSpace(in.ReasonCategory)
+	if reason != "" {
+		if _, ok := feedbackReasonCategories[reason]; !ok {
+			return ErrFeedbackInvalidParam
+		}
+	}
+	comment := strings.TrimSpace(in.Comment)
 
 	var msg model.Message
 	if err := s.db.Select("id, conversation_id").First(&msg, messageID).Error; err != nil {
@@ -63,7 +90,13 @@ func (s *AIFeedbackService) SetFeedback(userID, messageID uint, rating int) erro
 	if err := s.db.Where("message_id = ? AND user_id = ?", messageID, userID).
 		First(&fb).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			fb = model.AIMessageFeedback{MessageID: messageID, UserID: userID, Rating: rating}
+			fb = model.AIMessageFeedback{
+				MessageID:      messageID,
+				UserID:         userID,
+				Rating:         rating,
+				ReasonCategory: reason,
+				Comment:        truncateRunes(comment, 499),
+			}
 			if err := s.db.Create(&fb).Error; err != nil {
 				return fmt.Errorf("保存反馈失败: %w", err)
 			}
@@ -73,7 +106,11 @@ func (s *AIFeedbackService) SetFeedback(userID, messageID uint, rating int) erro
 	}
 	fb.Rating = rating
 	if err := s.db.Model(&model.AIMessageFeedback{}).Where("id = ?", fb.ID).
-		Update("rating", rating).Error; err != nil {
+		Updates(map[string]interface{}{
+			"rating":          rating,
+			"reason_category": reason,
+			"comment":         truncateRunes(comment, 499),
+		}).Error; err != nil {
 		return fmt.Errorf("更新反馈失败: %w", err)
 	}
 	return nil

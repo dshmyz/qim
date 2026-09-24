@@ -125,7 +125,7 @@ func (f *ProviderFactory) createGenericOpenAIProvider(name string, cfg ProviderC
 		extraParams = make(map[string]interface{})
 	}
 	if _, ok := extraParams["max_tokens"]; !ok {
-		extraParams["max_tokens"] = 1000
+		extraParams["max_tokens"] = 8192
 	}
 	if _, ok := extraParams["temperature"]; !ok {
 		extraParams["temperature"] = 0.7
@@ -149,7 +149,7 @@ func (f *ProviderFactory) createAnthropicProviderFromConfig(cfg ProviderConfig) 
 		extraParams[k] = v
 	}
 	if _, ok := extraParams["max_tokens"]; !ok {
-		extraParams["max_tokens"] = 1000
+		extraParams["max_tokens"] = 8192
 	}
 	if _, ok := extraParams["temperature"]; !ok {
 		extraParams["temperature"] = 0.7

@@ -18,6 +18,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
 	pkgErr "github.com/dshmyz/qim/qim-server/pkg/errors"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
@@ -625,14 +626,11 @@ func (s *MessageService) handleBotMessage(userID, convID uint, msgType, content 
 		return // sticker/system 等不触发 bot 回复
 	}
 
-	// 上下文窗口取「最近 20 条」而非最早 20 条：原 ASC+Limit 会拿到会话开头的 20 条，
-	// 长会话下 AI 反而丢失最近上下文（越聊越失忆）。先 DESC 取最近 N 条，再反转为时间正序喂给模型。
-	var messages []model.Message
-	db.Where("conversation_id = ?", convID).Order("created_at DESC").Limit(20).Find(&messages)
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
-	aiMessages := make([]ai.Message, 0, len(messages)+1)
+	// 历史窗口与 buildBotFileMessage/Image 统一走 buildBotHistory：只含最近 text/markdown 20 条，
+	// 时间正序；图片/文件的原始 JSON 不再混入对话。
+	history := s.buildBotHistory(bot, convID, 20)
+	aiMessages := make([]ai.Message, 0, len(history)+2)
+	aiMessages = append(aiMessages, botSystemMessage(bot))
 
 	botCfg := ParseBotConfig(bot.Config)
 
@@ -652,16 +650,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, msgType, content 
 		knowledgeSources = bundle.KnowledgeSources
 	}
 
-	for _, msg := range messages {
-		role := "user"
-		if msg.SenderID == *bot.VirtualUserID {
-			role = "assistant"
-		}
-		aiMessages = append(aiMessages, ai.Message{
-			Role:    role,
-			Content: msg.Content,
-		})
-	}
+	aiMessages = append(aiMessages, history...)
 
 	// 流式 + 工具路径（streamingSender 已注入）：复用群 @AI 同款基建，逐 token 流出 +
 	// 工具调用卡片 + Extra 持久化。未注入（测试/降级）走 handleBotMessageLegacy 老路径。
@@ -684,10 +673,13 @@ func (s *MessageService) dispatchBotReply(userID, convID uint, bot model.Bot, bo
 // bot 虚拟用户的消息标记为 "assistant"，人类消息标记为 "user"。
 // 上下文窗口取最近 N 条而非最早 N 条（ASC+Limit 会拿到会话开头，长会话丢失近期上下文）：
 // 先 DESC 取最近 N 条，再反转为时间正序喂给模型。
+// 只取 text/markdown：图片/文件消息存的是原始 JSON，混进对话会让模型复述 JSON 或话题漂移；
+// 当前触发的文件/图片由调用方解析正文后单独追加。
 // 供 handleBotMessage / handleBotFileMessage / handleBotImageMessage 共用。
 func (s *MessageService) buildBotHistory(bot model.Bot, convID uint, limit int) []ai.Message {
 	var messages []model.Message
-	s.db.Where("conversation_id = ?", convID).Order("created_at DESC").Limit(limit).Find(&messages)
+	s.db.Where("conversation_id = ? AND type IN ?", convID, []string{"text", "markdown"}).
+		Order("created_at DESC").Limit(limit).Find(&messages)
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]
 	}
@@ -700,6 +692,11 @@ func (s *MessageService) buildBotHistory(bot model.Bot, convID uint, limit int) 
 		aiMessages = append(aiMessages, ai.Message{Role: role, Content: msg.Content})
 	}
 	return aiMessages
+}
+
+// botSystemMessage 构造 bot 场景的系统消息（身份+规则，aiprompt 单源）。
+func botSystemMessage(bot model.Bot) ai.Message {
+	return ai.Message{Role: "system", Content: aiprompt.BotSystemPrompt(bot.Name, bot.Description)}
 }
 
 // botFileContentJSON 从文件消息 content JSON 中解析出 {url, id, name, size}。
@@ -801,8 +798,11 @@ func (s *MessageService) handleBotFileMessage(userID, convID uint, bot model.Bot
 		parsedText = parsedText[:maxFileContextLen] + "\n\n...（内容过长，已截断）"
 	}
 
-	// 构造 aiMessages：历史 + 文件内容作为用户消息
-	aiMessages := s.buildBotHistory(bot, convID, 20)
+	// 构造 aiMessages：系统身份 + 历史 + 文件内容作为用户消息
+	history := s.buildBotHistory(bot, convID, 20)
+	aiMessages := make([]ai.Message, 0, len(history)+2)
+	aiMessages = append(aiMessages, botSystemMessage(bot))
+	aiMessages = append(aiMessages, history...)
 	aiMessages = append(aiMessages, ai.Message{
 		Role:    "user",
 		Content: fmt.Sprintf("用户发送了文件「%s」，内容如下：\n\n%s", file.Name, parsedText),
@@ -881,8 +881,11 @@ func (s *MessageService) handleBotImageMessage(userID, convID uint, bot model.Bo
 	}
 	dataURL := "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
 
-	// 构造 aiMessages：历史 + 图片（多模态）
-	aiMessages := s.buildBotHistory(bot, convID, 20)
+	// 构造 aiMessages：系统身份 + 历史 + 图片（多模态）
+	history := s.buildBotHistory(bot, convID, 20)
+	aiMessages := make([]ai.Message, 0, len(history)+2)
+	aiMessages = append(aiMessages, botSystemMessage(bot))
+	aiMessages = append(aiMessages, history...)
 	imgPrompt := fmt.Sprintf("用户发送了一张图片「%s」，请识别其内容。", file.Name)
 	if s.aiService != nil && s.aiService.HasVisionRoute() {
 		// 配置了视觉路由：保留多模态 ImageURL（图片走视觉模型）。
@@ -957,12 +960,16 @@ func (s *MessageService) sendBotTextReply(userID, convID uint, bot model.Bot, re
 
 // botAllowedTools 白名单已收敛到 ai_tool_scopes.go（各 AI 入口工具面单一来源）。
 
+// botReplyOverallTimeout bot 回复流程的整体硬天花板：仅防工具/连接无限挂起，
+// 不用于正常截断；每个模型调用另有独立 stepModelTimeout。
+const botReplyOverallTimeout = 10 * time.Minute
+
 // aiReplyTimeout 返回 bot AI 回复的超时预算。按放宽因素逐项判断：
 //   - 带图（多模态）+ 多步 ReAct 显著更慢，60s 会被图片消息耗尽（实测图片触发工具循环时
 //     第 3 步模型请求已 context deadline exceeded）；
 //   - 复杂问题经分级路由走 digest（思考模型）同样显著更慢，与带图同档放宽到 180s。
 //
-// 普通文本保持 60s（不拖长简单提问的等待）。
+// 普通文本保持 60s（不拖长简单提问的等待）。仅供 legacy 非流式路径使用。
 func aiReplyTimeout(aiMessages []ai.Message, taskType ai.TaskType) time.Duration {
 	if taskType == ai.TaskTypeVision || taskType == ai.TaskTypeDigest {
 		return 180 * time.Second
@@ -1044,9 +1051,10 @@ func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot mode
 	// 纯文本 chat 模型收到 base64 秒回 400 兜底「AI 服务不可用」。
 	taskType := s.aiService.ResolveReplyTaskType(aiMessages)
 
-	// 超时预算：带图（多模态）+ 多步 ReAct + digest 思考模型显著更慢，60s 会被耗尽（实测第 3 步即
-	// context deadline exceeded）；按放宽因素放宽（aiReplyTimeout），普通文本保持 60s。
-	ctx, cancel := context.WithTimeout(context.Background(), aiReplyTimeout(aiMessages, taskType))
+	// 外层超时只作为整体硬天花板（防工具/连接无限挂起），不再用 60s 累计预算杀整个
+	// ReAct——每个模型调用的独立超时由 MultiStep 内 stepModelTimeout 保证（普通 90s/视觉 180s），
+	// 工具跑 2-3 轮不再因累计耗时被打断。
+	ctx, cancel := context.WithTimeout(context.Background(), botReplyOverallTimeout)
 	defer cancel()
 
 	var streamErr error
@@ -1105,6 +1113,19 @@ func (s *MessageService) handleBotMessageStreaming(userID, convID uint, bot mode
 		PersistAIMessageExtra(getMsg, toolCalls, knowledgeSources)
 	} else if len(toolCalls) > 0 {
 		PersistAIMessageExtra(getMsg, toolCalls, nil)
+	}
+
+	// 回复终态事件落库：中断带原因，正常完成记 completed（治理看板数据源）
+	var finalID uint
+	if m := getMsg(); m != nil {
+		finalID = m.ID
+	}
+	replyEvents := NewAIReplyEventService(s.db)
+	if errors.Is(streamErr, ai.ErrReplyTruncated) {
+		replyEvents.RecordInterrupted(ReplySceneBotDM, bot.CreatorID, convID, finalID,
+			ai.InterruptReasonFromError(streamErr))
+	} else {
+		replyEvents.RecordCompleted(ReplySceneBotDM, bot.CreatorID, convID, finalID)
 	}
 
 	if finish() == nil {

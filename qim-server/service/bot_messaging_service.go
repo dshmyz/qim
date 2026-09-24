@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"time"
 
+	"fmt"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/ws"
 	"gorm.io/gorm"
-	"fmt"
 )
 
 // BotMessagingService 处理外部 agent 经 Bot API 的出站消息：
@@ -814,7 +814,6 @@ func (s *BotMessagingService) resolveUniqueUser(name string) (*model.User, error
 		return nil, errors.New("昵称不唯一，请使用用户名或 ID: " + name)
 	}
 }
-
 
 // aiConfirmCardPayload 内部确认卡的标记字段（其余字段走 cardPayload 通用契约，宽松忽略）。
 type aiConfirmCardPayload struct {

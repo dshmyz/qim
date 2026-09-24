@@ -45,6 +45,7 @@ func setupServiceTestDB(t *testing.T) *gorm.DB {
 		&model.Bot{},
 		&model.BotConversation{},
 		&model.BotWebhookDelivery{},
+		&model.AvatarReplyDraft{},
 	)
 	if err != nil {
 		t.Fatalf("failed to migrate: %v", err)

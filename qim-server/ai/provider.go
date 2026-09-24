@@ -53,17 +53,24 @@ type Provider interface {
 
 // BaseProvider 提供所有提供商共用的基础功能
 type BaseProvider struct {
-	Client     *http.Client
-	MaxRetries int
+	Client *http.Client
+	// StreamClient 专供流式请求：不设整体 Timeout。http.Client.Timeout 对流式也生效，
+	// 推理模型长推理时会在正文开始前掐断连接（实测复杂问题首字 124.7s > 120s）；
+	// 流式时长改由调用方经 context 控制。与 Client 共享默认 Transport（连接池）。
+	StreamClient *http.Client
+	MaxRetries   int
 }
 
 // NewBaseProvider 创建基础提供商
 func NewBaseProvider() *BaseProvider {
+	transport := (http.DefaultTransport).(*http.Transport)
 	return &BaseProvider{
 		Client: &http.Client{
-			Timeout: 120 * time.Second, // 非流式 Chat 可能生成长回复，30s 会截断
+			Timeout:   120 * time.Second, // 非流式 Chat 可能生成长回复，30s 会截断
+			Transport: transport,
 		},
-		MaxRetries: 2,
+		StreamClient: &http.Client{Transport: transport},
+		MaxRetries:   2,
 	}
 }
 
@@ -165,10 +172,14 @@ func isRetryable(err error, statusCode int) bool {
 	return false
 }
 
-// ReadSSEStream 读取 SSE 格式的流并解析数据
+// ReadSSEStream 读取 SSE 格式的流并解析数据。
+// Scanner 行缓冲扩到 1MB（默认 64KB，超长帧会 ErrTooLong 中断流）；
+// 上游未发 [DONE] 且连接干净结束时返回 ErrStreamIncomplete，不把静默断连当成功。
 func (bp *BaseProvider) ReadSSEStream(body io.ReadCloser, processData func(data string) error) error {
 	defer body.Close()
 	reader := bufio.NewScanner(body)
+	reader.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	sawDone := false
 
 	for reader.Scan() {
 		line := reader.Text()
@@ -179,6 +190,7 @@ func (bp *BaseProvider) ReadSSEStream(body io.ReadCloser, processData func(data 
 
 			if strings.TrimSpace(data) == "[DONE]" {
 				logger.WithModule("AI").Debug("Received stream end marker")
+				sawDone = true
 				break
 			}
 
@@ -188,7 +200,13 @@ func (bp *BaseProvider) ReadSSEStream(body io.ReadCloser, processData func(data 
 		}
 	}
 
-	return reader.Err()
+	if err := reader.Err(); err != nil {
+		return err
+	}
+	if !sawDone {
+		return ErrStreamIncomplete
+	}
+	return nil
 }
 
 // ReadJSONStream 读取 JSON 格式的流（每行一个 JSON 对象）

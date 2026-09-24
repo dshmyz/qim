@@ -297,6 +297,7 @@ import { fetchUserProfile } from '../../composables/useUserProfileInfo'
 import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
 import { useSlashCommandPanelEnabled } from '../../composables/useSlashCommandPanelEnabled'
+import { useAvatarDraftApproval } from '../../composables/useAvatarDraftApproval'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
 // AI 快捷键已移至 Main.vue（全局生效）
 // summary / quickPanel 通过事件触发
@@ -744,6 +745,8 @@ const startScreenShareView = () => {
 }
 
 const inputMessage = ref('')
+// 分身待审批草稿：会话内卡片动作（发送/丢弃）+ 编辑请求回填输入框
+const draftApproval = useAvatarDraftApproval()
 const quotedMessage = ref<any>(null)
 const showCodeBlockEditor = ref(false)
 const messageListRef = ref<HTMLDivElement>()
@@ -776,6 +779,7 @@ watch(() => props.conversation?.id, (newId, oldId) => {
   if (newId && newId !== oldId) {
     closeGroupFiles()
     loadDraft(newId)
+    draftApproval.loadForConversation(newId)
 
     // 切换会话时重置 mention 状态
     mentionSpans.value = []
@@ -786,11 +790,27 @@ watch(() => props.conversation?.id, (newId, oldId) => {
     showAtMembersPanel.value = false
     // 切换会话时清空斜杠命令面板
     clearSlashPanel()
+    // 未实际改写发送的编辑信号随会话切换作废
+    draftApproval.cancelEditCapture(Number(lastConversationId.value) || undefined)
 
     scrollToBottom()
 
     lastConversationId.value = newId
   }
+})
+
+// 「编辑后发送」：草稿回填输入框并聚焦，同时丢弃原草稿（用户接管，卡片收起），
+// 并登记待捕获的编辑信号——用户改写发出时记录 original→final diff
+watch(draftApproval.editRequest, (draft) => {
+  if (!draft) return
+  inputMessage.value = draft.content
+  draftApproval.beginEditCapture(draft)
+  draftApproval.discard(draft.conversation_id, draft.id).catch(() => {})
+  draftApproval.clearEditRequest()
+  nextTick(() => {
+    const input = document.querySelector('.message-input') as HTMLTextAreaElement
+    input?.focus()
+  })
 })
 
 // 标记是否正在插入系统消息（本地操作），此时不应触发滚动
@@ -1540,6 +1560,8 @@ const handleSend = async () => {
     }
 
     emit('send', messageData)
+    // 若输入框内容来自分身草稿编辑，捕获改写后的 diff 学习信号
+    draftApproval.captureEditedSend(Number(props.conversation?.id) || 0, rawText)
     inputMessage.value = ''
     quotedMessage.value = null
     mentionSpans.value = []

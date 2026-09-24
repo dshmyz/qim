@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	"log"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -71,15 +71,16 @@ func (m *EinoChatModel) Stream(ctx context.Context, input []*schema.Message, opt
 
 		err := m.aiService.GetCompletionStreamWithContext(ctx, m.taskTypeFromCtx(ctx), aiMessages, func(chunk ai.StreamChunk) error {
 			msg := &schema.Message{
-				Role:    schema.Assistant,
-				Content: chunk.Content,
+				Role:             schema.Assistant,
+				Content:          chunk.Content,
+				ReasoningContent: chunk.ReasoningContent,
 			}
 			sw.Send(msg, nil)
 			return nil
 		})
 
 		if err != nil {
-			log.Printf("[EinoChatModel] Stream error: %v", err)
+			logger.WithModule("EinoChatModel").Error("Stream 调用失败", "error", err)
 			sw.Send(nil, err)
 		}
 	}()

@@ -25,15 +25,22 @@ type MessageIntent struct {
 type IntentDetector struct {
 	aiService *AIService
 
-	// 预定义的模式匹配规则
-	patterns map[string][]*regexp.Regexp
+	// 预定义的模式匹配规则。strong=锚定/报告式措辞，命中即高置信触发；
+	// weak=裸词/子串命中（如陈述句里的 "added"/"错误"），仅低置信提示，
+	// 不直接触发自动回复——AI 可用时走语义判断，不可用则 fail-closed 不回。
+	patterns map[string][]regexTier
+}
+
+type regexTier struct {
+	pattern *regexp.Regexp
+	strong  bool
 }
 
 // NewIntentDetector 创建意图检测器
 func NewIntentDetector(aiService *AIService) *IntentDetector {
 	detector := &IntentDetector{
 		aiService: aiService,
-		patterns:  make(map[string][]*regexp.Regexp),
+		patterns:  make(map[string][]regexTier),
 	}
 
 	detector.initPatterns()
@@ -43,42 +50,60 @@ func NewIntentDetector(aiService *AIService) *IntentDetector {
 // initPatterns 初始化规则匹配模式
 func (d *IntentDetector) initPatterns() {
 	// 管理命令模式
-	d.patterns["command"] = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)^\s*(请|帮我|麻烦|请你).*?(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
-		regexp.MustCompile(`(?i)^\s*(把|将)\s*.+?(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
-		regexp.MustCompile(`(?i)^\s*(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
-		regexp.MustCompile(`(?i)(create|delete|remove|add|ban|unban|promote|demote)`),
+	d.patterns["command"] = []regexTier{
+		// strong：中文锚定的祈使结构
+		{regexp.MustCompile(`(?i)^\s*(请|帮我|麻烦|请你).*?(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`), true},
+		{regexp.MustCompile(`(?i)^\s*(把|将)\s*.+?(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`), true},
+		{regexp.MustCompile(`(?i)^\s*(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`), true},
+		// strong：英文锚定的祈使动词（可带 please）
+		{regexp.MustCompile(`(?i)^\s*(please\s+)?(create|delete|remove|add|ban|unban|promote|demote)\b`), true},
+		// weak：动词在句中任意位置出现（陈述句 "I added a comment"）
+		{regexp.MustCompile(`(?i)\b(add|adds|added|adding|ban|bans|banned|banning|create|creates|created|creating|delete|deletes|deleted|deleting|remove|removes|removed|removing|unban|promote|promotes|promoted|demote|demotes|demoted)\b`), false},
 	}
 
 	// 问题咨询模式
-	d.patterns["query"] = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(怎么|如何|什么|为什么|哪里|谁|什么时候|多少)`),
-		regexp.MustCompile(`(?i)(how|what|why|where|when|who|can you|could you)`),
+	d.patterns["query"] = []regexTier{
+		// strong：疑问词（「什么」单列 weak：「没什么意见」式陈述常见）
+		{regexp.MustCompile(`(?i)(怎么|如何|为什么|哪里|哪儿|谁|什么时候|为何|多少|几号|能不能|可不可以)`), true},
+		{regexp.MustCompile(`什么`), false},
+		{regexp.MustCompile(`(?i)\b(how|why|where|when|who|whom|whose|which)\b|\bcan\s+you\b|\bcould\s+you\b|\bwhat\b`), true},
 	}
 
 	// 告警/异常模式
-	d.patterns["alert"] = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(挂了|崩溃|错误|异常|故障|宕机|无法访问|连不上)`),
-		regexp.MustCompile(`(?i)(down|crash|error|fail|broken|unreachable|urgent|critical)`),
+	d.patterns["alert"] = []regexTier{
+		// strong：本身即告警报告的谓词/措辞
+		{regexp.MustCompile(`(?i)(挂了|宕机|连不上|无法访问|打不开|崩了|崩溃了|出故障了|报错了|出错了|出问题了)`), true},
+		{regexp.MustCompile(`(?i)\b(is|are|was|were)\s+(down|offline|unreachable|broken)\b|\bcrashed\b|\burgent\b|\bcritical\b|\bunreachable\b`), true},
+		// weak：裸名词（"错误已经改完"）
+		{regexp.MustCompile(`(?i)(错误|异常|故障|报错|出错)`), false},
+		{regexp.MustCompile(`(?i)\b(down|crash|error|fail|failed|failure|broken|bug)\b`), false},
 	}
 
 	// 待办提取模式
-	d.patterns["todo"] = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(请帮我|帮我|提醒我|记得提醒|安排|创建.*任务|设置.*提醒|截止日期)`),
-		regexp.MustCompile(`(?i)(remember to|need to|schedule|plan|todo|task|deadline)`),
+	d.patterns["todo"] = []regexTier{
+		// strong：锚定的祈使/提醒措辞
+		{regexp.MustCompile(`(?i)(请帮我|帮我|提醒我|记得提醒|设置.*提醒|创建.*任务)`), true},
+		{regexp.MustCompile(`(?i)\b(remind me|schedule a|create a task)\b`), true},
+		// weak：句中任意位置的安排/计划词
+		{regexp.MustCompile(`(?i)(安排|截止日期)`), false},
+		{regexp.MustCompile(`(?i)\b(remember to|need to|schedule|plan|todo|task|deadline)\b`), false},
 	}
 }
 
-// Detect 检测消息意图
+// Detect 检测消息意图。强模式命中直接返回；弱命中或无规则时，AI 可用走语义判断，
+// AI 不可用时弱意图置信度低于触发阈值（fail-closed 不自动回）。
 func (d *IntentDetector) Detect(content string, userID uint, conversationID uint) (*MessageIntent, error) {
-	// 先尝试规则匹配
-	if intent := d.detectByRules(content); intent != nil {
+	intent, strong := d.detectByRules(content)
+	if strong {
 		return intent, nil
 	}
 
-	// 规则匹配失败时，使用 AI 进行语义理解
 	if d.aiService != nil && d.aiService.IsConfigured() {
 		return d.detectByAI(content, userID, conversationID)
+	}
+
+	if intent != nil {
+		return intent, nil
 	}
 
 	// 默认返回普通聊天
@@ -88,83 +113,50 @@ func (d *IntentDetector) Detect(content string, userID uint, conversationID uint
 	}, nil
 }
 
-// detectByRules 基于规则检测意图（按优先级）
-func (d *IntentDetector) detectByRules(content string) *MessageIntent {
+// detectByRules 基于规则检测意图。返回 (意图, 是否强命中)：
+// 强命中按 command→alert→query→todo 优先级返回高置信意图；仅弱命中时
+// 返回置信度 0.45 的低置信意图（不直接触发）；全无匹配返回 nil。
+func (d *IntentDetector) detectByRules(content string) (*MessageIntent, bool) {
 	logger.WithModule("IntentDetector").Debug("规则检测开始", "content", content[:min(30, len(content))])
 
-	// command 优先级最高（管理操作）
-	commandPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)^\s*(请|帮我|麻烦|请你).*?(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
-		regexp.MustCompile(`(?i)^\s*(把|将)\s*.+?(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
-		regexp.MustCompile(`(?i)^\s*(移除|移出|删除|踢出|添加|邀请|禁言|解封|设置管理员|取消管理员)`),
-		regexp.MustCompile(`(?i)(create|delete|remove|add|ban|unban|promote|demote)`),
+	priority := []string{"command", "alert", "query", "todo"}
+	confidence := map[string]float32{
+		"command": 0.85,
+		"alert":   0.8,
+		"query":   0.8,
+		"todo":    0.8,
 	}
-	for _, pattern := range commandPatterns {
-		if pattern.MatchString(content) {
-			logger.WithModule("IntentDetector").Debug("匹配到 command 模式", "pattern", pattern.String())
-			entities := d.extractEntities(content, "command")
-			return &MessageIntent{
-				Type:        "command",
-				Confidence:  0.8,
-				ShouldReply: boolPtr(true),
-				Entities:    entities,
+
+	var weakMatch *MessageIntent
+	for _, intentType := range priority {
+		for _, tier := range d.patterns[intentType] {
+			if !tier.pattern.MatchString(content) {
+				continue
+			}
+			if tier.strong {
+				logger.WithModule("IntentDetector").Debug("匹配到强模式", "type", intentType, "pattern", tier.pattern.String())
+				return &MessageIntent{
+					Type:        intentType,
+					Confidence:  confidence[intentType],
+					ShouldReply: boolPtr(true),
+					Entities:    d.extractEntities(content, intentType),
+				}, true
+			}
+			if weakMatch == nil {
+				weakMatch = &MessageIntent{
+					Type:       intentType,
+					Confidence: 0.45,
+				}
 			}
 		}
 	}
 
-	// alert 次之（告警）
-	alertPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(挂了|崩溃|错误|异常|故障|宕机|无法访问|连不上)`),
-		regexp.MustCompile(`(?i)(down|crash|error|fail|broken|unreachable|urgent|critical)`),
+	if weakMatch != nil {
+		logger.WithModule("IntentDetector").Debug("仅弱模式命中", "type", weakMatch.Type)
+	} else {
+		logger.WithModule("IntentDetector").Debug("规则检测未匹配")
 	}
-	for _, pattern := range alertPatterns {
-		if pattern.MatchString(content) {
-			entities := d.extractEntities(content, "alert")
-			return &MessageIntent{
-				Type:        "alert",
-				Confidence:  0.7,
-				ShouldReply: boolPtr(true),
-				Entities:    entities,
-			}
-		}
-	}
-
-	// query 再次（问题咨询）
-	queryPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(怎么|如何|什么|为什么|哪里|谁|什么时候|多少)`),
-		regexp.MustCompile(`(?i)(how|what|why|where|when|who|can you|could you)`),
-	}
-	for _, pattern := range queryPatterns {
-		if pattern.MatchString(content) {
-			entities := d.extractEntities(content, "query")
-			return &MessageIntent{
-				Type:        "query",
-				Confidence:  0.6,
-				ShouldReply: boolPtr(true),
-				Entities:    entities,
-			}
-		}
-	}
-
-	// todo 最后（待办）
-	todoPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(请帮我|帮我|提醒我|记得提醒|安排|创建.*任务|设置.*提醒|截止日期)`),
-		regexp.MustCompile(`(?i)(remember to|need to|schedule|plan|todo|task|deadline)`),
-	}
-	for _, pattern := range todoPatterns {
-		if pattern.MatchString(content) {
-			entities := d.extractEntities(content, "todo")
-			return &MessageIntent{
-				Type:        "todo",
-				Confidence:  0.6,
-				ShouldReply: boolPtr(true),
-				Entities:    entities,
-			}
-		}
-	}
-
-	logger.WithModule("IntentDetector").Debug("规则检测未匹配")
-	return nil
+	return weakMatch, false
 }
 
 // detectByAI 使用 AI 检测意图

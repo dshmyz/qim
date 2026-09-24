@@ -112,6 +112,7 @@ func (s *AIRouterService) GetEffectiveRouter() (*ai.RouterConfig, []model.AIProv
 //   - 引用未配置供应商的路由：跳过（不写入），收集警告返回，不阻塞其余有效路由的保存；
 //   - model 不再做硬校验——模型由 provider 在运行时校验，已登记 models 仅作前端下拉候选
 //     （前端模型框允许自由输入自定义模型，硬校验会误拦）。
+//
 // 全部路由都被跳过时不写入（避免用空路由覆盖既有配置）。
 func (s *AIRouterService) SaveRouter(aiService *ai.AIService, rc *ai.RouterConfig) (warnings []string, err error) {
 	if rc == nil {

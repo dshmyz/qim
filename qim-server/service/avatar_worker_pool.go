@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -48,14 +49,18 @@ type AvatarBatchItem struct {
 
 // AvatarTask 分身任务
 type AvatarTask struct {
-	UserID         uint
-	ConversationID uint
-	TriggerMessage string
-	TriggerMsgType string // 触发消息类型（text/image/file/...），供分身识别图片走多模态
-	TriggerUserID  uint
-	IsGroupChat    bool
-	GroupName      string
-	TriggerName    string
+	UserID           uint
+	ConversationID   uint
+	TriggerMessage   string
+	TriggerMessageID uint   // 触发消息 ID：草稿卡片锚定在该消息下方
+	TriggerMsgType   string // 触发消息类型（text/image/file/...），供分身识别图片走多模态
+	TriggerUserID    uint
+	IsGroupChat      bool
+	GroupName        string
+	TriggerName      string
+	// TriggerReason 触发决策给出的原因（默认回复/关键词触发/LLM 判断…），随批首任务带到
+	// 发送阶段，写入运行记录中「已回复」事件的原因，让用户知道这条回复因何触发。
+	TriggerReason string
 	// BatchItems 合并窗口聚合后的批内消息。单条触发时恰 1 项；多连发合并时为全部。
 	// worker 据此走批量路径（多文本+多图多模态），非空时优先于 TriggerMessage。
 	BatchItems []AvatarBatchItem
@@ -96,6 +101,13 @@ type AvatarWorkerPool struct {
 	coalesceMu    sync.Mutex
 	buckets       map[avatarBatchKey]*avatarBatch // 在途合并桶，Flush 后即删
 	coalesceClose bool                            // 是否已关闭，关闭后拒绝新提交并 flush 在途批
+
+	// draftSvc 待审批草稿持久化（质量核验被拒后落库 + 通知中心留痕）
+	draftSvc *AvatarReplyDraftService
+
+	// decisionLog 分身决策留痕（让位/空回复/生成失败/质量拒绝/队列忙/已发送），
+	// 供主人在分身设置的「运行记录」里排查回复与不回复的原因。
+	decisionLog *AvatarDecisionLogService
 }
 
 // NewAvatarWorkerPool 创建分身工作池。
@@ -112,10 +124,12 @@ func NewAvatarWorkerPool(workers int, globalRPM int, service *AvatarService) *Av
 			PerKeyBurst: 10,
 			Serialize:   false,
 		}),
-		delaySem: make(chan struct{}, 100), // 最多 100 个延迟 goroutine 驻留
-		service:  service,
-		db:       service.db,
-		buckets:  make(map[avatarBatchKey]*avatarBatch),
+		delaySem:    make(chan struct{}, 100), // 最多 100 个延迟 goroutine 驻留
+		service:     service,
+		db:          service.db,
+		buckets:     make(map[avatarBatchKey]*avatarBatch),
+		draftSvc:    NewAvatarReplyDraftService(service.db),
+		decisionLog: NewAvatarDecisionLogService(service.db),
 	}
 
 	return pool
@@ -246,6 +260,7 @@ func (p *AvatarWorkerPool) flushBucket(b *avatarBatch) {
 				"reason":          "queue_busy",
 			})
 		}
+		p.recordDecision(task, "skipped", "queue_busy", "系统繁忙，回复被跳过")
 	}
 }
 
@@ -264,6 +279,7 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	session, down, reason := p.standDown(task, triggerAt)
 	if down {
 		logger.WithModule("AvatarWorkerPool").Info("分身让位", "user", task.UserID, "conv", task.ConversationID, "reason", reason)
+		p.recordDecision(task, "skipped", "stand_down", reason)
 		return
 	}
 
@@ -286,27 +302,28 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		reply, sources, err = p.service.GenerateReplyBatchWithImageSources(task.UserID, task.ConversationID, task.BatchItems, &avatarConfig)
 		if err != nil {
 			logger.WithModule("AvatarWorkerPool").Info("分身批量生成失败，尽力而为跳过", "user", task.UserID, "conv", task.ConversationID, "batch", len(task.BatchItems), "error", err)
-			p.notifyQualitySkip(task, err)
+			p.handleQualityRejection(task, err, sources)
 			return
 		}
 	} else if task.TriggerMsgType == "image" {
 		fileID := parseQuotedFileID(task.TriggerMessage)
 		if fileID == 0 {
 			logger.WithModule("AvatarWorkerPool").Info("分身图片触发消息缺少文件 id，跳过", "user", task.UserID, "conv", task.ConversationID)
+			p.recordDecision(task, "skipped", "generate_error", "图片触发消息缺少文件 id")
 			return
 		}
 		imageName := parseQuotedFileName(task.TriggerMessage)
 		reply, sources, err = p.service.GenerateReplyWithImageSources(task.UserID, task.ConversationID, task.TriggerMessage, imageName, fileID, &avatarConfig)
 		if err != nil {
 			logger.WithModule("AvatarWorkerPool").Info("分身图片识别失败，尽力而为跳过", "user", task.UserID, "conv", task.ConversationID, "fileID", fileID, "error", err)
-			p.notifyQualitySkip(task, err)
+			p.handleQualityRejection(task, err, sources)
 			return
 		}
 	} else {
 		reply, sources, err = p.service.GenerateReplyWithSources(task.UserID, task.ConversationID, task.TriggerMessage, &avatarConfig)
 		if err != nil {
 			logger.WithModule("AvatarWorkerPool").Error("分身回复生成失败", "user", task.UserID, "conv", task.ConversationID, "error", err)
-			p.notifyQualitySkip(task, err)
+			p.handleQualityRejection(task, err, sources)
 			return
 		}
 	}
@@ -315,6 +332,7 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 	// 直接跳过发送，避免落空白气泡
 	if strings.TrimSpace(reply) == "" {
 		logger.WithModule("AvatarWorkerPool").Info("分身选择不回复", "user", task.UserID, "conv", task.ConversationID)
+		p.recordDecision(task, "skipped", "empty", "分身选择不回复")
 		return
 	}
 
@@ -333,6 +351,7 @@ func (p *AvatarWorkerPool) process(task AvatarTask) {
 		// 生成/仿真人延迟期间状态可能已变：发送是唯一不可撤销动作，权威复查让位门
 		if _, down, reason := p.standDown(task, triggerAt); down {
 			logger.WithModule("AvatarWorkerPool").Info("分身让位（发送前复查）", "user", task.UserID, "conv", task.ConversationID, "reason", reason)
+			p.recordDecision(task, "skipped", "stand_down", reason)
 			return
 		}
 		meta := avatarSendMeta{
@@ -423,21 +442,147 @@ func (p *AvatarWorkerPool) standDown(task AvatarTask, triggerAt time.Time) (mode
 	return session, false, ""
 }
 
-// notifyQualitySkip 只把质量门控相关的跳过原因反馈给用户，普通的范围外静默仍保持安静。
-func (p *AvatarWorkerPool) notifyQualitySkip(task AvatarTask, err error) {
-	if err == nil || p.service == nil || p.service.wsNotify == nil {
-		return
+// recordDecision 以任务上下文写一条决策留痕。
+func (p *AvatarWorkerPool) recordDecision(task AvatarTask, decision, stage, reason string) {
+	if err := p.decisionLog.Record(AvatarDecisionInput{
+		OwnerID:          task.UserID,
+		ConversationID:   task.ConversationID,
+		TriggerMessageID: task.TriggerMessageID,
+		TriggerUserID:    task.TriggerUserID,
+		TriggerName:      task.TriggerName,
+		MessageSnippet:   task.TriggerMessage,
+		Decision:         decision,
+		Stage:            stage,
+		Reason:           reason,
+	}); err != nil {
+		logger.WithModule("AvatarWorkerPool").Warn("写入决策留痕失败", "error", err)
 	}
-	message := err.Error()
-	if !strings.Contains(message, "reply quality") {
+}
+
+// handleQualityRejection 质量核验被拒后：把草稿落库待主人审批，并 WS 即时通知（在线时
+// 卡片立即出现）；非质量类错误（网络/模型不可用）维持原"尽力而为跳过"，不打扰。
+func (p *AvatarWorkerPool) handleQualityRejection(task AvatarTask, err error, sources []KnowledgeSource) {
+	var rejected *QualityRejectedError
+	if !errors.As(err, &rejected) {
+		// 非质量类错误（网络/模型不可用等）维持「不打扰」，但在运行记录留痕，排查时有据可查
+		p.recordDecision(task, "skipped", "generate_error", err.Error())
 		return
 	}
 	GlobalAIReplyMetrics.RecordQualityRejected()
-	p.service.wsNotify(task.UserID, "avatar_reply_skipped", map[string]interface{}{
-		"conversation_id": task.ConversationID,
-		"reason":          "quality_rejected",
-		"message":         "分身生成的回复未通过相关性或事实依据核验，未自动发送。你可以调整分身设置或手动处理。",
-	})
+
+	var draft *model.AvatarReplyDraft
+	if p.draftSvc != nil {
+		draft = p.draftSvc.Create(AvatarDraftInput{
+			OwnerID:          task.UserID,
+			ConversationID:   task.ConversationID,
+			TriggerMessageID: task.TriggerMessageID,
+			TriggerUserID:    task.TriggerUserID,
+			Content:          rejected.Draft,
+			Reason:           rejected.Reason,
+			Sources:          sources,
+		})
+	}
+	if p.service != nil && p.service.wsNotify != nil {
+		data := map[string]interface{}{
+			"conversation_id": task.ConversationID,
+			"reason":          "quality_rejected",
+		}
+		if draft != nil {
+			data["draft_id"] = draft.ID
+		}
+		p.service.wsNotify(task.UserID, "avatar_reply_skipped", data)
+	}
+
+	p.recordDecision(task, "skipped", "quality", rejected.Reason)
+}
+
+// ListPendingDrafts 透传查询用户待审批草稿（conversationID=0 时看全部会话）。
+func (p *AvatarWorkerPool) ListPendingDrafts(ownerID, conversationID uint) []model.AvatarReplyDraft {
+	if p.draftSvc == nil {
+		return nil
+	}
+	return p.draftSvc.ListPending(ownerID, conversationID)
+}
+
+// ApproveDraft 主人批准草稿：归属校验 + 过期/状态校验 + 让位门复验（草稿生成后主人可能
+// 已亲自处理该话题或处于接管期），通过后复用 sendReply 发送并标记 approved。
+func (p *AvatarWorkerPool) ApproveDraft(ownerID, draftID uint) error {
+	if p.draftSvc == nil {
+		return fmt.Errorf("草稿服务不可用")
+	}
+	draft, err := p.draftSvc.GetForOwner(ownerID, draftID)
+	if err != nil {
+		return err
+	}
+	if draft.Status != "pending" {
+		return fmt.Errorf("草稿已处理")
+	}
+	if time.Now().After(draft.ExpiresAt) {
+		_ = p.draftSvc.MarkResolved(draft, "discarded")
+		return fmt.Errorf("草稿已过期")
+	}
+
+	var avatarConfig model.AvatarConfig
+	if err := p.db.Where("user_id = ?", ownerID).First(&avatarConfig).Error; err != nil {
+		return fmt.Errorf("获取分身配置失败: %w", err)
+	}
+	var replyStrategy model.AvatarReplyStrategy
+	if avatarConfig.ReplyStrategyJSON != "" {
+		_ = json.Unmarshal([]byte(avatarConfig.ReplyStrategyJSON), &replyStrategy)
+	}
+
+	task := AvatarTask{
+		UserID:           draft.UserID,
+		ConversationID:   draft.ConversationID,
+		TriggerMessageID: draft.TriggerMessageID,
+		TriggerUserID:    draft.TriggerUserID,
+	}
+	var conv model.Conversation
+	isGroup := p.db.First(&conv, draft.ConversationID).Error == nil &&
+		(conv.Type == "group" || conv.Type == "discussion")
+	task.IsGroupChat = isGroup
+
+	// 让位门复验：以草稿创建时间为锚，期间主人已回复/分身已答/接管期内均拦下。
+	if _, down, reason := p.standDown(task, draft.CreatedAt); down {
+		return fmt.Errorf("分身已让位：%s，草稿未发送", reason)
+	}
+
+	var sources []KnowledgeSource
+	if draft.SourcesJSON != "" {
+		_ = json.Unmarshal([]byte(draft.SourcesJSON), &sources)
+	}
+	meta := avatarSendMeta{
+		avatarCfgName:   avatarConfig.Name,
+		disclaimerStyle: replyStrategy.DisclaimerStyle,
+		sources:         sources,
+	}
+	if isGroup && replyStrategy.GroupReplyTarget == "private" && draft.TriggerUserID != 0 {
+		convService := NewConversationService(database.GetDB())
+		privateConv, cerr := convService.CreateSingleConversation(ownerID, draft.TriggerUserID)
+		if cerr != nil {
+			return fmt.Errorf("创建私聊会话失败: %w", cerr)
+		}
+		p.sendReply(task, privateConv.ID, draft.Content, meta)
+	} else {
+		p.sendReply(task, draft.ConversationID, draft.Content, meta)
+	}
+	GlobalAIReplyMetrics.RecordAutoReply()
+	return p.draftSvc.MarkResolved(draft, "approved")
+}
+
+// DiscardDraft 主人丢弃草稿：归属校验后标记 discarded（消通知红点）。
+func (p *AvatarWorkerPool) DiscardDraft(ownerID, draftID uint) error {
+	if p.draftSvc == nil {
+		return fmt.Errorf("草稿服务不可用")
+	}
+	draft, err := p.draftSvc.GetForOwner(ownerID, draftID)
+	if err != nil {
+		return err
+	}
+	if draft.Status != "pending" {
+		return fmt.Errorf("草稿已处理")
+	}
+	return p.draftSvc.MarkResolved(draft, "discarded")
 }
 
 // sendReply 把分身回复作为新消息写入指定会话并广播。
@@ -464,6 +609,20 @@ func (p *AvatarWorkerPool) sendReply(task AvatarTask, convID uint, reply string,
 	if err := p.db.Create(&msg).Error; err != nil {
 		logger.WithModule("AvatarWorkerPool").Error("保存分身消息失败", "conv", convID, "error", err)
 		return
+	}
+
+	if err := p.decisionLog.Record(AvatarDecisionInput{
+		OwnerID:          task.UserID,
+		ConversationID:   convID,
+		TriggerMessageID: task.TriggerMessageID,
+		TriggerUserID:    task.TriggerUserID,
+		TriggerName:      task.TriggerName,
+		MessageSnippet:   task.TriggerMessage,
+		Decision:         "replied",
+		Stage:            "sent",
+		Reason:           task.TriggerReason,
+	}); err != nil {
+		logger.WithModule("AvatarWorkerPool").Warn("写入决策留痕失败", "error", err)
 	}
 
 	// 2. 预加载发送者信息

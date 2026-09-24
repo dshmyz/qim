@@ -64,7 +64,7 @@ func TestShouldTriggerAvatar_SmartDoesNotFallbackToAllWithoutDecider(t *testing.
 	}
 
 	engine := &SmartReplyEngine{}
-	triggered := engine.shouldTriggerAvatar(
+	triggered, _ := engine.shouldTriggerAvatar(
 		&model.AvatarSession{ConversationID: 1, UserID: avatarUserID, AvatarEnabled: true},
 		"今天进度如何？",
 		true,
@@ -95,7 +95,7 @@ func TestShouldTriggerAvatar_SmartUsesIntentDecider(t *testing.T) {
 
 	decider := &avatarTriggerDeciderStub{shouldReply: true}
 	engine := &SmartReplyEngine{avatarTriggerSvc: decider}
-	triggered := engine.shouldTriggerAvatar(
+	triggered, _ := engine.shouldTriggerAvatar(
 		&model.AvatarSession{ConversationID: 9, UserID: avatarUserID, AvatarEnabled: true},
 		"请帮我判断这个方案",
 		true,
@@ -155,7 +155,7 @@ func TestCheckAvatarTriggersDoesNotAutoSubscribe(t *testing.T) {
 	}).Error)
 
 	engine := &SmartReplyEngine{}
-	engine.checkAvatarTriggers(sender.ID, &conv, "普通群聊消息", "text", nil)
+	engine.checkAvatarTriggers(sender.ID, &conv, "普通群聊消息", "text", nil, 0)
 
 	var sessions []model.AvatarSession
 	require.NoError(t, db.Where("conversation_id = ?", conv.ID).Find(&sessions).Error)
@@ -196,7 +196,7 @@ func TestCheckAvatarTriggersDefaultOnActivatesWithoutSession(t *testing.T) {
 	// 但仍会被调用——被调用即证明该成员被选为候选
 	decider := &avatarTriggerDeciderStub{shouldReply: false}
 	engine := &SmartReplyEngine{avatarTriggerSvc: decider}
-	engine.checkAvatarTriggers(sender.ID, &conv, "在吗", "text", nil)
+	engine.checkAvatarTriggers(sender.ID, &conv, "在吗", "text", nil, 0)
 
 	assert.Equal(t, defUser.ID, decider.config.UserID,
 		"ActivateByDefault=true 且无 session 的成员应被选为候选并进入触发判断")

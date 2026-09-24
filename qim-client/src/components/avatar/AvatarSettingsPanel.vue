@@ -115,9 +115,13 @@
             <AvatarGraph />
           </div>
         </template>
+
+        <template v-else-if="activeMainTab === 'log'">
+          <AvatarDecisionLogPanel />
+        </template>
       </div>
 
-      <div class="tab-footer">
+      <div v-if="activeMainTab !== 'log'" class="tab-footer">
         <button class="btn btn-primary" @click="handleSave" :disabled="saving">
           {{ saving ? '保存中...' : '保存设置' }}
         </button>
@@ -140,6 +144,7 @@ import AvatarModelSettings from './AvatarModelSettings.vue'
 import AvatarPersonaSettings from './AvatarPersonaSettings.vue'
 import AvatarReplySettings from './AvatarReplySettings.vue'
 import AvatarGraph from './AvatarGraph.vue'
+import AvatarDecisionLogPanel from './AvatarDecisionLogPanel.vue'
 import { DEFAULT_AVATAR_CONFIG } from '../../types/avatar'
 
 defineEmits(['back'])
@@ -202,13 +207,14 @@ async function handleToggle() {
   }
 }
 
-const activeMainTab = ref<'basic' | 'advanced' | 'graph'>('basic')
+const activeMainTab = ref<'basic' | 'advanced' | 'graph' | 'log'>('basic')
 const saving = ref(false)
 
 const mainTabs = [
   { key: 'basic' as const, label: '普通设置', icon: 'fas fa-cog' },
   { key: 'advanced' as const, label: '高级设置', icon: 'fas fa-sliders-h' },
-  { key: 'graph' as const, label: '知识图谱', icon: 'fas fa-project-diagram' }
+  { key: 'graph' as const, label: '知识图谱', icon: 'fas fa-project-diagram' },
+  { key: 'log' as const, label: '运行记录', icon: 'fas fa-history' }
 ]
 
 const userId = ref(0)
@@ -221,7 +227,7 @@ onMounted(async () => {
   await Promise.all([fetchConfig(true), fetchConfigs(), personaState.fetchLearnStatus()])
   
   const savedTab = localStorage.getItem('avatar-settings-tab')
-  if (savedTab === 'basic' || savedTab === 'advanced' || savedTab === 'graph') {
+  if (savedTab === 'basic' || savedTab === 'advanced' || savedTab === 'graph' || savedTab === 'log') {
     activeMainTab.value = savedTab
   }
   

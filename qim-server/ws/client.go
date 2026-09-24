@@ -120,7 +120,10 @@ func (c *Client) readPump() {
 			continue
 		}
 
-		logger.WithModule("WS").Debug("收到客户端消息", "type", msg.Type)
+		// 心跳类消息每连接每 30 秒一条，正常运行时无诊断价值，不打日志淹没其他消息
+		if msg.Type != "ping" && msg.Type != "heartbeat" {
+			logger.WithModule("WS").Debug("收到客户端消息", "type", msg.Type)
+		}
 
 		switch msg.Type {
 		case "heartbeat":

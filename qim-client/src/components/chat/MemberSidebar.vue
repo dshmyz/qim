@@ -607,21 +607,21 @@ onUnmounted(() => {
 }
 
 .member-role-tag.owner {
-  background: rgba(255, 215, 0, 0.15);
+  background: none;
   color: #d4a017;
-  border: 1px solid rgba(255, 215, 0, 0.25);
+  border: none;
 }
 
 .member-role-tag.admin {
-  background: rgba(79, 172, 254, 0.1);
+  background: none;
   color: #2196f3;
-  border: 1px solid rgba(79, 172, 254, 0.2);
+  border: none;
 }
 
 .member-role-tag.bot {
   color: #7c3aed;
-  background: rgba(124, 58, 237, 0.08);
-  border: 1px solid rgba(124, 58, 237, 0.15);
+  background: none;
+  border: none;
   font-size: var(--font-size-tiny);
 }
 

@@ -125,7 +125,6 @@ func (h *AIHandler) UpdateToolScope(c *gin.Context) {
 	response.Success(c, gin.H{"scope": scope, "tools": h.toolScopes.ScopeTools(scope), "overridden": true})
 }
 
-
 // suggestedPromptsKey 推荐提示词的 system_configs 键（JSON 字符串数组）。
 const suggestedPromptsKey = "ai.ui.suggested_prompts"
 

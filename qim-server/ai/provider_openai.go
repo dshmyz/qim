@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
@@ -211,21 +212,23 @@ func (p *OpenAIProvider) ChatStreamWithContext(ctx context.Context, messages []M
 		return err
 	}
 
-	resp, err := p.Client.Do(req)
+	resp, err := p.StreamClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("OpenAI API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("OpenAI API returned non-200 status: %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("OpenAI API returned non-200 status: %d, body: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	return p.ReadSSEStream(resp.Body, func(data string) error {
 		var chunk struct {
 			Choices []struct {
 				Delta struct {
-					Content string `json:"content"`
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"`
 				} `json:"delta"`
 				FinishReason *string `json:"finish_reason"`
 			} `json:"choices"`
@@ -238,10 +241,11 @@ func (p *OpenAIProvider) ChatStreamWithContext(ctx context.Context, messages []M
 
 		if len(chunk.Choices) > 0 {
 			sc := StreamChunk{
-				Content: chunk.Choices[0].Delta.Content,
-				Finish:  chunk.Choices[0].FinishReason,
+				Content:          chunk.Choices[0].Delta.Content,
+				ReasoningContent: chunk.Choices[0].Delta.ReasoningContent,
+				Finish:           chunk.Choices[0].FinishReason,
 			}
-			if sc.Content != "" || sc.Finish != nil {
+			if sc.Content != "" || sc.ReasoningContent != "" || sc.Finish != nil {
 				logger.WithModule("OpenAI").Debug("Sending chunk", "content", sc.Content, "finish", sc.Finish)
 				return onChunk(sc)
 			}
@@ -294,7 +298,7 @@ func (p *OpenAIProvider) Embedding(text string) ([]float32, error) {
 	if p.config.EmbeddingBaseURL != "" {
 		embeddingBaseURL = p.config.EmbeddingBaseURL
 	}
-	aiLog.Info("embedding 请求", "model", embeddingModel, "url", embeddingBaseURL+"/embeddings")
+	aiLog().Info("embedding 请求", "model", embeddingModel, "url", embeddingBaseURL+"/embeddings")
 
 	reqBody := embeddingRequest{
 		Model: embeddingModel,

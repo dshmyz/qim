@@ -17,7 +17,9 @@ func (p *mergeKindProvider) Name() string { return "merge-kind" }
 func (p *mergeKindProvider) Chat(_ []ai.Message) (string, error) {
 	return `{"kind": "` + p.kind + `"}`, nil
 }
-func (p *mergeKindProvider) ChatStream(_ []ai.Message, _ func(ai.StreamChunk) error) error { return nil }
+func (p *mergeKindProvider) ChatStream(_ []ai.Message, _ func(ai.StreamChunk) error) error {
+	return nil
+}
 func (p *mergeKindProvider) ChatStreamWithContext(_ context.Context, _ []ai.Message, _ func(ai.StreamChunk) error) error {
 	return nil
 }

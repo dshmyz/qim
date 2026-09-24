@@ -8,9 +8,12 @@ func TestIntentRulesDoNotTreatDescriptiveStatementsAsRequests(t *testing.T) {
 		"明天开会讨论上线方案",
 		"这个方案要删除旧接口",
 		"下周需要完成联调",
+		"I added a comment to the doc",
+		"我已经把那个错误改完了",
+		"我没什么意见",
 	} {
-		if got := d.detectByRules(content); got != nil {
-			t.Fatalf("descriptive statement %q unexpectedly classified as %+v", content, got)
+		if got, strong := d.detectByRules(content); strong {
+			t.Fatalf("descriptive statement %q unexpectedly treated as strong request: %+v", content, got)
 		}
 	}
 }
@@ -24,12 +27,24 @@ func TestIntentRulesKeepExplicitRequests(t *testing.T) {
 		{"请帮我记住明天上午提醒开会", "todo"},
 		{"项目 Alpha 什么时候上线？", "query"},
 		{"请把张三移出群聊", "command"},
+		{"please delete the old files", "command"},
+		{"add @张三 to the group", "command"},
+		{"生产服务器挂了", "alert"},
+		{"the service is down", "alert"},
 	}
 	for _, tt := range cases {
-		got := d.detectByRules(tt.content)
-		if got == nil || got.Type != tt.want {
-			t.Fatalf("content %q got %+v, want %s", tt.content, got, tt.want)
+		got, strong := d.detectByRules(tt.content)
+		if !strong || got == nil || got.Type != tt.want {
+			t.Fatalf("content %q got %+v strong=%v, want strong %s", tt.content, got, strong, tt.want)
 		}
+	}
+}
+
+func TestIntentRulesWeakEnglishVerbsDoNotMatchWithinWords(t *testing.T) {
+	d := NewIntentDetector(nil)
+	// "address" 不得被 weak 命令正则里的 add 命中
+	if got, strong := d.detectByRules("what address do you mean?"); strong && got.Type == "command" {
+		t.Fatalf("address must not match command verb: %+v", got)
 	}
 }
 
@@ -64,5 +79,19 @@ func TestShouldTriggerAIReplyRespectsExplicitNoReply(t *testing.T) {
 	noReply := false
 	if d.ShouldTriggerAIReply(&MessageIntent{Type: "query", Confidence: 0.99, ShouldReply: &noReply}, "group") {
 		t.Fatal("explicit should_reply=false must block auto-reply")
+	}
+}
+
+func TestDetectFallsBackToSemanticPathOnWeakMatch(t *testing.T) {
+	// AI 未配置时：弱命中返回低置信意图，不触发；无规则返回 chat
+	d := NewIntentDetector(nil)
+	intent, err := d.Detect("I added a comment", 1, 1)
+	if err != nil || intent.Confidence >= 0.75 {
+		t.Fatalf("weak match must stay low-confidence without AI: %+v err=%v", intent, err)
+	}
+
+	intent, err = d.Detect("今天天气不错", 1, 1)
+	if err != nil || intent.Type != "chat" {
+		t.Fatalf("no-rule message should default to chat: %+v err=%v", intent, err)
 	}
 }

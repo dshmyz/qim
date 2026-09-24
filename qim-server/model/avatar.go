@@ -74,6 +74,44 @@ type AvatarToolBinding struct {
 	UpdatedAt time.Time
 }
 
+// AvatarReplyDraft 分身回复质量核验两轮（含一次改进重试）均未通过后落库的待审批草稿。
+// 分身主人可在会话内直接「发送 / 编辑后发送 / 丢弃」；过期草稿不再展示也不可批准。
+type AvatarReplyDraft struct {
+	ID               uint      `json:"id" gorm:"primarykey"`
+	UserID           uint      `json:"user_id" gorm:"not null;index:idx_avatar_draft_user_status,priority:1"`
+	ConversationID   uint      `json:"conversation_id" gorm:"not null;index"`
+	TriggerMessageID uint      `json:"trigger_message_id"`
+	TriggerUserID    uint      `json:"trigger_user_id"`
+	Content          string    `json:"content" gorm:"type:text;not null"`
+	Reason           string    `json:"reason" gorm:"type:text"`
+	SourcesJSON      string    `json:"-" gorm:"type:text"`
+	Status           string    `json:"status" gorm:"size:20;not null;index:idx_avatar_draft_user_status,priority:2"` // pending, approved, discarded
+	NotificationID   *uint     `json:"notification_id"`
+	ExpiresAt        time.Time `json:"expires_at" gorm:"not null;index"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// AvatarDecisionEvent 分身一次回复决策的留痕（「为什么回了 / 为什么没回」）。
+// 触发阶段（DecideReply）与 worker 阶段（让位门/空回复/质量拒绝/队列忙/发送成功）
+// 各自在终态点写入，供主人在分身设置的「运行记录」里排查，不再只有服务端日志可见。
+type AvatarDecisionEvent struct {
+	ID               uint   `json:"id" gorm:"primarykey"`
+	OwnerID          uint   `json:"owner_id" gorm:"not null;index:idx_avatar_decision_owner,priority:1"`
+	ConversationID   uint   `json:"conversation_id" gorm:"not null;index"`
+	TriggerMessageID uint   `json:"trigger_message_id"`
+	TriggerUserID    uint   `json:"trigger_user_id"`
+	TriggerName      string `json:"trigger_name" gorm:"size:64"`
+	MessageSnippet   string `json:"message_snippet" gorm:"size:200"`
+	// Decision: replied（最终发出）/ skipped（未回复）
+	Decision string `json:"decision" gorm:"size:16;not null"`
+	// Stage: trigger（触发门未过）/ stand_down（让位）/ empty（模型空回复）/
+	// quality（质量核验拒绝，另有草稿）/ queue_busy（队列忙）/ generate_error（生成失败）/ sent（已发送）
+	Stage     string    `json:"stage" gorm:"size:32;not null"`
+	Reason    string    `json:"reason" gorm:"size:255"`
+	CreatedAt time.Time `json:"created_at" gorm:"not null;index:idx_avatar_decision_owner,priority:2"`
+}
+
 // AvatarLearnTask 人设学习任务
 type AvatarLearnTask struct {
 	ID           uint       `json:"id" gorm:"primarykey"`

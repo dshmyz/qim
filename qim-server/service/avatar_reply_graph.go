@@ -297,7 +297,7 @@ func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, 
 				reason = "回复未通过相关性或事实依据核验"
 			}
 			logger.WithModule("diag").Info(fmt.Sprintf("[Diag] 分身回复质量核验拒绝自动发送: userID=%d convID=%d reason=%s", userID, conversationID, reason))
-			return "", input.Sources, fmt.Errorf("reply quality rejected: %s", reason)
+			return "", input.Sources, &QualityRejectedError{Draft: reply, Reason: reason}
 		}
 	}
 
@@ -467,7 +467,7 @@ func (g *AvatarReplyGraph) completeReply(input *AvatarReplyContext, aiMessages [
 			if reason == "" {
 				reason = "回复未通过相关性或事实依据核验"
 			}
-			return "", input.Sources, fmt.Errorf("reply quality rejected: %s", reason)
+			return "", input.Sources, &QualityRejectedError{Draft: reply, Reason: reason}
 		}
 	}
 	return reply, input.Sources, nil

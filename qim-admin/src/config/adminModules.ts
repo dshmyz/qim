@@ -226,6 +226,15 @@ export const adminModuleGroups: AdminModuleGroup[] = [
         permission: 'ai:read',
       },
       {
+        path: 'ai-governance',
+        name: 'AIGovernance',
+        title: 'AI 治理',
+        icon: TrendCharts,
+        component: () => import('@/views/AIGovernance/index.vue'),
+        roles: ['system_admin'],
+        permission: 'ai:read',
+      },
+      {
         path: 'ai-ops',
         name: 'AIOps',
         title: 'AI 运维面板',

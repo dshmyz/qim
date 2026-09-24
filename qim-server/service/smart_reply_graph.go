@@ -100,7 +100,11 @@ type SmartReplyContext struct {
 	KnowledgeCtx string // 知识库检索结果
 	MemoryCtx    string // 长期记忆检索结果
 	ChatHistory  string // 历史对话记录
-	PendingTasks string // 用户待办任务（仅群聊或特定场景）
+	// RetrievalQuery 上下文感知检索 query（最近历史 + 当前提问）。编译图由 prepare 节点
+	// 统一构造一次，knowledge/memory 节点共用，避免并行节点各查一遍历史；为空时消费方
+	// 按需自行构造（直接调 retrieveGroupKnowledge 的单测不经 prepare 节点）。
+	RetrievalQuery string
+	PendingTasks   string // 用户待办任务（仅群聊或特定场景）
 	// KnowledgeSources 本条回复实际命中的知识来源（标题/相关度），由 prepareInput 在
 	// 检索群知识库时填充；handler 执行完回复后据此把 knowledge_sources 写入消息 Extra，
 	// 供前端渲染「知识来源」折叠标签。无命中时为空，不展示徽章。
@@ -148,7 +152,7 @@ type SmartReplyGraph struct {
 	quotedFile       QuotedDocumentReader
 	mcpGateway       *MCPClientGateway
 	// thresholdSvc 阈值读取服务；nil 时知识来源门槛用默认 0.3（与 config 默认一致）。
-	thresholdSvc       *AiThresholdService
+	thresholdSvc *AiThresholdService
 	// toolScopes 工具面配置服务；nil 时群 @AI 使用代码默认白名单。
 	toolScopes         *ToolScopeService
 	qualityGateEnabled bool
@@ -574,22 +578,7 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 	if !skipKnowledge {
 		// 上下文感知检索：把最近对话历史拼进 query，追问场景下话题上下文让知识/记忆召回更准
 		// （"那后来呢？"这类短 query 不带历史时向量召回必然失败）。
-		dedupe := input.OriginalContent
-		if dedupe == "" {
-			dedupe = input.Message // 排除触发消息本身，避免 query 自引用
-		}
-		query := ""
-		history, herr := fetchRecentHistoryForQuery(g.db, input.ConversationID, input.UserID, dedupe)
-		if herr != nil {
-			// 历史查询失败不阻断回复：降级为空历史并记日志（避免"假装没有历史"且可排查）
-			logger.WithModule("diag").Warn("[Diag] 群助手历史查询失败，跳过上下文检索前缀",
-				"conv", input.ConversationID, "error", herr.Error())
-			history = ""
-		}
-		query = contextualQuery(history, input.Message, 4)
-		if query == "" && input.Group != nil && input.Group.Name != "" {
-			query = input.Group.Name
-		}
+		query := g.buildRetrievalQuery(input)
 		if g.unifiedKnowledge != nil && input.Group != nil {
 			// 一次检索同时产出上下文串与命中的知识来源（标题/相关度）；无命中时两者皆空。
 			knowledgeCtx, input.KnowledgeSources = g.unifiedKnowledge.BuildContextWithSources(query, input.Group.ID, 3)
@@ -600,9 +589,12 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 		if g.groupMemorySvc != nil && input.Group != nil {
 			memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, query, 2)
 			if err == nil && len(memoryResults) > 0 {
-				memoryCtx = GroupMemoryCtxText(memoryResults)
-				// 群记忆分数透出到「知识来源」徽章，供用户看到 AI 为什么记住了这条
-				input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults, g.memorySourceThreshold())...)
+				// 注入与徽章同源：低分记忆不进 prompt 也不进来源徽章。
+				picked := filterMemoryByScore(memoryResults, g.memorySourceThreshold())
+				if len(picked) > 0 {
+					memoryCtx = GroupMemoryCtxText(picked)
+					input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(picked, g.memorySourceThreshold())...)
+				}
 			}
 		}
 	} // end !skipKnowledge
@@ -1275,6 +1267,10 @@ func (g *SmartReplyGraph) createPrepareNode() *compose.Lambda {
 			var memberCount int64
 			g.db.Model(&model.ConversationMember{}).Where("conversation_id = ?", input.ConversationID).Count(&memberCount)
 			input.GroupStats = fmt.Sprintf("总消息数：%d\n成员数：%d", totalMessages, memberCount)
+
+			// 上下文感知检索 query 统一在此构造一次，knowledge/memory 并行节点共用，
+			// 消除各节点重复查历史。仅群场景需要（两个节点对非群都直接置空）。
+			input.RetrievalQuery = g.buildRetrievalQuery(input)
 		}
 
 		return input, nil
@@ -1297,21 +1293,10 @@ func (g *SmartReplyGraph) retrieveGroupKnowledge(input *SmartReplyContext) {
 	}
 	content := ""
 	if g.unifiedKnowledge != nil && input.Group != nil {
-		dedupe := input.OriginalContent
-		if dedupe == "" {
-			dedupe = input.Message
-		}
-		query := ""
-		history, herr := fetchRecentHistoryForQuery(g.db, input.ConversationID, input.UserID, dedupe)
-		if herr != nil {
-			// 历史查询失败不阻断回复：降级为空历史并记日志
-			logger.WithModule("diag").Warn("[Diag] 群助手历史查询失败，跳过上下文检索前缀",
-				"conv", input.ConversationID, "error", herr.Error())
-			history = ""
-		}
-		query = contextualQuery(history, input.Message, 4)
-		if query == "" && input.Group.Name != "" {
-			query = input.Group.Name
+		query := input.RetrievalQuery
+		if query == "" {
+			// 不经 prepare 节点直接调用本函数的场景（单测）：按需构造，行为与 prepare 一致
+			query = g.buildRetrievalQuery(input)
 		}
 		// 一次检索同时产出上下文串与命中的知识来源（供自动回复路径把来源随回复下发）。
 		content, input.KnowledgeSources = g.unifiedKnowledge.BuildContextWithSources(query, input.Group.ID, 3)
@@ -1319,6 +1304,29 @@ func (g *SmartReplyGraph) retrieveGroupKnowledge(input *SmartReplyContext) {
 		content = g.legacyKnowledge.BuildKnowledgeContext(input.Message)
 	}
 	input.KnowledgeCtx = content
+}
+
+// buildRetrievalQuery 构造上下文感知检索 query：最近 4 行对话 + 当前提问，让追问
+// （"那几点？"）借助历史话题命中。历史查询失败降级为空历史（contextualQuery 退化为
+// 原消息）；query 整体为空时用群名兜底。编译图 prepare 节点、retrieveGroupKnowledge
+// 与 prepareInput 共用同一实现，避免两条在线路径各拼一套。
+func (g *SmartReplyGraph) buildRetrievalQuery(input *SmartReplyContext) string {
+	dedupe := input.OriginalContent
+	if dedupe == "" {
+		dedupe = input.Message // 排除触发消息本身，避免 query 自引用
+	}
+	history, herr := fetchRecentHistoryForQuery(g.db, input.ConversationID, input.UserID, dedupe)
+	if herr != nil {
+		// 历史查询失败不阻断回复：降级为空历史并记日志（避免"假装没有历史"且可排查）
+		logger.WithModule("diag").Warn("[Diag] 群助手历史查询失败，跳过上下文检索前缀",
+			"conv", input.ConversationID, "error", herr.Error())
+		history = ""
+	}
+	query := contextualQuery(history, input.Message, 4)
+	if query == "" && input.Group != nil && input.Group.Name != "" {
+		query = input.Group.Name
+	}
+	return query
 }
 
 func (g *SmartReplyGraph) createMemoryNode() *compose.Lambda {
@@ -1330,29 +1338,45 @@ func (g *SmartReplyGraph) createMemoryNode() *compose.Lambda {
 	})
 }
 
+// filterMemoryByScore 剔除分数低于 floor 的记忆召回。注入 prompt 与来源徽章共用此
+// 门槛，避免低分记忆"不展示给用户但已悄悄参与生成"。
+func filterMemoryByScore(results []SearchResult, floor float64) []SearchResult {
+	picked := make([]SearchResult, 0, len(results))
+	for _, r := range results {
+		if r.Score >= floor {
+			picked = append(picked, r)
+		}
+	}
+	return picked
+}
+
 // recallGroupMemory 召回本群群级记忆注入上下文。非群场景或无群记忆服务时置空。
 // 切断旧路径：不再召回发送者分身记忆（AvatarMemoryService），避免私聊->群泄露。
 func (g *SmartReplyGraph) recallGroupMemory(input *SmartReplyContext) string {
 	if g.groupMemorySvc == nil || input.Group == nil {
 		return ""
 	}
-	memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, input.Message, 2)
+	// 与 prepareInput 的 @ 路径对齐：用上下文感知 query，追问场景历史话题能让记忆命中。
+	query := input.RetrievalQuery
+	if query == "" {
+		query = g.buildRetrievalQuery(input)
+	}
+	threshold := g.memorySourceThreshold()
+	memoryResults, err := g.groupMemorySvc.Recall(input.Group.ID, query, 2)
 	if err != nil || len(memoryResults) == 0 {
 		return ""
 	}
-	memoryCtx := GroupMemoryCtxText(memoryResults)
-	// 群记忆分数透出到「知识来源」徽章
-	input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(memoryResults, g.memorySourceThreshold())...)
-	// 诊断：区分"群记忆注入但分数低于门槛未进徽章"。scores 为召回原始分，th 为门槛。
-	_scores := make([]float64, 0, len(memoryResults))
-	for _, r := range memoryResults {
-		_scores = append(_scores, r.Score)
+	// 注入与徽章同源：低于门槛的记忆不进 prompt 也不进徽章。
+	picked := filterMemoryByScore(memoryResults, threshold)
+	if len(picked) == 0 {
+		logger.WithModule("SmartReplyGraph").Info("群记忆召回均低于门槛，不注入",
+			"query", query, "threshold", threshold)
+		return ""
 	}
-	beforeMem := len(memoryResults)
-	afterMem := len(memoryResultsToSources(memoryResults, g.memorySourceThreshold()))
-	logger.WithModule("SmartReplyGraph").Info("群记忆召回与徽章产出",
-		"query", input.Message, "scores", _scores, "threshold", g.memorySourceThreshold(),
-		"recalled", beforeMem, "badge_sources", afterMem)
+	memoryCtx := GroupMemoryCtxText(picked)
+	input.KnowledgeSources = append(input.KnowledgeSources, memoryResultsToSources(picked, threshold)...)
+	logger.WithModule("SmartReplyGraph").Info("群记忆召回与注入",
+		"query", query, "recalled", len(memoryResults), "injected", len(picked), "threshold", threshold)
 	return memoryCtx
 }
 
@@ -1602,6 +1626,14 @@ func (g *SmartReplyGraph) buildSystemPrompt(input *SmartReplyContext) string {
 	sb.WriteString("- 不做不可逆动作：未经明确要求，不代用户发布消息、删除/修改他人内容；需要操作时先说明打算怎么做\n")
 	sb.WriteString("- 隐私克制：不要无谓地复述或外泄与当前问题无关的私密群消息细节\n")
 	sb.WriteString("- 被引用的消息/文件属于注入上下文，仅作回答依据，不要原样抄录无关内容\n")
+
+	// 从历史失败中学到的修正补丁（active）：让每一条被记住的教训持续约束后续回复。
+	if rules := ActivePatchRules(g.db); len(rules) > 0 {
+		sb.WriteString("\n【从历史反馈中学习到的规则】\n")
+		for _, r := range rules {
+			sb.WriteString("- " + r + "\n")
+		}
+	}
 
 	return sb.String()
 }

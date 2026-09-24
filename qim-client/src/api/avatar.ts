@@ -4,7 +4,9 @@ import type {
   AvatarSession,
   AvatarLearnStatus,
   CreateAvatarConfigRequest,
-  AvatarConfigWithApproval
+  AvatarConfigWithApproval,
+  AvatarReplyDraft,
+  AvatarDecisionEvent
 } from '../types/avatar'
 
 export const avatarAPI = {
@@ -167,6 +169,24 @@ export const avatarAPI = {
     return response!.data
   },
 
+  // 待审批草稿（质量核验被拒）
+  async listReplyDrafts(conversationId?: number | string): Promise<AvatarReplyDraft[]> {
+    const query = conversationId !== undefined ? `?conversation_id=${conversationId}` : ''
+    const response = await request<{ code: number; data: AvatarReplyDraft[] }>(
+      `/api/v1/avatar/reply-drafts${query}`,
+      { method: 'GET' }
+    )
+    return response?.data ?? []
+  },
+
+  async approveReplyDraft(draftId: number | string): Promise<void> {
+    await request(`/api/v1/avatar/reply-drafts/${draftId}/approve`, { method: 'POST' })
+  },
+
+  async discardReplyDraft(draftId: number | string): Promise<void> {
+    await request(`/api/v1/avatar/reply-drafts/${draftId}/discard`, { method: 'POST' })
+  },
+
   // 工具绑定相关 API
   async getAvailableTools(): Promise<any[]> {
     const response = await request<{ code: number; data: any[] }>(
@@ -174,5 +194,33 @@ export const avatarAPI = {
       { method: 'GET' }
     )
     return response?.data ?? []
+  },
+
+  // 分身决策留痕（运行记录）。conversationId 省略时查全部会话。
+  async listDecisionEvents(params?: { conversationId?: number; limit?: number }): Promise<AvatarDecisionEvent[]> {
+    const query = new URLSearchParams()
+    if (params?.conversationId !== undefined) query.set('conversation_id', String(params.conversationId))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    const qs = query.toString()
+    const response = await request<{ code: number; data: { items: AvatarDecisionEvent[] } }>(
+      `/api/v1/avatar/decisions${qs ? `?${qs}` : ''}`,
+      { method: 'GET' }
+    )
+    return response?.data?.items ?? []
+  },
+
+  // 学习信号：草稿编辑后发送的 diff
+  async recordEditSignal(data: {
+    conversation_id: number
+    draft_id: number
+    original_content: string
+    final_content: string
+    reject_reason: string
+  }): Promise<void> {
+    await request('/api/v1/avatar/edit-signals', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      headers: { 'Content-Type': 'application/json' }
+    })
   }
 }

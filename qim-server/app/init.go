@@ -692,6 +692,15 @@ func MigrateDB(db *gorm.DB) error {
 		&model.DocumentProcessStatus{}, // 依赖 GroupDocument
 		&model.AIPendingAction{},       // AI 敏感工具待确认记录（侧边栏 send_message 确认制）
 		&model.AIMessageFeedback{},     // AI 回复用户反馈（👍/👎，质量闭环用户侧信号）
+		&model.AvatarReplyDraft{},      // 分身质量核验被拒后的待审批草稿
+		&model.AvatarDecisionEvent{},   // 分身回复/不回复决策留痕（运行记录面板）
+		&model.AILearningSignal{},      // AI 学习信号（草稿编辑 diff 等，自我进化样本）
+		&model.AIReplyEvent{},          // AI 回复终态事实（完成/中断原因，治理看板数据源）
+		&model.AIModelCall{},           // 模型调用事实（完成率/错误率/延迟，进化执行器信号源）
+		&model.AIModelHealth{},         // 模型健康状态（健康门控当前判定）
+		&model.EvolutionAction{},       // 进化动作审计（proposed/active/reverted，可回滚）
+		&model.AIFailureCase{},         // 失败案例快照（聚类/黄金回放的自包含样本）
+		&model.AIPromptPatch{},         // 提示补丁生命周期（提案→回放→批准→注入）
 	}
 
 	// AIProvider 采用显式表名 ai_providers。历史版本被 GORM 默认命名策略

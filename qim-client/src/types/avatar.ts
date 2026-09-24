@@ -26,6 +26,27 @@ export interface AvatarConfig {
   updatedAt: string
 }
 
+// AvatarReplyDraft 分身回复未通过质量核验后落库的待审批草稿
+export interface AvatarReplyDraft {
+  id: number
+  conversation_id: number
+  trigger_message_id: number
+  content: string
+  reason: string
+  sources: AvatarReplyDraftSource[]
+  expires_at: string
+  created_at: string
+}
+
+// 结构与统一 AISource 兼容，此处独立定义避免 types 间循环导入
+export interface AvatarReplyDraftSource {
+  title: string
+  score?: number
+  source?: string
+  id?: string
+  snippet?: string
+}
+
 export interface AvatarKnowledgeScope {
   conversationHistory: boolean
   memory: boolean // 分身长期记忆
@@ -155,6 +176,21 @@ export interface AvatarToolBinding {
   toolId: string
   enabled: boolean
   priority: number
+}
+
+// 分身一次回复决策的留痕（运行记录）
+export interface AvatarDecisionEvent {
+  id: number
+  owner_id: number
+  conversation_id: number
+  trigger_message_id: number
+  trigger_user_id: number
+  trigger_name: string
+  message_snippet: string
+  decision: 'replied' | 'skipped'
+  stage: 'trigger' | 'stand_down' | 'empty' | 'quality' | 'queue_busy' | 'generate_error' | 'sent'
+  reason: string
+  created_at: string
 }
 
 // AI工具类型

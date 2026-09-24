@@ -23,13 +23,13 @@ func TestAIFeedbackSetAndRevoke(t *testing.T) {
 	svc := NewAIFeedbackService(db)
 
 	// 点赞 → 查询回读
-	require.NoError(t, svc.SetFeedback(user.ID, msg.ID, 1))
+	require.NoError(t, svc.SetFeedback(user.ID, msg.ID, FeedbackInput{Rating: 1}))
 	rating, err := svc.GetFeedback(user.ID, msg.ID)
 	require.NoError(t, err)
 	assert.Equal(t, 1, rating)
 
 	// 改踩 → upsert 覆盖
-	require.NoError(t, svc.SetFeedback(user.ID, msg.ID, -1))
+	require.NoError(t, svc.SetFeedback(user.ID, msg.ID, FeedbackInput{Rating: -1}))
 	rating, _ = svc.GetFeedback(user.ID, msg.ID)
 	assert.Equal(t, -1, rating)
 
@@ -38,12 +38,12 @@ func TestAIFeedbackSetAndRevoke(t *testing.T) {
 	assert.EqualValues(t, 1, count, "改评应覆盖而非新增")
 
 	// 撤销（rating=0）→ 删行
-	require.NoError(t, svc.SetFeedback(user.ID, msg.ID, 0))
+	require.NoError(t, svc.SetFeedback(user.ID, msg.ID, FeedbackInput{Rating: 0}))
 	rating, _ = svc.GetFeedback(user.ID, msg.ID)
 	assert.Equal(t, 0, rating)
 
 	// 非法 rating
-	require.Error(t, svc.SetFeedback(user.ID, msg.ID, 5))
+	require.Error(t, svc.SetFeedback(user.ID, msg.ID, FeedbackInput{Rating: 5}))
 }
 
 func TestAIFeedbackMembershipGuard(t *testing.T) {
@@ -61,8 +61,8 @@ func TestAIFeedbackMembershipGuard(t *testing.T) {
 	require.NoError(t, db.Create(msg).Error)
 
 	svc := NewAIFeedbackService(db)
-	require.ErrorIs(t, svc.SetFeedback(outsider.ID, msg.ID, 1), ErrFeedbackForbidden, "非会话成员不可反馈")
-	require.NoError(t, svc.SetFeedback(insider.ID, msg.ID, 1))
+	require.ErrorIs(t, svc.SetFeedback(outsider.ID, msg.ID, FeedbackInput{Rating: 1}), ErrFeedbackForbidden, "非会话成员不可反馈")
+	require.NoError(t, svc.SetFeedback(insider.ID, msg.ID, FeedbackInput{Rating: 1}))
 }
 
 func TestAIFeedbackBatch(t *testing.T) {
@@ -82,8 +82,8 @@ func TestAIFeedbackBatch(t *testing.T) {
 	}
 
 	svc := NewAIFeedbackService(db)
-	require.NoError(t, svc.SetFeedback(user.ID, msgs[0].ID, 1))
-	require.NoError(t, svc.SetFeedback(user.ID, msgs[1].ID, -1))
+	require.NoError(t, svc.SetFeedback(user.ID, msgs[0].ID, FeedbackInput{Rating: 1}))
+	require.NoError(t, svc.SetFeedback(user.ID, msgs[1].ID, FeedbackInput{Rating: -1}))
 	// msgs[2] 无反馈
 
 	ratings, err := svc.GetFeedbackBatch(user.ID, []uint{msgs[0].ID, msgs[1].ID, msgs[2].ID})
@@ -97,4 +97,36 @@ func TestAIFeedbackBatch(t *testing.T) {
 	empty, err := svc.GetFeedbackBatch(user.ID, nil)
 	require.NoError(t, err)
 	assert.Empty(t, empty)
+}
+
+func TestAIFeedbackReasonCategory(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.AIMessageFeedback{}))
+
+	user := &model.User{Username: "kategorie"}
+	require.NoError(t, db.Create(user).Error)
+	conv := &model.Conversation{Type: "bot"}
+	require.NoError(t, db.Create(conv).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: user.ID}).Error)
+	msg := &model.Message{ConversationID: conv.ID, SenderID: user.ID, Type: "text", Content: "回答"}
+	require.NoError(t, db.Create(msg).Error)
+
+	svc := NewAIFeedbackService(db)
+
+	// 带原因分类+说明的👎
+	require.NoError(t, svc.SetFeedback(user.ID, msg.ID, FeedbackInput{
+		Rating:         -1,
+		ReasonCategory: model.FeedbackReasonOffTopic,
+		Comment:        "回答的完全是另一个话题",
+	}))
+	var fb model.AIMessageFeedback
+	require.NoError(t, db.Where("message_id = ? AND user_id = ?", msg.ID, user.ID).First(&fb).Error)
+	assert.Equal(t, model.FeedbackReasonOffTopic, fb.ReasonCategory)
+	assert.Equal(t, "回答的完全是另一个话题", fb.Comment)
+
+	// 非法分类被拒
+	require.ErrorIs(t, svc.SetFeedback(user.ID, msg.ID, FeedbackInput{
+		Rating:         -1,
+		ReasonCategory: "not_a_real_reason",
+	}), ErrFeedbackInvalidParam)
 }

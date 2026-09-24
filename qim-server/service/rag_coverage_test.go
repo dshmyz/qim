@@ -146,3 +146,53 @@ func TestSmartReplyKnowledgeNode_ContextualRetrieval(t *testing.T) {
 	g.retrieveGroupKnowledge(input2)
 	assert.Empty(t, input2.KnowledgeCtx, "SkipKnowledge 时应跳过知识检索")
 }
+
+// TestRecallGroupMemory_ContextualQuery 验证自动回复路径（编译图 memory 节点）的群记忆召回：
+// prepare 节点产出的上下文感知 query 挂在 RetrievalQuery 上，追问裸消息（"那几点？"）
+// 借此命中带话题的群记忆；注入的记忆同时产出来源徽章。
+func TestRecallGroupMemory_ContextualQuery(t *testing.T) {
+	db := setupServiceTestDB(t)
+	require.NoError(t, db.Create(&model.User{ID: 1, Username: "alice", Nickname: "Alice", PasswordHash: "h"}).Error)
+	require.NoError(t, db.Create(&model.Conversation{ID: 7, Type: "group"}).Error)
+	require.NoError(t, db.Create(&model.Group{ID: 77, ConversationID: 7, Name: "项目群"}).Error)
+
+	gdb, err := gracedb.Open(t.TempDir()+"/vec", gracedb.WithEmbedder(fakeEmbedder{}))
+	require.NoError(t, err)
+	defer gdb.Close()
+
+	gms := NewGroupMemoryService(&VectorService{db: gdb}, nil)
+	require.NoError(t, gms.Remember(77, 7, "项目A周五聚餐定在晚上七点，地点老地方", 4))
+
+	g := &SmartReplyGraph{db: db, groupMemorySvc: gms}
+	input := &SmartReplyContext{
+		ConversationID: 7,
+		UserID:         1,
+		Message:        "那几点？", // 追问裸消息：不带话题，只能靠 RetrievalQuery 命中
+		Group:          &model.Group{ID: 77, ConversationID: 7, Name: "项目群"},
+		// 模拟 prepare 节点统一构造的上下文感知 query
+		RetrievalQuery: "alice: 项目A周五聚餐怎么安排？\n当前提问：那几点？",
+	}
+
+	memoryCtx := g.recallGroupMemory(input)
+	require.NotEmpty(t, memoryCtx, "上下文感知 query 应命中群记忆")
+	assert.Contains(t, memoryCtx, "晚上七点")
+	require.Len(t, input.KnowledgeSources, 1, "注入的记忆应同时产出徽章（注入与徽章同源）")
+
+	// 无群记忆服务/非群场景时安全置空（自动回复路径在非群会话上会经过 memory 节点）
+	gNoSvc := &SmartReplyGraph{db: db}
+	assert.Empty(t, gNoSvc.recallGroupMemory(input), "无群记忆服务时应置空")
+}
+
+// TestFilterMemoryByScore 门槛过滤纯函数：低于 floor 的记忆剔除，边界分（=floor）保留，
+// 且保持输入顺序。
+func TestFilterMemoryByScore(t *testing.T) {
+	results := []SearchResult{
+		{Content: "keep-boundary", Score: 0.3},
+		{Content: "drop", Score: 0.29},
+		{Content: "keep-high", Score: 0.9},
+	}
+	picked := filterMemoryByScore(results, 0.3)
+	require.Len(t, picked, 2)
+	assert.Equal(t, "keep-boundary", picked[0].Content)
+	assert.Equal(t, "keep-high", picked[1].Content)
+}

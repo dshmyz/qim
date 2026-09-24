@@ -463,7 +463,7 @@ func getDefaultConfig() yamlConfig {
 			},
 		},
 		AI: ai.AIConfig{
-			MaxTokens:   1000,
+			MaxTokens:   8192,
 			Temperature: 0.7,
 			OpenAI: ai.OpenAIConfig{
 				APIKey:  "",

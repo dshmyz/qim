@@ -20,6 +20,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
+	"github.com/dshmyz/qim/qim-server/pkg/response"
 	"github.com/dshmyz/qim/qim-server/pkg/upload"
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/service/storage"
@@ -103,6 +104,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	}
 
 	handler.InitSmartReplyEngine(aiSvc)
+	// P4：质量门拒绝时快照失败案例，供失败聚类与补丁黄金回放
+	handler.SetFailureCaseService(service.NewFailureCaseService(GetDB()))
 
 	// 设置依赖（在 InitSmartReplyEngine 之后）
 	if uk != nil {
@@ -843,6 +846,139 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 					monitor.GET("/alerts/history", alertHandler.GetAlertHistory)
 				}
 
+				// AI 治理看板聚合（回复完成率/中断原因/反馈分布/学习信号）
+				admin.GET("/ai-governance", func(c *gin.Context) {
+					days := 7
+					if raw := c.Query("days"); raw != "" {
+						if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 90 {
+							days = v
+						}
+					}
+					metrics, gerr := service.NewAIGovernanceService(GetDB()).GetMetrics(days)
+					if gerr != nil {
+						response.InternalServerError(c, "治理指标聚合失败")
+						return
+					}
+					response.Success(c, metrics)
+				})
+
+				// ---- AI 自我进化执行器 ----
+				evolutionSvc := func() *service.EvolutionService {
+					return service.NewEvolutionService(GetDB(), service.NewSystemConfigService(GetDB()))
+				}
+				// 触发一次评估（dry-run/自动取决于总开关），返回本次动作
+				admin.POST("/ai-evolution/evaluate", func(c *gin.Context) {
+					actions, gerr := evolutionSvc().Evaluate()
+					if gerr != nil {
+						response.InternalServerError(c, "进化评估失败")
+						return
+					}
+					response.Success(c, gin.H{"actions": actions})
+				})
+				// 总开关状态
+				admin.GET("/ai-evolution/enabled", func(c *gin.Context) {
+					response.Success(c, gin.H{"enabled": evolutionSvc().IsEnabled()})
+				})
+				admin.PUT("/ai-evolution/enabled", func(c *gin.Context) {
+					var req struct {
+						Enabled bool `json:"enabled"`
+					}
+					if err := c.ShouldBindJSON(&req); err != nil {
+						response.BadRequest(c, "参数错误")
+						return
+					}
+					if err := evolutionSvc().SetEnabled(req.Enabled); err != nil {
+						response.InternalServerError(c, "切换失败")
+						return
+					}
+					response.Success(c, gin.H{"enabled": req.Enabled})
+				})
+				// 健康状态 + 动作审计
+				admin.GET("/ai-evolution/health", func(c *gin.Context) {
+					h, _ := evolutionSvc().ListHealth()
+					response.Success(c, gin.H{"health": h})
+				})
+				admin.GET("/ai-evolution/actions", func(c *gin.Context) {
+					a, _ := evolutionSvc().ListActions(100)
+					response.Success(c, gin.H{"actions": a})
+				})
+				// 一键回滚
+				admin.POST("/ai-evolution/actions/:id/revert", func(c *gin.Context) {
+					id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+					if err != nil {
+						response.BadRequest(c, "参数错误")
+						return
+					}
+					if err := evolutionSvc().RevertAction(uint(id)); err != nil {
+						response.ErrorFrom(c, err)
+						return
+					}
+					response.Success(c, gin.H{"reverted": true})
+				})
+
+				// ---- P4：提示补丁提案式进化 ----
+				patchSvc := func() *service.PatchEvolutionService {
+					if di.GlobalContainer != nil && di.GlobalContainer.PatchEvolutionService != nil {
+						return di.GlobalContainer.PatchEvolutionService
+					}
+					return service.NewPatchEvolutionService(GetDB(), di.GlobalContainer.AIService)
+				}
+				// 失败聚类 → 生成补丁提案
+				admin.POST("/ai-patches/generate", func(c *gin.Context) {
+					days := 30
+					if raw := c.Query("days"); raw != "" {
+						if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 180 {
+							days = v
+						}
+					}
+					patches, err := patchSvc().GenerateProposals(days)
+					if err != nil {
+						response.InternalServerError(c, "生成补丁提案失败")
+						return
+					}
+					response.Success(c, gin.H{"patches": patches})
+				})
+				// 补丁列表
+				admin.GET("/ai-patches", func(c *gin.Context) {
+					patches, err := patchSvc().ListPatches(c.Query("state"))
+					if err != nil {
+						response.InternalServerError(c, "查询补丁失败")
+						return
+					}
+					response.Success(c, gin.H{"patches": patches})
+				})
+				// 黄金回放
+				admin.POST("/ai-patches/:id/replay", func(c *gin.Context) {
+					id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+					if err != nil {
+						response.BadRequest(c, "参数错误")
+						return
+					}
+					patch, err := patchSvc().Replay(uint(id))
+					if err != nil {
+						response.ErrorFrom(c, err)
+						return
+					}
+					response.Success(c, patch)
+				})
+				// 人工批准（validated → active）
+				admin.POST("/ai-patches/:id/approve", func(c *gin.Context) {
+					id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+					if err := patchSvc().Approve(uint(id)); err != nil {
+						response.ErrorFrom(c, err)
+						return
+					}
+					response.Success(c, gin.H{"approved": true})
+				})
+				// 停用（active → reverted）
+				admin.POST("/ai-patches/:id/deactivate", func(c *gin.Context) {
+					id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+					if err := patchSvc().Deactivate(uint(id)); err != nil {
+						response.ErrorFrom(c, err)
+						return
+					}
+					response.Success(c, gin.H{"deactivated": true})
+				})
 				// 崩溃日志和用户反馈
 				crashHandler := handler.NewCrashLogHandler(GetDB())
 				feedbackHandler := handler.NewFeedbackHandler(GetDB())

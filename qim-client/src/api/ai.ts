@@ -56,8 +56,17 @@ export const aiPendingAPI = {
 
 // AI 回复用户反馈（👍=1 / 👎=-1 / 0=撤销），接入质量闭环
 export const aiFeedbackAPI = {
-  async set(messageId: number, rating: 1 | -1 | 0): Promise<void> {
-    await http.post('/api/v1/ai/feedback', { message_id: messageId, rating })
+  async set(
+    messageId: number,
+    rating: 1 | -1 | 0,
+    extra?: { reasonCategory?: string; comment?: string }
+  ): Promise<void> {
+    await http.post('/api/v1/ai/feedback', {
+      message_id: messageId,
+      rating,
+      reason_category: extra?.reasonCategory ?? '',
+      comment: extra?.comment ?? ''
+    })
   },
 
   async get(messageId: number): Promise<number> {

@@ -105,10 +105,13 @@ type ChatCompletionResponse struct {
 }
 
 type StreamChunk struct {
-	Content string       `json:"content"`
-	Finish  *string      `json:"finish,omitempty"`
-	Usage   *StreamUsage `json:"usage,omitempty"`
-	Error   *string      `json:"error,omitempty"`
+	Content string `json:"content"`
+	// ReasoningContent 推理模型的思考过程 delta（reasoning_content）。与正文分通道透传，
+	// 不拼进 Content，供前端展示思考轨迹；后端正文判定一律只看 Content。
+	ReasoningContent string       `json:"reasoning_content,omitempty"`
+	Finish           *string      `json:"finish,omitempty"`
+	Usage            *StreamUsage `json:"usage,omitempty"`
+	Error            *string      `json:"error,omitempty"`
 	// Pending 非 nil 时表示本次流中产生了待用户确认的敏感工具调用（如 send_message）。
 	// 仅供 SSE 下行给前端渲染确认条；ReAct 引擎内部不会设置此字段，由 handler 的
 	// 进度回调在工具执行后填入。普通流式/工具增量路径恒为 nil。

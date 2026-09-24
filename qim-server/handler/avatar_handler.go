@@ -97,6 +97,13 @@ func (h *AvatarHandler) RegisterRoutes(router *gin.RouterGroup) {
 		avatar.POST("/memory/search", checkAIEnabledForAvatar(), h.SearchMemories)
 		avatar.POST("/note-search", checkAIEnabledForAvatar(), h.SearchNotes)
 		avatar.POST("/trigger-check", checkAIEnabledForAvatar(), h.CheckTrigger)
+
+		avatar.GET("/reply-drafts", h.ListReplyDrafts)
+		avatar.POST("/reply-drafts/:id/approve", h.ApproveReplyDraft)
+		avatar.POST("/reply-drafts/:id/discard", h.DiscardReplyDraft)
+
+		avatar.GET("/decisions", h.ListDecisions)
+		avatar.POST("/edit-signals", h.RecordEditSignal)
 	}
 }
 
@@ -250,7 +257,7 @@ func (h *AvatarHandler) CreateConfig(c *gin.Context) {
 	var req CreateAvatarConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.WithModule("AvatarHandler").Error("Create avatar config bind error", "error", err)
-		response.BadRequest(c, "参数错误: " + err.Error())
+		response.BadRequest(c, "参数错误: "+err.Error())
 		return
 	}
 
@@ -1283,4 +1290,138 @@ func (h *AvatarHandler) CheckTrigger(c *gin.Context) {
 		"should_reply": shouldReply,
 		"reason":       reason,
 	})
+}
+
+// ListDecisions 查询当前用户分身的决策留痕（运行记录）。
+// 可选 query conversation_id 只看某会话，limit 默认 100、上限 200。
+func (h *AvatarHandler) ListDecisions(c *gin.Context) {
+	uidAny, _ := c.Get("user_id")
+	uid, _ := uidAny.(uint)
+	if uid == 0 {
+		response.Unauthorized(c, "未登录")
+		return
+	}
+
+	conversationID := uint(0)
+	if raw := c.Query("conversation_id"); raw != "" {
+		if v, err := strconv.ParseUint(raw, 10, 64); err == nil {
+			conversationID = uint(v)
+		}
+	}
+	limit := 100
+	if raw := c.Query("limit"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 200 {
+			limit = v
+		}
+	}
+
+	events := service.NewAvatarDecisionLogService(h.db).List(uid, conversationID, limit)
+	response.Success(c, gin.H{"items": events})
+}
+
+// RecordEditSignal POST /avatar/edit-signals
+// 捕获「草稿编辑后发送」的 diff 学习信号：原草稿内容 vs 主人改写后的最终内容。
+func (h *AvatarHandler) RecordEditSignal(c *gin.Context) {
+	uidAny, _ := c.Get("user_id")
+	uid, _ := uidAny.(uint)
+	if uid == 0 {
+		response.Unauthorized(c, "未登录")
+		return
+	}
+
+	var req struct {
+		ConversationID  uint   `json:"conversation_id"`
+		DraftID         uint   `json:"draft_id"`
+		OriginalContent string `json:"original_content"`
+		FinalContent    string `json:"final_content"`
+		RejectReason    string `json:"reject_reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.ConversationID == 0 {
+		response.BadRequest(c, "参数错误")
+		return
+	}
+
+	if err := service.NewAILearningSignalService(h.db).RecordDraftEdit(
+		uid, req.ConversationID, req.DraftID,
+		req.OriginalContent, req.FinalContent, req.RejectReason,
+	); err != nil {
+		response.InternalServerError(c, "记录学习信号失败")
+		return
+	}
+	response.Success(c, gin.H{"recorded": true})
+}
+
+// ReplyDraftDTO 待审批草稿的下发结构：草稿正文 + 核验原因 + 命中来源（供卡片渲染）。
+type ReplyDraftDTO struct {
+	ID               uint                      `json:"id"`
+	ConversationID   uint                      `json:"conversation_id"`
+	TriggerMessageID uint                      `json:"trigger_message_id"`
+	Content          string                    `json:"content"`
+	Reason           string                    `json:"reason"`
+	Sources          []service.KnowledgeSource `json:"sources"`
+	ExpiresAt        time.Time                 `json:"expires_at"`
+	CreatedAt        time.Time                 `json:"created_at"`
+}
+
+func toReplyDraftDTO(d model.AvatarReplyDraft) ReplyDraftDTO {
+	dto := ReplyDraftDTO{
+		ID:               d.ID,
+		ConversationID:   d.ConversationID,
+		TriggerMessageID: d.TriggerMessageID,
+		Content:          d.Content,
+		Reason:           d.Reason,
+		ExpiresAt:        d.ExpiresAt,
+		CreatedAt:        d.CreatedAt,
+	}
+	if d.SourcesJSON != "" {
+		_ = json.Unmarshal([]byte(d.SourcesJSON), &dto.Sources)
+	}
+	return dto
+}
+
+// ListReplyDrafts 列出当前用户未过期的待审批草稿；带 conversation_id 时只看该会话。
+func (h *AvatarHandler) ListReplyDrafts(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	var conversationID uint
+	if raw := c.Query("conversation_id"); raw != "" {
+		if v, err := strconv.ParseUint(raw, 10, 64); err == nil {
+			conversationID = uint(v)
+		}
+	}
+	drafts := h.avatarService.GetWorkerPool().ListPendingDrafts(userID, conversationID)
+	out := make([]ReplyDraftDTO, 0, len(drafts))
+	for _, d := range drafts {
+		out = append(out, toReplyDraftDTO(d))
+	}
+	response.Success(c, out)
+}
+
+// ApproveReplyDraft 批准草稿：worker pool 做归属校验、让位门复验后发送。
+func (h *AvatarHandler) ApproveReplyDraft(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	draftID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "草稿 ID 非法")
+		return
+	}
+	if err := h.avatarService.GetWorkerPool().ApproveDraft(userID, uint(draftID)); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"status": "approved"})
+}
+
+// DiscardReplyDraft 丢弃草稿。
+func (h *AvatarHandler) DiscardReplyDraft(c *gin.Context) {
+	userID := c.GetUint("user_id")
+	draftID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "草稿 ID 非法")
+		return
+	}
+	if err := h.avatarService.GetWorkerPool().DiscardDraft(userID, uint(draftID)); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"status": "discarded"})
 }

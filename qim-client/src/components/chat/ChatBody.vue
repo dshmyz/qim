@@ -6,6 +6,7 @@
       :messages="messages"
       :has-more-messages="hasMoreMessages"
       :conversation-type="conversation?.type || 'single'"
+      :conversation-id="conversation?.id ?? ''"
       :read-users-map="readUsersMap"
       :show-read-receipt="showReadReceipt"
       :server-url="serverUrl"

@@ -20,54 +20,56 @@ import (
 )
 
 type Container struct {
-	DB                   *gorm.DB
-	Config               *config.Config
-	AIService            *ai.AIService
-	UserService          *service.UserService
-	ConversationService  *service.ConversationService
-	MessageService       *service.MessageService
-	NotificationService  *service.NotificationService
-	EventService         *service.EventService
-	TaskService          *service.TaskService
-	FileService          *service.FileService
-	FileSpaceService     *service.FileSpaceService
-	StorageManager       *storage.Manager
-	DefaultStorage       storage.Storage
-	GroupService         *service.GroupService
-	AppService           *service.AppService
-	MiniAppService       *service.MiniAppService
-	NoteService          *service.NoteService
-	AdminService         *service.AdminService
-	RealtimeService      *service.RealtimeService
-	SensitiveWordService *service.SensitiveWordService
-	AvatarService        *service.AvatarService
-	ApprovalService      *service.ApprovalService
-	VersionService       *service.VersionService
-	BlacklistService     *service.BlacklistService
-	OperationLogService  *service.OperationLogService
-	SystemConfigService  *service.SystemConfigService
-	AiThresholdService   *service.AiThresholdService
-	ToolScopeService     *service.ToolScopeService
-	ShortLinkService     *service.ShortLinkService
-	ChannelService       *service.ChannelService
-	RenderRuleService    *service.RenderRuleService
-	BotService           *service.BotService
-	AIProviderService    *service.AIProviderService
-	AIRouterService      *service.AIRouterService
-	GroupDocumentService *service.GroupDocumentService
-	UserSettingService   *service.UserSettingService
-	AIConfigService      *service.AIConfigService
-	ChunkService         *service.ChunkService
-	VectorService        *service.VectorService
-	NoteVectorService    *service.NoteVectorService
-	AvatarMemoryService  *service.AvatarMemoryService
-	GroupMemoryService   *service.GroupMemoryService
-	AvatarTriggerService *service.AvatarTriggerService
-	BotMessagingService  *service.BotMessagingService
-	PromptManager        *service.PromptManager
-	ContextAssembler     *service.ContextAssembler
-	WebSocketHub         *ws.Hub
-	AuthMiddleware       gin.HandlerFunc
+	DB                    *gorm.DB
+	Config                *config.Config
+	AIService             *ai.AIService
+	UserService           *service.UserService
+	ConversationService   *service.ConversationService
+	MessageService        *service.MessageService
+	NotificationService   *service.NotificationService
+	EventService          *service.EventService
+	TaskService           *service.TaskService
+	FileService           *service.FileService
+	FileSpaceService      *service.FileSpaceService
+	StorageManager        *storage.Manager
+	DefaultStorage        storage.Storage
+	GroupService          *service.GroupService
+	AppService            *service.AppService
+	MiniAppService        *service.MiniAppService
+	NoteService           *service.NoteService
+	AdminService          *service.AdminService
+	RealtimeService       *service.RealtimeService
+	SensitiveWordService  *service.SensitiveWordService
+	AvatarService         *service.AvatarService
+	ApprovalService       *service.ApprovalService
+	VersionService        *service.VersionService
+	BlacklistService      *service.BlacklistService
+	OperationLogService   *service.OperationLogService
+	SystemConfigService   *service.SystemConfigService
+	EvolutionService      *service.EvolutionService
+	PatchEvolutionService *service.PatchEvolutionService
+	AiThresholdService    *service.AiThresholdService
+	ToolScopeService      *service.ToolScopeService
+	ShortLinkService      *service.ShortLinkService
+	ChannelService        *service.ChannelService
+	RenderRuleService     *service.RenderRuleService
+	BotService            *service.BotService
+	AIProviderService     *service.AIProviderService
+	AIRouterService       *service.AIRouterService
+	GroupDocumentService  *service.GroupDocumentService
+	UserSettingService    *service.UserSettingService
+	AIConfigService       *service.AIConfigService
+	ChunkService          *service.ChunkService
+	VectorService         *service.VectorService
+	NoteVectorService     *service.NoteVectorService
+	AvatarMemoryService   *service.AvatarMemoryService
+	GroupMemoryService    *service.GroupMemoryService
+	AvatarTriggerService  *service.AvatarTriggerService
+	BotMessagingService   *service.BotMessagingService
+	PromptManager         *service.PromptManager
+	ContextAssembler      *service.ContextAssembler
+	WebSocketHub          *ws.Hub
+	AuthMiddleware        gin.HandlerFunc
 	// Scheduler 是统一调度器（robfig/cron/v3），由 main.go 在启动时注入
 	Scheduler *scheduler.Scheduler
 	// SyncEngine 是 OrgSync 引擎，由 main.go 在启动时注入
@@ -116,6 +118,20 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 				}
 				if err := db.Create(&log).Error; err != nil {
 					logger.WithModule("AIUsage").Warn("token 用量落库失败", "error", err)
+				}
+			}()
+		})
+
+		// 模型调用事实落库：每次流式调用（成功/失败/截断）写 ai_model_calls，
+		// 供进化执行器按 provider 聚合完成率、错误率与延迟。
+		aiService.SetModelCallSink(func(providerName, modelName, taskType, finishReason string, success bool, durationMs int64) {
+			go func() {
+				call := model.AIModelCall{
+					Provider: providerName, Model: modelName, TaskType: taskType,
+					FinishReason: finishReason, Success: success, DurationMs: durationMs,
+				}
+				if err := db.Create(&call).Error; err != nil {
+					logger.WithModule("AIModelCall").Warn("模型调用事实落库失败", "error", err)
 				}
 			}()
 		})
@@ -174,6 +190,11 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	blacklistService := service.NewBlacklistService(db)
 	operationLogService := service.NewOperationLogService(db)
 	systemConfigService := service.NewSystemConfigService(db)
+	// 自我进化执行器：聚合模型调用事实 → 健康门控 → 审计（默认关闭，仅出建议）
+	evolutionService := service.NewEvolutionService(db, systemConfigService)
+	// 健康门控注入 router：degraded provider 在有替代时被跳过（router 热更也保留）
+	aiService.SetRouterHealthChecker(evolutionService)
+	patchEvolutionService := service.NewPatchEvolutionService(db, aiService)
 	aiThresholdService := service.NewAiThresholdService(db)
 	aiThresholdService.SeedFromYAML() // 兼容老版本 config.yaml knowledge.score_threshold
 	// AI 阈值配置化：分身记忆召回门槛、冲突检测门槛从 system_configs 读取。
@@ -243,52 +264,54 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 	promptManager := service.NewPromptManager()
 
 	container := &Container{
-		DB:                   db,
-		Config:               cfg,
-		AIService:            aiService,
-		UserService:          userService,
-		ConversationService:  conversationService,
-		MessageService:       messageService,
-		NotificationService:  notificationService,
-		EventService:         eventService,
-		TaskService:          taskService,
-		FileService:          fileService,
-		FileSpaceService:     fileSpaceService,
-		StorageManager:       storageManager,
-		DefaultStorage:       defaultStorage,
-		GroupService:         groupService,
-		AppService:           appService,
-		MiniAppService:       miniAppService,
-		NoteService:          noteService,
-		AdminService:         adminService,
-		RealtimeService:      realtimeService,
-		SensitiveWordService: sensitiveWordService,
-		AvatarService:        avatarService,
-		ApprovalService:      approvalService,
-		VersionService:       versionService,
-		BlacklistService:     blacklistService,
-		OperationLogService:  operationLogService,
-		SystemConfigService:  systemConfigService,
-		AiThresholdService:   aiThresholdService,
-		ShortLinkService:     shortLinkService,
-		ChannelService:       channelService,
-		RenderRuleService:    renderRuleService,
-		BotService:           botService,
-		AIProviderService:    aiProviderService,
-		AIRouterService:      aiRouterService,
-		GroupDocumentService: groupDocumentService,
-		UserSettingService:   userSettingService,
-		AIConfigService:      aiConfigService,
-		ChunkService:         chunkService,
-		VectorService:        vectorSvc,
-		NoteVectorService:    noteVectorSvc,
-		AvatarMemoryService:  avatarMemorySvc,
-		GroupMemoryService:   groupMemorySvc,
-		AvatarTriggerService: avatarTriggerSvc,
-		BotMessagingService:  service.NewBotMessagingService(db, hub),
-		PromptManager:        promptManager,
-		WebSocketHub:         hub,
-		AuthMiddleware:       authMiddleware,
+		DB:                    db,
+		Config:                cfg,
+		AIService:             aiService,
+		UserService:           userService,
+		ConversationService:   conversationService,
+		MessageService:        messageService,
+		NotificationService:   notificationService,
+		EventService:          eventService,
+		TaskService:           taskService,
+		FileService:           fileService,
+		FileSpaceService:      fileSpaceService,
+		StorageManager:        storageManager,
+		DefaultStorage:        defaultStorage,
+		GroupService:          groupService,
+		AppService:            appService,
+		MiniAppService:        miniAppService,
+		NoteService:           noteService,
+		AdminService:          adminService,
+		RealtimeService:       realtimeService,
+		SensitiveWordService:  sensitiveWordService,
+		AvatarService:         avatarService,
+		ApprovalService:       approvalService,
+		VersionService:        versionService,
+		BlacklistService:      blacklistService,
+		OperationLogService:   operationLogService,
+		SystemConfigService:   systemConfigService,
+		EvolutionService:      evolutionService,
+		PatchEvolutionService: patchEvolutionService,
+		AiThresholdService:    aiThresholdService,
+		ShortLinkService:      shortLinkService,
+		ChannelService:        channelService,
+		RenderRuleService:     renderRuleService,
+		BotService:            botService,
+		AIProviderService:     aiProviderService,
+		AIRouterService:       aiRouterService,
+		GroupDocumentService:  groupDocumentService,
+		UserSettingService:    userSettingService,
+		AIConfigService:       aiConfigService,
+		ChunkService:          chunkService,
+		VectorService:         vectorSvc,
+		NoteVectorService:     noteVectorSvc,
+		AvatarMemoryService:   avatarMemorySvc,
+		GroupMemoryService:    groupMemorySvc,
+		AvatarTriggerService:  avatarTriggerSvc,
+		BotMessagingService:   service.NewBotMessagingService(db, hub),
+		PromptManager:         promptManager,
+		WebSocketHub:          hub,
+		AuthMiddleware:        authMiddleware,
 	}
 
 	GlobalContainer = container

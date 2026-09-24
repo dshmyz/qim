@@ -4,21 +4,18 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut, d
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
-import { pathToFileURL } from 'url'
+import { pathToFileURL, fileURLToPath } from 'url'
 import { createRequire } from 'node:module'
 import { createUpdateService } from './auto-update.js'
 import { registerSecurePasswordIpc } from './secure-password.js'
 import { DownloadManager } from './download-manager.js'
 
-// electronDir 以 app.getAppPath() 为锚点：打包 = <app.asar>/electron，开发 = <项目根>/electron。
-// 兜底：入口文件被直接启动（app path 即 electron/ 目录本身）时退回 appPath，
-// 避免拼出 electron/electron 双层目录。
-const appPath = app.getAppPath()
-const electronDir = fs.existsSync(path.join(appPath, 'electron', 'preload.cjs'))
-  ? path.join(appPath, 'electron')
-  : appPath
-const mainEntryPath = path.join(electronDir, 'main.js')
-const requireCjs = createRequire(mainEntryPath)
+// 锚点是“当前运行的主文件所在目录”，与进程启动方式无关：
+// - 开发（ESM 源码）：import.meta.url 原生指向 electron/main.js；
+// - 打包（CJS bundle）：build-main.cjs 用 banner+define 把 import.meta.url
+//   shim 成 bundle 文件自身的 URL（esbuild 默认会编译成空对象，不 shim 是 undefined）。
+const electronDir = path.dirname(fileURLToPath(import.meta.url))
+const requireCjs = createRequire(import.meta.url)
 const screenshots = requireCjs('./screenshots/lib/index.cjs').default
 
 // 打包后（尤其 win7）主进程 stderr 不可见，任何未捕获错误写日志文件便于离线定位
@@ -758,13 +755,16 @@ function createTray() {
     tray.setContextMenu(contextMenu)
 
     // toggle 仅用于正常可见状态；闪烁中/最小化/隐藏一律唤起并聚焦。
-    // Linux 下 show() 不保证置顶聚焦（焦点防抢占），必须显式 focus()。
+    // Linux 下 show() 不保证置顶聚焦（焦点防抢占），必须显式 focus()；
+    // 闪烁态直接在此复位——窗口已聚焦或 WM 拒绝聚焦时 focus 事件不触发，
+    // 靠它复位会让 hasUnread 锁死、窗口再也点不隐藏。
     tray.on('click', () => {
       if (!mainWindow) return createWindow()
       if (mainWindow.isVisible() && !mainWindow.isMinimized() && !hasUnread) return mainWindow.hide()
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
+      stopTrayFlash()
     })
 
     console.log('托盘图标创建成功')
@@ -870,10 +870,12 @@ function registerIPC() {
   // Linux libnotify 能稳定渲染（Web Notification 的 data URL/相对路径 icon 在 Linux 下不工作）。
   // payload（可选）携带深链目标；桌面通知被点击时回传渲染进程做页面跳转。
   // Linux 下图标必须是磁盘上的真实路径（ASAR 内的路径 libnotify 读不到），拷到临时目录。
+  // 图标源开发期即 electron/icons/icon_512x512.png；打包后随 electron/** 进 ASAR，
+  // electronDir 仍指向 ASAR 内 electron/，路径锚定不变。
   let cachedNotifIconPath = ''
   const getNotifIconPath = () => {
     if (cachedNotifIconPath && fs.existsSync(cachedNotifIconPath)) return cachedNotifIconPath
-    const src = path.join(app.getAppPath(), 'electron/icons/icon_512x512.png')
+    const src = path.join(electronDir, 'icons/icon_512x512.png')
     if (!fs.existsSync(src)) return ''
     try {
       const tmpDir = path.join(os.tmpdir(), 'qim-notif-icon')

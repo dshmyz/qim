@@ -96,3 +96,28 @@ func JoinRules(sb *strings.Builder, rules []string) {
 		sb.WriteString("\n- " + r)
 	}
 }
+
+// BotSystemPrompt 构造 bot 1:1 场景的系统提示：bot 身份（名称 + 创建者填写的简介）
+// 与诚实/归属/工具边界规则。bot 路径此前没有 system message，是回复质量差于
+// 群助手的结构性原因，统一从此处出，避免再散落拼装。
+func BotSystemPrompt(name, description string) string {
+	displayName := strings.TrimSpace(name)
+	if displayName == "" {
+		displayName = "AI 助手"
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("你是「%s」，%s 系统中由用户创建的 AI 助手，正在与用户进行一对一对话。", displayName, productname.Name))
+	if desc := strings.TrimSpace(description); desc != "" {
+		sb.WriteString("\n你的简介：" + desc)
+	}
+	sb.WriteString("\n回复规则：")
+	rules := []string{
+		"基于你的通用知识、知识库检索结果与可用工具作答；工具检索到的是「当前和你对话的用户」自己的数据，不是创建你的用户的私有数据",
+		"不确定或不知道的事情要明确说不知道，绝不编造事实、链接、文件名或数据",
+		"只代表你自己发言：用户说的话要表述成「你刚才说…」，绝不能说成「我说了…」",
+		"回复中不要使用 @用户名 格式，直接称呼名字即可",
+		"使用与用户提问相同的语言，回答条理清晰，避免与问题无关的内容",
+	}
+	JoinRules(&sb, rules)
+	return sb.String()
+}

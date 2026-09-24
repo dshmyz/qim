@@ -7,6 +7,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -95,7 +96,6 @@ func (h *AIHandler) CancelPendingAction(c *gin.Context) {
 	h.runPendingAction(c, "ai_pending_send_cancelled", false, h.pendingActions.CancelPendingSend)
 }
 
-
 // SetAIMessageFeedback POST /ai/feedback
 // 用户对单条 AI 回复的 👍/👎 反馈：rating 1/-1 为设置，0 为撤销。
 // 主观反馈接入 ai_reply_metrics 质量闭环，作为自动度量的用户侧信号源。
@@ -110,20 +110,30 @@ func (h *AIHandler) SetAIMessageFeedback(c *gin.Context) {
 		return
 	}
 	var req struct {
-		MessageID uint `json:"message_id"`
-		Rating    int  `json:"rating"`
+		MessageID      uint   `json:"message_id"`
+		Rating         int    `json:"rating"`
+		ReasonCategory string `json:"reason_category"`
+		Comment        string `json:"comment"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.MessageID == 0 {
 		response.BadRequest(c, "参数错误")
 		return
 	}
-	if err := h.feedback.SetFeedback(userID, req.MessageID, req.Rating); err != nil {
+	if err := h.feedback.SetFeedback(userID, req.MessageID, service.FeedbackInput{
+		Rating:         req.Rating,
+		ReasonCategory: req.ReasonCategory,
+		Comment:        req.Comment,
+	}); err != nil {
 		// 服务层错误已带 HTTP 状态 + 业务码（BusinessError），统一出口一次下发
 		response.ErrorFrom(c, err)
 		return
 	}
 	logPendingAction(c, "ai_message_feedback")
-	response.Success(c, gin.H{"message_id": req.MessageID, "rating": req.Rating})
+	response.Success(c, gin.H{
+		"message_id":      req.MessageID,
+		"rating":          req.Rating,
+		"reason_category": req.ReasonCategory,
+	})
 }
 
 // GetAIMessageFeedback GET /ai/feedback/:messageId

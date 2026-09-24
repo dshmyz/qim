@@ -8,6 +8,19 @@ import (
 type ModelRouter struct {
 	routes      map[TaskType]Route
 	defaultTask TaskType
+	// healthChecker 可选：报告 provider 是否被自动降权（degraded）。
+	// 选择候选时，有其它健康替代则跳过 degraded；全部 degraded 时仍可降级使用。
+	healthChecker HealthChecker
+}
+
+// HealthChecker provider 健康门控查询（由 service 层实现并注入，避免 ai 包依赖 DB）。
+type HealthChecker interface {
+	IsDegraded(provider string) bool
+}
+
+// SetHealthChecker 注入健康门控。
+func (r *ModelRouter) SetHealthChecker(hc HealthChecker) {
+	r.healthChecker = hc
 }
 
 func NewModelRouter(cfg RouterConfig) *ModelRouter {
@@ -60,6 +73,8 @@ func (r *ModelRouter) SelectProvider(
 	candidates = append(candidates, route.Fallback...)
 
 	var lastErr error
+	// degradedFallback 记录唯一可用但被降权的 provider，仅在无健康替代时启用
+	var degradedFallback Provider
 	for _, name := range candidates {
 		if name == "" {
 			continue
@@ -75,26 +90,46 @@ func (r *ModelRouter) SelectProvider(
 			lastErr = fmt.Errorf("provider %s does not support embedding", name)
 			continue
 		}
+		if r.healthChecker != nil && r.healthChecker.IsDegraded(name) {
+			if degradedFallback == nil {
+				degradedFallback = provider
+			}
+			continue
+		}
 		return provider, routeModel, nil
+	}
+	// 无健康候选：降级使用被降权的 provider（有替代总比整体失败好）
+	if degradedFallback != nil {
+		return degradedFallback, routeModel, nil
 	}
 
 	// Fallback：显式配置的候选都不可用（或根本未配置路由）时，按 name 排序后
-	// 选择第一个已配置的 Provider。这样数据库中添加的 Provider（其 pool key 为
-	// 显示名，与 config.yaml 的路由名不一致）也能被选中，而不是直接整体失败。
-	// 使用排序保证选择结果的确定性（map 遍历顺序不确定）。
+	// 选择第一个已配置的 Provider，同样优先健康。
 	names := make([]string, 0, len(pool))
 	for name := range pool {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	var poolDegraded Provider
 	for _, name := range names {
-		if provider := pool[name]; provider.IsConfigured() {
-			// embedding 任务：跳过不支持 embedding 的 provider
-			if taskType == TaskTypeEmbedding && !provider.SupportsEmbedding() {
-				continue
-			}
-			return provider, routeModel, nil
+		provider := pool[name]
+		if !provider.IsConfigured() {
+			continue
 		}
+		// embedding 任务：跳过不支持 embedding 的 provider
+		if taskType == TaskTypeEmbedding && !provider.SupportsEmbedding() {
+			continue
+		}
+		if r.healthChecker != nil && r.healthChecker.IsDegraded(name) {
+			if poolDegraded == nil {
+				poolDegraded = provider
+			}
+			continue
+		}
+		return provider, routeModel, nil
+	}
+	if poolDegraded != nil {
+		return poolDegraded, routeModel, nil
 	}
 
 	return nil, "", fmt.Errorf("all providers unavailable for %s: %w", taskType, lastErr)

@@ -34,8 +34,8 @@ func TestAnthropicProviderFillsDefaults(t *testing.T) {
 	f := NewProviderFactory()
 	p := f.createAnthropicProviderFromConfig(ProviderConfig{APIKey: "sk-a"})
 	ap, _ := p.(*AnthropicProvider)
-	if ap.config.ExtraParams["max_tokens"] != 1000 {
-		t.Fatalf("缺失 max_tokens 应补默认 1000: %v", ap.config.ExtraParams["max_tokens"])
+	if ap.config.ExtraParams["max_tokens"] != 8192 {
+		t.Fatalf("缺失 max_tokens 应补默认 8192: %v", ap.config.ExtraParams["max_tokens"])
 	}
 	if ap.config.ExtraParams["temperature"] != 0.7 {
 		t.Fatalf("缺失 temperature 应补默认 0.7: %v", ap.config.ExtraParams["temperature"])
