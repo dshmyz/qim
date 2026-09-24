@@ -152,7 +152,7 @@ func (t *SendMessageTool) Execute(params map[string]interface{}, ctx *ai.CallerC
 			TargetConversationID: record.TargetConversationID,
 			TargetName:           record.TargetName,
 			// 1000：确认条/卡片可展开，预览过短会让用户在看不到全文的情况下确认发送
-			Preview:              truncateRunes(content, 1000),
+			Preview: truncateRunes(content, 1000),
 		}
 		return map[string]interface{}{
 			"status":  "pending_confirmation",

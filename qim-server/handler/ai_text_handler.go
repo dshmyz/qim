@@ -286,7 +286,7 @@ func (h *AIHandler) TranslateImage(c *gin.Context) {
 	// 不传 Override，由 ModelRouter 按「视觉理解」路由解析即可。
 	result, err := h.aiService.GetCompletion(ai.TaskTypeVision, messages)
 	if err != nil {
-		response.InternalServerError(c, "图片翻译失败：" + ai.UserMessage(err))
+		response.InternalServerError(c, "图片翻译失败："+ai.UserMessage(err))
 		return
 	}
 
@@ -394,7 +394,7 @@ func (h *AIHandler) DescribeImage(c *gin.Context) {
 
 	description, err := service.DescribeImage(h.aiService, req.Instruction, dataURL)
 	if err != nil {
-		response.InternalServerError(c, "图片识别失败: " + err.Error())
+		response.InternalServerError(c, "图片识别失败: "+err.Error())
 		return
 	}
 
@@ -631,7 +631,7 @@ func (h *AIHandler) runTextProcess(c *gin.Context, p *textProcessParams, intent 
 
 func respondTextProcessError(c *gin.Context, label string, err error) {
 	// 用分类器给出可操作文案（网关未起/超时/鉴权/限流…），而非把原始 Go 错误直接透给用户
-	response.InternalServerError(c, label + "失败：" + ai.UserMessage(err))
+	response.InternalServerError(c, label+"失败："+ai.UserMessage(err))
 }
 
 func respondTextProcessOK(c *gin.Context, data gin.H) {

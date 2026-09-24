@@ -16,11 +16,11 @@ const (
 // 客户端渲染确认条；用户确认后经 /ai/pending-actions/:id/confirm 执行，取消/超时则作废。
 type AIPendingAction struct {
 	ID                   uint      `json:"id" gorm:"primarykey"`
-	UserID               uint      `json:"user_id" gorm:"not null;index"`            // 发起者（确认时校验归属）
-	ConversationID       uint      `json:"conversation_id" gorm:"index"`             // 发起时的上下文会话（侧边栏关联会话，可为 0）
-	TargetConversationID uint      `json:"target_conversation_id" gorm:"not null"`   // 待发送目标会话
-	TargetName           string    `json:"target_name" gorm:"size:200"`              // 目标会话展示名（创建时解析冗余，仅供确认条展示）
-	Content              string    `json:"content" gorm:"type:text;not null"`        // 待发送内容
+	UserID               uint      `json:"user_id" gorm:"not null;index"`          // 发起者（确认时校验归属）
+	ConversationID       uint      `json:"conversation_id" gorm:"index"`           // 发起时的上下文会话（侧边栏关联会话，可为 0）
+	TargetConversationID uint      `json:"target_conversation_id" gorm:"not null"` // 待发送目标会话
+	TargetName           string    `json:"target_name" gorm:"size:200"`            // 目标会话展示名（创建时解析冗余，仅供确认条展示）
+	Content              string    `json:"content" gorm:"type:text;not null"`      // 待发送内容
 	Status               string    `json:"status" gorm:"size:20;not null;default:pending;index"`
 	MessageID            uint      `json:"message_id"` // 确认执行后实际发出的消息 ID
 	ExpiresAt            time.Time `json:"expires_at" gorm:"index"`

@@ -68,7 +68,7 @@ func (h *AIHandler) AISearch(c *gin.Context) {
 		ctx := c.Request.Context()
 		result, err := h.unifiedSearchGraph.Execute(ctx, input)
 		if err != nil {
-			response.InternalServerError(c, "搜索失败: " + err.Error())
+			response.InternalServerError(c, "搜索失败: "+err.Error())
 			return
 		}
 

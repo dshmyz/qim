@@ -235,7 +235,7 @@ func (h *AuthProviderHandler) TestProvider(c *gin.Context) {
 		case model.AuthProviderProtocolLDAP:
 			ldapProvider, err := provider.NewLDAPProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
 			if err != nil {
-				response.InternalServerError(c, "创建LDAP提供者失败: " + err.Error())
+				response.InternalServerError(c, "创建LDAP提供者失败: "+err.Error())
 				return
 			}
 
@@ -266,7 +266,7 @@ func (h *AuthProviderHandler) TestProvider(c *gin.Context) {
 		case model.AuthProviderProtocolOAuth:
 			oauthProvider, err := provider.NewOAuthProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
 			if err != nil {
-				response.InternalServerError(c, "创建OAuth提供者失败: " + err.Error())
+				response.InternalServerError(c, "创建OAuth提供者失败: "+err.Error())
 				return
 			}
 
@@ -309,7 +309,7 @@ func (h *AuthProviderHandler) TestProvider(c *gin.Context) {
 		case model.AuthProviderProtocolCAS:
 			casProvider, err := provider.NewCASProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
 			if err != nil {
-				response.InternalServerError(c, "创建CAS提供者失败: " + err.Error())
+				response.InternalServerError(c, "创建CAS提供者失败: "+err.Error())
 				return
 			}
 
@@ -366,7 +366,7 @@ func (h *AuthProviderHandler) GetProviderLoginURL(c *gin.Context) {
 	case model.AuthProviderProtocolOAuth:
 		oauthProvider, err := provider.NewOAuthProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
 		if err != nil {
-			response.InternalServerError(c, "创建OAuth提供者失败: " + err.Error())
+			response.InternalServerError(c, "创建OAuth提供者失败: "+err.Error())
 			return
 		}
 
@@ -392,7 +392,7 @@ func (h *AuthProviderHandler) GetProviderLoginURL(c *gin.Context) {
 	case model.AuthProviderProtocolCAS:
 		casProvider, err := provider.NewCASProvider(authProvider.Name, authProvider.Enabled, authProvider.Priority, authProvider.Config)
 		if err != nil {
-			response.InternalServerError(c, "创建CAS提供者失败: " + err.Error())
+			response.InternalServerError(c, "创建CAS提供者失败: "+err.Error())
 			return
 		}
 

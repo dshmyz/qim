@@ -120,7 +120,7 @@ func (h *AIBotHandler) CreateAIBot(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误: " + err.Error())
+		response.BadRequest(c, "参数错误: "+err.Error())
 		return
 	}
 
@@ -180,7 +180,7 @@ func (h *AIBotHandler) UpdateAIBot(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误: " + err.Error())
+		response.BadRequest(c, "参数错误: "+err.Error())
 		return
 	}
 
@@ -287,7 +287,7 @@ func (h *AIBotHandler) ToggleAIBotStatus(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误: " + err.Error())
+		response.BadRequest(c, "参数错误: "+err.Error())
 		return
 	}
 

@@ -7,7 +7,7 @@ import (
 )
 
 // TestAvatarTaskType 钉死分身的任务路由：只做「带图 → 视觉」最小路由，不做复杂度分级
-//（自选模型门控优先）。带图 + 有视觉路由 → vision；带图 + 无视觉路由 → chat（不分级，
+// （自选模型门控优先）。带图 + 有视觉路由 → vision；带图 + 无视觉路由 → chat（不分级，
 // 避免 base64 进 digest）；纯文本 → chat。
 func TestAvatarTaskType(t *testing.T) {
 	withVision := ai.NewAIService(&ai.AIConfig{Router: ai.RouterConfig{

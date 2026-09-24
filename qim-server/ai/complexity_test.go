@@ -4,9 +4,9 @@ import "testing"
 
 func TestIsComplexQuery(t *testing.T) {
 	cases := []struct {
-		name  string
-		q     string
-		want  bool
+		name string
+		q    string
+		want bool
 	}{
 		{"空串", "", false},
 		{"简单问候", "你好", false},

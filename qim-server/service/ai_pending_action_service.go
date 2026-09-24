@@ -32,8 +32,8 @@ var (
 // 本服务把执行拆成两段：工具执行时仅落 pending 记录（CreatePendingSend），
 // 用户在客户端确认后才真正发出（ConfirmPendingSend）。
 type AIPendingActionService struct {
-	db      *gorm.DB
-	msgSvc  *MessageService
+	db     *gorm.DB
+	msgSvc *MessageService
 }
 
 // NewAIPendingActionService 创建待确认执行服务。msgSvc 为 nil 时确认端点不可用

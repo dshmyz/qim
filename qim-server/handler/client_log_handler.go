@@ -98,7 +98,7 @@ func (h *CrashLogHandler) CreateCrashLog(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误: " + err.Error())
+		response.BadRequest(c, "参数错误: "+err.Error())
 		return
 	}
 
@@ -290,7 +290,7 @@ func (h *FeedbackHandler) UpdateFeedback(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "参数错误: " + err.Error())
+		response.BadRequest(c, "参数错误: "+err.Error())
 		return
 	}
 

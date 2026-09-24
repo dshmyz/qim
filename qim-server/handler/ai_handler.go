@@ -76,12 +76,12 @@ func checkAIEnabledMiddleware() gin.HandlerFunc {
 type AIHandlerDeps struct {
 	AIService          *ai.AIService
 	ToolRegistry       *ai.ToolRegistry
-	AvatarService      *service.AvatarService     // 帮我回复草稿模式：复用分身生成
+	AvatarService      *service.AvatarService // 帮我回复草稿模式：复用分身生成
 	SummaryGraph       *service.SummaryGraph
 	TextProcessGraph   *service.TextProcessGraph
 	UnifiedSearchGraph *service.UnifiedSearchGraph
 	SmartDigestGraph   *service.SmartDigestGraph
-	ContextAssembler   *service.ContextAssembler  // 上下文预制（侧边栏 current 模式历史注入）；nil=跳过
+	ContextAssembler   *service.ContextAssembler       // 上下文预制（侧边栏 current 模式历史注入）；nil=跳过
 	PendingActions     *service.AIPendingActionService // send_message 等敏感工具的待确认执行
 	ToolScopes         *service.ToolScopeService       // 工具面配置服务；nil=用代码默认白名单
 	Feedback           *service.AIFeedbackService      // AI 回复用户反馈（👍/👎）
@@ -216,7 +216,7 @@ func (h *AIHandler) GetCompletion(c *gin.Context) {
 	}
 	result, err := h.aiService.GetCompletion(taskType, req.Messages)
 	if err != nil {
-		response.InternalServerError(c, "AI请求失败：" + ai.UserMessage(err))
+		response.InternalServerError(c, "AI请求失败："+ai.UserMessage(err))
 		return
 	}
 
@@ -268,7 +268,7 @@ func (h *AIHandler) DraftReply(c *gin.Context) {
 			}
 			stream, err := h.draftReplyAvatarStream(c, userID, req, target, &avatarCfg)
 			if err != nil {
-				response.InternalServerError(c, "生成回复失败: " + err.Error())
+				response.InternalServerError(c, "生成回复失败: "+err.Error())
 				return
 			}
 			defer stream.Close()
@@ -277,7 +277,7 @@ func (h *AIHandler) DraftReply(c *gin.Context) {
 				msg, recvErr := stream.Recv()
 				if recvErr != nil {
 					if !errors.Is(recvErr, io.EOF) {
-						response.InternalServerError(c, "生成回复失败: " + recvErr.Error())
+						response.InternalServerError(c, "生成回复失败: "+recvErr.Error())
 						return
 					}
 					break
@@ -303,7 +303,7 @@ func (h *AIHandler) DraftReply(c *gin.Context) {
 
 	result, err := h.aiService.GetCompletion(ai.TaskTypeChat, messages)
 	if err != nil {
-		response.InternalServerError(c, "AI请求失败：" + ai.UserMessage(err))
+		response.InternalServerError(c, "AI请求失败："+ai.UserMessage(err))
 		return
 	}
 

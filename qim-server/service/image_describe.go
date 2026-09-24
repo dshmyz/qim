@@ -45,7 +45,7 @@ func DescribeImage(aiSvc *ai.AIService, instruction, dataURL string) (string, er
 // 把整段 JSON 当描述吐出来（弹窗里显示一坨 JSON）。整段试解失败后用
 // extractJSONObject 抽取第一个 {...} 再试（磨掉 markdown 围栏/前言，与
 // avatar_trigger_service / rerank 同一抽取函数）；仍未按 JSON 返回时直接取全文
-//（识别/描述场景可容忍自由文本）。
+// （识别/描述场景可容忍自由文本）。
 func parseDescribeResult(result string) string {
 	var parsed struct {
 		Description string `json:"description"`
