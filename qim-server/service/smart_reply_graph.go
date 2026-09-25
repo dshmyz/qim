@@ -1380,6 +1380,14 @@ func (g *SmartReplyGraph) recallGroupMemory(input *SmartReplyContext) string {
 	return memoryCtx
 }
 
+// collapseHistoryContent 把一条消息的内容折叠为单行：ChatHistory 按"\n"分行、
+// 解析侧按行前缀识别角色——消息内容里的换行若原样保留，用户粘贴的
+// "[assistant]: …"行会被误判为 AI 发言（角色伪造）。折叠后行结构只由拼装侧控制。
+func collapseHistoryContent(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	return strings.ReplaceAll(s, "\n", " ")
+}
+
 func (g *SmartReplyGraph) createHistoryNode() *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *SmartReplyContext) (*SmartReplyContext, error) {
 		db := database.GetDB()
@@ -1405,9 +1413,9 @@ func (g *SmartReplyGraph) createHistoryNode() *compose.Lambda {
 		parts := make([]string, 0, len(history))
 		for _, item := range history {
 			if item.IsAssistant {
-				parts = append(parts, fmt.Sprintf("[assistant]: %s", item.Content))
+				parts = append(parts, fmt.Sprintf("[assistant]: %s", collapseHistoryContent(item.Content)))
 			} else {
-				parts = append(parts, fmt.Sprintf("[user:%s]: %s", item.SenderName, item.Content))
+				parts = append(parts, fmt.Sprintf("[user:%s]: %s", item.SenderName, collapseHistoryContent(item.Content)))
 			}
 		}
 		input.ChatHistory = strings.Join(parts, "\n")

@@ -67,3 +67,6 @@ __pycache__/
 # 运行时数据（gracedb / demo MCP 等进程产物）
 data/
 
+
+# 根目录调试截图（浏览器验证产物）
+/*.png

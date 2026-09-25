@@ -255,7 +255,7 @@ func (e *SmartReplyEngine) HandleMessage(msg *model.Message, mentionUserIDs []ui
 		// 触发范围：auto/smart/keyword 等启用模式；off / mention_only 维持现状不回复。
 		// video/audio 仅跳过（无法解析进上下文），同样不落入意图检测。
 		if e.smartReplyGraph != nil && isDirectMediaType(msg.Type) {
-			mediaReply := decideDirectMediaReply(aiConfig, content, antiSpamBlocked)
+			mediaReply := decideDirectMediaReply(aiConfig, content, antiSpamBlocked, msg.Type)
 			if !mediaReply {
 				e.messageSender.NotifyReplyDecision(conversationID, SmartReplyDecision{
 					Action: SmartReplyAskUser, ReasonCode: "media_not_eligible",
@@ -348,8 +348,13 @@ func isDirectMediaType(t string) bool {
 // 关键词门控与 DecideGroupAIReply 对齐：开启 TriggerKeywords 的群，直发媒体正文是
 // {"url":...} JSON，几乎不可能命中关键词，等效于不自动回复直发媒体--
 // 关键词模式的语义就是仅关键词命中的内容才唤起助手，媒体消息不得绕过。
-func decideDirectMediaReply(cfg *model.GroupAIConfig, content string, antiSpamBlocked bool) bool {
+// 直发文件（file）默认不触发：文件多为分享而非提问，正文 JSON 无意图可判，
+// auto 群里"每发一个文件 AI 都接话"是噪音；图片保留（本身是内容，多模态有语义）。
+func decideDirectMediaReply(cfg *model.GroupAIConfig, content string, antiSpamBlocked bool, msgType string) bool {
 	if !cfg.Enabled || antiSpamBlocked {
+		return false
+	}
+	if msgType == "file" {
 		return false
 	}
 	if cfg.ReplyMode == "off" || cfg.ReplyMode == "mention_only" {
@@ -666,6 +671,31 @@ func groupAIKeywordMatches(content, keywords string) bool {
 	return false
 }
 
+// bareMentionIndex 查找明文 mention 词的边界安全位置：@ 前一个字符不得是
+// ASCII 字母/数字——否则邮箱 local-part、英文单词内嵌（"xxx@AI-support.com"）
+// 会被误判为显式 @AI，绕过意图门直接生成回复。中文不受限（"问下@小助"是
+// 合法的中文贴写习惯），标点/空白/行首均视为边界。
+// 返回首个边界安全命中的下标，无命中返回 -1。
+func bareMentionIndex(content, pattern string) int {
+	searchFrom := 0
+	for {
+		idx := strings.Index(content[searchFrom:], pattern)
+		if idx < 0 {
+			return -1
+		}
+		idx += searchFrom
+		if idx == 0 {
+			return idx
+		}
+		prev := content[idx-1]
+		isASCIIAlnum := (prev >= 'a' && prev <= 'z') || (prev >= 'A' && prev <= 'Z') || (prev >= '0' && prev <= '9')
+		if !isASCIIAlnum {
+			return idx
+		}
+		searchFrom = idx + 1
+	}
+}
+
 // groupAIMentionsAI 判断消息是否 @ 了群 AI 助手（mention token 或明文 @AI/@助手名）。
 // isAIMention 的纯逻辑副本，供 DecideGroupAIReply 与运行时路径共用，避免双套判断。
 func groupAIMentionsAI(content, assistantName string) bool {
@@ -681,7 +711,10 @@ func groupAIMentionsAI(content, assistantName string) bool {
 		"@" + assistantName,
 	}
 	for _, pattern := range patterns {
-		if strings.Contains(content, pattern) {
+		if pattern == "@" {
+			continue
+		}
+		if bareMentionIndex(content, pattern) != -1 {
 			return true
 		}
 	}
@@ -709,7 +742,10 @@ func extractAIQuestion(content string, assistantName string) string {
 	patterns := []string{"@AI", "@Ai", "@ai", "@" + assistantName}
 
 	for _, pattern := range patterns {
-		if idx := strings.Index(content, pattern); idx != -1 {
+		if pattern == "@" {
+			continue
+		}
+		if idx := bareMentionIndex(content, pattern); idx != -1 {
 			question := content[idx+len(pattern):]
 			return strings.TrimSpace(question)
 		}

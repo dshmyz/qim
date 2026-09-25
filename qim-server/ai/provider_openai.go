@@ -42,6 +42,21 @@ func (p *OpenAIProvider) WithModel(model string) Provider {
 	}
 }
 
+// WithTemperature 返回采样温度被覆盖的副本（TemperatureConfigurable）。
+// ExtraParams 必须深拷贝：config 结构体浅拷贝会共享 map，直接写入会污染共享实例。
+func (p *OpenAIProvider) WithTemperature(t float64) Provider {
+	newConfig := p.config
+	newConfig.ExtraParams = make(map[string]interface{}, len(p.config.ExtraParams)+1)
+	for k, v := range p.config.ExtraParams {
+		newConfig.ExtraParams[k] = v
+	}
+	newConfig.ExtraParams["temperature"] = t
+	return &OpenAIProvider{
+		BaseProvider: p.BaseProvider,
+		config:       newConfig,
+	}
+}
+
 func (p *OpenAIProvider) Chat(messages []Message) (string, error) {
 	if !p.IsConfigured() {
 		return "", fmt.Errorf("OpenAI API key is not configured")

@@ -264,6 +264,13 @@ type Override struct {
 	Model    string   `json:"model"`
 }
 
+// TemperatureConfigurable 支持按调用覆盖采样温度的 provider。
+// 实现必须返回新实例（深拷贝参数配置），不得改动共享配置。
+// 意图识别/质量审核等确定性任务经此获得低温档位，避免 0.7 温度下的判定抖动。
+type TemperatureConfigurable interface {
+	WithTemperature(t float64) Provider
+}
+
 func (c *AIConfig) AllProviders() map[string]ProviderConfig {
 	providers := make(map[string]ProviderConfig)
 	if c.OpenAI.APIKey != "" {

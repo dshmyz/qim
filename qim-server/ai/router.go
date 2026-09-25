@@ -105,6 +105,9 @@ func (r *ModelRouter) SelectProvider(
 
 	// Fallback：显式配置的候选都不可用（或根本未配置路由）时，按 name 排序后
 	// 选择第一个已配置的 Provider，同样优先健康。
+	// 注意：隐式兜底的 provider 与原路由无配置关联，原路由的模型名（如
+	// deepseek-v4-flash）对它多半不存在——携带过去会被 400/404 整体失败。
+	// 返回空模型名，让兜底 provider 使用自身配置的模型。
 	names := make([]string, 0, len(pool))
 	for name := range pool {
 		names = append(names, name)
@@ -126,10 +129,10 @@ func (r *ModelRouter) SelectProvider(
 			}
 			continue
 		}
-		return provider, routeModel, nil
+		return provider, "", nil
 	}
 	if poolDegraded != nil {
-		return poolDegraded, routeModel, nil
+		return poolDegraded, "", nil
 	}
 
 	return nil, "", fmt.Errorf("all providers unavailable for %s: %w", taskType, lastErr)

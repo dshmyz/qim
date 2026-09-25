@@ -272,7 +272,7 @@ func TestDecideDirectMediaReply(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			assert.Equal(t, c.want, decideDirectMediaReply(c.cfg, c.content, c.antiSpam))
+			assert.Equal(t, c.want, decideDirectMediaReply(c.cfg, c.content, c.antiSpam, "image"))
 		})
 	}
 }

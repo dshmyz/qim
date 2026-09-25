@@ -165,11 +165,35 @@ func (s *AIService) ChatTaskType(messages []Message) TaskType {
 	return TaskTypeChat
 }
 
+// deterministicTemperature 确定性任务（意图识别/质量审核等判断类）的低温档位：
+// 0.7 的默认温度会让同一输入的判定在触发线附近抖动，低温提升可复现性。
+func deterministicTemperature(taskType TaskType) (float64, bool) {
+	switch taskType {
+	case TaskTypeIntent, TaskTypeAnalysis:
+		return 0.1, true
+	}
+	return 0, false
+}
+
+// withDeterministicTemperature 对支持温度覆盖的 provider 应用确定性任务低温；
+// provider 未实现 TemperatureConfigurable 时原样返回（保持现状，不劣化）。
+func withDeterministicTemperature(p Provider, taskType TaskType) Provider {
+	t, ok := deterministicTemperature(taskType)
+	if !ok {
+		return p
+	}
+	if tc, ok := p.(TemperatureConfigurable); ok {
+		return tc.WithTemperature(t)
+	}
+	return p
+}
+
 func (s *AIService) GetCompletion(taskType TaskType, messages []Message, overrides ...Override) (string, error) {
 	provider, modelName, err := s.selectProvider(taskType, overrides...)
 	if err != nil {
 		return "", WrapCompletionError(err)
 	}
+	provider = withDeterministicTemperature(provider, taskType)
 	filteredMessages := s.filterMessages(messages)
 	start := time.Now()
 	var result string
