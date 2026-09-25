@@ -91,6 +91,13 @@ func TestPatchGenerate_SuccessCreatesProposed(t *testing.T) {
 	if len(again) != 0 {
 		t.Fatalf("存在进行中的同类别补丁，不应重复提案，got %d", len(again))
 	}
+
+	// 生成补丁后该批案例应被标记 consumed（防 rejected 后反复催生）
+	var unconsumed int64
+	db.Model(&model.AIFailureCase{}).Where("consumed = ?", false).Count(&unconsumed)
+	if unconsumed != 0 {
+		t.Fatalf("案例应全部标记已消费，未消费 %d 条", unconsumed)
+	}
 }
 
 func TestPatchReplay_PassValidates(t *testing.T) {
@@ -144,7 +151,35 @@ func TestPatchReplay_FailRejects(t *testing.T) {
 	}
 }
 
+func TestActivePatchRules_FilteredByScene(t *testing.T) {
+	invalidatePatchCache() // 包级缓存跨测试共享，先清避免读到其他测试库的数据
+	db := newPatchTestDB(t)
+	db.Create(&model.AIPromptPatch{Category: "a", Scene: ReplySceneGroupAuto, Rule: "群自动规则", State: "active"})
+	db.Create(&model.AIPromptPatch{Category: "b", Scene: ReplySceneBotDM, Rule: "bot 规则", State: "active"})
+	db.Create(&model.AIPromptPatch{Category: "c", Scene: "", Rule: "通用规则", State: "active"})
+	// 非 active 不注入
+	db.Create(&model.AIPromptPatch{Category: "d", Scene: "", Rule: "已停用规则", State: "reverted"})
+
+	// 触发缓存加载
+	got := ActivePatchRules(db, ReplySceneGroupAuto)
+	if len(got) != 2 || got[0] != "群自动规则" || got[1] != "通用规则" {
+		t.Fatalf("群自动场景应得 [群自动规则 通用规则]，got %v", got)
+	}
+
+	botRules := ActivePatchRules(db, ReplySceneBotDM)
+	if len(botRules) != 2 || botRules[0] != "bot 规则" {
+		t.Fatalf("bot 场景应得 [bot 规则 通用规则]，got %v", botRules)
+	}
+
+	// 未知场景只得通用规则
+	other := ActivePatchRules(db, "avatar")
+	if len(other) != 1 || other[0] != "通用规则" {
+		t.Fatalf("其他场景应只得通用规则，got %v", other)
+	}
+}
+
 func TestPatchApproveAndDeactivate(t *testing.T) {
+	invalidatePatchCache()
 	db := newPatchTestDB(t)
 	svc := NewPatchEvolutionService(db, nil)
 
@@ -166,8 +201,8 @@ func TestPatchApproveAndDeactivate(t *testing.T) {
 	if p.State != "active" {
 		t.Fatalf("应 active，got %s", p.State)
 	}
-	// active 补丁应被 ActivePatchRules 查到（缓存已失效）
-	rules := ActivePatchRules(db)
+	// active 补丁应被 ActivePatchRules 查到（缓存已失效）；补丁 Scene 为空=通用，任意场景可得
+	rules := ActivePatchRules(db, ReplySceneGroupAuto)
 	if len(rules) != 1 || rules[0] != "r" {
 		t.Fatalf("注入规则异常: %v", rules)
 	}
@@ -179,7 +214,7 @@ func TestPatchApproveAndDeactivate(t *testing.T) {
 	if p.State != "reverted" {
 		t.Fatalf("应 reverted，got %s", p.State)
 	}
-	if len(ActivePatchRules(db)) != 0 {
+	if len(ActivePatchRules(db, ReplySceneGroupAuto)) != 0 {
 		t.Fatal("停用后不应再注入")
 	}
 }

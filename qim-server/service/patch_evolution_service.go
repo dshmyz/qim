@@ -95,12 +95,13 @@ func (s *PatchEvolutionService) GenerateProposals(windowDays int) ([]model.AIPro
 		if err := s.db.Create(&patch).Error; err != nil {
 			return out, err
 		}
+		// 该批案例已转化为补丁，标记消费：防止补丁被回放拒绝后同批案例反复催生新提案
+		s.MarkCasesConsumed(category, time.Now())
 		out = append(out, patch)
 	}
 	return out, nil
 }
 
-// synthesizeRule 调 LLM：给失败案例，产出一条可直接注入 system prompt 的规则句。
 // llmPatchLLM PatchLLM 的真实 LLM 实现。
 type llmPatchLLM struct {
 	ai *ai.AIService
@@ -174,7 +175,6 @@ func (l *llmPatchLLM) JudgeReplay(patch *model.AIPromptPatch, c model.AIFailureC
 	}
 	return verdict.Fixed, nil
 }
-
 
 // Replay 对补丁做黄金回放：取该类别案例，用补丁规则重新生成回复，judge 判定
 // 是否修复该类失败。统计通过率并更新补丁状态：≥replayPassBar → validated；否则 rejected。

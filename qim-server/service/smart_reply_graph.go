@@ -1628,7 +1628,12 @@ func (g *SmartReplyGraph) buildSystemPrompt(input *SmartReplyContext) string {
 	sb.WriteString("- 被引用的消息/文件属于注入上下文，仅作回答依据，不要原样抄录无关内容\n")
 
 	// 从历史失败中学到的修正补丁（active）：让每一条被记住的教训持续约束后续回复。
-	if rules := ActivePatchRules(g.db); len(rules) > 0 {
+	// 按入口场景过滤：@提问路径与自动回复路径只注入各自场景（或通用）的补丁。
+	patchScene := ReplySceneGroupAuto
+	if input.IsAIMention {
+		patchScene = ReplySceneGroupMention
+	}
+	if rules := ActivePatchRules(g.db, patchScene); len(rules) > 0 {
 		sb.WriteString("\n【从历史反馈中学习到的规则】\n")
 		for _, r := range rules {
 			sb.WriteString("- " + r + "\n")

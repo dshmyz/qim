@@ -72,6 +72,34 @@ func main() {
 	}); err != nil {
 		logger.L().Error("注册上下文污染聚合 cron job 失败", "error", err)
 	}
+	// AI 治理夜间评估：模型健康门控评估（受 ai_evolution_enabled 开关控制，关闭时
+	// 仅产出 proposed 建议）+ 失败案例聚类生成提示补丁提案（等管理员回放/批准，
+	// 不会自动生效）。凌晨 3:17 执行，避开整点与其他任务。
+	if err := sched.AddCronJob("ai-governance-nightly", "17 3 * * *", func(ctx context.Context) {
+		log := logger.WithModule("AIGovernance")
+		if evo := di.GlobalContainer.EvolutionService; evo != nil {
+			actions, err := evo.Evaluate()
+			if err != nil {
+				log.Error("夜间模型健康评估失败", "error", err)
+			} else {
+				log.Info("夜间模型健康评估完成", "actions", len(actions),
+					"enabled", evo.IsEnabled())
+			}
+		}
+		if pe := di.GlobalContainer.PatchEvolutionService; pe != nil {
+			patches, err := pe.GenerateProposals(30)
+			if err != nil {
+				log.Error("夜间补丁提案生成失败", "error", err)
+			} else if len(patches) > 0 {
+				for _, p := range patches {
+					log.Info("夜间生成补丁提案", "id", p.ID, "category", p.Category,
+						"cases", p.CaseCount, "rule", p.Rule)
+				}
+			}
+		}
+	}); err != nil {
+		logger.L().Error("注册 AI 治理夜间评估 cron job 失败", "error", err)
+	}
 	// 组织架构同步：从 DB 加载 OrgSyncConfig 并注册为 cron job
 	syncEngine := syncpkg.NewEngine()
 	syncpkg.SharedEngine = syncEngine

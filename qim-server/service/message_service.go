@@ -630,7 +630,7 @@ func (s *MessageService) handleBotMessage(userID, convID uint, msgType, content 
 	// 时间正序；图片/文件的原始 JSON 不再混入对话。
 	history := s.buildBotHistory(bot, convID, 20)
 	aiMessages := make([]ai.Message, 0, len(history)+2)
-	aiMessages = append(aiMessages, botSystemMessage(bot))
+	aiMessages = append(aiMessages, s.botSystemMessage(bot))
 
 	botCfg := ParseBotConfig(bot.Config)
 
@@ -694,9 +694,17 @@ func (s *MessageService) buildBotHistory(bot model.Bot, convID uint, limit int) 
 	return aiMessages
 }
 
-// botSystemMessage 构造 bot 场景的系统消息（身份+规则，aiprompt 单源）。
-func botSystemMessage(bot model.Bot) ai.Message {
-	return ai.Message{Role: "system", Content: aiprompt.BotSystemPrompt(bot.Name, bot.Description)}
+// botSystemMessage 构造 bot 场景的系统消息（身份+规则，aiprompt 单源），
+// 并注入适用于 bot_dm 场景的生效补丁（从 bot 对话失败中学到的规则只约束 bot）。
+func (s *MessageService) botSystemMessage(bot model.Bot) ai.Message {
+	content := aiprompt.BotSystemPrompt(bot.Name, bot.Description)
+	if rules := ActivePatchRules(s.db, ReplySceneBotDM); len(rules) > 0 {
+		content += "\n【从历史反馈中学习到的规则】"
+		for _, r := range rules {
+			content += "\n- " + r
+		}
+	}
+	return ai.Message{Role: "system", Content: content}
 }
 
 // botFileContentJSON 从文件消息 content JSON 中解析出 {url, id, name, size}。
@@ -801,7 +809,7 @@ func (s *MessageService) handleBotFileMessage(userID, convID uint, bot model.Bot
 	// 构造 aiMessages：系统身份 + 历史 + 文件内容作为用户消息
 	history := s.buildBotHistory(bot, convID, 20)
 	aiMessages := make([]ai.Message, 0, len(history)+2)
-	aiMessages = append(aiMessages, botSystemMessage(bot))
+	aiMessages = append(aiMessages, s.botSystemMessage(bot))
 	aiMessages = append(aiMessages, history...)
 	aiMessages = append(aiMessages, ai.Message{
 		Role:    "user",
@@ -884,7 +892,7 @@ func (s *MessageService) handleBotImageMessage(userID, convID uint, bot model.Bo
 	// 构造 aiMessages：系统身份 + 历史 + 图片（多模态）
 	history := s.buildBotHistory(bot, convID, 20)
 	aiMessages := make([]ai.Message, 0, len(history)+2)
-	aiMessages = append(aiMessages, botSystemMessage(bot))
+	aiMessages = append(aiMessages, s.botSystemMessage(bot))
 	aiMessages = append(aiMessages, history...)
 	imgPrompt := fmt.Sprintf("用户发送了一张图片「%s」，请识别其内容。", file.Name)
 	if s.aiService != nil && s.aiService.HasVisionRoute() {
