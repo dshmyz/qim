@@ -92,14 +92,16 @@ func (d *IntentDetector) initPatterns() {
 
 // Detect 检测消息意图。强模式命中直接返回；弱命中或无规则时，AI 可用走语义判断，
 // AI 不可用时弱意图置信度低于触发阈值（fail-closed 不自动回）。
-func (d *IntentDetector) Detect(content string, userID uint, conversationID uint) (*MessageIntent, error) {
+// recentContext 为最近对话历史的折叠行（"发送者: 内容"，可空）——"该不该回复"很大程度
+// 取决于对话流（延续话题/指代前文的追问单条看就是闲聊），带上下文判断显著减少误拒。
+func (d *IntentDetector) Detect(content string, userID uint, conversationID uint, recentContext ...string) (*MessageIntent, error) {
 	intent, strong := d.detectByRules(content)
 	if strong {
 		return intent, nil
 	}
 
 	if d.aiService != nil && d.aiService.IsConfigured() {
-		return d.detectByAI(content, userID, conversationID)
+		return d.detectByAI(content, userID, conversationID, recentContext)
 	}
 
 	if intent != nil {
@@ -159,8 +161,9 @@ func (d *IntentDetector) detectByRules(content string) (*MessageIntent, bool) {
 	return weakMatch, false
 }
 
-// detectByAI 使用 AI 检测意图
-func (d *IntentDetector) detectByAI(content string, userID uint, conversationID uint) (*MessageIntent, error) {
+// detectByAI 使用 AI 检测意图。recentContext 为最近对话历史折叠行（可空）：
+// 无上下文的单条判断会把"对话延续/指代前文的追问"误判为闲聊。
+func (d *IntentDetector) detectByAI(content string, userID uint, conversationID uint, recentContext []string) (*MessageIntent, error) {
 	systemPrompt := aiprompt.CurrentTimeLine() + "\n\n" + `你是一个意图识别助手。分析用户消息的意图，并按 JSON 格式返回结果。
 
 	意图类型：
@@ -172,12 +175,30 @@ func (d *IntentDetector) detectByAI(content string, userID uint, conversationID 
 
 	只返回 JSON，格式：{"type": "意图类型", "confidence": 0.0-1.0, "should_reply": true或false, "target": "ai或human_group", "reason": "判断理由", "action": "具体动作", "entities": {"key": "value"}}
 
-should_reply 规则：只有用户明确提问、请求 AI 分析/执行、报告需要处理的故障时为 true；普通陈述、群成员之间闲聊、没有明确对象的安排信息为 false。拿不准时为 false。`
+should_reply 规则：
+- true：用户明确提问、请求 AI 分析/执行、报告需要处理的故障；
+  以及结合【最近对话历史】判断这是对前文的延续或追问（如"那第二个方案呢""展开说说"）、
+  对话正在围绕某个需要 AI 参与的话题展开且这条消息在推进该话题。
+- false：普通陈述、群成员之间的纯闲聊、没有明确对象的安排信息。
+- 拿不准时为 false；但注意：单条看像闲聊、结合历史看是在继续严肃话题的消息，应判 true。`
 
 	messages := []Message{
 		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: content},
 	}
+
+	// 最近对话历史作为一条上下文消息注入（折叠为单行，防消息内容伪造行结构）
+	if len(recentContext) > 0 {
+		ctxLines := make([]string, 0, len(recentContext))
+		for _, line := range recentContext {
+			ctxLines = append(ctxLines, strings.ReplaceAll(strings.ReplaceAll(line, "\r\n", " "), "\n", " "))
+		}
+		messages = append(messages, Message{
+			Role:    "system",
+			Content: "【最近对话历史（供判断消息是否为对话延续/追问，不要回应这些历史）】\n" + strings.Join(ctxLines, "\n"),
+		})
+	}
+
+	messages = append(messages, Message{Role: "user", Content: content})
 
 	result, err := d.aiService.GetCompletion(TaskTypeIntent, messages)
 	if err != nil {

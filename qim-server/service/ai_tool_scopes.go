@@ -39,8 +39,12 @@ var botAllowedTools = []string{
 
 // groupAssistantToolWhitelist 群 @AI 内置群管理工具白名单。
 // 实际放行 = 本清单 +（若开启）外部 MCP 工具，见 SmartReplyGraph.groupAssistantAllowedTools。
+// 查询类工具（list_tasks/list_calendar_events/search_knowledge/search_files）按
+// CallerContext.UserID=提问者 scope 取数（与 bot_dm 同款数据边界）：群里问"我周三
+// 有什么会"时 AI 能查到真实数据，而不是回答"无法查询"。send_message 不入群（见下）。
 var groupAssistantToolWhitelist = []string{
 	"group_management", "create_group_task", "search_messages", "group_summary", "system_notification",
+	"search_knowledge", "list_tasks", "list_calendar_events", "search_files",
 }
 
 // confirmRequiredTools 声明各 AI 入口中「需用户确认后才真正执行」的工具（确认制）。
