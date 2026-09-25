@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/model"
@@ -132,26 +133,40 @@ func (s *AIGovernanceService) GetMetrics(windowDays int) (*GovernanceMetrics, er
 		return nil, err
 	}
 
-	// 每日完成趋势
-	var trend []struct {
-		Day   string `gorm:"column:day"`
-		Scene string
-		Count int64
+	// 每日完成趋势：SQL DATE() 无法可靠解析 GORM 写入的 RFC3339 带时区格式
+	// （SQLite 下返回空串，趋势图在真实数据下全零），改为取原始时间在 Go 侧按本地日期分桶。
+	var trendRows []struct {
+		CreatedAt time.Time
+		Scene     string
 	}
 	if err := s.db.Model(&model.AIReplyEvent{}).
-		Select("DATE(created_at) as day, scene, count(*) as count").
+		Select("created_at, scene").
 		Where("created_at >= ? AND outcome = ?", dayStart, "completed").
-		Group("DATE(created_at), scene").
-		Order("day ASC").
-		Find(&trend).Error; err != nil {
+		Find(&trendRows).Error; err != nil {
 		return nil, err
 	}
-	out.DailyTrend = make([]DailySceneCount, 0, len(trend))
-	for _, t := range trend {
-		out.DailyTrend = append(out.DailyTrend, DailySceneCount{
-			Day: t.Day, Scene: t.Scene, Count: t.Count,
-		})
+	bucket := map[string]map[string]int64{} // day -> scene -> count
+	for _, r := range trendRows {
+		day := r.CreatedAt.Local().Format("2006-01-02")
+		if bucket[day] == nil {
+			bucket[day] = map[string]int64{}
+		}
+		bucket[day][r.Scene]++
 	}
+	out.DailyTrend = make([]DailySceneCount, 0, len(bucket))
+	for day, scenes := range bucket {
+		for scene, count := range scenes {
+			out.DailyTrend = append(out.DailyTrend, DailySceneCount{
+				Day: day, Scene: scene, Count: count,
+			})
+		}
+	}
+	sort.Slice(out.DailyTrend, func(i, j int) bool {
+		if out.DailyTrend[i].Day != out.DailyTrend[j].Day {
+			return out.DailyTrend[i].Day < out.DailyTrend[j].Day
+		}
+		return out.DailyTrend[i].Scene < out.DailyTrend[j].Scene
+	})
 
 	// 反馈聚合
 	var fbTotal, fbUp, fbDown int64
