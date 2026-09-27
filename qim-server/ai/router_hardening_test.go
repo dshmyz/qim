@@ -9,8 +9,9 @@ type fakeProvider struct {
 	model string
 }
 
-func (f *fakeProvider) IsConfigured() bool { return true }
-func (f *fakeProvider) Name() string       { return "fake" }
+func (f *fakeProvider) IsConfigured() bool      { return true }
+func (f *fakeProvider) Name() string            { return "fake" }
+func (f *fakeProvider) SupportsEmbedding() bool { return true }
 
 // unavailableProvider 模拟未配置（不可用）的 provider。
 type unavailableProvider struct{ Provider }
@@ -82,6 +83,40 @@ func TestWithTemperature_DoesNotPolluteSharedConfig(t *testing.T) {
 	// 其他参数保留
 	if v := cold.config.ExtraParams["max_tokens"]; v != 1000 {
 		t.Fatalf("其他参数应保留: %v", v)
+	}
+}
+
+func TestRouterEmbeddingFallbackKeepsModel(t *testing.T) {
+	cfg := RouterConfig{
+		DefaultTask: TaskTypeChat,
+		Routes: map[TaskType]Route{
+			TaskTypeChat:      {Provider: "openai", Model: "deepseek-v4-flash"},
+			TaskTypeEmbedding: {Provider: "openai", Model: "doubao-embedding-vision"},
+		},
+	}
+	r := NewModelRouter(cfg)
+
+	// provider 名不匹配（DB provider name=mock-local），路由 provider=openai 未命中 → 池兜底。
+	backup := &fakeProvider{}
+	pool := map[string]Provider{"mock-local": backup}
+
+	_, model, err := r.SelectProvider(pool, TaskTypeEmbedding)
+	if err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	// embedding 是任务绑定模型，兜底也须保留显式路由的模型名，否则退回 chat 模型 404
+	if model != "doubao-embedding-vision" {
+		t.Fatalf("embedding 兜底应保留模型名 doubao-embedding-vision，got %q", model)
+	}
+
+	// 无显式 embedding 路由时（!ok）仍返回空，避免 chat 模型名泄漏进 /embeddings
+	cfg2 := RouterConfig{DefaultTask: TaskTypeChat, Routes: map[TaskType]Route{
+		TaskTypeChat: {Provider: "openai", Model: "deepseek-v4-flash"},
+	}}
+	r2 := NewModelRouter(cfg2)
+	_, model2, _ := r2.SelectProvider(map[string]Provider{"mock-local": backup}, TaskTypeEmbedding)
+	if model2 != "" {
+		t.Fatalf("无显式 embedding 路由时应返回空模型，got %q", model2)
 	}
 }
 

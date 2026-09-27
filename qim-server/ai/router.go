@@ -107,7 +107,15 @@ func (r *ModelRouter) SelectProvider(
 	// 选择第一个已配置的 Provider，同样优先健康。
 	// 注意：隐式兜底的 provider 与原路由无配置关联，原路由的模型名（如
 	// deepseek-v4-flash）对它多半不存在——携带过去会被 400/404 整体失败。
-	// 返回空模型名，让兜底 provider 使用自身配置的模型。
+	// 故默认返回空模型名，让兜底 provider 使用自身配置的模型。
+	// 例外：embedding / vision 的模型名是任务显式绑定（不同于 chat 默认模型），
+	// 有显式路由时即使 provider 名不匹配走到兜底，也必须保留其模型名——否则
+	// 退回 provider 自身 chat 模型名（如 deepseek-v4-flash）发到 /embeddings
+	// 会 404（实测暴露）。
+	implicitModel := ""
+	if ok && (taskType == TaskTypeEmbedding || taskType == TaskTypeVision) {
+		implicitModel = routeModel
+	}
 	names := make([]string, 0, len(pool))
 	for name := range pool {
 		names = append(names, name)
@@ -129,10 +137,10 @@ func (r *ModelRouter) SelectProvider(
 			}
 			continue
 		}
-		return provider, "", nil
+		return provider, implicitModel, nil
 	}
 	if poolDegraded != nil {
-		return poolDegraded, "", nil
+		return poolDegraded, implicitModel, nil
 	}
 
 	return nil, "", fmt.Errorf("all providers unavailable for %s: %w", taskType, lastErr)
