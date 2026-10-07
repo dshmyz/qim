@@ -134,7 +134,9 @@ function benchmark(fn: () => void, iterations: number): number {
 
 describe('applyRenderRules 性能基准', () => {
   const rules = buildTestRules()
-  const ITERATIONS = 100
+  // happy-dom 下 sanitize 单次可达百毫秒级（长文本 60 卡片 × 双 sanitize 基线），
+  // 100 次迭代会超出 30s 超时；基准断言仅为 >0（对比数据靠 console.log），20 次足够
+  const ITERATIONS = 20
 
   it('短文本有匹配：优化前(2次sanitize) vs 优化后(1次sanitize)', () => {
     const text = shortTextWithMatch()

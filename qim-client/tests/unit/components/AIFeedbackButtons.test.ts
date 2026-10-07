@@ -85,14 +85,12 @@ describe('AIFeedbackButtons', () => {
     expect(getMock).not.toHaveBeenCalled()
   })
 
-  it('无注入时回退挂载单条拉取恢复选中态', async () => {
-    getMock.mockResolvedValue(1)
+  it('无注入时不单条拉取（选中态恢复仅走批量注入）', async () => {
     const wrapper = mount(AIFeedbackButtons, { props: { messageId: 42 } })
 
-    await vi.waitFor(() => {
-      expect(getMock).toHaveBeenCalledWith(42)
-      expect(wrapper.findAll('.fb-btn')[0].classes()).toContain('active')
-    })
+    await nextTick()
+    expect(getMock).not.toHaveBeenCalled()
+    expect(wrapper.findAll('.fb-btn')[0].classes()).not.toContain('active')
   })
 
   it('撤销后批量 map 刷新不回退本地态（setFb 回写 map）', async () => {

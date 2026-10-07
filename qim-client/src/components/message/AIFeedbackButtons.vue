@@ -56,7 +56,7 @@ const props = defineProps<{
 }>()
 
 // 选中态恢复：列表层（MessageListView/BotChatView）批量拉取后经 provide 注入；
-// 组件响应注入 map 变化；无注入（孤立使用）时回退挂载单条拉取
+// 组件响应注入 map 变化；无注入（孤立使用）时不拉取、不恢复选中态（单条拉取已随 N+1 消除移除）
 const batchRatings = inject<Ref<AIFeedbackRatings> | null>(aiFeedbackRatingsKey, null)
 const fb = ref<1 | -1 | 0>(0)
 // 用户已操作后忽略挂载期单条拉取结果，避免服务端（点击前）旧值覆盖本地新选择

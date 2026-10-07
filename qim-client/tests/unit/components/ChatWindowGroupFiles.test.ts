@@ -1,7 +1,15 @@
 import { shallowMount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
+
+// ChatWindow 挂载即经 useAvatarDraftApproval 拉取待审批草稿，mock 掉避免
+// 真实 fetch 在 happy-dom 里产生 unhandled rejection
+vi.mock('@/api/avatar', () => ({
+  avatarAPI: {
+    listReplyDrafts: vi.fn().mockResolvedValue([]),
+  },
+}))
 
 const makeProps = (conversationId = 'group-1') => ({
   conversation: {
