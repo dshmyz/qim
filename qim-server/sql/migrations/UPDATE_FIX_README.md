@@ -65,8 +65,8 @@ function getUpdateServerUrl() {
 ### 3. 默认版本记录 SQL 脚本 ✅
 
 **文件**: 
-- `qim-server/migrations/001_insert_default_versions.sql` (SQLite)
-- `qim-server/migrations/001_insert_default_versions_mysql.sql` (MySQL)
+- `qim-server/sql/migrations/001_insert_default_versions.sql` (SQLite)
+- `qim-server/sql/migrations/001_insert_default_versions_mysql.sql` (MySQL)
 
 **内容**:
 - 插入三个平台的初始版本记录（windows/macos/linux）
@@ -110,13 +110,13 @@ function getUpdateServerUrl() {
 **SQLite**:
 ```bash
 cd qim-server
-sqlite3 qim.db < migrations/001_insert_default_versions.sql
+sqlite3 qim.db < sql/migrations/001_insert_default_versions.sql
 ```
 
 **MySQL**:
 ```bash
 cd qim-server
-mysql -u root -p qim_server < migrations/001_insert_default_versions_mysql.sql
+mysql -u root -p qim_server < sql/migrations/001_insert_default_versions_mysql.sql
 ```
 
 ### 2. 重启后端服务

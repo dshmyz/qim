@@ -291,7 +291,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 	// 【待清理 TBD-DEPRECATE】历史文件下载兼容路由，计划 2027-01 下线。
 	// 背景：旧客户端/历史消息里存的是 /uploads/<key>，现统一迁移到 /static/ 前缀。
 	// 保留此路由让旧格式 URL 仍可下载，无需逐个改写历史消息；ParsePath 会解析 /uploads/ 旧格式。
-	// 下线前置条件：完成 scripts/migrate_message_storage_paths.sql 对历史消息 content 的迁移，
+	// 下线前置条件：完成 sql/migrate_message_storage_paths.sql 对历史消息 content 的迁移，
 	// 并确认旧客户端无存量 /uploads/ URL 后，方可连同本路由一并移除。
 	r.GET("/uploads/*filepath", func(c *gin.Context) {
 		fp := c.Param("filepath")

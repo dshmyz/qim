@@ -272,7 +272,7 @@ qim-server/
 ├── auth/                # OAuth/OIDC/CAS 认证提供者
 ├── sync/                # 定时同步任务
 ├── docs/swagger/        # Swaggo 生成的 API 文档
-├── migrations/          # 数据库迁移脚本
+├── sql/                 # SQL 文件（DDL、示例、迁移脚本 migrations/）
 └── test/                # 测试辅助数据
 ```
 
