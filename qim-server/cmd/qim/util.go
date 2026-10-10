@@ -32,20 +32,29 @@ func jwtExpired(token string) bool {
 	return time.Now().Unix() >= claims.Exp-60
 }
 
+// reloginHint 统一的重新获取用户令牌提示：登录续期或改用开发者长期令牌，二选一。
+// 所有"令牌过期/失效"类报错共用，改文案只动这里。
+const reloginHint = "%s login，或在客户端「设置 → 开发者设置」签发 qusr_ 长期令牌后 %s config set --user-token qusr_..."
+
 // ensureUserToken 确保 user_token 有效：过期则自动用 refresh_token 续期。
 // 失败返回 error（需要重新 qim login）。
 func ensureUserToken(cfg *config) error {
+	// 开发者设置签发的长期令牌（qusr_…）：有效期/撤销由服务端管理，
+	// 本地不做 JWT 过期预判（qusr_ 不是 JWT，jwtExpired 会误判为过期）。
+	if strings.HasPrefix(cfg.UserToken, "qusr_") {
+		return nil
+	}
 	if cfg.UserToken == "" {
-		return fmt.Errorf("未登录，请先执行: qim login")
+		return fmt.Errorf("未配置用户令牌，请二选一:\n  1. %s login（交互式登录，token 自动续期）\n  2. 在客户端「设置 → 开发者设置」签发 qusr_ 长期令牌，然后 %s config set --user-token qusr_...", CliName, CliName)
 	}
 	if !jwtExpired(cfg.UserToken) {
 		return nil // 还没过期
 	}
 	if cfg.RefreshToken == "" {
-		return fmt.Errorf("token 已过期且无 refresh_token，请重新登录: qim login")
+		return fmt.Errorf("token 已过期且无 refresh_token，请重新获取: %s", fmt.Sprintf(reloginHint, CliName, CliName))
 	}
 	if jwtExpired(cfg.RefreshToken) {
-		return fmt.Errorf("refresh_token 也已过期，请重新登录: qim login")
+		return fmt.Errorf("refresh_token 也已过期，请重新获取: %s", fmt.Sprintf(reloginHint, CliName, CliName))
 	}
 
 	// 自动续期
@@ -62,7 +71,7 @@ func ensureUserToken(cfg *config) error {
 
 	respBody, err := doReq(req)
 	if err != nil {
-		return fmt.Errorf("刷新 token 失败: %w（请重新登录: qim login）", err)
+		return fmt.Errorf("刷新 token 失败: %w（请重新获取: %s）", err, fmt.Sprintf(reloginHint, CliName, CliName))
 	}
 	var resp struct {
 		Code int `json:"code"`
@@ -72,7 +81,7 @@ func ensureUserToken(cfg *config) error {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(respBody, &resp); err != nil || resp.Code != 0 {
-		return fmt.Errorf("刷新 token 失败，请重新登录: qim login")
+		return fmt.Errorf("刷新 token 失败，请重新获取: %s", fmt.Sprintf(reloginHint, CliName, CliName))
 	}
 
 	cfg.UserToken = resp.Data.Token

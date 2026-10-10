@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,10 +17,49 @@ func newSendCmd() *cobra.Command {
 	var conversation string
 	var file string
 	var replyTo uint64
+	var asUser bool
 	cmd := &cobra.Command{
 		Use:   "send",
 		Short: "发消息（--thread 可选，自动创建会话）",
 		Run: func(cmd *cobra.Command, args []string) {
+			// --as-user：以本人身份（user_token）走用户 API 发送，消息以当前用户名义出现在会话里。
+			// 默认（bot 身份）走 /api/v1/bot/messages，发送者是 bot 虚拟用户。
+			if asUser {
+				if content == "-" {
+					b, err := io.ReadAll(os.Stdin)
+					if err != nil {
+						die("读取 stdin 失败: %v", err)
+					}
+					content = string(b)
+				}
+				if file != "" {
+					// sendFile 走 userUpload 上传，本身就是用户身份
+					if content == "" {
+						content = sendFile(file)
+						if msgType == "text" {
+							msgType = "markdown"
+						}
+					} else {
+						content += "\n\n" + sendFile(file)
+						if msgType == "text" {
+							msgType = "markdown"
+						}
+					}
+				}
+				if content == "" {
+					die("--content 或 --file 必填")
+				}
+				if thread != "" && conversation == "" {
+					conversation = thread // --thread 是 --conversation 的别名
+				}
+				convID := resolveUserConversationID(conversation, to)
+				id, err := sendMessageAsUser(convID, content, msgType, replyTo)
+				if err != nil {
+					die("%v", err)
+				}
+				out(map[string]any{"message_id": id}, "✅ 消息已发送 (ID: %d)\n", id)
+				return
+			}
 			// 按会话发送（群聊/已建单聊）：--conversation <id> 时，--to 可省略
 			if conversation != "" && to == "" {
 				if !isNumeric(conversation) {
@@ -94,6 +134,7 @@ func newSendCmd() *cobra.Command {
 	cmd.Flags().StringVar(&msgType, "type", "text", "消息类型: text|markdown|card")
 	cmd.Flags().StringVarP(&content, "content", "c", "", "消息内容（card 时为 JSON；- 表示从 stdin 读取）")
 	cmd.Flags().StringVar(&file, "file", "", "上传文件并以 markdown 链接发送（需 user_token）")
+	cmd.Flags().BoolVar(&asUser, "as-user", false, "以本人身份发送（需 user_token：qusr_ 长期令牌或 qim login 的 JWT）。--to 支持用户名/用户 ID（自动建/找单聊），--conversation 支持会话 ID")
 	return cmd
 }
 
@@ -198,4 +239,102 @@ func sendMessageToConversation(convID uint64, content, msgType string, replyTo u
 		return 0, fmt.Errorf("响应缺少 message_id: %s", string(respBody))
 	}
 	return resp.Data.MessageID, nil
+}
+
+// resolveUserConversationID 解析用户身份发送的目标会话 ID：
+// --conversation 数字直接作会话 ID；否则按 --to（数字=用户 ID，否则 /users/search
+// 精确匹配用户名）建/复用单聊拿到会话 ID（POST /conversations type=single 幂等）。
+func resolveUserConversationID(conversation, to string) uint64 {
+	if conversation != "" {
+		if !isNumeric(conversation) {
+			die("--as-user 下 --conversation 需为会话 ID（数字）")
+		}
+		id, err := strconv.ParseUint(conversation, 10, 64)
+		if err != nil {
+			die("无效的会话 ID: %s", conversation)
+		}
+		return id
+	}
+	if to == "" {
+		die("--as-user 需要 --to（用户名/用户 ID）或 --conversation（会话 ID）")
+	}
+	var recipientID uint64
+	if isNumeric(to) {
+		id, err := strconv.ParseUint(to, 10, 64)
+		if err != nil {
+			die("无效的用户 ID: %s", to)
+		}
+		recipientID = id
+	} else {
+		recipientID = userSearchID(to)
+	}
+
+	respBody, err := userPost("/api/v1/conversations", map[string]any{
+		"type":         "single",
+		"recipient_id": recipientID,
+	})
+	if err != nil {
+		die("创建/查找单聊失败: %v", err)
+	}
+	var resp struct {
+		Data struct {
+			ID uint64 `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil || resp.Data.ID == 0 {
+		die("创建/查找单聊失败: %s", truncate(string(respBody), 200))
+	}
+	return resp.Data.ID
+}
+
+// userSearchID 用 /users/search 按关键词精确匹配用户名，返回用户 ID。
+func userSearchID(name string) uint64 {
+	respBody, err := userGet("/api/v1/users/search?q=" + url.QueryEscape(name) + "&scope=users")
+	if err != nil {
+		die("搜索用户失败: %v", err)
+	}
+	var resp struct {
+		Data []struct {
+			ID       uint64 `json:"id"`
+			Username string `json:"username"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		die("解析搜索响应失败: %s", truncate(string(respBody), 200))
+	}
+	for _, u := range resp.Data {
+		if u.Username == name {
+			return u.ID
+		}
+	}
+	die("未找到用户: %s（请确认用户名，或改用数字用户 ID）", name)
+	return 0
+}
+
+// sendMessageAsUser 以本人身份（user_token）向会话发消息：POST /api/v1/conversations/:id/messages。
+// 返回消息 ID（响应 data.id，BuildMessageResponse 的主键字段）。
+func sendMessageAsUser(convID uint64, content, msgType string, replyTo uint64) (uint64, error) {
+	body := map[string]any{
+		"type":    msgType,
+		"content": content,
+	}
+	if replyTo > 0 {
+		body["quoted_message_id"] = replyTo
+	}
+	respBody, err := userPost(fmt.Sprintf("/api/v1/conversations/%d/messages", convID), body)
+	if err != nil {
+		return 0, err
+	}
+	var resp struct {
+		Data struct {
+			ID uint64 `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return 0, fmt.Errorf("解析响应失败: %w", err)
+	}
+	if resp.Data.ID == 0 {
+		return 0, fmt.Errorf("响应缺少 message_id: %s", truncate(string(respBody), 200))
+	}
+	return resp.Data.ID, nil
 }
