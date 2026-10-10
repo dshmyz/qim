@@ -124,6 +124,21 @@ func clientSendBlocked(clientVersion, minVersion string) bool {
 // 返回是否应拦截、门槛值（供错误消息展示）与"是否因无法验证版本而拦"（unverifiable）。
 // 未配置门槛恒不拦截。REST SendMessage 与频道发消息共用此判定，避免两处逻辑漂移。
 func clientSendBlockedRequest(c *gin.Context, uid uint) (blocked bool, minV string, unverifiable bool) {
+	// 用户长期令牌（qusr_，CLI/MCP 以本人身份调用）不做客户端版本门槛：
+	// 门槛目的是拦截低版本桌面客户端，命令行工具没有客户端版本可报，
+	// 若按"无版本头"fail-closed 会被任意门槛无条件拦死，CLI 将完全无法发消息。
+	if c.GetString("token_type") == "user_token" {
+		return false, "", false
+	}
+
+	// qim CLI 自报身份（X-Client-App: cli，doReq 统一注入）同样豁免：
+	// qim login 签发的是普通 access JWT，token_type 与桌面客户端相同，无法按令牌区分。
+	// 新桌面客户端恒带 X-App-Version，存量老客户端不会带此标记，故不受影响；
+	// 门槛本身非安全边界（客户端本可自报任意版本），标记头与其同等强度。
+	if c.GetHeader("X-Client-App") == "cli" {
+		return false, "", false
+	}
+
 	clientVersion := c.GetHeader("X-App-Version")
 	clientPlatform := c.GetHeader("X-App-Platform")
 

@@ -39,26 +39,37 @@ func ListUserTokens(c *gin.Context) {
 	type tokenInfo struct {
 		ID         uint       `json:"id"`
 		Name       string     `json:"name"`
+		ExpiresAt  *time.Time `json:"expires_at"` // nil = 永久
+		Expired    bool       `json:"expired"`    // 到期即真（过期令牌仍可撤销，鉴权已拒绝）
 		CreatedAt  time.Time  `json:"created_at"`
 		LastUsedAt *time.Time `json:"last_used_at"`
 	}
+	now := time.Now()
 	out := make([]tokenInfo, 0, len(tokens))
 	for _, t := range tokens {
-		out = append(out, tokenInfo{ID: t.ID, Name: t.Name, CreatedAt: t.CreatedAt, LastUsedAt: t.LastUsedAt})
+		expired := t.ExpiresAt != nil && now.After(*t.ExpiresAt)
+		out = append(out, tokenInfo{ID: t.ID, Name: t.Name, ExpiresAt: t.ExpiresAt, Expired: expired, CreatedAt: t.CreatedAt, LastUsedAt: t.LastUsedAt})
 	}
 	response.Success(c, gin.H{"tokens": out})
 }
 
 // IssueUserToken 签发用户长期令牌。明文 token 仅此次返回，需前端提示用户保存。
 // POST /api/v1/user-tokens  (authed)
+// body.expires_days 可选：0/缺省 = 永久，1..3650 = 有效天数。
 func IssueUserToken(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	db := database.GetDB()
 
 	var req struct {
-		Name string `json:"name"`
+		Name        string `json:"name"`
+		ExpiresDays int    `json:"expires_days"` // 0 = 永久
 	}
 	_ = c.ShouldBindJSON(&req)
+
+	if req.ExpiresDays < 0 || req.ExpiresDays > 3650 {
+		response.BadRequest(c, "有效天数须在 1~3650 之间（0 表示永久）")
+		return
+	}
 
 	plain, err := generateUserToken()
 	if err != nil {
@@ -70,6 +81,10 @@ func IssueUserToken(c *gin.Context) {
 		UserID:    userID.(uint),
 		TokenHash: middleware.HashBotToken(plain),
 		Name:      req.Name,
+	}
+	if req.ExpiresDays > 0 {
+		expiresAt := time.Now().AddDate(0, 0, req.ExpiresDays)
+		token.ExpiresAt = &expiresAt
 	}
 	if err := db.Create(&token).Error; err != nil {
 		response.InternalServerError(c, "保存令牌失败")
@@ -84,6 +99,7 @@ func IssueUserToken(c *gin.Context) {
 		"token":      plain,
 		"token_id":   token.ID,
 		"name":       token.Name,
+		"expires_at": token.ExpiresAt,
 		"created_at": token.CreatedAt,
 	})
 }

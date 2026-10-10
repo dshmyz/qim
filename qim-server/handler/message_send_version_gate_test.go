@@ -221,3 +221,85 @@ func TestSendMessageVersionGateWSFallback(t *testing.T) {
 	require.Equal(t, http.StatusOK, postNoHeader(newer.ID, newerConv.ID))
 	require.Equal(t, http.StatusForbidden, postNoHeader(older.ID, olderConv.ID))
 }
+
+// TestSendMessageVersionGate_UserTokenExempt 用户长期令牌（qusr_，CLI/MCP 以本人身份调用）
+// 不做客户端版本门槛：同一全局门槛下，无 X-App-Version 的普通上下文 403（fail-closed），
+// token_type=user_token 的上下文放行。
+func TestSendMessageVersionGate_UserTokenExempt(t *testing.T) {
+	router, db, user, conv := setupSendMessageVersionGateTest(t)
+
+	require.NoError(t, db.Create(&model.SystemConfig{
+		ConfigKey: "client:min_send_version", Value: "2.0.30", Type: "string",
+	}).Error)
+	invalidateMinSendVersionCache()
+
+	// 同一 handler 再注册一份"qusr 上下文"路由（模拟 AuthMiddleware 对 qusr_ 令牌的注入）
+	router.POST("/api/v1/qusr/conversations/:id/messages", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Set("token_type", "user_token")
+		SendMessage(c)
+	})
+
+	send := func(path string) *httptest.ResponseRecorder {
+		body := bytes.NewBufferString(`{"type":"text","content":"from-cli"}`)
+		req := httptest.NewRequest(http.MethodPost, path, body)
+		req.Header.Set("Content-Type", "application/json")
+		// 不带 X-App-Version：模拟 CLI/MCP
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	require.Equal(t, http.StatusForbidden, send(fmt.Sprintf("/api/v1/conversations/%d/messages", conv.ID)).Code,
+		"配置门槛后无版本头应 fail-closed")
+	require.Equal(t, http.StatusOK, send(fmt.Sprintf("/api/v1/qusr/conversations/%d/messages", conv.ID)).Code,
+		"user_token 上下文应豁免版本门槛")
+
+	// 清理全局版本门槛缓存，避免污染后续测试（门槛配置有 5s TTL 全局缓存）
+	require.NoError(t, db.Where("config_key = ?", "client:min_send_version").Delete(&model.SystemConfig{}).Error)
+	invalidateMinSendVersionCache()
+}
+
+// TestSendMessageVersionGate_QimClientHeaderExempt qim CLI 自报身份头（X-Client-App: cli）
+// 同样豁免版本门槛：qim login 的 JWT 与桌面客户端同型，无法按令牌区分，
+// CLI 统一在 doReq 注入标记。配门槛后：无标记无版本 → 403，带标记无版本 → 200。
+func TestSendMessageVersionGate_QimClientHeaderExempt(t *testing.T) {
+	router, db, _, conv := setupSendMessageVersionGateTest(t)
+
+	require.NoError(t, db.Create(&model.SystemConfig{
+		ConfigKey: "client:min_send_version", Value: "2.0.30", Type: "string",
+	}).Error)
+	invalidateMinSendVersionCache()
+
+	send := func(headers map[string]string) *httptest.ResponseRecorder {
+		body := bytes.NewBufferString(`{"type":"text","content":"from-cli"}`)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/conversations/%d/messages", conv.ID), body)
+		req.Header.Set("Content-Type", "application/json")
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	// 桌面客户端上下文（user_id 已由路由注入，无版本头、无标记）→ fail-closed
+	require.Equal(t, http.StatusForbidden, send(nil).Code)
+
+	// 同一上下文 + CLI 标记（模拟 doReq 注入）→ 豁免
+	require.Equal(t, http.StatusOK, send(map[string]string{"X-Client-App": "cli"}).Code,
+		"X-Client-App: cli 应豁免版本门槛")
+
+	// 带标记但版本头另有其值：桌面客户端不会发标记，标记优先豁免（与令牌豁免一致）
+	require.Equal(t, http.StatusOK, send(map[string]string{
+		"X-Client-App": "cli", "X-App-Version": "1.0.0",
+	}).Code)
+
+	// 令牌豁免同样依赖 user 上下文有效：确认非 user_token 且无标记仍被拦
+	require.Equal(t, http.StatusForbidden, send(map[string]string{"X-Client-App": "desktop"}).Code,
+		"非 cli 标记不应豁免")
+
+	// 清理全局版本门槛缓存，避免污染后续测试（门槛配置有 5s TTL 全局缓存）
+	require.NoError(t, db.Where("config_key = ?", "client:min_send_version").Delete(&model.SystemConfig{}).Error)
+	invalidateMinSendVersionCache()
+}

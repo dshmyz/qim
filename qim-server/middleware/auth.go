@@ -51,6 +51,13 @@ func AuthMiddleware(secret string, userSvc *service.UserService) gin.HandlerFunc
 				return
 			}
 
+			// 过期时间到点即拒绝（nil = 永久）。过期令牌不自动删除，列表里可见、可撤销。
+			if ut.ExpiresAt != nil && time.Now().After(*ut.ExpiresAt) {
+				response.Unauthorized(c, "认证令牌已过期，请重新签发")
+				c.Abort()
+				return
+			}
+
 			var user model.User
 			if err := db.First(&user, ut.UserID).Error; err != nil {
 				response.Unauthorized(c, "认证令牌无效")

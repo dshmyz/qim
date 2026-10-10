@@ -5,6 +5,8 @@ import { useRequest } from './useRequest'
 export interface UserTokenInfo {
   id: number
   name: string
+  expires_at: string | null // null = 永久
+  expired: boolean
   created_at: string
   last_used_at: string | null
 }
@@ -13,6 +15,7 @@ export interface IssuedUserToken {
   token: string
   token_id: number
   name: string
+  expires_at: string | null
   created_at: string
 }
 
@@ -29,8 +32,9 @@ export function useUserToken() {
     return response?.data?.tokens || []
   }
 
-  const issueToken = async (name: string): Promise<IssuedUserToken | null> => {
-    const response = await post<any>('/api/v1/user-tokens', { name })
+  // expiresDays：0 = 永久；1~3650 = 有效天数
+  const issueToken = async (name: string, expiresDays = 0): Promise<IssuedUserToken | null> => {
+    const response = await post<any>('/api/v1/user-tokens', { name, expires_days: expiresDays })
     return response?.data || null
   }
 

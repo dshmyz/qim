@@ -22,7 +22,7 @@ func setupAuthTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("failed to connect database: %v", err)
 	}
-	err = db.AutoMigrate(&model.User{}, &model.UserRole{}, &model.OperationLog{})
+	err = db.AutoMigrate(&model.User{}, &model.UserRole{}, &model.OperationLog{}, &model.UserToken{})
 	if err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
@@ -316,4 +316,84 @@ func Test_NodeAuthMiddleware_AcceptsValidSecret(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code,
 		"NodeAuthMiddleware should accept request with correct Node-Secret header")
+}
+
+// --- 用户长期令牌（qusr_…）鉴权：有效期 + 撤销 ---
+
+// setupQusrAuthRouter 建一条 AuthMiddleware 保护的 /me 路由，回显 user_id。
+func setupQusrAuthRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
+	t.Helper()
+	db := setupAuthTestDB(t)
+
+	userSvc := service.NewUserService(db)
+	r := gin.New()
+	r.Use(AuthMiddleware("test-secret", userSvc))
+	r.GET("/me", func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		c.JSON(http.StatusOK, gin.H{"code": 0, "user_id": userID})
+	})
+	return r, db
+}
+
+func qusrRequest(r *gin.Engine, token string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("GET", "/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func Test_AuthMiddleware_QusrToken_AuthenticatesUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r, db := setupQusrAuthRouter(t)
+
+	user := &model.User{Username: "dev", Nickname: "Dev", Status: "online"}
+	db.Create(user)
+	// ExpiresAt 为 nil = 永久有效
+	db.Create(&model.UserToken{UserID: user.ID, TokenHash: HashBotToken("qusr_forever")})
+
+	w := qusrRequest(r, "qusr_forever")
+	assert.Equal(t, http.StatusOK, w.Code, "永久有效令牌应通过鉴权")
+	assert.Contains(t, w.Body.String(), `"user_id":`)
+}
+
+func Test_AuthMiddleware_QusrToken_ExpiredTokenRejected(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r, db := setupQusrAuthRouter(t)
+
+	user := &model.User{Username: "dev2", Nickname: "Dev2", Status: "online"}
+	db.Create(user)
+	expired := time.Now().Add(-time.Hour)
+	db.Create(&model.UserToken{UserID: user.ID, TokenHash: HashBotToken("qusr_expired"), ExpiresAt: &expired})
+
+	w := qusrRequest(r, "qusr_expired")
+	assert.Equal(t, http.StatusUnauthorized, w.Code, "过期令牌应被拒绝")
+	assert.Contains(t, w.Body.String(), "已过期", "拒绝原因应提示重新签发")
+}
+
+func Test_AuthMiddleware_QusrToken_NotYetExpiredAccepted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r, db := setupQusrAuthRouter(t)
+
+	user := &model.User{Username: "dev3", Nickname: "Dev3", Status: "online"}
+	db.Create(user)
+	future := time.Now().Add(24 * time.Hour)
+	db.Create(&model.UserToken{UserID: user.ID, TokenHash: HashBotToken("qusr_valid"), ExpiresAt: &future})
+
+	w := qusrRequest(r, "qusr_valid")
+	assert.Equal(t, http.StatusOK, w.Code, "未到期的限时令牌应通过鉴权")
+}
+
+func Test_AuthMiddleware_QusrToken_RevokedRejected(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r, db := setupQusrAuthRouter(t)
+
+	user := &model.User{Username: "dev4", Nickname: "Dev4", Status: "online"}
+	db.Create(user)
+	db.Create(&model.UserToken{UserID: user.ID, TokenHash: HashBotToken("qusr_revoked")})
+	// 撤销 = 软删除
+	db.Where("token_hash = ?", HashBotToken("qusr_revoked")).Delete(&model.UserToken{})
+
+	w := qusrRequest(r, "qusr_revoked")
+	assert.Equal(t, http.StatusUnauthorized, w.Code, "已撤销（软删除）令牌应被拒绝")
 }

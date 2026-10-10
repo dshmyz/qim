@@ -5,7 +5,7 @@
         <h4>开发者令牌</h4>
       </div>
       <p class="field-hint">
-        用于 qim CLI / qim-mcp 以本人身份调用用户 API。在 agent 侧通过
+        用于 {{ productName }} CLI / qim-mcp 以本人身份调用用户 API。在 agent 侧通过
         <code>--user-token qusr_…</code> 传入（如 qim-mcp），请求时以
         <code>Authorization: Bearer</code> 携带。令牌仅签发时显示一次，请立即复制保存。
       </p>
@@ -17,6 +17,9 @@
           placeholder="令牌名称（可选，如 cli / qim-mcp）"
           @keyup.enter="onIssueToken"
         />
+        <select v-model="expiresDays" class="token-expiry-select">
+          <option v-for="opt in expiryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </select>
         <button class="action-btn primary" @click="onIssueToken" :disabled="issuing || loading">
           <i class="fas fa-plus"></i> 签发
         </button>
@@ -28,6 +31,7 @@
         <div class="new-token-text">
           <strong>令牌仅显示一次，请立即复制保存：</strong>
           <code>{{ newToken.token }}</code>
+          <span class="new-token-expiry">有效期：{{ formatExpiry(newToken.expires_at) }}</span>
         </div>
         <button class="mini-btn" @click="copyToken(newToken.token)">
           <i class="fas fa-copy"></i> 复制
@@ -37,11 +41,15 @@
       <div v-if="tokens.length === 0" class="empty-tokens">暂无令牌</div>
       <table v-else class="token-table">
         <thead>
-          <tr><th>名称</th><th>签发时间</th><th>最近使用</th><th>操作</th></tr>
+          <tr><th>名称</th><th>有效期</th><th>签发时间</th><th>最近使用</th><th>操作</th></tr>
         </thead>
         <tbody>
-          <tr v-for="t in tokens" :key="t.id">
+          <tr v-for="t in tokens" :key="t.id" :class="{ 'token-expired-row': t.expired }">
             <td>{{ t.name || '（未命名）' }}</td>
+            <td>
+              <span v-if="t.expired" class="token-expired-text">已过期</span>
+              <span v-else>{{ formatExpiry(t.expires_at) }}</span>
+            </td>
             <td>{{ formatTime(t.created_at) }}</td>
             <td>{{ t.last_used_at ? formatTime(t.last_used_at) : '—' }}</td>
             <td>
@@ -60,6 +68,7 @@ import { useUserToken, type UserTokenInfo, type IssuedUserToken } from '../../co
 import { copyToClipboard } from '../../utils/clipboard'
 import QMessage from '../../utils/qmessage'
 import QMessageBox from '../../utils/qmessagebox'
+import { PRODUCT_NAME as productName } from '../../config'
 
 const { loading, issueToken, listTokens, revokeToken } = useUserToken()
 
@@ -67,6 +76,16 @@ const tokenName = ref('')
 const tokens = ref<UserTokenInfo[]>([])
 const newToken = ref<IssuedUserToken | null>(null)
 const issuing = ref(false)
+const expiresDays = ref(0)
+
+const expiryOptions = [
+  { value: 0, label: '永久有效' },
+  { value: 7, label: '7 天' },
+  { value: 30, label: '30 天' },
+  { value: 90, label: '90 天' },
+  { value: 180, label: '180 天' },
+  { value: 365, label: '365 天' }
+]
 
 const loadTokens = async () => {
   tokens.value = await listTokens()
@@ -76,7 +95,7 @@ const onIssueToken = async () => {
   const name = tokenName.value.trim()
   issuing.value = true
   try {
-    const result = await issueToken(name)
+    const result = await issueToken(name, expiresDays.value)
     if (result) {
       newToken.value = result
       tokenName.value = ''
@@ -111,6 +130,11 @@ const onRevoke = async (t: UserTokenInfo) => {
     QMessage.error('撤销失败，令牌可能仍有效，请稍后重试')
   }
   await loadTokens()
+}
+
+const formatExpiry = (s: string | null) => {
+  if (!s) return '永久'
+  return formatTime(s)
 }
 
 const formatTime = (s: string) => {
@@ -163,6 +187,35 @@ onMounted(loadTokens)
 
 .token-name-input:focus {
   border-color: var(--primary-color);
+}
+
+.token-expiry-select {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-color);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.token-expiry-select:focus {
+  border-color: var(--primary-color);
+}
+
+.new-token-expiry {
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary);
+}
+
+.token-expired-row td {
+  opacity: 0.55;
+}
+
+.token-expired-text {
+  color: #d32f2f;
 }
 
 .action-btn {
