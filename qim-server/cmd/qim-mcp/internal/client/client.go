@@ -570,6 +570,9 @@ func (c *BotAPIClient) setUserAuth(req *http.Request) {
 }
 
 func (c *BotAPIClient) do(req *http.Request) ([]byte, error) {
+	// 自报 CLI/MCP 身份：服务端客户端版本门槛（message_version_gate）按此豁免——
+	// qim login 的 user_token 与桌面客户端 JWT 同型，无法按令牌区分。
+	req.Header.Set("X-Client-App", "cli")
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err

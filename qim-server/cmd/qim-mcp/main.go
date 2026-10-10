@@ -32,7 +32,7 @@ import (
 func main() {
 	serverURL := flag.String("server", "http://localhost:8080", "QIM server URL")
 	token := flag.String("token", "", "Bot 访问令牌（qbot_ 开头）。stdio 模式必填，http 模式由请求 Authorization 头传入")
-	userToken := flag.String("user-token", "", "用户 JWT（可选）。用于任务管理、日历事件、消息搜索等需要用户身份的接口")
+	userToken := flag.String("user-token", "", "用户令牌（可选）。qim login 的 JWT 或客户端「设置 → 开发者设置」签发的 qusr_ 长期令牌，用于任务管理、日历事件、消息搜索等需要用户身份的接口")
 	transport := flag.String("transport", "stdio", "传输模式：stdio（本地）或 http（远程 StreamableHTTP）")
 	addr := flag.String("addr", ":8082", "HTTP 监听地址（仅 --transport http 有效）")
 	flag.Parse()
