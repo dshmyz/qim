@@ -20,6 +20,9 @@ interface StreamOptions {
   onPending?: (pending: PendingSend) => void
   // 收到工具调用进度帧时回调：由调用方按 tool_call_id upsert 工具轨迹（渲染复用 ToolCallTrace）
   onTool?: (ev: AIToolEvent) => void
+  // 收到思考草稿回撤帧时回调：draft 此前已随 onChunk 流出，现确认为工具回合的思考草稿
+  // 而非最终答案——调用方应把它从答案文本中精确切除并移入「思考过程」区
+  onReasoning?: (draft: string) => void
 }
 
 // 工具调用进度事件：与后端 ai.ToolEvent 对齐（SSE tool_event 帧），
@@ -40,6 +43,7 @@ interface StreamChunk {
   pending?: PendingSend
   tool_event?: AIToolEvent
   content?: string
+  move_to_reasoning?: string
   finish?: 'stop'
 }
 
@@ -53,6 +57,9 @@ function handleChunk(chunk: StreamChunk, options: StreamOptions): 'stop' | null 
   }
   if (chunk.tool_event) {
     options.onTool?.(chunk.tool_event)
+  }
+  if (chunk.move_to_reasoning) {
+    options.onReasoning?.(chunk.move_to_reasoning)
   }
   if (chunk.content) {
     options.onChunk(chunk.content)

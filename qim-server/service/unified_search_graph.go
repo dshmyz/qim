@@ -9,6 +9,7 @@ import (
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/pkg/aiprompt"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/productname"
 
 	"github.com/cloudwego/eino/compose"
@@ -35,6 +36,8 @@ type SearchSource struct {
 	Relevance float64 `json:"relevance"`
 	Sender    string  `json:"sender,omitempty"`
 	Date      string  `json:"date,omitempty"`
+	// DocID 检索层文档 ID（如 msg_N）：跨渠道去重的稳定键；无 ID 的来源为空
+	DocID string `json:"doc_id,omitempty"`
 }
 
 type retrieveResult struct {
@@ -140,6 +143,7 @@ func (g *UnifiedSearchGraph) createRetrieveNode() *compose.Lambda {
 						Relevance: 0.8,
 						Sender:    senderName,
 						Date:      createdAt,
+						DocID:     doc.ID,
 					})
 				}
 				mu.Unlock()
@@ -176,6 +180,7 @@ func (g *UnifiedSearchGraph) createRetrieveNode() *compose.Lambda {
 						Title:     title,
 						Content:   doc.Content,
 						Relevance: score,
+						DocID:     doc.ID,
 					})
 				}
 				mu.Unlock()
@@ -212,6 +217,7 @@ func (g *UnifiedSearchGraph) createRetrieveNode() *compose.Lambda {
 						Title:     title,
 						Content:   doc.Content,
 						Relevance: score,
+						DocID:     doc.ID,
 					})
 				}
 				mu.Unlock()
@@ -243,6 +249,7 @@ func (g *UnifiedSearchGraph) createRetrieveNode() *compose.Lambda {
 						Type:      "memory",
 						Content:   doc.Content,
 						Relevance: score,
+						DocID:     doc.ID,
 					})
 				}
 				mu.Unlock()
@@ -250,8 +257,42 @@ func (g *UnifiedSearchGraph) createRetrieveNode() *compose.Lambda {
 		}()
 
 		wg.Wait()
+		// 跨渠道去重：同一内容可能被多路检索同时命中（同一消息既进 message 渠道又进
+		// memory 渠道、或用户真的重复发过同一条消息）。重复来源会让下游模型误以为存在
+		// 多条相同事实，反复对账重排——按 DocID 与归一化内容双重去重，保序留首个。
+		deduped := dedupSources(sources)
+		if dropped := len(sources) - len(deduped); dropped > 0 {
+			logger.WithModule("UnifiedSearch").Info("检索来源去重",
+				"before", len(sources), "after", len(deduped), "dropped", dropped)
+		}
+		sources = deduped
 		return &retrieveResult{query: input.Query, sources: sources}, nil
 	})
+}
+
+// dedupSources 对合并后的检索来源去重：DocID（稳定键）与归一化内容（跨渠道撞车、
+// 用户重复发送的相同消息）任一命中即视为重复，保序保留首个。
+func dedupSources(sources []SearchSource) []SearchSource {
+	seenDoc := make(map[string]struct{}, len(sources))
+	seenContent := make(map[string]struct{}, len(sources))
+	result := make([]SearchSource, 0, len(sources))
+	for _, src := range sources {
+		if src.DocID != "" {
+			if _, ok := seenDoc[src.DocID]; ok {
+				continue
+			}
+			seenDoc[src.DocID] = struct{}{}
+		}
+		key := strings.TrimSpace(src.Content)
+		if _, ok := seenContent[key]; ok {
+			continue
+		}
+		if key != "" {
+			seenContent[key] = struct{}{}
+		}
+		result = append(result, src)
+	}
+	return result
 }
 
 func (g *UnifiedSearchGraph) createBuildPromptNode() *compose.Lambda {

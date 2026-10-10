@@ -60,6 +60,40 @@ func setupTodoTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+// TestCreateTodo_Idempotent 验证待办落库幂等：同一负责人已存在未完成的同名+同截止
+// 任务时跳过重复创建（标题重复触发/单次提取重复返回不再堆重复行）；
+// 已完成（done）的同名任务不拦截新建。
+func TestCreateTodo_Idempotent(t *testing.T) {
+	db := setupTodoTestDB(t)
+	require.NoError(t, db.Create(&model.Conversation{Type: "group"}).Error)
+
+	e := NewTodoExtractor(nil)
+	due := "2030-08-18"
+	todo := ExtractedTodo{Title: "跟进项目预算审批进度", DueDate: due, Priority: "high"}
+
+	// 第一次：创建
+	e.createTodo(todo, 42, 1)
+	var count int64
+	db.Model(&model.Task{}).Where("user_id = ?", 42).Count(&count)
+	assert.Equal(t, int64(1), count, "首次创建应落库一条")
+
+	// 第二次：同标题+同截止（AI 重复提取的典型形态）→ 幂等跳过
+	e.createTodo(todo, 42, 1)
+	db.Model(&model.Task{}).Where("user_id = ?", 42).Count(&count)
+	assert.Equal(t, int64(1), count, "重复提取不应再落库")
+
+	// 同标题不同截止日期 → 是不同任务，正常创建
+	e.createTodo(ExtractedTodo{Title: todo.Title, DueDate: "2030-09-01"}, 42, 1)
+	db.Model(&model.Task{}).Where("user_id = ?", 42).Count(&count)
+	assert.Equal(t, int64(2), count, "不同截止日期的同类任务不是重复")
+
+	// 已完成的同名+同截止任务不拦截新建（幂等键只看未完成）
+	require.NoError(t, db.Model(&model.Task{}).Where("user_id = ?", 42).Update("status", "done").Error)
+	e.createTodo(todo, 42, 1)
+	db.Model(&model.Task{}).Where("user_id = ? AND status != 'done'", 42).Count(&count)
+	assert.Equal(t, int64(1), count, "done 任务不应拦截新建未完成任务")
+}
+
 // TestTryExtractTodos_TriggersExtractionWhenExtractTodosEnabled 验证：
 // 群聊开启了 ExtractTodos 时，即使 AI 助手未启用（Enabled=false），
 // 待办提取仍然被触发。

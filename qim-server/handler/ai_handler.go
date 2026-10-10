@@ -609,6 +609,10 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 			0,
 			onStep,
 			func(chunk ai.StreamChunk) error {
+				// 工具回合前置草稿回撤帧：透传给前端移入「思考过程」区（与 Content 分通道）
+				if chunk.MoveToReasoning != "" {
+					return write(ai.StreamChunk{MoveToReasoning: chunk.MoveToReasoning})
+				}
 				// final 回合内容逐 token 实时流出（真·打字机）
 				if chunk.Content != "" {
 					return write(ai.StreamChunk{Content: chunk.Content})
@@ -1179,7 +1183,12 @@ func (h *AIHandler) buildSidebarSystemPrompt() string {
 - 如果用户问“刚才讨论的结论是什么”，从对话记录中提炼
 - 如果用户问“帮我整理待办”，抽取行动项并以 checkbox 格式输出
 - 如果用户说“帮我创建任务”或“设置提醒”，使用 create_user_task 工具创建，并告诉用户已创建成功
-- 如果信息不足，诚实告知并建议用户提供更多上下文`, aiprompt.CurrentTimeLine(), productname.Name)
+- 如果信息不足，诚实告知并建议用户提供更多上下文
+
+【工具调用纪律】
+- 需要查数据（待办/日程/文件/历史消息）时直接调用对应工具，不要在调用前先输出草稿或预览答案
+- 拿到工具结果后，一次性成稿给出最终回复；不要输出“等一下”“让我重新整理”之类的修订过程
+- 工具返回的列表若含同名/同日期的相似条目，按同一事项归并呈现一次，必要时附一句提示用户可能存在重复记录`, aiprompt.CurrentTimeLine(), productname.Name)
 
 	// 能力自述：静态能力 + 侧边栏实际可调工具，随 allowlist 动态变化。
 	if capPrompt := h.capabilityPrompt(h.toolScopes.ScopeTools(service.ToolScopeSidebar)); capPrompt != "" {

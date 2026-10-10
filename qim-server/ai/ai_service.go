@@ -715,6 +715,15 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 			return nil
 		}
 
+		// 工具回合的前置正文是模型调工具前的思考草稿而非最终答案：文本已随流实时送出，
+		// 这里补发回撤帧携带原文，前端把它从答案区切除、移入「思考过程」区——答案区只留
+		// final 回合内容，多轮修订式草稿不再污染正式回复。
+		if bufContent.Len() > 0 {
+			if err := onChunk(StreamChunk{MoveToReasoning: bufContent.String()}); err != nil {
+				return err
+			}
+		}
+
 		aiLog().Info("react(stream) step", "step", step, "toolCalls", len(toolCalls))
 
 		// 追加 assistant 消息（含 tool_calls 与实时流出的前置正文，供模型上下文一致）

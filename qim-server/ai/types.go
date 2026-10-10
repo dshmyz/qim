@@ -106,6 +106,12 @@ type ChatCompletionResponse struct {
 
 type StreamChunk struct {
 	Content string `json:"content"`
+	// MoveToReasoning 工具回合前置草稿的回撤信号：该文本此前已作为 Content 逐 token 流出，
+	// 回合终了发现其后跟着 tool_calls——它是模型调工具前的思考草稿而非最终答案。携带完整
+	// 草稿原文，前端收到后把这段文本从答案区精确切除、移入「思考过程」折叠区，保证答案区
+	// 只剩 final 回合内容。仅流式 ReAct 的工具回合发出；不识别该字段的消费方忽略即可
+	// （行为与旧版一致：草稿混在答案里）。
+	MoveToReasoning string `json:"move_to_reasoning,omitempty"`
 	// ReasoningContent 推理模型的思考过程 delta（reasoning_content）。与正文分通道透传，
 	// 不拼进 Content，供前端展示思考轨迹；后端正文判定一律只看 Content。
 	ReasoningContent string       `json:"reasoning_content,omitempty"`

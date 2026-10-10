@@ -8,6 +8,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
+	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
 // ListTasksTool 查询用户任务列表。
@@ -59,10 +60,25 @@ func (t *ListTasksTool) Execute(params map[string]interface{}, ctx *ai.CallerCon
 	}
 
 	var result []map[string]interface{}
+	// 出口去重兜底：按 标题+截止日期 去重（与 TodoExtractor 幂等键一致，忽略优先级差异——
+	// 同一待办被提取出不同优先级也算重复）。历史数据或其他写入方产生的重复行不再原样
+	// 透传给模型——重复条目会让模型反复对账重排。去重留痕，提示存量数据待清理。
+	dupSeen := make(map[string]struct{})
+	dropped := 0
 	for _, task := range tasks {
 		if statusFilter != "all" && task.Status != statusFilter {
 			continue
 		}
+		dueKey := ""
+		if task.DueDate != nil {
+			dueKey = task.DueDate.Format("2006-01-02 15:04")
+		}
+		key := task.Title + "|" + dueKey
+		if _, ok := dupSeen[key]; ok {
+			dropped++
+			continue
+		}
+		dupSeen[key] = struct{}{}
 		result = append(result, map[string]interface{}{
 			"id":       task.ID,
 			"title":    task.Title,
@@ -70,6 +86,10 @@ func (t *ListTasksTool) Execute(params map[string]interface{}, ctx *ai.CallerCon
 			"priority": task.Priority,
 			"status":   task.Status,
 		})
+	}
+	if dropped > 0 {
+		logger.WithModule("ListTasksTool").Warn("任务列表存在重复条目，已去重返回",
+			"dropped", dropped, "returned", len(result))
 	}
 
 	return map[string]interface{}{"tasks": result, "count": len(result)}, nil
@@ -268,13 +288,27 @@ func (t *SearchKnowledgeTool) Execute(params map[string]interface{}, ctx *ai.Cal
 		return nil, fmt.Errorf("搜索失败: %w", err)
 	}
 
+	// 出口去重兜底：unified search 合并层已按 DocID/内容去重，这里再按内容兜一道，
+	// 拦截各检索器内部遗留的重复（如同内容多路命中）。重复来源会让模型误以为存在
+	// 多条相同事实、反复对账重排；去重留痕便于发现上游遗漏。
 	var sources []map[string]interface{}
+	srcSeen := make(map[string]struct{})
+	srcDropped := 0
 	for _, src := range result.Sources {
+		key := strings.TrimSpace(src.Title + "|" + src.Content)
+		if _, ok := srcSeen[key]; ok {
+			srcDropped++
+			continue
+		}
+		srcSeen[key] = struct{}{}
 		sources = append(sources, map[string]interface{}{
 			"type":    src.Type,
 			"title":   src.Title,
 			"content": src.Content,
 		})
+	}
+	if srcDropped > 0 {
+		logger.WithModule("SearchKnowledgeTool").Warn("检索来源存在重复条目，已去重返回", "dropped", srcDropped)
 	}
 	return map[string]interface{}{"answer": result.Answer, "sources": sources}, nil
 }

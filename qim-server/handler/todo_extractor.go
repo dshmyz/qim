@@ -207,8 +207,24 @@ func (e *TodoExtractor) createTodo(todo ExtractedTodo, senderID uint, conversati
 		priority = todo.Priority
 	}
 
-	// 为每个负责人创建待办
+	// 为每个负责人创建待办（幂等：同一负责人已存在未完成的同名+同截止任务时跳过，
+	// 防止 AI 提取对同一条待办重复触发——单次提取重复返回、或同一待办在多条消息里
+	// 被反复提到——导致任务表堆重复行，list_tasks 再把它们原样吐给模型引发对账混乱）
 	for _, assigneeID := range assigneeIDs {
+		dupQuery := db.Model(&model.Task{}).
+			Where("user_id = ? AND title = ? AND status != 'done'", assigneeID, todo.Title)
+		if dueDate != nil {
+			dupQuery = dupQuery.Where("due_date = ?", *dueDate)
+		} else {
+			dupQuery = dupQuery.Where("due_date IS NULL")
+		}
+		var dupCount int64
+		if err := dupQuery.Count(&dupCount).Error; err == nil && dupCount > 0 {
+			logger.WithModule("TodoExtractor").Info("待办已存在，跳过重复创建",
+				"title", todo.Title, "assigneeID", assigneeID, "existing", dupCount)
+			continue
+		}
+
 		task := model.Task{
 			UserID:         assigneeID,
 			ConversationID: conversationID,

@@ -75,6 +75,14 @@
           :class="msg.role"
         >
           <div class="ai-msg-bubble" :class="{ error: msg.isError }">
+            <!-- 思考过程：工具回合的草稿原文，默认折叠，展开可回看 AI 每一步的想法 -->
+            <details v-if="msg.reasoning && msg.reasoning.length" class="reasoning-block">
+              <summary class="reasoning-toggle">
+                <i class="fas fa-brain"></i>
+                <span>思考过程（{{ msg.reasoning.length }} 轮）</span>
+              </summary>
+              <div v-for="(r, i) in msg.reasoning" :key="i" class="reasoning-round">{{ r }}</div>
+            </details>
             <div v-if="msg.role === 'assistant'" class="ai-msg-content" v-html="renderMd(msg.content)"></div>
             <div v-else class="ai-msg-content" v-html="previewTextToHtml(msg.content)"></div>
           </div>
@@ -144,6 +152,14 @@
         <!-- Thinking / Streaming indicator -->
         <div v-if="isStreaming" class="ai-msg assistant">
           <div class="ai-msg-bubble streaming">
+            <!-- 思考过程：流式期间强制展开实时增长；回撤帧把草稿从答案区切走后落在这里 -->
+            <details v-if="streamingReasoning.length" class="reasoning-block" open>
+              <summary class="reasoning-toggle">
+                <i class="fas fa-brain"></i>
+                <span>思考过程（{{ streamingReasoning.length }} 轮）</span>
+              </summary>
+              <div v-for="(r, i) in streamingReasoning" :key="i" class="reasoning-round">{{ r }}</div>
+            </details>
             <div v-if="!streamingContent" class="thinking-indicator-wrap">
               <ThinkingIndicator />
             </div>
@@ -247,7 +263,14 @@ interface ChatMsg {
   pending?: PendingSendState
   // 本次回复的工具调用轨迹（与主窗口 ToolCallTrace 同构，随 localStorage 持久化）
   toolCalls?: ToolCallRecord[]
+  // 本次回复各工具回合的思考草稿（服务端回撤帧移入）：折叠展示，随 localStorage 持久化
+  reasoning?: string[]
 }
+
+// 思考草稿持久化上限：单轮截 2000 字、最多留 10 轮——草稿只是过程参考，
+// 不值得撑爆 localStorage（持久化失败会静默丢掉整份历史）
+const REASONING_ROUND_MAX_CHARS = 2000
+const REASONING_ROUNDS_MAX = 10
 
 
 // ── 本地持久化：速记历史保存在 localStorage，应用重载后恢复 ──
@@ -258,7 +281,12 @@ interface ChatMsg {
 const CHAT_STORAGE_KEY = 'qim:ai_sidebar_chat_v1'
 const CHAT_STORAGE_MAX = 200
 
-const serializeChat = (msgs: ChatMsg[]) => JSON.stringify(msgs)
+const serializeChat = (msgs: ChatMsg[]) => JSON.stringify(msgs.map(m => ({
+  ...m,
+  reasoning: m.reasoning
+    ?.map(r => (r.length > REASONING_ROUND_MAX_CHARS ? r.slice(0, REASONING_ROUND_MAX_CHARS) + '…' : r))
+    .slice(-REASONING_ROUNDS_MAX),
+})))
 const deserializeChat = (raw: string): ChatMsg[] => {
   try {
     const parsed = JSON.parse(raw)
@@ -444,6 +472,8 @@ const retryLastMessage = () => {
 // ── 流式请求 ──
 const streamingPending = ref<PendingSend | null>(null)
 const streamingToolCalls = ref<ToolCallRecord[]>([])
+// 本轮各工具回合的思考草稿：服务端回撤帧把混进答案区的草稿切走后落在这里
+const streamingReasoning = ref<string[]>([])
 
 const upsertToolCall = (ev: AIToolEvent) => {
   const rec: ToolCallRecord = {
@@ -463,6 +493,7 @@ const doStream = (message: string) => {
   streamingContent.value = ''
   streamingPending.value = null
   streamingToolCalls.value = []
+  streamingReasoning.value = []
 
   const serverUrl = getStoredServerUrl()
   const body: Record<string, any> = {
@@ -478,6 +509,14 @@ const doStream = (message: string) => {
     body,
     onChunk: (content: string) => {
       streamingContent.value += content
+    },
+    // 工具回合思考草稿回撤：draft 此前已按正文流出，现在从答案文本中精确切除、移入思考区
+    onReasoning: (draft: string) => {
+      const idx = streamingContent.value.indexOf(draft)
+      if (idx < 0) return // 找不到原文不强切，避免误删答案内容
+      streamingContent.value =
+        streamingContent.value.slice(0, idx) + streamingContent.value.slice(idx + draft.length)
+      streamingReasoning.value.push(draft)
     },
     // 后端在 send_message 确认制下推送的待确认载荷，随本轮 assistant 消息落位
     onPending: (info: PendingSend) => {
@@ -505,6 +544,10 @@ const doStream = (message: string) => {
           msg.toolCalls = [...streamingToolCalls.value]
           streamingToolCalls.value = []
         }
+        if (streamingReasoning.value.length) {
+          msg.reasoning = [...streamingReasoning.value]
+          streamingReasoning.value = []
+        }
         chatMessages.value.push(msg)
       }
       streamingContent.value = ''
@@ -527,6 +570,11 @@ const doStream = (message: string) => {
       if (streamingToolCalls.value.length) {
         last.toolCalls = [...streamingToolCalls.value]
         streamingToolCalls.value = []
+      }
+      // 失败前已回撤的思考草稿同样保留：用户能看到 AI 走到哪一步才断的
+      if (streamingReasoning.value.length) {
+        last.reasoning = [...streamingReasoning.value]
+        streamingReasoning.value = []
       }
       streamingContent.value = ''
       isStreaming.value = false
@@ -600,7 +648,7 @@ const pendingResultText = (p: PendingSendState): string => {
 const handleStop = () => {
   abort()
   // 停止前已产生的待确认请求仍然有效（服务端已落记录），即使无正文也要落位确认条
-  if (streamingContent.value || streamingPending.value || streamingToolCalls.value.length) {
+  if (streamingContent.value || streamingPending.value || streamingToolCalls.value.length || streamingReasoning.value.length) {
     const msg: ChatMsg = {
       role: 'assistant',
       content: streamingContent.value + (streamingContent.value ? '\n\n*(已停止)*' : '*(已停止)*'),
@@ -613,6 +661,10 @@ const handleStop = () => {
     if (streamingToolCalls.value.length) {
       msg.toolCalls = [...streamingToolCalls.value]
       streamingToolCalls.value = []
+    }
+    if (streamingReasoning.value.length) {
+      msg.reasoning = [...streamingReasoning.value]
+      streamingReasoning.value = []
     }
     chatMessages.value.push(msg)
   }
@@ -1004,6 +1056,61 @@ const autoResize = () => {
 
 .ai-msg.assistant .ai-msg-bubble.streaming {
   border: 1px solid color-mix(in srgb, var(--primary-color, #6366f1) 20%, transparent);
+}
+
+/* ── 思考过程（工具回合草稿）：折叠块，置于气泡内答案上方 ── */
+.reasoning-block {
+  margin: -2px -4px 8px;
+  padding: 0 4px;
+  border-left: 2px solid color-mix(in srgb, var(--primary-color, #6366f1) 35%, transparent);
+}
+
+.reasoning-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-secondary, #6b7280);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+}
+
+.reasoning-toggle i {
+  font-size: var(--font-size-xs);
+}
+
+.reasoning-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.reasoning-toggle::after {
+  content: '\f078'; /* chevron-down：折叠指示，展开态由 details[open] 翻转 */
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  font-size: var(--font-size-xxs);
+  transition: transform 0.15s ease;
+}
+
+.reasoning-block[open] > .reasoning-toggle::after {
+  transform: rotate(180deg);
+}
+
+.reasoning-round {
+  margin: 6px 0 2px;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  color: var(--text-secondary, #6b7280);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  background: color-mix(in srgb, var(--text-secondary, #6b7280) 6%, transparent);
+  border-radius: 8px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.reasoning-round + .reasoning-round {
+  margin-top: 6px;
 }
 
 /* Error message */
