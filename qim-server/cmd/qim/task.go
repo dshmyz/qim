@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -108,8 +107,7 @@ func newTaskCreateCmd() *cobra.Command {
 			}
 			_ = json.Unmarshal(respBody, &resp)
 			if resp.Data.ID == 0 {
-				fmt.Fprintln(os.Stderr, "创建失败:", string(respBody))
-				os.Exit(1)
+				die("创建失败: %s", bizMessage(respBody))
 			}
 			outRaw(respBody, "✅ 待办已创建 (ID: %d)\n", resp.Data.ID)
 		},

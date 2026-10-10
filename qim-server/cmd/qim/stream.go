@@ -37,7 +37,7 @@ func newStreamStdinCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stream-stdin",
 		Short: "stdin 逐行喂 delta，EOF finish",
-		Long:  "建一条流式消息，stdin 每行作为一个 delta 追加，EOF 时 finish。配合 `claude -p ... | qim stream-stdin ...` 实现流式回复。",
+		Long:  fmt.Sprintf("建一条流式消息，stdin 每行作为一个 delta 追加，EOF 时 finish。配合 `claude -p ... | %[1]s stream-stdin ...` 实现流式回复。", CliName),
 		Run: func(cmd *cobra.Command, args []string) {
 			if to == "" {
 				die("--to 必填")
@@ -49,7 +49,7 @@ func newStreamStdinCmd() *cobra.Command {
 			if err := pipeStreamInput(os.Stdin, msgID, streamChunk); err != nil {
 				die("%v", err)
 			}
-			fmt.Fprintln(os.Stderr, "streamed message", msgID)
+			fmt.Fprintf(os.Stderr, "✅ 流式消息已发送 (ID: %d)\n", msgID)
 		},
 	}
 	cmd.Flags().StringVar(&to, "to", "", "目标用户名或用户 ID（必填）")

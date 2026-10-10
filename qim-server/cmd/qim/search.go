@@ -9,10 +9,22 @@ import (
 )
 
 func newMessagesSearchCmd() *cobra.Command {
+	return newSearchCmdCore("search")
+}
+
+// newTopSearchCmd 顶层 qim search 入口（与 qim messages search 等价）。
+// 两次调用各自构造独立命令实例，cobra 单亲树不受影响。
+func newTopSearchCmd() *cobra.Command {
+	cmd := newSearchCmdCore("search")
+	cmd.Short = "搜索消息（需 user_token）— 等价 qim messages search"
+	return cmd
+}
+
+func newSearchCmdCore(use string) *cobra.Command {
 	var keyword, conv string
 	var limit int
 	cmd := &cobra.Command{
-		Use:   "search",
+		Use:   use,
 		Short: "搜索消息（需 user_token）",
 		Run: func(cmd *cobra.Command, args []string) {
 			if keyword == "" {

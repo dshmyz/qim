@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,14 +19,14 @@ import (
 )
 
 func newUpdateCmd() *cobra.Command {
-	var insecure bool
+	var insecure, force bool
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "从服务器下载最新版 CLI 并替换",
 		Run: func(cmd *cobra.Command, args []string) {
 			cfg, err := loadConfig()
 			if err != nil || cfg.ServerURL == "" {
-				die("请先配置: qim config set --server URL --token T")
+				die("请先配置: %s config set --server URL --token T", CliName)
 			}
 
 			// 1. 查询最新版本
@@ -52,11 +53,17 @@ func newUpdateCmd() *cobra.Command {
 				return
 			}
 			if latest == "unknown" {
-				die("服务端未配置 CLI 二进制，请联系管理员上传到 data/cli/ 目录")
+				die("服务端未登记 CLI 二进制，请联系管理员在管理后台「CLI 版本管理」上传并发布")
+			}
+
+			// 降级防护：服务端版本低于当前版本时拒绝（通常意味着服务端登记了旧包），
+			// 确认需要回滚时用 --force 显式放行。
+			if version != "dev" && compareVersions(latest, version) < 0 && !force {
+				die("服务端版本 %s 低于当前 %s，疑似降级已拒绝；确认需要回滚请加 --force", latest, version)
 			}
 
 			// 2. 下载新二进制（大文件用无超时 client，避免 30s 限制）
-			binaryName := fmt.Sprintf("qim-%s-%s", runtime.GOOS, runtime.GOARCH)
+			binaryName := fmt.Sprintf("%s-%s-%s", CliName, runtime.GOOS, runtime.GOARCH)
 			if runtime.GOOS == "windows" {
 				binaryName += ".exe"
 			}
@@ -115,7 +122,35 @@ func newUpdateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&insecure, "insecure", false, "跳过 SHA256 校验（不推荐）")
+	cmd.Flags().BoolVar(&force, "force", false, "允许降级到服务端登记的旧版本（回滚用）")
 	return cmd
+}
+
+// compareVersions 比较点分数字版本号（如 2.0.45），返回 -1/0/1。
+// 非数字段按 0 处理；段数不同按缺段为 0（2.1 == 2.1.0）。
+func compareVersions(a, b string) int {
+	as := strings.Split(a, ".")
+	bs := strings.Split(b, ".")
+	n := len(as)
+	if len(bs) > n {
+		n = len(bs)
+	}
+	for i := 0; i < n; i++ {
+		av, bv := 0, 0
+		if i < len(as) {
+			av, _ = strconv.Atoi(as[i])
+		}
+		if i < len(bs) {
+			bv, _ = strconv.Atoi(bs[i])
+		}
+		if av != bv {
+			if av < bv {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
 }
 
 // maxBinarySize 限制下载二进制最大 200MB，防止异常响应耗尽内存。
@@ -159,7 +194,7 @@ func replaceBinary(selfPath, tmpPath string, verify func(string) error) (bool, e
 	// 2. 替换为新二进制
 	if err := os.Rename(tmpPath, selfPath); err != nil {
 		_ = os.Rename(backupPath, selfPath) // 回滚
-		return false, fmt.Errorf("替换二进制失败: %w（Windows 需关闭所有 qim 进程后重试）", err)
+		return false, fmt.Errorf("替换二进制失败: %w（Windows 需关闭所有 %s 进程后重试）", err, CliName)
 	}
 	// 3. 验证新二进制可用
 	if verify != nil {

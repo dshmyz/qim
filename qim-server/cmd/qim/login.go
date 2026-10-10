@@ -21,7 +21,7 @@ func newLoginCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			cfg, err := loadConfig()
 			if err != nil || cfg.ServerURL == "" {
-				die("请先执行: qim config set --server URL --token BOT_TOKEN")
+				die("请先执行: %s config set --server URL --token BOT_TOKEN", CliName)
 			}
 
 			if username == "" {

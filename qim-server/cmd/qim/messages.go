@@ -70,18 +70,18 @@ func newMessagesPollCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "poll",
 		Short: "轮询新消息（JSON lines）",
-		Long: `轮询新消息，输出 JSON lines。
+		Long: fmt.Sprintf(`轮询新消息，输出 JSON lines。
 默认持续运行直到 SIGINT/SIGTERM。
 
 示例:
   # 持续监听用户输入
-  qim messages poll --thread alice
+  %[1]s messages poll --thread alice
 
   # 只等一次卡片点击结果就退出
-  qim messages poll --thread alice --type card_action --once
+  %[1]s messages poll --thread alice --type card_action --once
 
   # 等待任何新消息，一轮就退出
-  qim messages poll --thread alice --once`,
+  %[1]s messages poll --thread alice --once`, CliName),
 		Run: func(cmd *cobra.Command, args []string) {
 			if thread == "" {
 				die("--thread 必填（会话名或 ID）")
@@ -127,17 +127,17 @@ func newMessagesActionsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "actions",
 		Short: "查看卡片点击事件（card_action 消息）",
-		Long: `查看卡片按钮点击事件。
+		Long: fmt.Sprintf(`查看卡片按钮点击事件。
 
 等价于 messages list --type card_action。
 agent 发送交互卡片后，用 poll --type card_action --once 等待用户点击结果。
 
 示例:
   # 查看历史卡片点击
-  qim messages actions --thread alice
+  %[1]s messages actions --thread alice
 
   # 等待下一次卡片点击
-  qim messages poll --thread alice --type card_action --once`,
+  %[1]s messages poll --thread alice --type card_action --once`, CliName),
 		Run: func(cmd *cobra.Command, args []string) {
 			if thread == "" {
 				die("--thread 必填（会话名或 ID）")

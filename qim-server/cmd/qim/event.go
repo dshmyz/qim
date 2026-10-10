@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -57,14 +56,8 @@ func newEventListCmd() *cobra.Command {
 				if e.Reminder > 0 {
 					remind = fmt.Sprintf(" (提醒提前%d分钟)", e.Reminder)
 				}
-				start := e.Start
-				if len(start) > 16 {
-					start = start[:16]
-				}
-				end := e.End
-				if len(end) > 16 {
-					end = end[:16]
-				}
+				start := friendlyTime(e.Start)
+				end := friendlyTime(e.End)
 				fmt.Printf("#%-4d %s  %s ~ %s%s\n", e.ID, e.Title, start, end, remind)
 			}
 		},
@@ -111,8 +104,7 @@ func newEventCreateCmd() *cobra.Command {
 			}
 			_ = json.Unmarshal(respBody, &resp)
 			if resp.Data.ID == 0 {
-				fmt.Fprintln(os.Stderr, "创建失败:", string(respBody))
-				os.Exit(1)
+				die("创建失败: %s", bizMessage(respBody))
 			}
 			outRaw(respBody, "✅ 事件已创建 (ID: %d)\n", resp.Data.ID)
 		},
@@ -201,6 +193,15 @@ func newEventUpdateCmd() *cobra.Command {
 	cmd.Flags().IntVar(&reminder, "reminder", -1, "新提醒分钟数（-1=不改）")
 	cmd.Flags().StringVar(&desc, "desc", "", "新描述")
 	return cmd
+}
+
+// friendlyTime 把 RFC3339 时间转成本地友好格式 "2006-01-02 15:04"；
+// 解析失败时原样返回（兼容服务端未来更换格式）。
+func friendlyTime(s string) string {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.Local().Format("2006-01-02 15:04")
+	}
+	return s
 }
 
 // localToRFC3339 把 "2006-01-02 15:04" 本地时间字符串转为 RFC3339（带本地时区偏移）。

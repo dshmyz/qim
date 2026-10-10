@@ -70,7 +70,7 @@ func setAuth(req *http.Request, cfg config) {
 func userPost(path string, body map[string]any) ([]byte, error) {
 	cfg, err := loadConfig()
 	if err != nil {
-		return nil, fmt.Errorf("读取配置失败（先 qim config set）: %w", err)
+		return nil, fmt.Errorf("读取配置失败（先 %s config set）: %w", CliName, err)
 	}
 	if err := ensureUserToken(&cfg); err != nil {
 		return nil, err
@@ -160,6 +160,9 @@ func userPut(path string, body map[string]any) ([]byte, error) {
 }
 
 func doReq(req *http.Request) ([]byte, error) {
+	// 自报 CLI 身份：服务端客户端版本门槛（message_version_gate）按此豁免——
+	// CLI 无客户端版本可报，qim login 的 JWT 又与桌面客户端同型无法按令牌区分。
+	req.Header.Set("X-Client-App", "cli")
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -170,7 +173,19 @@ func doReq(req *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("HTTP %d: 读取响应失败: %w", resp.StatusCode, readErr)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 300))
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, bizMessage(body))
 	}
 	return body, nil
+}
+
+// bizMessage 从统一响应包 {"code","message"} 中提取业务错误文案；
+// 解析不出 message 时回退到截断的原始 body（保持诊断信息不丢）。
+func bizMessage(raw []byte) string {
+	var env struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &env); err == nil && env.Message != "" {
+		return env.Message
+	}
+	return truncate(string(raw), 300)
 }

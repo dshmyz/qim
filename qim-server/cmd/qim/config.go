@@ -10,12 +10,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const configDir = ".qim"
+const configDir = ConfigDirName
 
 type config struct {
 	ServerURL    string `json:"server_url"`
 	BotToken     string `json:"bot_token"`
-	UserToken    string `json:"user_token"`    // 用户 JWT，用于以用户身份调 /api/v1/*（任务/日历等）
+	UserToken    string `json:"user_token"`    // 用户令牌（JWT 或 qusr_ 长期令牌），用于以用户身份调 /api/v1/*（任务/日历等）
 	RefreshToken string `json:"refresh_token"` // 用于自动续期 user_token
 }
 
@@ -32,15 +32,17 @@ func newConfigSetCmd() *cobra.Command {
 	var server, token, userToken string
 	cmd := &cobra.Command{
 		Use:   "set",
-		Short: "写配置（~/.qim/config.json）",
+		Short: fmt.Sprintf("写配置（~/%s/config.json）", ConfigDirName),
 		Run: func(cmd *cobra.Command, args []string) {
+			// 合并语义：--server/--token 更新连接配置，--user-token 更新用户令牌；
+			// 未指定的字段保留旧值（避免重设 bot 令牌时清掉已配置的 user_token）。
+			old, _ := loadConfig() // 首次配置时无旧文件，零值即可
 			if server == "" && token == "" {
 				if userToken == "" {
 					die("--server 与 --token 必填（或先配置后再用 --user-token 追加）")
 				}
-				old, err := loadConfig()
-				if err != nil {
-					die("读取旧配置失败: %v", err)
+				if old.ServerURL == "" || old.BotToken == "" {
+					die("先 %s config set --server URL --token T 配置服务端，再追加 --user-token", CliName)
 				}
 				old.UserToken = userToken
 				if err := saveConfig(old); err != nil {
@@ -53,9 +55,15 @@ func newConfigSetCmd() *cobra.Command {
 				die("--server 与 --token 必填")
 			}
 			cfg := config{
-				ServerURL: strings.TrimRight(server, "/"),
-				BotToken:  token,
-				UserToken: userToken,
+				ServerURL:    strings.TrimRight(server, "/"),
+				BotToken:     token,
+				UserToken:    old.UserToken,
+				RefreshToken: old.RefreshToken,
+			}
+			// 显式指定 --user-token 视为整体替换：旧 refresh_token 属于旧令牌，一并作废
+			if userToken != "" {
+				cfg.UserToken = userToken
+				cfg.RefreshToken = ""
 			}
 			if err := saveConfig(cfg); err != nil {
 				die("保存配置失败: %v", err)
@@ -63,9 +71,9 @@ func newConfigSetCmd() *cobra.Command {
 			fmt.Println("配置已保存到", configPath())
 		},
 	}
-	cmd.Flags().StringVar(&server, "server", "", "QIM 服务器地址，如 http://localhost:8080")
+	cmd.Flags().StringVar(&server, "server", "", fmt.Sprintf("%s 服务器地址，如 http://localhost:8080", AppName))
 	cmd.Flags().StringVar(&token, "token", "", "bot 访问令牌 qbot_...")
-	cmd.Flags().StringVar(&userToken, "user-token", "", "用户 JWT，用于以用户身份建任务/日历（可选）")
+	cmd.Flags().StringVar(&userToken, "user-token", "", "用户令牌（可选）：qim login 的 JWT，或客户端「设置 → 开发者设置」签发的 qusr_ 长期令牌")
 	return cmd
 }
 
@@ -96,10 +104,10 @@ func newConfigShowCmd() *cobra.Command {
 func mustConfig() config {
 	cfg, err := loadConfig()
 	if err != nil {
-		die("读取配置失败（先 qim config set）: %v", err)
+		die("读取配置失败（先 %s config set）: %v", CliName, err)
 	}
 	if cfg.ServerURL == "" || cfg.BotToken == "" {
-		die("配置不完整，先 qim config set --server URL --token T")
+		die("配置不完整，先 %s config set --server URL --token T", CliName)
 	}
 	return cfg
 }
