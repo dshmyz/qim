@@ -2619,17 +2619,15 @@ const handleMessageHitsLoadMore = async (group: MessageHitGroup) => {
       pageSize: 20,
     })
     const newHits = buildMessageHits(data.list || [])
-    // 追加进对应组（避免与已有条目重复）；无新增说明该会话已拿全，标记不再显示"查看更多"
-    const existing = new Set(group.hits.map(h => String(h.id)))
-    let added = 0
-    for (const h of newHits) {
-      if (!existing.has(String(h.id))) {
-        group.hits.push(h)
-        added++
-      }
-    }
-    if (added === 0) {
+    // 追加进数据源 messageHits（面板按它重建分组）；无新增说明该会话已拿全，
+    // 标记 exhausted 隐藏按钮。注意不能 push 进面板 computed 的缓存分组对象——
+    // Vue3 computed 返回值不是 reactive 代理，push 不触发重渲染（表现为点了没反应）。
+    const existing = new Set(messageHits.value.map(h => String(h.id)))
+    const newOnes = newHits.filter(h => !existing.has(String(h.id)))
+    if (newOnes.length === 0) {
       messageHitsExhausted.value = [...messageHitsExhausted.value, conversationId]
+    } else {
+      messageHits.value = [...messageHits.value, ...newOnes]
     }
   } catch (error) {
     logger.error('加载会话内更多搜索结果失败:', error)
