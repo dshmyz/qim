@@ -94,10 +94,12 @@ const TYPE_LABELS: Record<string, string> = {
   audio: '语音',
   miniApp: '小程序',
   news: '资讯',
-  markdown: 'Markdown',
+  // card = bot 发出的可操作卡片（title + buttons，见 validateCardContent），
+  // 不是名片——与「成员名片」浮层无关
+  card: '卡片',
+  card_action: '按钮操作',
   merged_forward: '聊天记录',
   share: '分享',
-  card: '名片',
 }
 
 const TYPE_ICONS: Record<string, string> = {
@@ -107,10 +109,10 @@ const TYPE_ICONS: Record<string, string> = {
   audio: 'fas fa-microphone',
   miniApp: 'fas fa-th-large',
   news: 'fas fa-newspaper',
-  markdown: 'fas fa-code',
+  card: 'fas fa-rectangle-list',
+  card_action: 'fas fa-hand-pointer',
   merged_forward: 'fas fa-comments',
   share: 'fas fa-share-alt',
-  card: 'fas fa-id-card',
 }
 
 const typeLabel = (type: string): string => TYPE_LABELS[type] || '消息'

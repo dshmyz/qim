@@ -74,6 +74,14 @@ describe('MessageHitsPanel', () => {
     expect(wrapper.find('.hits-item-content').text()).toBe('')
   })
 
+  it('card 是 bot 可交互卡片而非名片——徽标文案与既有消息语义对齐', () => {
+    const wrapper = mountPanel([makeHit({ previewText: '', type: 'card' })])
+    const badge = wrapper.find('.hits-item-badge')
+    expect(badge.text()).toContain('卡片')
+    expect(badge.text()).not.toContain('名片')
+    expect(badge.find('i').classes()).toContain('fa-rectangle-list')
+  })
+
   it('点击命中 emit select 并携带原始 hit', async () => {
     const hit = makeHit()
     const wrapper = mountPanel([hit])
