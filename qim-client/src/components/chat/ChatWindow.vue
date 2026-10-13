@@ -794,31 +794,67 @@ watch(() => props.conversation?.id, (newId, oldId) => {
     // 未实际改写发送的编辑信号随会话切换作废
     draftApproval.cancelEditCapture(Number(lastConversationId.value) || undefined)
 
-    scrollToBottom()
+    // 先消费跳转目标再决定是否滚底：有跳转目标时滚底（延迟 150ms 执行）会与
+    // 随后的 scrollIntoView(smooth) 竞争，后者常被抢占导致定位落在视口外。
+    const jumpTarget = chatStore.consumePendingJump(newId)
+
+    if (jumpTarget) {
+      suppressAutoScroll.value = true
+      nextTick(() => scrollToMessageForJump(jumpTarget))
+    } else {
+      scrollToBottom()
+    }
 
     lastConversationId.value = newId
-
-    // 全局搜索等入口留下的跳转目标：会话激活后消费并定位。
-    // 目标消息可能已渲染（消息已在列表）也可能等初始加载完成才出现，
-    // scrollAndHighlightMessage 轮询重试避免在加载竞态下误报"找不到"。
-    const jumpTarget = chatStore.consumePendingJump(newId)
-    if (jumpTarget) {
-      nextTick(() => scrollToMessageWithRetries(jumpTarget))
-    }
   }
 })
 
-// 定位重试：初始消息异步加载中 DOM 尚无目标元素时，间隔重试直至出现或超时。
-const scrollToMessageWithRetries = async (messageId: string) => {
-  const maxAttempts = 10
-  for (let i = 0; i < maxAttempts; i++) {
-    if (scrollAndHighlightMessage(messageId)) return
-    await new Promise(resolve => setTimeout(resolve, 300))
-    // 会话已切换则放弃
-    if (!props.conversation || String(props.conversation.id) !== String(lastConversationId.value)) return
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+// 跳转定位：等初始消息加载结束后再定位，避免与 loadMessages 的整体覆盖竞争。
+// - 目标在最新页里 → 等渲染出来直接滚
+// - 加载完成仍不在列表 → 老消息，无需空等，立即走 fetch-around 兜底
+const scrollToMessageForJump = async (messageId: string) => {
+  const conversationIdAtStart = props.conversation?.id
+  const aborted = () => String(props.conversation?.id) !== String(conversationIdAtStart)
+  const LOAD_WAIT_LIMIT = 5000 // ms，超过则不再等加载（异常卡死时不阻塞跳转）
+  const startAt = Date.now()
+
+  try {
+    for (let i = 0; i < 50; i++) {
+      if (aborted()) return
+      if (scrollAndHighlightMessage(messageId)) break
+
+      const inList = props.messages.some(m => String(m.id) === String(messageId))
+      if (inList) {
+        // 数据已到但 DOM 未渲染，再等一帧（有界：渲染路径异常时不无限空转）
+        await nextTick()
+        continue
+      }
+      if (chatStore.isLoadingMessages && Date.now() - startAt < LOAD_WAIT_LIMIT) {
+        // 初始加载还在进行，目标有可能落在最新页内，继续等
+        await sleep(100)
+        continue
+      }
+      break
+    }
+
+    if (aborted()) return
+    // 目标不在列表且加载已结束（老消息）→ 走完整兜底（拉取前后 20 条再定位）
+    const stillMissing = !props.messages.some(m => String(m.id) === String(messageId))
+    if (stillMissing) await scrollToMessage(messageId)
+
+    if (aborted()) return
+    // 补一次定位：ChatWindow 与 MessageListView 各自在 onMounted 排了 100/150ms
+    // 的延迟滚底，它们会抢走 scrollIntoView 的位置（实测停在视口外 -697px）。
+    // 等这些延迟滚底全部落定后再定位一次，保证最终位置正确。
+    await sleep(350)
+    if (aborted()) return
+    scrollAndHighlightMessage(messageId)
+  } finally {
+    await sleep(400)
+    suppressAutoScroll.value = false
   }
-  // 重试穷尽仍未渲染：走完整加载流程（拉前后 20 条再定位）
-  scrollToMessage(messageId)
 }
 
 // 「编辑后发送」：草稿回填输入框并聚焦，同时丢弃原草稿（用户接管，卡片收起），
@@ -1638,7 +1674,12 @@ const handleKeydown = (event: KeyboardEvent) => {
   }
 }
 
+// 跳转定位期间抑制自动滚底：切会话的延迟滚底与消息变更的滚底会抢占
+// scrollIntoView(smooth)，导致目标被甩出视口（实测 150ms 滚底后发先至）。
+const suppressAutoScroll = ref(false)
+
 const scrollToBottom = (instant: boolean = false) => {
+  if (suppressAutoScroll.value) return
   if (instant) {
     chatBodyRef.value?.scrollToBottom(true)
   } else {
@@ -1769,6 +1810,15 @@ onMounted(() => {
   // 不会触发，导致已持久化的草稿（撤回重新编辑的内容）无法回填。挂载时主动读一次草稿恢复。
   if (props.conversation?.id) {
     loadDraft(String(props.conversation.id))
+    // 挂载路径的跳转目标消费：组件由 v-if 控制，从"无会话"进入时 conversation
+    // watch 是非 immediate 的、不触发，pendingJump 若只在 watch 里消费会永远滞留
+    // （表现为点搜索结果切会话但不定位）。与 loadDraft 同款挂载兜底。
+    // 先置抑制标志，随后 onMounted 的延迟滚底会被拦下，不再抢跳转的滚动。
+    const mountJumpTarget = chatStore.consumePendingJump(String(props.conversation.id))
+    if (mountJumpTarget) {
+      suppressAutoScroll.value = true
+      nextTick(() => scrollToMessageForJump(mountJumpTarget))
+    }
   }
   if (messageListRef.value) {
     messageListRef.value.addEventListener('scroll', handleScroll)
@@ -1995,7 +2045,9 @@ const scrollToQuotedMessage = (quotedMessageId: string) => {
 const scrollAndHighlightMessage = (messageId: string): boolean => {
   const messageElement = document.querySelector(`.message-item[data-message-id="${messageId}"]`)
   if (messageElement instanceof HTMLElement) {
-    messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // 瞬时滚动而非 smooth：fetch-around 合并消息会触发列表重排，浏览器会中断
+    // 进行中的平滑滚动（表现为高亮生效但只滚了一段就停在视口外）
+    messageElement.scrollIntoView({ behavior: 'auto', block: 'center' })
     // 给消息添加高亮效果
     messageElement.classList.add('highlighted-message')
     setTimeout(() => {
