@@ -8,7 +8,9 @@ import (
 )
 
 // 用户身份发送链路：--to 用户名 → /users/search 精确匹配 → 建/复用单聊 → 发消息。
-// mock 三个用户 API 端点，验证 CLI 的目标解析与请求载荷。
+// mock 三个用户 API 端点，且严格复刻服务端真实契约：
+// CreateSingleConversation 只认 user_id（recipient_id 是绑定结构体里的死别名，
+// 服务端不读、缺 user_id 直接 400"缺少必要参数"）——mock 不放水，防止契约再次漂移。
 func TestSendAsUser_UsernameResolveAndSend(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -25,8 +27,13 @@ func TestSendAsUser_UsernameResolveAndSend(t *testing.T) {
 			if body["type"] != "single" {
 				t.Errorf("expected type=single, got %v", body["type"])
 			}
-			if body["recipient_id"] != float64(7) {
-				t.Errorf("expected recipient_id=7, got %v", body["recipient_id"])
+			// 与 handler/conversation_handler.go 的 CreateSingleConversation 一致：
+			// 缺 user_id → 400"缺少必要参数"
+			uid, _ := body["user_id"].(float64)
+			if uid != 7 {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]any{"code": 1001, "message": "缺少必要参数"})
+				return
 			}
 			json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"id": 3}})
 		case r.URL.Path == "/api/v1/conversations/3/messages" && r.Method == http.MethodPost:

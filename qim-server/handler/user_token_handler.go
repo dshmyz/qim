@@ -64,7 +64,13 @@ func IssueUserToken(c *gin.Context) {
 		Name        string `json:"name"`
 		ExpiresDays int    `json:"expires_days"` // 0 = 永久
 	}
-	_ = c.ShouldBindJSON(&req)
+	// 空 body（无 Content-Length）视为全部缺省——兼容无参调用；
+	// 非空但绑定失败必须 400：expires_days 传错类型时若静默按 0 处理，
+	// 会把用户想要的限期令牌降级成永久令牌。
+	if err := c.ShouldBindJSON(&req); err != nil && c.Request.ContentLength != 0 {
+		response.BadRequest(c, "请求体格式错误: "+err.Error())
+		return
+	}
 
 	if req.ExpiresDays < 0 || req.ExpiresDays > 3650 {
 		response.BadRequest(c, "有效天数须在 1~3650 之间（0 表示永久）")

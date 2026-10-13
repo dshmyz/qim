@@ -21,6 +21,10 @@ func newSendCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "send",
 		Short: "发消息（--thread 可选，自动创建会话）",
+		Long: fmt.Sprintf(`发消息。默认以 bot 身份发送（需 --server/--token 配置，消息发送者显示为 bot）；
+加 --as-user 则以你本人身份发送，走与桌面客户端相同的用户接口，消息以你的名义
+出现在会话里（需 user_token：%s login 的 JWT，或客户端「设置 → 开发者设置」
+签发的 qusr_ 长期令牌）。`, CliName),
 		Run: func(cmd *cobra.Command, args []string) {
 			// --as-user：以本人身份（user_token）走用户 API 发送，消息以当前用户名义出现在会话里。
 			// 默认（bot 身份）走 /api/v1/bot/messages，发送者是 bot 虚拟用户。
@@ -269,9 +273,11 @@ func resolveUserConversationID(conversation, to string) uint64 {
 		recipientID = userSearchID(to)
 	}
 
+	// 服务端 CreateSingleConversation 只认 user_id（recipient_id 是绑定结构体里的
+	// 死别名，不会被映射），字段名必须与服务端契约一致。
 	respBody, err := userPost("/api/v1/conversations", map[string]any{
-		"type":         "single",
-		"recipient_id": recipientID,
+		"type":    "single",
+		"user_id": recipientID,
 	})
 	if err != nil {
 		die("创建/查找单聊失败: %v", err)

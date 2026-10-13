@@ -984,3 +984,36 @@ func TestAddBotToGroup_ForbidsNonMember(t *testing.T) {
 	require.NoError(t, db.Model(&model.BotConversation{}).Count(&bcCount).Error)
 	assert.Equal(t, int64(0), bcCount)
 }
+
+// TestCreateSingleConversation_AcceptsRecipientIDAlias recipient_id 是 user_id 的
+// 别名（语义上更直指"对方"），两者任一即可建单聊——CLI 与第三方 API 消费者
+// 不应再因这个字段名歧义而 400。
+func TestCreateSingleConversation_AcceptsRecipientIDAlias(t *testing.T) {
+	r, db := setupTestRouter(t)
+	currentUser := createTestUser(t, db)
+	recipient := &model.User{Username: "recipient-alias", PasswordHash: "hash", Nickname: "对方用户"}
+	require.NoError(t, db.Create(recipient).Error)
+
+	body, err := json.Marshal(map[string]any{"type": "single", "recipient_id": recipient.ID})
+	require.NoError(t, err)
+	req := httptest.NewRequest("POST", "/api/v1/conversations", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			ID      uint `json:"id"`
+			Members []struct {
+				UserID uint `json:"user_id"`
+			} `json:"members"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 0, response.Code, "recipient_id 别名应等价于 user_id，body: %s", w.Body.String())
+	require.NotZero(t, response.Data.ID)
+	require.Len(t, response.Data.Members, 2)
+	memberIDs := map[uint]bool{response.Data.Members[0].UserID: true, response.Data.Members[1].UserID: true}
+	assert.True(t, memberIDs[currentUser.ID] && memberIDs[recipient.ID], "单聊应含双方成员")
+}
