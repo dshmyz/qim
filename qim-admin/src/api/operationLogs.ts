@@ -32,5 +32,7 @@ export const exportOperationLogs = (params?: { startDate?: string; endDate?: str
     method: 'get',
     params,
     responseType: 'blob',
+    // 导出是服务端生成 CSV 的整体下载，数据量可能远超全局 15s 超时，单独放开
+    timeout: 0,
   })
 }

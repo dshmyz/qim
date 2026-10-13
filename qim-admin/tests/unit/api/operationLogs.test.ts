@@ -84,7 +84,7 @@ describe('operationLogs API', () => {
       const response = await exportOperationLogs({ startDate: '2024-01-01', endDate: '2024-01-31' })
 
       expect(mockRequest).toHaveBeenCalledWith({
-        url: '/v1/logs/operation/export', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' }, responseType: 'blob',
+        url: '/v1/logs/operation/export', method: 'get', params: { startDate: '2024-01-01', endDate: '2024-01-31' }, responseType: 'blob', timeout: 0,
       })
       expect(response.data).toBeInstanceOf(Blob)
     })
