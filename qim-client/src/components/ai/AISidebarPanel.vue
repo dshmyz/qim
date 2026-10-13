@@ -329,6 +329,8 @@ const quickPrompts = ref<string[]>([])
 const inputText = ref('')
 const isStreaming = ref(false)
 const streamingContent = ref('')
+// 本轮各段思考（推理 delta / 工具回合草稿）：声明须在下方自动滚动 watch 之前（TDZ）
+const streamingReasoning = ref<string[]>([])
 const messagesRef = ref<HTMLDivElement>()
 const inputRef = ref<HTMLTextAreaElement>()
 const lastUserMessage = ref('')
@@ -381,7 +383,7 @@ const formatTime = (): string => {
 watch(chatMessages, (msgs) => persistChat(msgs), { deep: true })
 
 // ── 自动滚动 ──
-watch([chatMessages, streamingContent], () => {
+watch([chatMessages, streamingContent, streamingReasoning], () => {
   nextTick(() => {
     // 只在用户已处于底部时自动滚动
     if (messagesRef.value && !showScrollBtn.value) {
@@ -409,6 +411,12 @@ const scrollToBottom = () => {
 watch(() => props.visible, (val) => {
   if (val) {
     nextTick(() => inputRef.value?.focus())
+    // 打开面板时定位到最新消息：面板 v-if 挂载后消息区才有布局，且恢复的历史
+    // 在挂载时就位、chatMessages 之后不再变化——自动滚动的 watch 不会触发，
+    // 不主动滚就停在顶部最旧消息。rAF 等 Transition 挂载渲染完成后再量 scrollHeight。
+    nextTick(() => {
+      requestAnimationFrame(() => scrollToBottom())
+    })
   } else {
     if (isStreaming.value) handleStop()
     confirmClear.value = false
@@ -472,8 +480,6 @@ const retryLastMessage = () => {
 // ── 流式请求 ──
 const streamingPending = ref<PendingSend | null>(null)
 const streamingToolCalls = ref<ToolCallRecord[]>([])
-// 本轮各工具回合的思考草稿：服务端回撤帧把混进答案区的草稿切走后落在这里
-const streamingReasoning = ref<string[]>([])
 
 const upsertToolCall = (ev: AIToolEvent) => {
   const rec: ToolCallRecord = {
@@ -494,6 +500,9 @@ const doStream = (message: string) => {
   streamingPending.value = null
   streamingToolCalls.value = []
   streamingReasoning.value = []
+  // 思考轮次边界：正文/工具事件到达即封口当前思考轮，下一段思考 delta 开新轮
+  let reasoningRoundOpen = false
+  const closeReasoningRound = () => { reasoningRoundOpen = false }
 
   const serverUrl = getStoredServerUrl()
   const body: Record<string, any> = {
@@ -508,14 +517,32 @@ const doStream = (message: string) => {
     url: `${serverUrl}/api/v1/ai/sidebar/stream`,
     body,
     onChunk: (content: string) => {
+      closeReasoningRound()
       streamingContent.value += content
+    },
+    // 推理模型思考 delta：增量追加进当前思考轮（首段自动开轮），实时可见
+    onReasoningDelta: (delta: string) => {
+      if (!reasoningRoundOpen) {
+        streamingReasoning.value.push('')
+        reasoningRoundOpen = true
+      }
+      streamingReasoning.value[streamingReasoning.value.length - 1] += delta
     },
     // 工具回合思考草稿回撤：draft 此前已按正文流出，现在从答案文本中精确切除、移入思考区
     onReasoning: (draft: string) => {
-      const idx = streamingContent.value.indexOf(draft)
-      if (idx < 0) return // 找不到原文不强切，避免误删答案内容
-      streamingContent.value =
-        streamingContent.value.slice(0, idx) + streamingContent.value.slice(idx + draft.length)
+      // draft 是刚从尾部流出的文本：优先按后缀切——正文前部出现相同子串时
+      // 从头 indexOf 会切错位置（拦腰删掉前文、真草稿残留在答案里）；
+      // 非后缀再从后往前找，都找不到不强切（避免误删答案内容）
+      const content = streamingContent.value
+      if (content.endsWith(draft)) {
+        streamingContent.value = content.slice(0, content.length - draft.length)
+      } else {
+        const idx = content.lastIndexOf(draft)
+        if (idx < 0) return
+        streamingContent.value = content.slice(0, idx) + content.slice(idx + draft.length)
+      }
+      // 回撤草稿自成一轮：封口当前增量轮，后续 reasoning delta 不会拼进草稿里
+      closeReasoningRound()
       streamingReasoning.value.push(draft)
     },
     // 后端在 send_message 确认制下推送的待确认载荷，随本轮 assistant 消息落位
@@ -525,12 +552,15 @@ const doStream = (message: string) => {
       streamingPending.value = info
     },
     onTool: (ev: AIToolEvent) => {
+      closeReasoningRound()
       upsertToolCall(ev)
     },
     onComplete: () => {
       // pending 确认条不依赖正文：模型只调 send_message 未回文本时也必须落位，
-      // 否则服务端 pending 记录 10 分钟后过期、用户永远看不到待确认内容
-      if (streamingContent.value || streamingPending.value || streamingToolCalls.value.length) {
+      // 否则服务端 pending 记录 10 分钟后过期、用户永远看不到待确认内容。
+      // 纯思考回合（有 reasoning 无正文/工具/pending）同样落位——思考过程
+      // 已实时展示给用户，不落库会在流结束后整段消失。
+      if (streamingContent.value || streamingPending.value || streamingToolCalls.value.length || streamingReasoning.value.length) {
         const msg: ChatMsg = {
           role: 'assistant',
           content: streamingContent.value,
@@ -907,6 +937,8 @@ const autoResize = () => {
 .ai-sidebar-messages {
   flex: 1;
   overflow-y: auto;
+  /* 兜底：任何溢出内容都不产生横向滚动（配合 .ai-msg min-width:0 + 内容 anywhere 断行） */
+  overflow-x: hidden;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -1016,6 +1048,9 @@ const autoResize = () => {
   display: flex;
   flex-direction: column;
   max-width: 88%;
+  /* 允许收缩到内容最小宽度以下：否则 pre 里一条长代码行/长 URL 的 min-content
+     会把整条消息撑到几百 px 宽，消息区出现横向滚动条（flex 项默认 min-width:auto） */
+  min-width: 0;
   animation: msgIn 0.25s ease;
 }
 
@@ -1042,6 +1077,12 @@ const autoResize = () => {
   word-break: break-word;
 }
 
+/* anywhere（而非 break-word）会参与 min-content 宽度计算：长 URL/长 token 的固有
+   最小宽度得以塌缩，配合 .ai-msg 的 min-width:0 让消息能收缩、不撑出横向滚动 */
+.ai-msg-content {
+  overflow-wrap: anywhere;
+}
+
 .ai-msg.user .ai-msg-bubble {
   background: var(--primary-color, #6366f1);
   color: #fff;
@@ -1049,7 +1090,11 @@ const autoResize = () => {
 }
 
 .ai-msg.assistant .ai-msg-bubble {
-  background: var(--hover-color, #f3f4f6);
+  /* 卡片式：与面板同底色，靠描边+微阴影分层——避免灰底大色块把思考过程/
+     表格/正文糊成一片（亮暗主题都走 card-bg + border，跟随主题变量） */
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   color: var(--text-color, #1f2937);
   border-bottom-left-radius: 4px;
 }
@@ -1060,9 +1105,11 @@ const autoResize = () => {
 
 /* ── 思考过程（工具回合草稿）：折叠块，置于气泡内答案上方 ── */
 .reasoning-block {
-  margin: -2px -4px 8px;
-  padding: 0 4px;
-  border-left: 2px solid color-mix(in srgb, var(--primary-color, #6366f1) 35%, transparent);
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--text-secondary, #6b7280) 7%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--primary-color, #6366f1) 45%, transparent);
+  border-radius: 6px;
 }
 
 .reasoning-toggle {
@@ -1097,20 +1144,18 @@ const autoResize = () => {
 }
 
 .reasoning-round {
-  margin: 6px 0 2px;
-  padding: 6px 8px;
+  margin: 4px 0;
+  padding: 0;
   white-space: pre-wrap;
   color: var(--text-secondary, #6b7280);
   font-size: var(--font-size-xs);
   line-height: 1.6;
-  background: color-mix(in srgb, var(--text-secondary, #6b7280) 6%, transparent);
-  border-radius: 8px;
-  max-height: 160px;
-  overflow-y: auto;
 }
 
 .reasoning-round + .reasoning-round {
-  margin-top: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed color-mix(in srgb, var(--border-color, #e5e7eb) 80%, transparent);
 }
 
 /* Error message */
