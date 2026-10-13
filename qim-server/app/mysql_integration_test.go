@@ -3,6 +3,7 @@ package app_test
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -117,10 +118,12 @@ func TestMySQL_MigrateDB_KeyTablesAndIndexes(t *testing.T) {
 	require.True(t, indexExists("messages", "ft_messages_content"), "messages FULLTEXT 索引缺失")
 	require.True(t, database.D.SupportsFulltext(), "MySQL 应支持 FULLTEXT")
 
-	// ngram 解析器是中文搜索命中的前提：索引必须带 WITH PARSER ngram（旧索引会被迁移重建）
-	var createSQL string
-	require.NoError(t, db.Raw("SHOW CREATE TABLE `messages`").Row().Scan(&createSQL, &createSQL))
-	require.Contains(t, createSQL, "WITH PARSER ngram", "FULLTEXT 索引必须使用 ngram 解析器")
+	// ngram 解析器是中文搜索命中的前提：索引必须带 WITH PARSER ngram（旧索引会被迁移重建）。
+	// MySQL 8 把 WITH PARSER 包进版本注释且解析器名带反引号，判定前先剥引号转小写。
+	var createTable, createSQL string
+	require.NoError(t, db.Raw("SHOW CREATE TABLE `messages`").Row().Scan(&createTable, &createSQL))
+	normalized := strings.ReplaceAll(strings.ToLower(createSQL), "`", "")
+	require.Contains(t, normalized, "with parser ngram", "FULLTEXT 索引必须使用 ngram 解析器")
 }
 
 // TestMySQL_MarkAsRead_InsertsReceipts 覆盖读回执的 MySQL INSERT IGNORE 方言分支：

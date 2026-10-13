@@ -109,13 +109,16 @@ func (d *mysqlDialect) CreateFulltextIndex(db *gorm.DB, table, indexName string,
 }
 
 // fulltextIndexHasNgram 检查既有 FULLTEXT 索引是否带 ngram 解析器。
-// 探测失败按无 ngram 处理，交由上层触发一次重建。
+// SHOW CREATE TABLE 的输出因方言而异：MySQL 8 会把 WITH PARSER 包进版本注释并给
+// 解析器名加反引号（`/*!50100 WITH PARSER `ngram` */`），MariaDB/TiDB 格式又各不相同，
+// 因此剥掉反引号、转小写后再做包含匹配。探测失败按无 ngram 处理，交由上层触发一次重建。
 func (d *mysqlDialect) fulltextIndexHasNgram(db *gorm.DB, table, indexName string) bool {
 	var tableName, createSQL string
 	if err := db.Raw("SHOW CREATE TABLE `"+table+"`").Row().Scan(&tableName, &createSQL); err != nil {
 		return false
 	}
-	return strings.Contains(createSQL, "WITH PARSER ngram")
+	normalized := strings.ReplaceAll(strings.ToLower(createSQL), "`", "")
+	return strings.Contains(normalized, "with parser ngram")
 }
 
 func (d *mysqlDialect) HasFulltextIndex(db *gorm.DB, table, indexName string) bool {
@@ -142,6 +145,14 @@ func (d *mysqlDialect) InitFulltext(db *gorm.DB) {
 
 	if err := db.Exec("ALTER TABLE " + probeTable + " ADD FULLTEXT INDEX __qim_ft_probe_idx (content) WITH PARSER ngram").Error; err != nil {
 		logger.WithModule("Database").Info("FULLTEXT(ngram) 不可用，将使用 LIKE 搜索", "error", err)
+		return
+	}
+
+	// 索引能建不代表 MATCH 查询语义完整：部分 MySQL 兼容的分布式库（TiDB 旧版、
+	// 分层实现等）支持 FULLTEXT DDL 但 MATCH...AGAINST 报错或行为不完整。
+	// 探测补一步真实 MATCH 查询，确保运行时搜索路径可用；失败降级 LIKE。
+	if err := db.Exec("SELECT 1 FROM " + probeTable + " WHERE MATCH(content) AGAINST(? IN BOOLEAN MODE)", "probe").Error; err != nil {
+		logger.WithModule("Database").Info("MATCH 查询验证失败（分布式库兼容性），将使用 LIKE 搜索", "error", err)
 		return
 	}
 
