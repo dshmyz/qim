@@ -2535,9 +2535,12 @@ const buildMessageHits = (rawHits: any[]): MessageHit[] => {
   hitConversationMetas.value = metas
   return rawHits.map(msg => {
     const senderName = msg.sender?.name || msg.sender?.nickname || msg.sender?.username || '未知用户'
-    // markdown 是文本类消息（AI 回复多为此类型），同样出正文片段而非类型徽标
+    // markdown 是文本类消息（AI 回复多为此类型），同样出正文片段而非类型徽标。
+    // 换行折叠为单空格：原消息的 \n\n 在单行省略渲染下会残留大段空白间隙
     const isText = msg.type === 'text' || msg.type === 'markdown'
-    const previewText = isText ? decodeToPlainText(msg.content || '') : ''
+    const previewText = isText
+      ? decodeToPlainText(msg.content || '').replace(/\s+/g, ' ').trim()
+      : ''
     // 时间戳来自 created_at（RFC3339）
     const ts = msg.created_at ? new Date(msg.created_at).getTime() : 0
     return {

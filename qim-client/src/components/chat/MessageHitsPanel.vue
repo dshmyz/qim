@@ -19,14 +19,16 @@
           :data-hit-id="hit.id"
           @click="$emit('select', hit)"
         >
-          <span class="hits-item-sender">{{ hit.senderName }}</span>
-          <span class="hits-item-body">
+          <div class="hits-item-top">
+            <span class="hits-item-sender">{{ hit.senderName }}</span>
+            <span class="hits-item-time">{{ hit.time }}</span>
+          </div>
+          <div class="hits-item-body">
             <span v-if="!isTextType(hit.type)" class="hits-item-badge">
               <i :class="typeIcon(hit.type)"></i>{{ typeLabel(hit.type) }}
             </span>
             <span class="hits-item-content" v-html="renderPreview(hit)"></span>
-          </span>
-          <span class="hits-item-time">{{ hit.time }}</span>
+          </div>
         </div>
         <button
           v-if="canLoadMore(group)"
@@ -264,9 +266,9 @@ const groups = computed<MessageHitGroup[]>(() => {
 
 .hits-item {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 7px 16px 7px 40px;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 16px 8px 40px;
   cursor: pointer;
   transition: background-color 0.15s ease;
   min-width: 0;
@@ -276,18 +278,33 @@ const groups = computed<MessageHitGroup[]>(() => {
   background-color: var(--hover-color);
 }
 
+/* 第一行：发送人（主层级）居左，时间（次要层级）钉在右端 */
+.hits-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
 .hits-item-sender {
   font-size: var(--font-size-xs);
+  font-weight: 600;
   color: var(--text-color);
-  flex-shrink: 0;
-  max-width: 72px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
+.hits-item-time {
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* 第二行：正文片段独占整行，降为次要色让关键词高亮成为视觉焦点 */
 .hits-item-body {
-  flex: 1;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -312,7 +329,7 @@ const groups = computed<MessageHitGroup[]>(() => {
 
 .hits-item-content {
   font-size: var(--font-size-xs);
-  color: var(--text-color);
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -322,6 +339,7 @@ const groups = computed<MessageHitGroup[]>(() => {
 .hits-item-content :deep(mark) {
   background: var(--primary-light, #ffe58f);
   color: inherit;
+  font-weight: 600;
   padding: 0 1px;
   border-radius: 2px;
 }
