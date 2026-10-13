@@ -305,7 +305,7 @@ const {
 
 const uploadStore = useUploadStore()
 const { tasks } = useFileUpload()
-const { downloadFile } = useFileDownload()
+const { downloadFile, saveFileAs } = useFileDownload()
 
 const fileListRef = ref<InstanceType<typeof FileList> | null>(null)
 const folderTreeRef = ref<InstanceType<typeof FolderTree> | null>(null)
@@ -427,7 +427,7 @@ const closePreviewModal = () => {
 
 const handleFileDownload = async (file: FileItem) => {
   try {
-    await downloadFile(file)
+    await saveFileAs(file)
   } catch (e) {
     QMessage.error('文件下载失败')
   }

@@ -4,8 +4,9 @@ import { createPinia, setActivePinia } from 'pinia'
 import MessageManager from '@/components/chat/MessageManager.vue'
 import { messageApi } from '@/api/message'
 import QMessage from '@/utils/qmessage'
-import { downloadUrl } from '@/utils/download'
 import { closeMenu, computeContextMenuPosition } from '@/composables/useUI'
+
+const { startFileDownload } = vi.hoisted(() => ({ startFileDownload: vi.fn() }))
 
 vi.mock('@/api/message', () => ({
   messageApi: {
@@ -22,8 +23,8 @@ vi.mock('@/utils/qmessage', () => ({
   },
 }))
 
-vi.mock('@/utils/download', () => ({
-  downloadUrl: vi.fn(),
+vi.mock('@/composables/useFileDownload', () => ({
+  useFileDownload: () => ({ downloadFile: startFileDownload, saveFileAs: vi.fn() }),
 }))
 
 vi.mock('@/composables/useServerUrl', () => ({
@@ -729,7 +730,7 @@ describe('MessageManager', () => {
           sender: { id: 1, name: 'Alice', avatar: '' },
         },
       ])
-      ;(downloadUrl as any).mockResolvedValue({ mode: 'browser' })
+      startFileDownload.mockResolvedValueOnce(null)
 
       const wrapper = mount(MessageManager, {
         props: {
@@ -757,10 +758,10 @@ describe('MessageManager', () => {
 
       await wrapper.find('.image-preview-download').trigger('click')
 
-      expect(downloadUrl).toHaveBeenCalledWith({
+      expect(startFileDownload).toHaveBeenCalledWith({
+        name: 'photo.jpg',
         url: 'http://localhost:3000/uploads/photo.jpg',
-        filename: 'photo.jpg',
-        token: 'token-1',
+        fallbackUrl: undefined,
       })
 
       wrapper.unmount()
@@ -777,7 +778,7 @@ describe('MessageManager', () => {
           sender: { id: 1, name: 'Alice', avatar: '' },
         },
       ])
-      ;(downloadUrl as any).mockResolvedValue({ mode: 'browser' })
+      startFileDownload.mockResolvedValueOnce(null)
 
       const wrapper = mount(MessageManager, {
         props: {
@@ -805,10 +806,11 @@ describe('MessageManager', () => {
 
       await wrapper.findAll('.ucm-item')[1].trigger('click')
 
-      expect(downloadUrl).toHaveBeenCalledWith({
+      expect(startFileDownload).toHaveBeenCalledWith({
+        name: 'report.pdf',
         url: 'http://localhost:3000/uploads/report.pdf',
-        filename: 'report.pdf',
-        token: 'token-1',
+        fallbackUrl: undefined,
+        downloadId: '1',
       })
 
       wrapper.unmount()

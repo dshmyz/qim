@@ -297,6 +297,7 @@ import { fetchUserProfile } from '../../composables/useUserProfileInfo'
 import { useChatState } from '../../composables/useChatState'
 import { useAIActions } from '../../composables/useAIActions'
 import { useSlashCommandPanelEnabled } from '../../composables/useSlashCommandPanelEnabled'
+import { useFileDownload } from '../../composables/useFileDownload'
 import { useAvatarDraftApproval } from '../../composables/useAvatarDraftApproval'
 import { getAvatarUrl, generateAvatar } from '../../utils/avatar'
 // AI 快捷键已移至 Main.vue（全局生效）
@@ -3009,6 +3010,24 @@ const resolveStorageUrl = (parsedContent: any): string => {
   return stored.startsWith('http') ? stored : `${server}/${stored.replace(/^\//, '')}`
 }
 
+// 统一下载入口：Electron 主进程流式写盘 + 浏览器 fetch+blob 回退，见 useFileDownload
+const fileDownloader = useFileDownload()
+
+// 解析聊天文件消息的下载目标（文件名 + 授权下载 URL + 声明大小）；URL 为空返回 null
+const parseDownloadTarget = (fileContent: string): { name: string; url: string; size: number; raw: any } | null => {
+  const parsedContent = JSON.parse(fileContent)
+  const name = parsedContent.name || parsedContent.fileName || parsedContent.url?.split('/').pop() || '文件'
+  const url = resolveFileUrl(parsedContent)
+  if (!url) return null
+  return { name, url, size: Number(parsedContent.size) || 0, raw: parsedContent }
+}
+
+// 可选的存储直链回退（迁移数据 content.id 失效时 id 接口 400/404，用 content.url 重试）
+const downloadFallback = (parsedContent: any, fileUrl: string): string | undefined => {
+  const fallback = resolveStorageUrl(parsedContent)
+  return fallback && fallback !== fileUrl ? fallback : undefined
+}
+
 const downloadFile = async (fileContent: string, messageId?: string) => {
   // 并发锁：同一消息正在下载/save-as 尚未结束时，忽略重复点击，避免重复发起丢进度事件
   const lockKey = messageId ? String(messageId) : ''
@@ -3017,59 +3036,29 @@ const downloadFile = async (fileContent: string, messageId?: string) => {
     return
   }
   try {
-    const parsedContent = JSON.parse(fileContent)
-    const finalFileName = parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
-    let fileUrl = resolveFileUrl(parsedContent)
-
-    if (!fileUrl) {
+    const target = parseDownloadTarget(fileContent)
+    if (!target) {
       $message.error('文件URL为空，无法下载')
       return
     }
-
-    // Electron：交给主进程用内置下载管理器流式写盘，避免大文件整块读入内存
-    if (window.electron?.ipcRenderer) {
-      if (lockKey) {
-        beginDownload(lockKey)
-        downloadProgress.value[lockKey] = 0
-      }
-      const fallback = resolveStorageUrl(parsedContent)
-      window.electron.ipcRenderer.send('download-file', {
-        url: fileUrl,
-        token: getToken() || '',
-        fileName: finalFileName,
-        saveDir: props.messageSettings?.defaultSaveDirectory,
-        downloadId: lockKey || undefined,
-        fallbackUrl: fallback && fallback !== fileUrl ? fallback : undefined
-      })
-      return
-    }
-
-    // 浏览器环境：fetch + blob 直链下载
-    const response = await fetch(fileUrl, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
-      }
+    const downloadId = await fileDownloader.downloadFile({
+      name: target.name,
+      size: target.size,
+      url: target.url,
+      fallbackUrl: downloadFallback(target.raw, target.url),
+      downloadId: lockKey || undefined,
+      saveDir: props.messageSettings?.defaultSaveDirectory
     })
-    if (!response.ok) {
-      $message.error(response.status === 403 ? '文件下载失败: 权限不足，请检查您的权限' : '文件下载失败: 服务器错误')
-      return
+    if (downloadId && lockKey) {
+      beginDownload(lockKey)
+      // 立即播种 0：FileMessage.isDownloading 依赖该键存在才渲染进度条，
+      // 等首个进度事件会让"已点击、尚未有响应"的窗口期没有反馈
+      downloadProgress.value[lockKey] = 0
     }
-    const blob = await response.blob()
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = finalFileName
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    window.URL.revokeObjectURL(url)
-    $message.success(`文件 ${finalFileName} 已下载到默认目录`)
-  } catch (error) {
+  } catch (error: any) {
     logger.error('文件下载失败:', error)
     if (lockKey) endDownload(lockKey)
-    $message.error('文件下载失败: 网络错误')
+    $message.error('文件下载失败: ' + (error?.message || '网络错误'))
   }
 }
 
@@ -3081,61 +3070,26 @@ const saveFileAs = async (fileContent: string, messageId?: string) => {
     return
   }
   try {
-    const parsedContent = JSON.parse(fileContent)
-    const finalFileName = parsedContent.name || parsedContent.fileName || parsedContent.url.split('/').pop() || '文件'
-    let fileUrl = resolveFileUrl(parsedContent)
-
-    if (!fileUrl) {
+    const target = parseDownloadTarget(fileContent)
+    if (!target) {
       $message.error('文件URL为空，无法保存')
       return
     }
-
-    // Electron：先弹保存对话框，用户确认后才开始下载（避免"还没选文件夹就开始下载"的困惑）
-    if (window.electron?.ipcRenderer) {
-      const dialogResult = await window.electron.ipcRenderer.invoke('show-save-dialog', { defaultPath: finalFileName })
-      if (dialogResult.canceled || !dialogResult.filePath) return
-
-      if (lockKey) {
-        beginDownload(lockKey)
-        downloadProgress.value[lockKey] = 0
-      }
-      const fallback = resolveStorageUrl(parsedContent)
-      window.electron.ipcRenderer.send('save-file-as', {
-        url: fileUrl,
-        token: getToken() || '',
-        fileName: finalFileName,
-        savePath: dialogResult.filePath,
-        downloadId: lockKey || undefined,
-        fallbackUrl: fallback && fallback !== fileUrl ? fallback : undefined
-      })
-      return
-    }
-
-    // 浏览器环境：fetch + blob 直链下载
-    const response = await fetch(fileUrl, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        ...(getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {})
-      }
+    const downloadId = await fileDownloader.saveFileAs({
+      name: target.name,
+      size: target.size,
+      url: target.url,
+      fallbackUrl: downloadFallback(target.raw, target.url),
+      downloadId: lockKey || undefined
     })
-    if (!response.ok) {
-      $message.error(response.status === 403 ? '文件保存失败: 权限不足，请检查您的权限' : '文件保存失败: 服务器错误')
-      return
+    if (downloadId && lockKey) {
+      beginDownload(lockKey)
+      downloadProgress.value[lockKey] = 0
     }
-    const blob = await response.blob()
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = finalFileName
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    window.URL.revokeObjectURL(url)
-    $message.success(`文件 ${finalFileName} 已保存`)
-  } catch (error) {
+  } catch (error: any) {
     logger.error('文件保存失败:', error)
-    $message.error('文件保存失败: 网络错误')
+    if (lockKey) endDownload(lockKey)
+    $message.error('文件保存失败: ' + (error?.message || '网络错误'))
   }
 }
 

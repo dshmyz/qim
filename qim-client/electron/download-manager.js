@@ -14,6 +14,9 @@ export class DownloadManager {
     this.getDownloadsDir = getDownloadsDir || (() => '')
     this.counter = 0
     this.active = new Set()
+    // 正在写入的目标路径集合：同一文件并发下载会双流交错写坏文件（active 只按
+    // downloadId 去重，双击/批量重名时 id 不同但 target 相同），按路径兜底拦截。
+    this.activeTargets = new Set()
   }
 
   start({ url, token, fileName, saveDir, savePath, downloadId, fallbackUrl, onProgress, onDone }) {
@@ -31,7 +34,13 @@ export class DownloadManager {
       onDone(id, { success: false, error: err?.message || '无法创建保存目录' })
       return id
     }
+    if (this.activeTargets.has(target)) {
+      // 直接拒绝且不清理：target 正被首个下载写入，cleanupPartial 会删掉它的半成品
+      onDone(id, { success: false, error: '该文件正在下载中' })
+      return id
+    }
     this.active.add(id)
+    this.activeTargets.add(target)
     this.requestWithRedirects({ url, token, target, downloadId: id, fallbackUrl, fallbackUsed: false, onProgress, onDone, redirects: 0 })
     return id
   }
@@ -146,12 +155,14 @@ export class DownloadManager {
 
   succeed(downloadId, target, onProgress, onDone, received, total) {
     this.active.delete(downloadId)
+    this.activeTargets.delete(target)
     onProgress(downloadId, 100, received, total, 'completed')
     onDone(downloadId, { success: true, filePath: target })
   }
 
   fail(downloadId, target, onProgress, onDone, err) {
     this.active.delete(downloadId)
+    this.activeTargets.delete(target)
     cleanupPartial(target)
     const message = err?.message || '下载失败'
     onProgress(downloadId, 0, 0, 0, 'interrupted')

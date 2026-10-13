@@ -100,10 +100,7 @@ export const fileApi = {
     })
   },
 
-  // 下载文件
-  downloadFile(fileId: number) {
-    return api.get(`/api/v1/files/${fileId}/download`, { responseType: 'blob' })
-  },
+  // 下载文件统一走 useFileDownload（流式写盘 + 进度），此处不再提供 blob 下载方法
 
   // 预览文件（inline 模式，复用 download 接口）
   previewFile(fileId: number, thumbnail = false) {

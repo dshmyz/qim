@@ -53,6 +53,22 @@ describe('MemberSidebar member filtering', () => {
     expect(wrapper.text()).not.toContain('软删成员')
     expect(wrapper.text()).not.toContain('已删成员')
   })
+
+  it('matches members by username as well as name', () => {
+    const wrapper = mountSidebar({
+      isExpanded: true,
+      showSearch: true,
+      searchQuery: 'zhang.san',
+      members: [
+        { id: 'u1', name: '张三', avatar: '', role: 'member' as const, username: 'zhang.san' },
+        { id: 'u2', name: '李四', avatar: '', role: 'member' as const, username: 'li.si' },
+      ],
+    })
+
+    expect(wrapper.findAll('.member-item')).toHaveLength(1)
+    expect(wrapper.text()).toContain('张三')
+    expect(wrapper.text()).not.toContain('李四')
+  })
 })
 
 describe('MemberSidebar collapsed state', () => {

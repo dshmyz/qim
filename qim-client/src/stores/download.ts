@@ -44,8 +44,8 @@ export const useDownloadStore = defineStore('download', () => {
     return Math.round((receivedSize / totalSize) * 100)
   })
 
-  function addTask({ fileName, size }: { fileName: string; size: number }): string {
-    const downloadId = generateDownloadId()
+  function addTask({ fileName, size, downloadId: explicitId }: { fileName: string; size: number; downloadId?: string }): string {
+    const downloadId = explicitId || generateDownloadId()
     const task: DownloadTask = {
       downloadId,
       fileName,

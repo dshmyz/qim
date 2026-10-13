@@ -269,9 +269,8 @@ import QMessage from '../../utils/qmessage'
 import QMessageBox from '../../utils/qmessagebox'
 import { messageApi } from '../../api/message'
 import { getStoredServerUrl } from '../../composables/useServerUrl'
-import { getToken } from '../../composables/useRequest'
 import { parseContent } from '../../utils/mentions'
-import { downloadUrl } from '../../utils/download'
+import { useFileDownload } from '../../composables/useFileDownload'
 import { resolveMessageDisplay } from '../../utils/messageDisplay'
 import { previewTextToHtml } from '../../utils/emoji'
 import MarkdownMessage from '../message/MarkdownMessage.vue'
@@ -509,36 +508,31 @@ const parseContentId = (content: string): number => {
   }
 }
 
-const downloadMedia = async (url: string, filename: string, successMessage: string, errorMessage: string, fallbackUrl?: string) => {
-  if (!url) {
-    QMessage.error(errorMessage)
-    return
-  }
-  try {
-    await downloadUrl({
-      url,
-      filename,
-      token: getToken(),
-      fallbackUrl,
-    })
-    QMessage.success(successMessage)
-  } catch (error) {
-    console.error(errorMessage, error)
-    QMessage.error(errorMessage)
-  }
-}
+// 统一下载入口（Electron 主进程流式写盘；浏览器 fetch+blob 回退）
+const { downloadFile: startFileDownload } = useFileDownload()
 
 // 下载文件（id 接口 400/404 时回退到 content.url 指向的存储文件）
 const downloadFile = async (message: any) => {
   const primary = resolveDownloadUrl(message)
   const fallback = resolveMediaUrl(message)
-  await downloadMedia(
-    primary,
-    getFileName(message),
-    '文件下载已开始',
-    '文件下载失败',
-    fallback && fallback !== primary ? fallback : undefined
-  )
+  if (!primary) {
+    QMessage.error('文件下载失败')
+    return
+  }
+  try {
+    const downloadId = await startFileDownload({
+      name: getFileName(message),
+      url: primary,
+      fallbackUrl: fallback && fallback !== primary ? fallback : undefined,
+      downloadId: message?.id != null ? String(message.id) : undefined
+    })
+    // Electron 返回 downloadId（后台进行，进度见下载管理器）；浏览器返回 null = 已同步完成
+    if (downloadId) QMessage.success('文件下载已开始')
+    else QMessage.success('文件已下载')
+  } catch (error) {
+    console.error('文件下载失败', error)
+    QMessage.error('文件下载失败')
+  }
 }
 
 // 预览图片
@@ -576,7 +570,19 @@ const downloadImage = async () => {
   const url = previewImageDownloadUrl.value || previewImageUrl.value
   if (!url) return
   const fb = previewImageUrl.value && previewImageUrl.value !== url ? previewImageUrl.value : undefined
-  await downloadMedia(url, previewImageFilename.value, '图片下载已开始', '图片下载失败', fb)
+  try {
+    const downloadId = await startFileDownload({
+      name: previewImageFilename.value || 'image.png',
+      url,
+      fallbackUrl: fb
+    })
+    // Electron 返回 downloadId（后台进行）；浏览器返回 null = 已同步完成
+    if (downloadId) QMessage.success('图片下载已开始')
+    else QMessage.success('图片已下载')
+  } catch (error) {
+    console.error('图片下载失败', error)
+    QMessage.error('图片下载失败')
+  }
 }
 
 // 获取文件名

@@ -61,8 +61,10 @@ export const groupFiles = {
     })
   },
 
-  download(groupId: string | number, fileId: number) {
-    return api.get(`/api/v1/groups/${groupId}/files/${fileId}/download`, { responseType: 'blob' })
+  // 群作用域下载地址（不再是请求方法）：群成员下载他人上传的文件必须走这里，
+  // /files/{id}/download 仅限文件所有者；实际下载统一走 useFileDownload
+  downloadUrl(groupId: string | number, fileId: number) {
+    return `/api/v1/groups/${groupId}/files/${fileId}/download`
   },
 
   move(groupId: string | number, fileId: number, folderId: number | null) {

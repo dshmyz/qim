@@ -197,8 +197,9 @@ const filteredMembers = computed(() => {
   
   if (props.searchQuery) {
     const query = props.searchQuery.toLowerCase()
-    members = members.filter(member => 
-      (member.name || '').toLowerCase().includes(query)
+    members = members.filter(member =>
+      (member.name || '').toLowerCase().includes(query) ||
+      (member.username || '').toLowerCase().includes(query)
     )
   }
   

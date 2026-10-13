@@ -271,6 +271,54 @@ describe('DownloadManager', () => {
     expect(second.success).toBe(false)
   })
 
+  it('rejects concurrent downloads targeting the same file path (different ids)', async () => {
+    const { fn, requests } = makeRequestFn()
+    // 固定目录：p1/p2/p3 必须解析到同一个目标路径才能触发/释放去重
+    const dir = tmpDir()
+    const manager = new DownloadManager({ requestFn: fn, getDownloadsDir: () => dir })
+
+    // 第一个下载发起但尚未收到响应，占用目标路径
+    const first = runDownload(manager, { downloadId: 'p1' })
+    const res1 = makeResponse(200, { 'content-length': '2' })
+    requests[0].emit('response', res1)
+
+    // 同名文件、不同 downloadId 的第二次下载 → 按目标路径拒绝
+    const second = new Promise<any>((resolve) => {
+      manager.start({
+        url: 'http://localhost:8080/api/v1/files/9/download',
+        fileName: 'a.txt',
+        downloadId: 'p2',
+        onProgress: () => {},
+        onDone: (_id: string, r: any) => resolve(r)
+      })
+    })
+    const r2 = await second
+    expect(r2.success).toBe(false)
+    expect(r2.error).toBe('该文件正在下载中')
+
+    // 首个下载完成后释放路径，同名下载可再次进行
+    res1.write('ok')
+    res1.end()
+    const { result } = await first.done
+    expect(result.success).toBe(true)
+
+    const third = new Promise<any>((resolve) => {
+      manager.start({
+        url: 'http://localhost:8080/api/v1/files/9/download',
+        fileName: 'a.txt',
+        downloadId: 'p3',
+        onProgress: () => {},
+        onDone: (_id: string, r: any) => resolve(r)
+      })
+    })
+    const res3 = makeResponse(200, { 'content-length': '2' })
+    requests[1].emit('response', res3)
+    res3.write('hi')
+    res3.end()
+    const r3 = await third
+    expect(r3.success).toBe(true)
+  })
+
   it('prioritizes savePath and sanitizes fileName to prevent traversal', () => {
     const dl = tmpDir()
     const manager = new DownloadManager({ requestFn: () => { throw new Error('unused') }, getDownloadsDir: () => dl })

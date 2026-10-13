@@ -290,6 +290,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import QMessage from '../../utils/qmessage'
 import { groupFiles, type GroupFile, type GroupFolder } from '../../api/groupFiles'
 import { uploadFilesWithLimit } from '../../composables/useFileUpload'
+import { useFileDownload } from '../../composables/useFileDownload'
 import UploadProgressBar from '../common/UploadProgressBar.vue'
 import Tooltip from '../shared/Tooltip.vue'
 
@@ -541,13 +542,11 @@ const batchDownload = async () => {
     for (const id of ids) {
       const file = files.value.find(f => f.id === id)
       try {
-        const response = await groupFiles.download(props.groupId, id)
-        const url = URL.createObjectURL(response.data)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = file?.name || `file-${id}`
-        link.click()
-        URL.revokeObjectURL(url)
+        await startFileDownload({
+          name: file?.name || `file-${id}`,
+          size: file?.size,
+          url: groupFiles.downloadUrl(props.groupId, id)
+        })
         success++
       } catch {
         failed++
@@ -683,18 +682,15 @@ const onDrop = async (e: DragEvent) => {
   await uploadFiles(files)
 }
 
-const download = async (file: GroupFile) => {
-  try {
-    const response = await groupFiles.download(props.groupId, file.id)
-    const url = URL.createObjectURL(response.data)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = file.name
-    link.click()
-    URL.revokeObjectURL(url)
-  } catch (error: any) {
-    QMessage.error(error?.message || '下载群文件失败')
-  }
+// 统一下载入口：群成员下载他人上传的文件必须走群作用域接口（/files/{id}/download 仅限文件所有者）
+const { downloadFile: startFileDownload } = useFileDownload()
+
+const download = (file: GroupFile) => {
+  startFileDownload({
+    name: file.name,
+    size: file.size,
+    url: groupFiles.downloadUrl(props.groupId, file.id)
+  }).catch(() => QMessage.error('下载群文件失败'))
 }
 
 const uploaderName = (file: GroupFile) => file.uploader?.name || `用户 ${file.user_id}`

@@ -3,18 +3,23 @@ import { describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import GroupFilesPanel from '@/components/groups/GroupFilesPanel.vue'
 
-const { list, attach, createFolder, download, shareReference, remove } = vi.hoisted(() => ({
+const { list, attach, createFolder, downloadUrl, shareReference, remove, startFileDownload } = vi.hoisted(() => ({
   list: vi.fn(() => Promise.resolve({ data: { data: { files: [], folders: [], total: 0, page: 1, page_size: 20 } } })),
   attach: vi.fn(),
   createFolder: vi.fn(),
-  download: vi.fn(),
+  downloadUrl: vi.fn((groupId: number, fileId: number) => `/api/v1/groups/${groupId}/files/${fileId}/download`),
   shareReference: vi.fn(),
   remove: vi.fn(),
+  startFileDownload: vi.fn(),
 }))
 const { uploadFile } = vi.hoisted(() => ({ uploadFile: vi.fn() }))
 
 vi.mock('@/api/groupFiles', () => ({
-  groupFiles: { list, attach, createFolder, download, shareReference, remove },
+  groupFiles: { list, attach, createFolder, downloadUrl, shareReference, remove },
+}))
+
+vi.mock('@/composables/useFileDownload', () => ({
+  useFileDownload: () => ({ downloadFile: startFileDownload, saveFileAs: vi.fn() }),
 }))
 
 vi.mock('@/composables/useFileUpload', () => ({
@@ -72,19 +77,23 @@ describe('GroupFilesPanel', () => {
     expect(wrapper.get('[role="dialog"] h3').text()).toBe('新建文件夹')
   })
 
-  it('downloads files through the group-scoped endpoint', async () => {
+  it('downloads files through the unified downloader with the group-scoped URL', async () => {
     list.mockResolvedValueOnce({ data: { data: {
       files: [{ id: 9, user_id: 1, name: 'report.txt', size: 3, created_at: '2026-07-18T00:00:00Z' }],
       folders: [], total: 1, page: 1, page_size: 20,
     } } })
-    download.mockResolvedValueOnce({ data: new Blob(['report']) })
+    startFileDownload.mockResolvedValueOnce('download_1')
     const wrapper = mount(GroupFilesPanel, { props: { groupId: 7, canManage: false } })
     await flushPromises()
 
     await wrapper.find('.gfp-table__actions button').trigger('click')
     await flushPromises()
 
-    expect(download).toHaveBeenCalledWith(7, 9)
+    expect(startFileDownload).toHaveBeenCalledWith({
+      name: 'report.txt',
+      size: 3,
+      url: '/api/v1/groups/7/files/9/download',
+    })
   })
 
   it('shares a chat attachment using its message and file IDs', async () => {
