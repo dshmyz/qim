@@ -60,17 +60,30 @@ func TestBuildMessageResponse_BroadcastWS(t *testing.T) {
 	assert.False(t, hasAtMention, "WS 广播不应输出 is_at_mention（per-user 字段）")
 }
 
-// HTTP 场景：per-user 已读（发送者自己恒已读）+ is_at_mention 计算。
+// HTTP 场景：per-user 已读 + is_at_mention 计算。
+// is_read 语义按消息归属分叉：他人消息=「当前用户是否读过」（回执集判定）；
+// 自己发的消息=「对方是否读过」（已读回执徽章/消息提醒依赖），保留全局 msg.IsRead，
+// 不得恒 true——否则历史回放会把没人读过的消息显示为已读（回归见 7e0a2f43）。
 func TestBuildMessageResponse_HTTPPerUser(t *testing.T) {
 	msg := model.Message{ID: 1, SenderID: 2, IsRead: false, Origin: "user", Sender: model.User{ID: 2}}
 
-	// 自己发的消息：有回执上下文时恒已读
+	// 自己发的消息、对方未读：按全局 msg.IsRead，不得因有回执上下文而恒已读
 	resp := BuildMessageResponse(msg, MessageResponseOptions{
 		CurrentUserID: 2,
 		AllMemberIDs:  []uint{2, 3},
 		UserReadSet:   map[uint]bool{},
 	})
-	assert.True(t, resp["is_read"].(bool), "发送者自己的消息应恒已读")
+	assert.False(t, resp["is_read"].(bool), "自己发的消息对方未读时应未读（不能恒已读）")
+
+	// 自己发的消息、已有人读过（全局缓存 true）：显示已读
+	readMsg := msg
+	readMsg.IsRead = true
+	respRead := BuildMessageResponse(readMsg, MessageResponseOptions{
+		CurrentUserID: 2,
+		AllMemberIDs:  []uint{2, 3},
+		UserReadSet:   map[uint]bool{},
+	})
+	assert.True(t, respRead["is_read"].(bool), "自己发的消息有人读过时应已读")
 
 	// 他人发的消息：按回执判定
 	resp2 := BuildMessageResponse(msg, MessageResponseOptions{
@@ -79,6 +92,14 @@ func TestBuildMessageResponse_HTTPPerUser(t *testing.T) {
 		UserReadSet:   map[uint]bool{},
 	})
 	assert.False(t, resp2["is_read"].(bool), "无回执时应未读")
+
+	// 他人发的消息、当前用户已有回执：已读
+	resp2Read := BuildMessageResponse(msg, MessageResponseOptions{
+		CurrentUserID: 3,
+		AllMemberIDs:  []uint{2, 3},
+		UserReadSet:   map[uint]bool{1: true},
+	})
+	assert.True(t, resp2Read["is_read"].(bool), "有回执时应已读")
 
 	// 无回执上下文（如 SendMessage 响应）：回退 msg.IsRead
 	resp3 := BuildMessageResponse(msg, MessageResponseOptions{CurrentUserID: 2, AllMemberIDs: []uint{2, 3}})

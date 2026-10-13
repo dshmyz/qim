@@ -2031,11 +2031,15 @@ func BuildMessageResponse(msg model.Message, opts MessageResponseOptions) map[st
 	}
 
 	// per-user / per-channel 已读
+	// 语义按消息归属分叉：他人消息的 is_read 是"当前用户是否读过"（per-user 未读判定）；
+	// 自己发的消息的 is_read 是"对方是否读过"（已读回执），保留全局 msg.IsRead 缓存
+	// （MarkAsRead 中非发送者读者置 true），不能恒 true——否则历史回放会把没人读过的
+	// 消息显示为已读，同时误隐藏单聊"消息提醒"入口。
 	isRead := msg.IsRead
 	if opts.BroadcastWS {
 		isRead = false
-	} else if opts.UserReadSet != nil {
-		isRead = opts.CurrentUserID > 0 && (msg.SenderID == opts.CurrentUserID || opts.UserReadSet[msg.ID])
+	} else if opts.UserReadSet != nil && msg.SenderID != opts.CurrentUserID {
+		isRead = opts.CurrentUserID > 0 && opts.UserReadSet[msg.ID]
 	}
 
 	senderType := msg.Sender.Type
