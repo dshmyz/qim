@@ -613,6 +613,10 @@ func (h *AIHandler) streamCompletionWithTools(c *gin.Context, messages []ai.Mess
 				if chunk.MoveToReasoning != "" {
 					return write(ai.StreamChunk{MoveToReasoning: chunk.MoveToReasoning})
 				}
+				// 推理模型思考 delta：透传给前端思考区实时展示
+				if chunk.ReasoningContent != "" {
+					return write(ai.StreamChunk{ReasoningContent: chunk.ReasoningContent})
+				}
 				// final 回合内容逐 token 实时流出（真·打字机）
 				if chunk.Content != "" {
 					return write(ai.StreamChunk{Content: chunk.Content})

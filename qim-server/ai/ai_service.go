@@ -648,6 +648,13 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 			if chunk.Finish != nil {
 				stepFinish = *chunk.Finish
 			}
+			if chunk.ReasoningContent != "" {
+				// 推理模型的思考 delta（reasoning_content）：与正文分通道透传给前端思考区，
+				// 不进 bufContent（非答案）、不进 workMsgs（模型自己的上下文无需回喂）。
+				if chunkErr := onChunk(StreamChunk{ReasoningContent: chunk.ReasoningContent}); chunkErr != nil {
+					return chunkErr
+				}
+			}
 			if chunk.Content != "" {
 				bufContent.WriteString(chunk.Content)
 				// final 回合实时转发：逐 token 打字。工具回合罕见的前置正文亦会流出（见函数注释取舍）。

@@ -23,6 +23,8 @@ interface StreamOptions {
   // 收到思考草稿回撤帧时回调：draft 此前已随 onChunk 流出，现确认为工具回合的思考草稿
   // 而非最终答案——调用方应把它从答案文本中精确切除并移入「思考过程」区
   onReasoning?: (draft: string) => void
+  // 推理模型思考 delta（reasoning_content）：增量到达，直接追加进「思考过程」区
+  onReasoningDelta?: (delta: string) => void
 }
 
 // 工具调用进度事件：与后端 ai.ToolEvent 对齐（SSE tool_event 帧），
@@ -44,6 +46,7 @@ interface StreamChunk {
   tool_event?: AIToolEvent
   content?: string
   move_to_reasoning?: string
+  reasoning_content?: string
   finish?: 'stop'
 }
 
@@ -60,6 +63,9 @@ function handleChunk(chunk: StreamChunk, options: StreamOptions): 'stop' | null 
   }
   if (chunk.move_to_reasoning) {
     options.onReasoning?.(chunk.move_to_reasoning)
+  }
+  if (chunk.reasoning_content) {
+    options.onReasoningDelta?.(chunk.reasoning_content)
   }
   if (chunk.content) {
     options.onChunk(chunk.content)

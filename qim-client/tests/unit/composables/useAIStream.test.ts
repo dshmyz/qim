@@ -72,6 +72,30 @@ describe('useAIStream', () => {
     expect(drafts).toEqual(['我先查一下待办…'])
   })
 
+  it('reasoning_content 增量透传给 onReasoningDelta，不进 onChunk（原生思考通道）', async () => {
+    const contents: string[] = []
+    let reasoning = ''
+    global.fetch = vi.fn().mockResolvedValueOnce(sseResponse([
+      { reasoning_content: '用户在问待办，' },
+      { reasoning_content: '先调用 list_tasks 查询' },
+      { content: '你共有 4 条任务' },
+      { finish: 'stop' },
+    ]))
+
+    const { stream } = useAIStream()
+    await stream({
+      url: 'http://localhost/api',
+      body: {},
+      onChunk: c => contents.push(c),
+      onReasoningDelta: d => { reasoning += d },
+      onComplete: () => {},
+      onError: () => {},
+    })
+
+    expect(reasoning).toBe('用户在问待办，先调用 list_tasks 查询')
+    expect(contents.join('')).toBe('你共有 4 条任务')
+  })
+
   it('pending / tool_event 帧分别回调 onPending / onTool', async () => {
     const pendings: unknown[] = []
     const tools: unknown[] = []

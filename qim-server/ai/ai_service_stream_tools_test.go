@@ -12,10 +12,12 @@ import (
 // 用调用次数区分回合，模拟 ReAct「工具回合 → final 回合」。
 // preamble 非空时工具回合先吐一段前置草稿正文再吐 tool_calls，
 // 模拟部分模型调工具前输出思考文本的行为。
+// reasoning 非空时每回合先吐思考 delta（reasoning_content），模拟推理模型。
 type streamMockProvider struct {
 	BaseProvider
-	calls    int
-	preamble string
+	calls     int
+	preamble  string
+	reasoning string
 }
 
 func (p *streamMockProvider) Name() string { return "stream-mock" }
@@ -39,6 +41,14 @@ func (p *streamMockProvider) WithModel(string) Provider { return p }
 // 模拟真实流式 tool-call 解析。
 func (p *streamMockProvider) ChatStreamWithTools(_ context.Context, _ []Message, _ []ToolDef, onChunk func(chunk StreamChunk) error) error {
 	p.calls++
+	// 思考 delta（reasoning_content）：先于正文/工具调用到达
+	if p.reasoning != "" {
+		for _, piece := range []string{p.reasoning[:2], p.reasoning[2:]} {
+			if err := onChunk(StreamChunk{ReasoningContent: piece}); err != nil {
+				return err
+			}
+		}
+	}
 	if p.calls == 1 {
 		// 工具回合：可选拈权草稿正文，再吐 tool_calls 增量（arguments 分两片模拟 OpenAI 分片语义）
 		if p.preamble != "" {
@@ -202,5 +212,58 @@ func TestStreamMultiStepToolRoundPreambleRetracted(t *testing.T) {
 	answer := strings.Replace(content.String(), draft, "", 1)
 	if answer != "答案是3" {
 		t.Fatalf("expected answer '答案是3' after retracting preamble, got %q", answer)
+	}
+}
+
+// TestStreamMultiStepForwardsReasoningDeltas 验证推理模型思考 delta（reasoning_content）
+// 的透传：每个回合的思考增量原样经 onChunk 转发给前端思考区，不混入 Content/答案、
+// 不回喂模型上下文（workMsgs 无需包含）。
+func TestStreamMultiStepForwardsReasoningDeltas(t *testing.T) {
+	svc := NewAIService(&AIConfig{
+		Router: RouterConfig{Routes: map[TaskType]Route{TaskTypeChat: {Provider: "mock"}}},
+	})
+	mock := &streamMockProvider{reasoning: "用户在问待办，我先查任务列表"}
+	svc.SetProviderForTesting("mock", mock)
+	registry := NewToolRegistry(nil)
+	registry.RegisterTool(sumTool{})
+	svc.SetToolRegistry(registry)
+
+	var content strings.Builder
+	var reasoning strings.Builder
+	onChunk := func(chunk StreamChunk) error {
+		if chunk.Content != "" {
+			content.WriteString(chunk.Content)
+		}
+		if chunk.ReasoningContent != "" {
+			reasoning.WriteString(chunk.ReasoningContent)
+		}
+		return nil
+	}
+
+	err := svc.GetCompletionWithToolsStreamMultiStep(
+		context.Background(),
+		TaskTypeChat,
+		[]Message{{Role: "user", Content: "我有哪些待办？"}},
+		&CallerContext{UserID: 1},
+		[]string{"sum_tool"},
+		3,
+		nil,
+		onChunk,
+	)
+	if err != nil {
+		t.Fatalf("streaming react failed: %v", err)
+	}
+
+	// 两个回合各吐一次思考（分两片）→ 思考区收到完整两轮原文
+	if got := reasoning.String(); got != "用户在问待办，我先查任务列表用户在问待办，我先查任务列表" {
+		t.Fatalf("expected reasoning deltas from both rounds forwarded, got %q", got)
+	}
+	// 思考不混入答案：答案只有 final 回合正文
+	if content.String() != "答案是3" {
+		t.Fatalf("expected content '答案是3' only, got %q", content.String())
+	}
+	// 思考不进模型上下文：第二个回合的调用参数与首个无关（workMsgs 不含思考）
+	if mock.calls != 2 {
+		t.Fatalf("expected 2 provider calls, got %d", mock.calls)
 	}
 }
