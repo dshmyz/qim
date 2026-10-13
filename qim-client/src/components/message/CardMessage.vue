@@ -295,6 +295,10 @@ watch(() => props.content, () => {
   background: color-mix(in srgb, var(--primary-color), transparent 88%);
   color: var(--primary-color);
   border-color: color-mix(in srgb, var(--primary-color), transparent 40%);
+  /* 关掉 selected 通用光环：default 已有底色+边框+文字三层选中信号，
+     光环叠加 1px 边框形成 3px 着色圈，视觉上边框过宽。
+     primary/danger 实心按钮无背景变化，仍靠光环区分选中。 */
+  box-shadow: none;
 }
 
 .card-empty {

@@ -165,7 +165,11 @@ function renderPreview(hit: MessageHit): string {
 const exhausted = computed(() => new Set(props.exhaustedIds || []))
 
 const canLoadMore = (group: MessageHitGroup): boolean => {
-  return group.hits.length >= MAX_GROUP_HITS && !exhausted.value.has(String(group.conversationId))
+  if (group.hits.length < MAX_GROUP_HITS) return false
+  if (exhausted.value.has(String(group.conversationId))) return false
+  // 全局命中已全部加载（total ≤ 已加载条数）时该会话不可能有更多，
+  // 显示"查看更多"只会点击即静默无反应（实测：全会话命中 15 条全在首屏）
+  return props.total > props.hits.length
 }
 
 const groups = computed<MessageHitGroup[]>(() => {
@@ -198,7 +202,8 @@ const groups = computed<MessageHitGroup[]>(() => {
   max-height: 460px;
   background: var(--sidebar-bg);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  /* 浮层与侧栏同为 --sidebar-bg（浅色主题均纯白），靠阴影与标题分层条浮起 */
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
   z-index: 100;
   overflow: hidden;
   margin-bottom: 8px;
@@ -213,6 +218,9 @@ const groups = computed<MessageHitGroup[]>(() => {
   align-items: center;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border-color);
+  /* 标题行常驻主题浅色分层（--hover-color：浅色主题为浅蓝/浅紫，深色为亮层），
+     白底白卡靠它获得第一层视觉锚点 */
+  background: var(--hover-color);
   font-weight: 600;
   font-size: var(--font-size-sm);
   color: var(--text-color);
@@ -235,13 +243,12 @@ const groups = computed<MessageHitGroup[]>(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 16px 4px;
-  background: var(--panel-bg);
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
 
 .hits-group-header:hover {
-  filter: brightness(0.97);
+  background-color: var(--hover-color);
 }
 
 .hits-group-count {

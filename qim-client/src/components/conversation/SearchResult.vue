@@ -85,7 +85,8 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
   max-height: 300px;
   background: var(--sidebar-bg);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  /* 与聊天记录面板同款分层：白底白卡靠阴影 + 标题分层条浮起 */
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
   z-index: 100;
   overflow: hidden;
   margin-bottom: 8px;
@@ -103,6 +104,7 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-color);
+  background: var(--hover-color);
   font-weight: 600;
   font-size: var(--font-size-sm);
   color: var(--text-color);
