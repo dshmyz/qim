@@ -14,6 +14,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/ws"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // 会话域业务错误（带 HTTP 状态 + 业务码）。当前 handler 内联查库不消费这些哨兵，
@@ -62,27 +63,48 @@ func (s *ConversationService) GetConversations(userID uint) ([]ConversationWithP
 		convIDs[i] = conv.ID
 	}
 	var sessions []model.ConversationSession
-	sessionMap := make(map[uint]model.ConversationSession)
+	sessionMap := make(map[uint]model.ConversationSession, len(convIDs))
 	if len(convIDs) > 0 {
-		s.db.Where("user_id = ? AND conversation_id IN ?", userID, convIDs).Find(&sessions)
-		for _, s := range sessions {
-			sessionMap[s.ConversationID] = s
+		if err := s.db.Where("user_id = ? AND conversation_id IN ?", userID, convIDs).Find(&sessions).Error; err != nil {
+			return nil, err
+		}
+		for i := range sessions {
+			sessionMap[sessions[i].ConversationID] = sessions[i]
+		}
+	}
+
+	// 批量补建缺失 session：收集所有缺失项后用 CreateInBatches 一次性写入，
+	// 避免循环内逐条 INSERT 造成随会话数线性放大的尾延迟。
+	// 历史问题：原先在循环内 s.db.Create(&session) 会对每个缺失会话单独发起
+	// 一次 INSERT（含事务+索引更新），新用户首次拉取 N 个会话 = N 次 DB 写入。
+	missing := make([]model.ConversationSession, 0, len(conversations))
+	for _, conv := range conversations {
+		if _, exists := sessionMap[conv.ID]; !exists {
+			missing = append(missing, model.ConversationSession{
+				UserID:         userID,
+				ConversationID: conv.ID,
+				IsPinned:       false,
+				LastVisitedAt:  time.Now(),
+			})
+		}
+	}
+	if len(missing) > 0 {
+		// CreateInBatches 单次预编译语句批量写入；OnConflict DoNothing 兜住并发
+		// 竞态（两个请求同时发现缺失并插入）与历史脏重复行——撞 idx_user_conv
+		// 唯一键时跳过该行而非整个请求 500（旧逐条 Create 的静默容忍语义在此保留）。
+		// 冲突被跳过的行拿不到回填 ID，但后续逻辑只需 IsPinned/LastVisitedAt 默认值，
+		// 下次拉取 Find 会拿到真实行。
+		if err := s.db.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&missing, len(missing)).Error; err != nil {
+			return nil, err
+		}
+		for i := range missing {
+			sessionMap[missing[i].ConversationID] = missing[i]
 		}
 	}
 
 	var result []ConversationWithPin
 	for _, conv := range conversations {
-		session, exists := sessionMap[conv.ID]
-		if !exists {
-			// 不存在则创建
-			session = model.ConversationSession{
-				UserID:         userID,
-				ConversationID: conv.ID,
-				IsPinned:       false,
-				LastVisitedAt:  time.Now(),
-			}
-			s.db.Create(&session)
-		}
+		session := sessionMap[conv.ID]
 
 		convWithPin := ConversationWithPin{
 			Conversation: *conv,

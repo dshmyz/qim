@@ -170,18 +170,10 @@ func GetConversations(c *gin.Context) {
 	}
 
 	var convMembersWithMeta []ConversationMemberWithMeta
-	query := `
-		SELECT 
-			cm.*,
-			c.last_message_at,
-			c.created_at,
-			COALESCE(cs.is_pinned, false) as is_pinned,
-			COALESCE(cs.is_hidden, false) as is_hidden
-		FROM conversation_members cm
-		LEFT JOIN conversations c ON c.id = cm.conversation_id
-		LEFT JOIN conversation_sessions cs ON cs.conversation_id = cm.conversation_id AND cs.user_id = ?
-		WHERE cm.user_id = ? AND COALESCE(cs.is_hidden, false) = false
-	`
+	// 基础查询：抽取为 conversationListQuerySQL() 以便单测覆盖。
+	// 语义与原 COALESCE 版本等价；改写说明见 conversationListQuerySQL 注释
+	// （is_hidden 当前无独立索引，属防御性规范；排序仍为函数包裹，无法走索引）。
+	query := conversationListQuerySQL()
 	args := []interface{}{uid, uid}
 	if typeFilter != "" {
 		query += ` AND c.type = ?`
@@ -194,15 +186,15 @@ func GetConversations(c *gin.Context) {
 	if cursorValue != "" {
 		query += `
 			AND (
-				COALESCE(cs.is_pinned, false) < ?
-				OR (COALESCE(cs.is_pinned, false) = ? AND COALESCE(c.last_message_at, c.created_at) < ?)
-				OR (COALESCE(cs.is_pinned, false) = ? AND COALESCE(c.last_message_at, c.created_at) = ? AND cm.conversation_id < ?)
+				IFNULL(cs.is_pinned, false) < ?
+				OR (IFNULL(cs.is_pinned, false) = ? AND IFNULL(c.last_message_at, c.created_at) < ?)
+				OR (IFNULL(cs.is_pinned, false) = ? AND IFNULL(c.last_message_at, c.created_at) = ? AND cm.conversation_id < ?)
 			)
 		`
 		args = append(args, cursor.Pinned, cursor.Pinned, cursorActivity, cursor.Pinned, cursorActivity, cursor.ID)
 	}
 	query += `
-		ORDER BY is_pinned DESC, COALESCE(c.last_message_at, c.created_at) DESC, cm.conversation_id DESC
+		ORDER BY is_pinned DESC, IFNULL(c.last_message_at, c.created_at) DESC, cm.conversation_id DESC
 		LIMIT ?
 	`
 	if cursorValue == "" {
@@ -214,14 +206,9 @@ func GetConversations(c *gin.Context) {
 	db.Raw(query, args...).Scan(&convMembersWithMeta)
 
 	// 查询总数（排除已隐藏的会话）
+	// WHERE 过滤与列表查询保持同一形态，确保 COUNT 与列表一致。
 	var total int64
-	countQuery := `
-		SELECT COUNT(*)
-		FROM conversation_members cm
-		LEFT JOIN conversations c ON c.id = cm.conversation_id
-		LEFT JOIN conversation_sessions cs ON cs.conversation_id = cm.conversation_id AND cs.user_id = ?
-		WHERE cm.user_id = ? AND COALESCE(cs.is_hidden, false) = false
-	`
+	countQuery := conversationListCountQuerySQL()
 	countArgs := []interface{}{uid, uid}
 	if typeFilter != "" {
 		countQuery += ` AND c.type = ?`
@@ -826,6 +813,12 @@ func CreateSingleConversation(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "参数错误")
 		return
+	}
+
+	// recipient_id 是 user_id 的别名（语义上更直指"对方"），两者任一即可；
+	// 历史上只绑不映射，按语义命名的调用方（如 qim CLI）会拿到 400。
+	if req.UserID == 0 {
+		req.UserID = req.RecipientID
 	}
 
 	db := database.GetDB()
