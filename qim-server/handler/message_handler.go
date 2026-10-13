@@ -1416,14 +1416,28 @@ func SearchMessages(c *gin.Context) {
 	userReadSet := buildUserReadReceiptSet(messages, uid)
 	// 搜索可跨会话：批量预加载所有命中消息的群 AI 助手名，消除逐条 assistant 消息回查 groups（N+1）
 	assistantNames := service.PreloadAssistantNames(messages)
+	// 批量预载会话元信息（类型/名称/头像），前端按会话分组展示与跳转，
+	// 不依赖本地会话列表是否含有该历史会话
+	convIDSet := make(map[uint]struct{}, len(messages))
+	for _, m := range messages {
+		convIDSet[m.ConversationID] = struct{}{}
+	}
+	convIDs := make([]uint, 0, len(convIDSet))
+	for id := range convIDSet {
+		convIDs = append(convIDs, id)
+	}
+	convMetas := service.PreloadConversationMetas(convIDs, uid)
+
 	var responseMessages []map[string]interface{}
 	for _, msg := range messages {
-		responseMessages = append(responseMessages, service.BuildMessageResponse(msg, service.MessageResponseOptions{
+		resp := service.BuildMessageResponse(msg, service.MessageResponseOptions{
 			CurrentUserID:  uid,
 			AllMemberIDs:   convMemberMap[msg.ConversationID],
 			UserReadSet:    userReadSet,
 			AssistantNames: assistantNames,
-		}))
+		})
+		resp["conversation_meta"] = convMetas[msg.ConversationID]
+		responseMessages = append(responseMessages, resp)
 	}
 
 	response.Success(c, gin.H{

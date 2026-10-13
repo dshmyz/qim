@@ -2038,6 +2038,77 @@ func resolveAIName(msg model.Message, preloaded map[uint]string) string {
 // 回查 groups 的 N+1。仅收集 Origin=="assistant" 的消息所在会话，一次 IN 查询。
 // 返回 nil 表示这批消息没有 assistant 消息（调用方无需处理）；非 nil 表示已查询，
 // 会话不在映射中即无已配置的助手名（此时不能回退到逐条查询，否则 N+1 依旧）。
+// ConversationMeta 搜索结果附带的会话元信息（按会话分组展示与跳转需要）。
+type ConversationMeta struct {
+	Type    string `json:"type"`
+	Name    string `json:"name"`
+	Avatar  string `json:"avatar"`
+	GroupID uint   `json:"group_id,omitempty"`
+}
+
+// PreloadConversationMetas 批量解析搜索命中会话的展示元信息：
+// 群/讨论组取 groups 表名称与头像；单聊/bot 取对端成员昵称（members 常为空的单聊
+// 历史会话经 other_member 兜底无法在纯 SQL 取得，故直接查 members）。
+// 用于让不在本地会话列表里的历史会话（被隐藏、已被顶出列表）也能正确显示名称。
+func PreloadConversationMetas(convIDs []uint, currentUserID uint) map[uint]ConversationMeta {
+	result := make(map[uint]ConversationMeta, len(convIDs))
+	if len(convIDs) == 0 {
+		return result
+	}
+
+	var conversations []model.Conversation
+	if err := database.GetDB().Where("id IN ?", convIDs).Find(&conversations).Error; err != nil {
+		return result
+	}
+	for _, c := range conversations {
+		result[c.ID] = ConversationMeta{Type: c.Type}
+	}
+
+	var groups []model.Group
+	if err := database.GetDB().Select("id", "conversation_id", "name", "avatar").
+		Where("conversation_id IN ?", convIDs).Find(&groups).Error; err != nil {
+		return result
+	}
+	for _, g := range groups {
+		if meta, ok := result[g.ConversationID]; ok {
+			meta.Name = g.Name
+			meta.Avatar = g.Avatar
+			meta.GroupID = g.ID
+			result[g.ConversationID] = meta
+		}
+	}
+
+	// 单聊/bot：取对端成员（非当前用户）的昵称头像
+	needMemberConvIDs := make([]uint, 0, len(convIDs))
+	for _, c := range conversations {
+		if c.Type == "single" || c.Type == "bot" {
+			needMemberConvIDs = append(needMemberConvIDs, c.ID)
+		}
+	}
+	if len(needMemberConvIDs) > 0 {
+		var members []model.ConversationMember
+		if err := database.GetDB().Preload("User").
+			Where("conversation_id IN ?", needMemberConvIDs).Find(&members).Error; err != nil {
+			return result
+		}
+		for _, m := range members {
+			if m.UserID == currentUserID {
+				continue
+			}
+			if meta, ok := result[m.ConversationID]; ok && meta.Name == "" {
+				meta.Name = m.User.Nickname
+				if meta.Name == "" {
+					meta.Name = m.User.Username
+				}
+				meta.Avatar = m.User.Avatar
+				result[m.ConversationID] = meta
+			}
+		}
+	}
+
+	return result
+}
+
 func PreloadAssistantNames(msgs []model.Message) map[uint]string {
 	convIDs := make([]uint, 0)
 	seen := make(map[uint]struct{})
