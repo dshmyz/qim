@@ -84,6 +84,8 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
   /* 不设 width:100%：flex 列容器内靠 align-self:stretch + 水平 margin 内缩 */
   box-sizing: border-box;
   max-height: 300px;
+  display: flex;
+  flex-direction: column;
   background: var(--sidebar-bg);
   border-radius: 8px;
   /* 与聊天记录面板同款分层：白底白卡靠阴影 + 标题分层条浮起 */
@@ -96,6 +98,8 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
 }
 
 .search-popup-content {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -104,7 +108,8 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  /* 与聊天记录面板标题条统一，避免两弹层并排时高度错位 */
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border-color);
   background: var(--hover-color);
   font-weight: 600;
@@ -119,7 +124,10 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
 }
 
 .search-popup-list {
-  max-height: 340px;
+  /* 滚动由 popup 的 max-height + flex 分配（header 固定、list 占满剩余），
+     勿再设独立 max-height——双层限制会让列表被外层截断产生不可滚达的盲区 */
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
