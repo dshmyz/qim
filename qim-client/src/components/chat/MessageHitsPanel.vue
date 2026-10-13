@@ -4,7 +4,13 @@
       <span>聊天记录</span>
       <span class="hits-count">{{ total }} 条相关消息</span>
     </div>
-    <div class="hits-list">
+    <div
+      class="hits-list"
+      :class="{ 'is-hovered': isHovered, 'is-scrolling': isScrolling }"
+      @scroll="handleListScroll"
+      @mouseenter="isHovered = true"
+      @mouseleave="isHovered = false"
+    >
       <div v-for="group in groups" :key="group.conversationId" class="hits-group">
         <div class="hits-group-header" @click="$emit('openConversation', group.conversationId)">
           <Avatar :src="group.avatar" :name="group.name" :server-url="serverUrl" size="xs" />
@@ -46,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 
 export interface MessageHit {
@@ -83,6 +89,20 @@ defineEmits<{
   (e: 'loadMore', group: MessageHitGroup): void
   (e: 'openConversation', conversationId: number | string): void
 }>()
+
+// 滚动条显隐：静止隐藏，指针进入/滚动中浮现（与会话列表同款交互）。
+// 显隐由 JS 切换 class 驱动——不能用 ::-webkit-scrollbar-thumb:hover，
+// Chromium 伪元素不响应容器 :hover 且拖动后会粘滞。
+const isHovered = ref(false)
+const isScrolling = ref(false)
+let scrollTimer: ReturnType<typeof setTimeout> | undefined
+const handleListScroll = () => {
+  isScrolling.value = true
+  if (scrollTimer) clearTimeout(scrollTimer)
+  scrollTimer = setTimeout(() => {
+    isScrolling.value = false
+  }, 600)
+}
 
 // 组内超过该条数才出现"查看更多"——更少说明该会话命中大概率已在首屏拿全
 const MAX_GROUP_HITS = 5
@@ -239,6 +259,21 @@ const groups = computed<MessageHitGroup[]>(() => {
 .hits-list {
   max-height: 420px;
   overflow-y: auto;
+}
+
+/* 滚动条：静止隐藏，指针进入/滚动中浮现（与会话列表同款，class 由 JS 切换） */
+.hits-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.hits-list::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.hits-list.is-hovered::-webkit-scrollbar-thumb,
+.hits-list.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--color-gray-300);
 }
 
 .hits-group-header {

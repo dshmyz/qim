@@ -5,7 +5,13 @@
         <span>搜索结果</span>
         <span class="search-popup-count">{{ searchResults.length }} 个结果</span>
       </div>
-      <div class="search-popup-list">
+      <div
+        class="search-popup-list"
+        :class="{ 'is-hovered': isHovered, 'is-scrolling': isScrolling }"
+        @scroll="handleListScroll"
+        @mouseenter="isHovered = true"
+        @mouseleave="isHovered = false"
+      >
         <div
           v-for="item in searchResults"
           :key="item.id + item.type"
@@ -76,6 +82,18 @@ defineEmits<{
 
 // 搜索结果头像角标：统一由 buildSearchResultBadge 构造。
 const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
+
+// 滚动条显隐：静止隐藏，指针进入/滚动中浮现（与会话列表/聊天记录面板同款）。
+const isHovered = ref(false)
+const isScrolling = ref(false)
+let scrollTimer: ReturnType<typeof setTimeout> | undefined
+const handleListScroll = () => {
+  isScrolling.value = true
+  if (scrollTimer) clearTimeout(scrollTimer)
+  scrollTimer = setTimeout(() => {
+    isScrolling.value = false
+  }, 600)
+}
 </script>
 
 <style scoped>
@@ -129,6 +147,21 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* 滚动条：静止隐藏，指针进入/滚动中浮现（与会话列表同款，class 由 JS 切换） */
+.search-popup-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.search-popup-list::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.search-popup-list.is-hovered::-webkit-scrollbar-thumb,
+.search-popup-list.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--color-gray-300);
 }
 
 .search-popup-item {
