@@ -47,8 +47,22 @@ type FileSpaceQuery struct {
 	SortOrder string // asc | desc (default desc)
 }
 
+// FileUploader 是文件列表响应里展示用的上传者信息，只含 id 与展示名，
+// 避免 User 模型的 phone/email/ip 等字段随文件接口扩散。
+type FileUploader struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+}
+
+// FileWithUploader 在 File 基础上补充展示用的上传者信息，仅用于文件空间的列表响应；
+// 其余返回 model.File 的接口不受影响，保持不带 uploader。
+type FileWithUploader struct {
+	model.File
+	Uploader *FileUploader `json:"uploader,omitempty"`
+}
+
 type FileSpaceList struct {
-	Files   []model.File
+	Files   []FileWithUploader
 	Folders []model.Folder
 	Total   int64
 }
@@ -169,9 +183,11 @@ func (s *FileSpaceService) List(ctx context.Context, actorID uint, space FileSpa
 	if page < 1 {
 		page = 1
 	}
-	if err := fileQuery.Order(fileSortClause(query.SortBy, query.SortOrder)).Offset((page - 1) * pageSize).Limit(pageSize).Find(&result.Files).Error; err != nil {
+	var files []model.File
+	if err := fileQuery.Order(fileSortClause(query.SortBy, query.SortOrder)).Offset((page - 1) * pageSize).Limit(pageSize).Find(&files).Error; err != nil {
 		return nil, err
 	}
+	result.Files = s.withUploaders(ctx, files)
 	return result, nil
 }
 
@@ -179,7 +195,7 @@ func (s *FileSpaceService) List(ctx context.Context, actorID uint, space FileSpa
 // 用于「群 AI 绑定文档」这类需要从整个空间挑选文件的场景：文档可能被上传到
 // 任意文件夹里，若只按根目录列（List 的 folder_id IS NULL 语义）会漏掉它们。
 // 与 List 保持同一授权与 scope 校验，但不过滤 folder。
-func (s *FileSpaceService) ListAllFiles(ctx context.Context, actorID uint, space FileSpace) ([]model.File, error) {
+func (s *FileSpaceService) ListAllFiles(ctx context.Context, actorID uint, space FileSpace) ([]FileWithUploader, error) {
 	if err := s.authorize(ctx, actorID, space, FileSpaceActionList); err != nil {
 		return nil, err
 	}
@@ -191,7 +207,48 @@ func (s *FileSpaceService) ListAllFiles(ctx context.Context, actorID uint, space
 		Find(&files).Error; err != nil {
 		return nil, err
 	}
-	return files, nil
+	return s.withUploaders(ctx, files), nil
+}
+
+// withUploaders 按去重后的 user_id 批量查一次用户表填充展示名（优先昵称，回退用户名）。
+// 查询失败只记日志不阻断列表——展示名是锦上添花，前端对缺失 uploader 有
+// 「用户 + ID」兜底；已删除或不存在的主人同样留给前端兜底。
+func (s *FileSpaceService) withUploaders(ctx context.Context, files []model.File) []FileWithUploader {
+	result := make([]FileWithUploader, len(files))
+	ids := make([]uint, 0, len(files))
+	seen := make(map[uint]struct{}, len(files))
+	for i, f := range files {
+		result[i] = FileWithUploader{File: f}
+		if f.UserID == 0 {
+			continue
+		}
+		if _, ok := seen[f.UserID]; !ok {
+			seen[f.UserID] = struct{}{}
+			ids = append(ids, f.UserID)
+		}
+	}
+	if len(ids) == 0 {
+		return result
+	}
+	var users []model.User
+	if err := s.db.WithContext(ctx).Select("id", "nickname", "username").Where("id IN ?", ids).Find(&users).Error; err != nil {
+		logger.WithModule("FileSpaceService").Warn("查询文件上传者信息失败", "error", err)
+		return result
+	}
+	names := make(map[uint]string, len(users))
+	for _, u := range users {
+		name := strings.TrimSpace(u.Nickname)
+		if name == "" {
+			name = u.Username
+		}
+		names[u.ID] = name
+	}
+	for i := range result {
+		if name, ok := names[result[i].UserID]; ok {
+			result[i].Uploader = &FileUploader{ID: result[i].UserID, Name: name}
+		}
+	}
+	return result
 }
 
 func (s *FileSpaceService) CreateFolder(ctx context.Context, actorID uint, space FileSpace, name string, parentID *uint) (*model.Folder, error) {

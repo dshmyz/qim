@@ -448,3 +448,65 @@ func TestFileSpaceConcurrentShareReferencePreventsStorageDeletion(t *testing.T) 
 	require.NoError(t, reader.Close())
 	require.Zero(t, accessor.DeleteCount())
 }
+
+func TestFileSpaceListAttachesUploaderName(t *testing.T) {
+	db := setupFileSpaceTestDB(t)
+	ctx := context.Background()
+	uploader := createFileSpaceUser(t, db, "alice")
+	viewer := createFileSpaceUser(t, db, "viewer")
+	group, _ := createFileSpaceGroup(t, db, viewer.ID)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: group.ConversationID, UserID: uploader.ID, Role: "member"}).Error)
+
+	// 昵称存在时优先展示昵称
+	uploader.Nickname = "小爱丽丝"
+	require.NoError(t, db.Save(uploader).Error)
+	// 已删除的用户查不到名字，响应里不应带 uploader
+	ghost := &model.User{Username: "ghost", PasswordHash: "hash"}
+	require.NoError(t, db.Create(ghost).Error)
+
+	spaces := NewFileSpaceService(db)
+	mine := createUserFile(t, db, uploader.ID, "named.pdf")
+	legacy := createUserFile(t, db, ghost.ID, "ghost.pdf")
+	for _, f := range []*model.File{mine, legacy} {
+		require.NoError(t, db.Model(f).Updates(map[string]interface{}{"scope_type": "group", "scope_id": group.ID}).Error)
+	}
+	require.NoError(t, db.Delete(ghost).Error)
+
+	items, err := spaces.List(ctx, viewer.ID, FileSpace{Type: "group", ID: group.ID}, FileSpaceQuery{})
+	require.NoError(t, err)
+	require.Len(t, items.Files, 2)
+
+	byName := map[string]FileWithUploader{}
+	for _, f := range items.Files {
+		byName[f.Name] = f
+	}
+	named, ok := byName["named.pdf"]
+	require.True(t, ok)
+	require.NotNil(t, named.Uploader)
+	require.Equal(t, uploader.ID, named.Uploader.ID)
+	require.Equal(t, "小爱丽丝", named.Uploader.Name)
+
+	orphaned, ok := byName["ghost.pdf"]
+	require.True(t, ok)
+	require.Nil(t, orphaned.Uploader)
+}
+
+func TestFileSpaceListAllFilesAttachesUploaderName(t *testing.T) {
+	db := setupFileSpaceTestDB(t)
+	ctx := context.Background()
+	uploader := createFileSpaceUser(t, db, "bob")
+	viewer := createFileSpaceUser(t, db, "viewer2")
+	group, _ := createFileSpaceGroup(t, db, viewer.ID)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: group.ConversationID, UserID: uploader.ID, Role: "member"}).Error)
+
+	spaces := NewFileSpaceService(db)
+	file := createUserFile(t, db, uploader.ID, "deep.pdf")
+	require.NoError(t, db.Model(file).Updates(map[string]interface{}{"scope_type": "group", "scope_id": group.ID}).Error)
+
+	files, err := spaces.ListAllFiles(ctx, viewer.ID, FileSpace{Type: "group", ID: group.ID})
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.NotNil(t, files[0].Uploader)
+	require.Equal(t, uploader.ID, files[0].Uploader.ID)
+	require.Equal(t, "bob", files[0].Uploader.Name)
+}
