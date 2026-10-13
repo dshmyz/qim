@@ -112,7 +112,7 @@ const handleListScroll = () => {
   overflow: hidden;
   /* 水平边距与上方搜索框（padding 8px）对齐，不贴侧栏边缘 */
   margin: 0 8px 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--panel-border-color, var(--border-color));
 }
 
 .search-popup-content {
