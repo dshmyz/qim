@@ -416,7 +416,7 @@
   --primary-light: #fff5f5;
   --secondary-color: #fff5f5;
   --text-color: #5c1a1a;
-  --border-color: #f5c6c6;
+  --border-color: #fadadb;        /* 浅化：原 #f5c6c6 过于显现 */
   --hover-color: #ffe8e8;
   --active-color: #a01830;
   --sidebar-bg: #ffffff;
@@ -468,7 +468,7 @@
   --primary-light: #f0fff4;
   --secondary-color: #f0fff4;
   --text-color: #1a4a2e;
-  --border-color: #c6e6d5;
+  --border-color: #d9ece2;        /* 浅化：原 #c6e6d5 过于显现 */
   --hover-color: #dcf5e8;
   --active-color: #247048;
   --sidebar-bg: #ffffff;
@@ -808,7 +808,7 @@
   --card-bg: #ffffff;
   --shadow-color: rgba(0, 0, 0, 0.05);
   --shadow-color-hover: rgba(0, 0, 0, 0.08);
-  --border-color: #f5c6c6;
+  --border-color: #fadadb;        /* 浅化：原 #f5c6c6 过于显现 */
   --hover-color: #ffe8e8;
   --primary-color: #c41e3a;
   --primary-light: rgba(196, 30, 58, 0.1);
@@ -829,7 +829,7 @@
   --card-bg: #ffffff;
   --shadow-color: rgba(0, 0, 0, 0.05);
   --shadow-color-hover: rgba(0, 0, 0, 0.08);
-  --border-color: #c6e6d5;
+  --border-color: #d9ece2;        /* 浅化：原 #c6e6d5 过于显现 */
   --hover-color: #dcf5e8;
   --primary-color: #2e8b57;
   --primary-light: rgba(46, 139, 87, 0.1);
