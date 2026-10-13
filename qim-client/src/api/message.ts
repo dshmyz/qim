@@ -113,18 +113,17 @@ class MessageAPI {
     await http.post(`/api/v1/conversations/${conversationId}/read`)
   }
 
+  // 全局消息搜索：keyword 跨会话，conv_id 限定单会话（搜索结果"查看更多"翻页用）。
+  // 响应走 BuildMessageResponse 契约（含 sender/conversation_id/type/content/created_at）。
   async searchMessages(params: {
-    query: string
-    conversation_id?: string
-    start_time?: number
-    end_time?: number
-    sender_id?: string
-    type?: string
+    keyword: string
+    conv_id?: number
     page?: number
-    page_size?: number
+    pageSize?: number
   }): Promise<{
-    messages: Message[]
+    list: any[]
     total: number
+    page: number
   }> {
     const response = await http.get<ApiResponse<any>>('/api/v1/messages/search', { params })
     return response.data

@@ -81,6 +81,10 @@
         :hasMoreConversations="hasMoreConversations"
         :isLoadingConversations="isLoadingConversations"
         :groups="[...(userGroups || [])]"
+        :messageHits="messageHits"
+        :messageHitsTotal="messageHitsTotal"
+        :messageHitsLoading="messageHitsLoading"
+        :messageHitsExhausted="messageHitsExhausted"
         @update:searchQuery="searchQuery = $event"
         @showUserProfile="showSelfProfile"
         @showNotification="handleNotificationCenter"
@@ -104,6 +108,8 @@
         @searchResultApplyJoin="handleApplyJoinGroup"
         @createChannel="showCreateChannelModal = true"
         @loadMoreConversations="loadMoreConversations"
+        @messageHitSelect="handleMessageHitSelect"
+        @messageHitsLoadMore="handleMessageHitsLoadMore"
       />
       
       <!-- 实时通信全局组件（屏幕共享、视频通话） -->
@@ -759,6 +765,8 @@ import { useNotifications } from '../composables/useNotifications'
 import { useAppState } from '../composables/useAppState'
 import { useUI, closeMenu, openMenu } from '../composables/useUI'
 import { useConversation } from '../composables/useConversation'
+import { messageApi } from '../api/message'
+import type { MessageHit, MessageHitGroup } from '../components/chat/MessageHitsPanel.vue'
 import { useOrganizationLogic } from '../composables/useOrganizationLogic'
 import { useMainWebSocketHandlers } from '../composables/useMainWebSocketHandlers'
 import { useAvatarDraftApproval } from '../composables/useAvatarDraftApproval'
@@ -2407,6 +2415,8 @@ onUnmounted(() => {
   window.removeEventListener('shortcuts-updated', handleShortcutsUpdated)
   // 移除 AI 确认卡回跳监听（与 setup 中的注册成对）
   window.removeEventListener('ai-open-conversation', handleAIOpenConversation)
+  // 移除 Ctrl+K 搜索聚焦监听（与 setup 中的注册成对）
+  window.removeEventListener('keydown', handleGlobalSearchShortcut)
 })
 
 const sortedConversations = computed(() => {
@@ -2497,12 +2507,122 @@ const handleApplyJoinGroup = async (item) => {
   }
 }
 
+// ── 全局消息搜索（微信式：侧栏搜索框跨会话搜聊天记录）──
+const messageHits = ref<MessageHit[]>([])
+const messageHitsTotal = ref(0)
+const messageHitsLoading = ref(false)
+let messageSearchSeq = 0
+
+// 非文本消息的预览折算：搜索结果列表显示类型标签而非内容
+const HIT_TYPE_LABELS: Record<string, string> = {
+  image: '[图片]',
+  file: '[文件]',
+  video: '[视频]',
+  audio: '[语音]',
+  miniApp: '[小程序]',
+  news: '[资讯]',
+  markdown: '[Markdown]',
+  merged_forward: '[聊天记录]',
+  share: '[分享]',
+}
+
+// 组装命中数据：sender 兜底 nickname/username，时间格式化复用 formatTime。
+// 高亮由 MessageHitsPanel 按关键词 prop 在渲染时计算，这里只出纯文本预览。
+const buildMessageHits = (rawHits: any[]): MessageHit[] => {
+  return rawHits.map(msg => {
+    const senderName = msg.sender?.name || msg.sender?.nickname || msg.sender?.username || '未知用户'
+    const isText = msg.type === 'text'
+    const previewText = isText ? decodeToPlainText(msg.content || '') : (HIT_TYPE_LABELS[msg.type] || '[消息]')
+    // 时间戳来自 created_at（RFC3339）
+    const ts = msg.created_at ? new Date(msg.created_at).getTime() : 0
+    return {
+      id: msg.id,
+      conversationId: msg.conversation_id,
+      senderName,
+      time: ts ? formatTime(ts) : '',
+      previewText,
+      type: msg.type,
+    }
+  })
+}
+
+const handleMessageHitSelect = async (hit: MessageHit) => {
+  const conversationId = String(hit.conversationId)
+  chatStore.setPendingJump(conversationId, String(hit.id))
+  const conv = conversations.value.find(c => String(c.id) === conversationId)
+  if (conv) {
+    await handleConversationSelect(conv)
+  } else {
+    // 会话不在列表中（可能被隐藏）：构造最小对象走 handleConversationSelect，
+    // 它内部会对不在列表的会话从 API 拉完整数据
+    await handleConversationSelect({ id: conversationId } as any)
+  }
+  searchQuery.value = ''
+}
+
+const messageHitsExhausted = ref<string[]>([])
+
+const handleMessageHitsLoadMore = async (group: MessageHitGroup) => {
+  const conversationId = String(group.conversationId)
+  try {
+    const data = await messageApi.searchMessages({
+      keyword: searchQuery.value.trim(),
+      conv_id: Number(conversationId),
+      page: Math.ceil(group.hits.length / 20) + 1,
+      pageSize: 20,
+    })
+    const newHits = buildMessageHits(data.list || [])
+    // 追加进对应组（避免与已有条目重复）；无新增说明该会话已拿全，标记不再显示"查看更多"
+    const existing = new Set(group.hits.map(h => String(h.id)))
+    let added = 0
+    for (const h of newHits) {
+      if (!existing.has(String(h.id))) {
+        group.hits.push(h)
+        added++
+      }
+    }
+    if (added === 0) {
+      messageHitsExhausted.value = [...messageHitsExhausted.value, conversationId]
+    }
+  } catch (error) {
+    logger.error('加载会话内更多搜索结果失败:', error)
+    QMessage.error('加载更多结果失败')
+  }
+}
+
 // 监听搜索输入变化
 watch(searchQuery, (newQuery) => {
   // 简单的防抖实现
   clearTimeout(window.searchTimeout)
   window.searchTimeout = setTimeout(() => {
     handleSearch(newQuery)
+
+    // 并行搜消息：跨会话聊天记录命中。失败静默降级（用户/群结果不受影响）。
+    const seq = ++messageSearchSeq
+    if (!newQuery.trim()) {
+      messageHits.value = []
+      messageHitsTotal.value = 0
+      messageHitsExhausted.value = []
+      messageHitsLoading.value = false
+      return
+    }
+    messageHitsLoading.value = true
+    messageApi.searchMessages({ keyword: newQuery.trim(), page: 1, pageSize: 30 })
+      .then((data) => {
+        if (seq !== messageSearchSeq) return // 旧请求结果作废
+        messageHits.value = buildMessageHits(data.list || [])
+        messageHitsTotal.value = data.total || 0
+        messageHitsExhausted.value = []
+      })
+      .catch((error) => {
+        if (seq !== messageSearchSeq) return
+        logger.error('消息搜索失败:', error)
+        messageHits.value = []
+        messageHitsTotal.value = 0
+      })
+      .finally(() => {
+        if (seq === messageSearchSeq) messageHitsLoading.value = false
+      })
   }, 300)
 })
 
@@ -3402,6 +3522,15 @@ const handleAIOpenConversation = (e: Event) => {
   if (cid) handleSwitchConversation(String(cid))
 }
 window.addEventListener('ai-open-conversation', handleAIOpenConversation)
+
+// Ctrl/Cmd+K 聚焦侧栏搜索框（命名函数 + onUnmounted 成对移除，防登出重挂残留）
+const handleGlobalSearchShortcut = (e: KeyboardEvent) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault()
+    sidebarRef.value?.focusSearch?.()
+  }
+}
+window.addEventListener('keydown', handleGlobalSearchShortcut)
 
 const handleSwitchConversation = async (conversationId: string) => {
   // 确保 conversationId 是字符串类型

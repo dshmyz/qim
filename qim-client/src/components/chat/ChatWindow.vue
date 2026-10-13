@@ -797,6 +797,13 @@ watch(() => props.conversation?.id, (newId, oldId) => {
     scrollToBottom()
 
     lastConversationId.value = newId
+
+    // 全局搜索等入口留下的跳转目标：会话激活后消费并定位（scrollToMessage 内部
+    // 自带"消息不在当前列表则拉取前后 20 条"的兜底，等初始消息加载也安全）
+    const jumpTarget = chatStore.consumePendingJump(newId)
+    if (jumpTarget) {
+      nextTick(() => scrollToMessage(jumpTarget))
+    }
   }
 })
 
@@ -1997,7 +2004,6 @@ const scrollToMessage = async (messageId: string) => {
   if (!targetMessage) {
     // 消息不在当前列表中，尝试加载周围消息
     logger.info('目标消息不在当前加载的消息列表中，尝试加载周围消息:', messageId)
-    QMessage.info('正在加载目标消息...')
 
     try {
       const conversationId = conversationIdAtStart

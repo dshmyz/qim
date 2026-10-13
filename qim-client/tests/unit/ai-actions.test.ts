@@ -64,20 +64,6 @@ describe('useAIActions', () => {
     })
   })
 
-  describe('searchMessages', () => {
-    it('应搜索消息', async () => {
-      const { searchMessages } = useAIActions()
-      
-      expect(typeof searchMessages).toBe('function')
-    })
-
-    it('应支持搜索选项', async () => {
-      const { searchMessages } = useAIActions()
-      
-      expect(typeof searchMessages).toBe('function')
-    })
-  })
-
   describe('状态管理', () => {
     it('应正确管理处理中状态', () => {
       const { isProcessing, errorMessage } = useAIActions()

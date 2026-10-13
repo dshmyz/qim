@@ -71,11 +71,19 @@ function loadFromStorage(): Conversation[] {
   }
 }
 
+// 跨组件的「跳转定位目标」：全局搜索点结果 → 切会话 → ChatWindow 消费。
+// 一次性消费（consumePendingJump），避免残留导致下次进会话误跳。
+export interface PendingMessageJump {
+  conversationId: string
+  messageId: string
+}
+
 export const useChatStore = defineStore('chat', () => {
   // 状态
   const messages = ref<Map<string, Message[]>>(new Map())
   const conversations = ref<Conversation[]>([])
   const currentConversationId = ref<string | null>(null)
+  const pendingJump = ref<PendingMessageJump | null>(null)
   const drafts = ref<Map<string, string>>(new Map())
   const isLoadingMessages = ref(false)
   const hasMoreMessages = ref<Map<string, boolean>>(new Map())
@@ -483,6 +491,20 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.set(conversationId, [...msgs, ...filtered])
   }
 
+  // 设置跳转定位目标（全局搜索点结果等场景）
+  function setPendingJump(conversationId: string | number, messageId: string | number) {
+    pendingJump.value = { conversationId: String(conversationId), messageId: String(messageId) }
+  }
+
+  // 消费跳转目标：conversationId 匹配当前会话则返回 messageId 并清空，否则不动（等目标会话激活）。
+  function consumePendingJump(conversationId: string | number): string | null {
+    if (!pendingJump.value) return null
+    if (pendingJump.value.conversationId !== String(conversationId)) return null
+    const messageId = pendingJump.value.messageId
+    pendingJump.value = null
+    return messageId
+  }
+
   return {
     // 状态
     messages,
@@ -540,5 +562,9 @@ export const useChatStore = defineStore('chat', () => {
     clearMessages: clearAllMessages,
     getLastMessageId,
     appendMessagesSilent,
+    // 跳转定位（全局搜索 → 会话内定位）
+    pendingJump,
+    setPendingJump,
+    consumePendingJump,
   }
 })

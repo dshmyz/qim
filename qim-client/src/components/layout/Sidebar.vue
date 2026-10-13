@@ -6,6 +6,7 @@ import AppPanel from '../shared/AppPanel.vue'
 import SearchResult from '../conversation/SearchResult.vue'
 import ConversationList from '../conversation/ConversationList.vue'
 import ChannelSidebar from '../channel/ChannelSidebar.vue'
+import MessageHitsPanel from '../chat/MessageHitsPanel.vue'
 import type { Conversation, User } from '../../types'
 import Avatar from '../shared/Avatar.vue'
 import { logger } from '../../utils/logger';
@@ -53,6 +54,11 @@ interface Props {
   hasMoreConversations?: boolean
   isLoadingConversations?: boolean
   groups?: any[]
+  /** 全局消息搜索命中（按会话分组渲染在 SearchResult 之后） */
+  messageHits?: import('../chat/MessageHitsPanel.vue').MessageHit[]
+  messageHitsTotal?: number
+  messageHitsLoading?: boolean
+  messageHitsExhausted?: string[]
 }
 
 const props = defineProps<Props>()
@@ -81,6 +87,8 @@ const emit = defineEmits<{
   (e: 'searchResultApplyJoin', item: SearchResultItem): void
   (e: 'createChannel'): void
   (e: 'loadMoreConversations'): void
+  (e: 'messageHitSelect', hit: import('../chat/MessageHitsPanel.vue').MessageHit): void
+  (e: 'messageHitsLoadMore', group: import('../chat/MessageHitsPanel.vue').MessageHitGroup): void
 }>()
 
 const userName = computed(() => {
@@ -95,7 +103,22 @@ const filteredConversations = computed(() => {
   )
 })
 
-defineExpose({})
+// 消息命中的会话名/头像解析：优先本地会话列表（群名、单聊对端名后端已归一为 conv.name），
+// 兜底"会话"占位。单聊对端字段（other_member_name）也兜一层。
+const resolveHitConversation = (conversationId: number | string) => {
+  const conv = props.conversations.find(c => String(c.id) === String(conversationId))
+  if (!conv) return null
+  const avatar = (conv as any).avatar || (conv as any).other_member_avatar || ''
+  return { name: conv.name || (conv as any).other_member_name || '会话', avatar }
+}
+
+// Ctrl/Cmd+K 全局聚焦搜索框
+const searchInputRef = ref<HTMLInputElement | null>(null)
+const focusSearch = () => {
+  searchInputRef.value?.focus()
+}
+
+defineExpose({ focusSearch })
 </script>
 
 <template>
@@ -127,11 +150,12 @@ defineExpose({})
     <!-- 搜索框 -->
     <div class="search-box" v-show="!collapsed && activeOption !== 'channels'">
       <input
+        ref="searchInputRef"
         :value="searchQuery"
         @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
         type="text"
         class="search-input"
-        :placeholder="activeOption === 'recent' ? '搜索用户、群组、IP或组织...' : '搜索...'"
+        :placeholder="activeOption === 'recent' ? '搜索用户、群组、聊天记录...' : '搜索...'"
       />
       <button
         v-if="searchQuery"
@@ -155,6 +179,21 @@ defineExpose({})
             @privateChat="(item) => $emit('searchResultPrivateChat', item)"
             @applyJoin="(item) => $emit('searchResultApplyJoin', item)"
           />
+          <MessageHitsPanel
+            v-if="searchQuery && (messageHits?.length || messageHitsLoading)"
+            :hits="messageHits || []"
+            :total="messageHitsTotal || 0"
+            :keyword="searchQuery"
+            :server-url="serverUrl"
+            :resolve-conversation="resolveHitConversation"
+            :exhausted-ids="messageHitsExhausted || []"
+            :is-loading-more="messageHitsLoading"
+            @select="(hit) => $emit('messageHitSelect', hit)"
+            @loadMore="(group) => $emit('messageHitsLoadMore', group)"
+          />
+          <div v-else-if="searchQuery && !messageHits?.length && !messageHitsLoading" class="message-hits-empty">
+            无相关聊天记录
+          </div>
           <ConversationList
             :conversations="filteredConversations"
             :currentConversationId="currentConversationId"
@@ -376,6 +415,13 @@ defineExpose({})
   height: 100%;
   overflow-y: auto;
   position: relative;
+}
+
+.message-hits-empty {
+  padding: 12px 16px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  text-align: center;
 }
 
 .recent-content-section {

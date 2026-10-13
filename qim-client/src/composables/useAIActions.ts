@@ -217,51 +217,6 @@ export function useAIActions() {
     })
   }
 
-  const searchMessages = async (
-    conversationId: number,
-    query: string,
-    options?: {
-      senderId?: number
-      startTime?: string
-      endTime?: string
-    }
-  ) => {
-    isProcessing.value = true
-    errorMessage.value = null
-
-    try {
-      const payload: Record<string, any> = {
-        conversation_id: conversationId,
-        query,
-      }
-      if (options?.senderId !== undefined) {
-        payload.sender_id = options.senderId
-      }
-      if (options?.startTime) {
-        payload.start_time = options.startTime
-      }
-      if (options?.endTime) {
-        payload.end_time = options.endTime
-      }
-
-      const response = await post<any>(
-        '/api/v1/ai/search',
-        payload,
-        { baseUrl: serverUrl.value }
-      )
-      if (!response) {
-        errorMessage.value = '搜索失败'
-        throw new Error('搜索失败')
-      }
-      return response.data
-    } catch (error: any) {
-      errorMessage.value = error.message || '搜索失败'
-      throw error
-    } finally {
-      isProcessing.value = false
-    }
-  }
-
   // 帮我回复（流式）：逐字推送给调用方，实现打字机效果
   const draftReplyStream = (
     conversationId: number,
@@ -306,7 +261,6 @@ export function useAIActions() {
     generateSummary,
     generateSummaryMeta,
     generateSummaryStream,
-    searchMessages,
     draftReplyStream,
     abortDraftReply,
     abort: abortStream,
