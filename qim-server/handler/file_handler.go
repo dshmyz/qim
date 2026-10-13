@@ -945,8 +945,8 @@ func PublicDownloadFile(c *gin.Context) {
 
 // streamFileFromStorage 从存储层读取文件并流式写入响应。
 // 调用方应在调用前设置 Content-Type 和 Content-Disposition。
-// timeout 为0时默认60秒。
-func streamFileFromStorage(c *gin.Context, storagePath string, size int64, timeout time.Duration) {
+// 传输阶段不设总超时（原因见函数内注释）。
+func streamFileFromStorage(c *gin.Context, storagePath string, size int64) {
 	mgr := di.GlobalContainer.StorageManager
 	if mgr == nil {
 		response.InternalServerError(c, "存储服务未初始化")
@@ -958,14 +958,11 @@ func streamFileFromStorage(c *gin.Context, storagePath string, size int64, timeo
 		return
 	}
 
-	if timeout == 0 {
-		timeout = 60 * time.Second
-	}
-	// 用请求 context：客户端断开后存储层读取也会中止，避免 goroutine 泄漏
-	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
-	defer cancel()
-
-	reader, err := st.Get(ctx, key)
+	// 直接持有请求 context：客户端断开后打开与读取都会随之中止，避免 goroutine 泄漏。
+	// 刻意不设传输总超时：大文件下载耗时可以远超任何固定时限，且 S3 SDK 的 GetObject
+	// Body 生命周期绑定 ctx，带超时的 ctx 会在传输中途掐断下载（大文件报网络错误的根因之一）；
+	// 打开阶段万一长挂，由客户端断开兜底。
+	reader, err := st.Get(c.Request.Context(), key)
 	if err != nil {
 		response.InternalServerError(c, "读取文件失败")
 		return
@@ -1001,7 +998,7 @@ func streamFileResponse(c *gin.Context, file *model.File, filename string) {
 		c.Header("Content-Disposition", sanitizeFilename(filename))
 	}
 
-	streamFileFromStorage(c, file.StoragePath, file.Size, 60*time.Second)
+	streamFileFromStorage(c, file.StoragePath, file.Size)
 }
 
 func DeleteFile(c *gin.Context) {

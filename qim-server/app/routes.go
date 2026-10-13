@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"io/fs"
@@ -1114,9 +1113,10 @@ func serveStorageFile(c *gin.Context, storagePath string) {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
-	defer cancel()
-	reader, err := st.Get(ctx, key)
+	// 直接持有请求 context：客户端断开后打开与读取都会随之中止，避免 goroutine 泄漏。
+	// 不设传输总超时：S3 SDK 的 GetObject Body 生命周期绑定 ctx，带超时的 ctx 会在
+	// 传输中途掐断大文件下载；打开阶段万一长挂，由客户端断开兜底。
+	reader, err := st.Get(c.Request.Context(), key)
 	if err != nil {
 		c.AbortWithStatus(http.StatusNotFound)
 		return

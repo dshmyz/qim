@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
-	"time"
 
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
@@ -132,8 +131,7 @@ func serveFileByID(c *gin.Context, fileID uint) {
 	}
 
 	c.Header("Content-Type", "application/octet-stream")
-	// CLI 二进制较大，用120秒超时
-	streamFileFromStorage(c, file.StoragePath, file.Size, 120*time.Second)
+	streamFileFromStorage(c, file.StoragePath, file.Size)
 }
 
 // isPlatformAllowed 校验平台参数（防止路径穿越）。
