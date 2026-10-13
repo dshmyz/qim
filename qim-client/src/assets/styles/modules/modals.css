@@ -336,7 +336,9 @@
   justify-content: center;
 }
 
-.retry-btn, .login-btn {
+/* 断线重连按钮（Main.vue 网络错误弹层专用；勿用 .retry-btn 这类通用名，
+   否则会泄漏进各组件局部 .retry-btn（如消息发送失败重试图标） */
+.reconnect-btn, .login-btn {
   padding: 6px 16px;
   border: none;
   border-radius: 4px;
@@ -345,12 +347,12 @@
   transition: all 0.3s ease;
 }
 
-.retry-btn {
+.reconnect-btn {
   background: rgba(255, 255, 255, 0.8);
   color: #f56c6c;
 }
 
-.retry-btn:hover {
+.reconnect-btn:hover {
   background: #f56c6c;
   color: white;
 }

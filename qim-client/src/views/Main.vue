@@ -14,7 +14,7 @@
         <div class="error-message">
           <p>{{ networkErrorMsg }}</p>
           <div class="error-actions">
-            <button class="retry-btn" @click="handleManualReconnect">重新连接</button>
+            <button class="reconnect-btn" @click="handleManualReconnect">重新连接</button>
             <button class="login-btn" @click="gotoLogin">重新登录</button>
           </div>
         </div>
