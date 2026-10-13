@@ -2538,12 +2538,14 @@ const buildMessageHits = (rawHits: any[]): MessageHit[] => {
     // markdown 是文本类消息（AI 回复多为此类型），同样出正文片段而非类型徽标。
     // markdown 过 stripMarkdown 剥掉 **加粗**/#标题/链接等语法符号——聊天里它是
     // 富文本渲染的，预览与所见对齐；text 保持字面（聊天里就是原文渲染）。
+    // 代码围栏在聊天里渲染为代码块，预览折算为 [代码] 占位——剥围栏留内容会让
+    // <note><title>测试</title> 这类 XML 示例整段标签漏进单行预览（用户截图反馈）。
     // 换行折叠为单空格：原消息的 \n\n 在单行省略渲染下会残留大段空白间隙
     const isText = msg.type === 'text' || msg.type === 'markdown'
     const previewText = !isText
       ? ''
       : msg.type === 'markdown'
-        ? stripMarkdown(msg.content || '')
+        ? stripMarkdown((msg.content || '').replace(/```[\s\S]*?```/g, '[代码]'))
         : decodeToPlainText(msg.content || '').replace(/\s+/g, ' ').trim()
     // 时间戳来自 created_at（RFC3339）
     const ts = msg.created_at ? new Date(msg.created_at).getTime() : 0
