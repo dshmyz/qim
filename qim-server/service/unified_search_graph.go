@@ -80,7 +80,12 @@ func (g *UnifiedSearchGraph) Build() error {
 
 	graph.AddLambdaNode("retrieve", g.createRetrieveNode())
 	graph.AddLambdaNode("build_prompt", g.createBuildPromptNode())
-	graph.AddChatModelNode("model", NewEinoChatModel(g.aiService, ai.TaskTypeSearch, 0))
+	// 模型节点用 NoTools：检索已由 retrieve 节点多路完成后，本节点只负责综合成稿。
+	// 带工具的内层循环是纯负债——allowed 为空会放行全量注册工具（含 search_knowledge
+	// 自身的递归风险、summarize_conversation 等依赖会话上下文的工具），且内层任一工具
+	// 失败会以 NodeRunError 炸掉整个 search_knowledge（2026-10-10 "技术交流群讨论内容"
+	// 检索失败即此因：内层模型调 summarize_conversation 遇 convID=0）。
+	graph.AddChatModelNode("model", NewEinoChatModelNoTools(g.aiService, ai.TaskTypeSearch, 0))
 	graph.AddLambdaNode("format", g.createFormatNode())
 
 	graph.AddEdge(compose.START, "retrieve")
@@ -104,8 +109,7 @@ func (g *UnifiedSearchGraph) Execute(ctx context.Context, input *UnifiedSearchIn
 	}
 	// 图内 model 节点编译期写死 userID=0，靠 UserIDToCtx 从 ctx 读取真实用户
 	// （见 EinoChatModel.Generate）。这里统一从显式 input.UserID 注入一次，调用方
-	// 无需知道该内部契约——避免 SearchKnowledgeTool / 侧边栏 cross 各自传空 ctx
-	// 导致 model 二次调工具时 callerCtx.UserID=0 被"需要登录"误拦。
+	// 无需知道该内部契约（模型节点现走 NoTools 纯生成，此注入保留为通用契约）。
 	return g.runnable.Invoke(UserIDToCtx(ctx, input.UserID), input)
 }
 
