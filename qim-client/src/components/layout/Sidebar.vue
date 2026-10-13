@@ -59,6 +59,8 @@ interface Props {
   messageHitsTotal?: number
   messageHitsLoading?: boolean
   messageHitsExhausted?: string[]
+  /** 会话元信息解析：由 Main 提供（优先后端 conversation_meta，本地列表兜底） */
+  resolveMessageHitConversation?: (conversationId: number | string) => { name: string, avatar: string } | null
 }
 
 const props = defineProps<Props>()
@@ -89,6 +91,7 @@ const emit = defineEmits<{
   (e: 'loadMoreConversations'): void
   (e: 'messageHitSelect', hit: import('../chat/MessageHitsPanel.vue').MessageHit): void
   (e: 'messageHitsLoadMore', group: import('../chat/MessageHitsPanel.vue').MessageHitGroup): void
+  (e: 'messageHitsOpenConversation', conversationId: number | string): void
 }>()
 
 const userName = computed(() => {
@@ -103,9 +106,12 @@ const filteredConversations = computed(() => {
   )
 })
 
-// 消息命中的会话名/头像解析：优先本地会话列表（群名、单聊对端名后端已归一为 conv.name），
-// 兜底"会话"占位。单聊对端字段（other_member_name）也兜一层。
+// 消息命中的会话名/头像解析：默认查本地会话列表；Main 传入 resolver 时
+// 以它为准（优先后端 conversation_meta，覆盖不在本地列表的历史会话）。
 const resolveHitConversation = (conversationId: number | string) => {
+  if (props.resolveMessageHitConversation) {
+    return props.resolveMessageHitConversation(conversationId)
+  }
   const conv = props.conversations.find(c => String(c.id) === String(conversationId))
   if (!conv) return null
   const avatar = (conv as any).avatar || (conv as any).other_member_avatar || ''
@@ -190,6 +196,7 @@ defineExpose({ focusSearch })
             :is-loading-more="messageHitsLoading"
             @select="(hit) => $emit('messageHitSelect', hit)"
             @loadMore="(group) => $emit('messageHitsLoadMore', group)"
+            @openConversation="(cid) => $emit('messageHitsOpenConversation', cid)"
           />
           <div v-else-if="searchQuery && !messageHits?.length && !messageHitsLoading" class="message-hits-empty">
             无相关聊天记录

@@ -798,14 +798,28 @@ watch(() => props.conversation?.id, (newId, oldId) => {
 
     lastConversationId.value = newId
 
-    // 全局搜索等入口留下的跳转目标：会话激活后消费并定位（scrollToMessage 内部
-    // 自带"消息不在当前列表则拉取前后 20 条"的兜底，等初始消息加载也安全）
+    // 全局搜索等入口留下的跳转目标：会话激活后消费并定位。
+    // 目标消息可能已渲染（消息已在列表）也可能等初始加载完成才出现，
+    // scrollAndHighlightMessage 轮询重试避免在加载竞态下误报"找不到"。
     const jumpTarget = chatStore.consumePendingJump(newId)
     if (jumpTarget) {
-      nextTick(() => scrollToMessage(jumpTarget))
+      nextTick(() => scrollToMessageWithRetries(jumpTarget))
     }
   }
 })
+
+// 定位重试：初始消息异步加载中 DOM 尚无目标元素时，间隔重试直至出现或超时。
+const scrollToMessageWithRetries = async (messageId: string) => {
+  const maxAttempts = 10
+  for (let i = 0; i < maxAttempts; i++) {
+    if (scrollAndHighlightMessage(messageId)) return
+    await new Promise(resolve => setTimeout(resolve, 300))
+    // 会话已切换则放弃
+    if (!props.conversation || String(props.conversation.id) !== String(lastConversationId.value)) return
+  }
+  // 重试穷尽仍未渲染：走完整加载流程（拉前后 20 条再定位）
+  scrollToMessage(messageId)
+}
 
 // 「编辑后发送」：草稿回填输入框并聚焦，同时丢弃原草稿（用户接管，卡片收起），
 // 并登记待捕获的编辑信号——用户改写发出时记录 original→final diff
@@ -3204,6 +3218,7 @@ const handleUpdateAISettings = async (settings: any) => {
 defineExpose({
   startScreenShare,
   scrollToBottom,
+  scrollToMessage,
   startMessageSelection,
   toggleMessageSelection,
   forwardSelectedMessages,

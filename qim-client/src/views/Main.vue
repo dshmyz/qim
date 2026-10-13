@@ -85,6 +85,7 @@
         :messageHitsTotal="messageHitsTotal"
         :messageHitsLoading="messageHitsLoading"
         :messageHitsExhausted="messageHitsExhausted"
+        :resolveMessageHitConversation="resolveHitConversation"
         @update:searchQuery="searchQuery = $event"
         @showUserProfile="showSelfProfile"
         @showNotification="handleNotificationCenter"
@@ -110,6 +111,7 @@
         @loadMoreConversations="loadMoreConversations"
         @messageHitSelect="handleMessageHitSelect"
         @messageHitsLoadMore="handleMessageHitsLoadMore"
+        @messageHitsOpenConversation="handleMessageHitsOpenConversation"
       />
       
       <!-- 实时通信全局组件（屏幕共享、视频通话） -->
@@ -2513,26 +2515,29 @@ const messageHitsTotal = ref(0)
 const messageHitsLoading = ref(false)
 let messageSearchSeq = 0
 
-// 非文本消息的预览折算：搜索结果列表显示类型标签而非内容
-const HIT_TYPE_LABELS: Record<string, string> = {
-  image: '[图片]',
-  file: '[文件]',
-  video: '[视频]',
-  audio: '[语音]',
-  miniApp: '[小程序]',
-  news: '[资讯]',
-  markdown: '[Markdown]',
-  merged_forward: '[聊天记录]',
-  share: '[分享]',
-}
-
 // 组装命中数据：sender 兜底 nickname/username，时间格式化复用 formatTime。
-// 高亮由 MessageHitsPanel 按关键词 prop 在渲染时计算，这里只出纯文本预览。
+// 高亮由 MessageHitsPanel 按关键词 prop 在渲染时计算，这里只出纯文本预览；
+// 非文本命中由组件按 type 渲染类型徽标，previewText 留空。
 const buildMessageHits = (rawHits: any[]): MessageHit[] => {
+  // 收集会话元信息（conversation_meta 由后端批量附带，不依赖本地会话列表）。
+  // 整体重建 Map 以触发 ref 响应式——对 ref<Map> 直接 .set 不会通知依赖方。
+  const metas = new Map(hitConversationMetas.value)
+  for (const msg of rawHits) {
+    const meta = msg.conversation_meta
+    if (meta && !metas.has(String(msg.conversation_id))) {
+      metas.set(String(msg.conversation_id), {
+        name: meta.name || '',
+        avatar: meta.avatar || '',
+        type: meta.type || '',
+      })
+    }
+  }
+  hitConversationMetas.value = metas
   return rawHits.map(msg => {
     const senderName = msg.sender?.name || msg.sender?.nickname || msg.sender?.username || '未知用户'
-    const isText = msg.type === 'text'
-    const previewText = isText ? decodeToPlainText(msg.content || '') : (HIT_TYPE_LABELS[msg.type] || '[消息]')
+    // markdown 是文本类消息（AI 回复多为此类型），同样出正文片段而非类型徽标
+    const isText = msg.type === 'text' || msg.type === 'markdown'
+    const previewText = isText ? decodeToPlainText(msg.content || '') : ''
     // 时间戳来自 created_at（RFC3339）
     const ts = msg.created_at ? new Date(msg.created_at).getTime() : 0
     return {
@@ -2546,8 +2551,30 @@ const buildMessageHits = (rawHits: any[]): MessageHit[] => {
   })
 }
 
+// 会话元信息：后端批量返回（不依赖本地列表是否含有被隐藏的历史会话），
+// 组件 resolveConversation 优先用它，本地列表兜底。
+const hitConversationMetas = ref<Map<string, { name: string, avatar: string, type: string }>>(new Map())
+
+const resolveHitConversation = (conversationId: number | string) => {
+  const key = String(conversationId)
+  const meta = hitConversationMetas.value.get(key)
+  if (meta) {
+    return { name: meta.name || '会话', avatar: meta.avatar || '' }
+  }
+  const conv = conversations.value.find(c => String(c.id) === key)
+  if (conv) {
+    return { name: conv.name || (conv as any).other_member_name || '会话', avatar: (conv as any).avatar || '' }
+  }
+  return null
+}
+
 const handleMessageHitSelect = async (hit: MessageHit) => {
   const conversationId = String(hit.conversationId)
+  // 同会话点击：ChatWindow 的 conversation watch 不触发，直接 emit 跳转
+  if (sameConversationId(currentConversationId.value, conversationId)) {
+    chatWindowRef.value?.scrollToMessage(String(hit.id))
+    return
+  }
   chatStore.setPendingJump(conversationId, String(hit.id))
   const conv = conversations.value.find(c => String(c.id) === conversationId)
   if (conv) {
@@ -2562,13 +2589,26 @@ const handleMessageHitSelect = async (hit: MessageHit) => {
 
 const messageHitsExhausted = ref<string[]>([])
 
+// 点会话组头：仅打开会话（不带具体消息定位）
+const handleMessageHitsOpenConversation = async (conversationId: number | string) => {
+  const conv = conversations.value.find(c => String(c.id) === String(conversationId))
+  if (conv) {
+    await handleConversationSelect(conv)
+  } else {
+    await handleConversationSelect({ id: String(conversationId) } as any)
+  }
+  searchQuery.value = ''
+}
+
 const handleMessageHitsLoadMore = async (group: MessageHitGroup) => {
   const conversationId = String(group.conversationId)
   try {
     const data = await messageApi.searchMessages({
       keyword: searchQuery.value.trim(),
       conv_id: Number(conversationId),
-      page: Math.ceil(group.hits.length / 20) + 1,
+      // 该会话已有 k 条（全局首屏截取，可能非完整第一页），取包含第 k+1 条的那页
+      // 并靠去重收敛：k<20 → page1 补齐；无新增即 exhausted
+      page: Math.floor(group.hits.length / 20) + 1,
       pageSize: 20,
     })
     const newHits = buildMessageHits(data.list || [])
@@ -2603,6 +2643,7 @@ watch(searchQuery, (newQuery) => {
       messageHits.value = []
       messageHitsTotal.value = 0
       messageHitsExhausted.value = []
+      hitConversationMetas.value = new Map()
       messageHitsLoading.value = false
       return
     }

@@ -6,20 +6,27 @@
     </div>
     <div class="hits-list">
       <div v-for="group in groups" :key="group.conversationId" class="hits-group">
-        <div class="hits-group-header">
+        <div class="hits-group-header" @click="$emit('openConversation', group.conversationId)">
           <Avatar :src="group.avatar" :name="group.name" :server-url="serverUrl" size="xs" />
           <span class="hits-group-name">{{ group.name }}</span>
           <span class="hits-group-count">{{ group.hits.length }} 条</span>
+          <i class="fas fa-chevron-right hits-group-arrow"></i>
         </div>
         <div
           v-for="hit in group.hits"
           :key="hit.id"
           class="hits-item"
+          :data-hit-id="hit.id"
           @click="$emit('select', hit)"
         >
           <span class="hits-item-sender">{{ hit.senderName }}</span>
+          <span class="hits-item-body">
+            <span v-if="!isTextType(hit.type)" class="hits-item-badge">
+              <i :class="typeIcon(hit.type)"></i>{{ typeLabel(hit.type) }}
+            </span>
+            <span class="hits-item-content" v-html="renderPreview(hit)"></span>
+          </span>
           <span class="hits-item-time">{{ hit.time }}</span>
-          <span class="hits-item-content" v-html="renderPreview(hit)"></span>
         </div>
         <button
           v-if="canLoadMore(group)"
@@ -27,9 +34,11 @@
           @click="$emit('loadMore', group)"
         >
           查看该会话更多结果
+          <i class="fas fa-chevron-down"></i>
         </button>
       </div>
       <div v-if="isLoadingMore" class="hits-loading">加载中...</div>
+      <div v-else-if="!hits.length" class="hits-empty">无相关聊天记录</div>
     </div>
   </div>
 </template>
@@ -43,7 +52,7 @@ export interface MessageHit {
   conversationId: number | string
   senderName: string
   time: string
-  /** 已按类型折算的纯文本预览：文本消息为正文纯文本，其余为类型标签（[图片] 等） */
+  /** 已按类型折算的纯文本预览：文本消息为正文纯文本，其余为空串（由徽标展示类型） */
   previewText: string
   type: string
 }
@@ -60,7 +69,7 @@ const props = defineProps<{
   total: number
   keyword: string
   serverUrl: string
-  /** 会话名/头像解析：单聊 members 常为空，按 other_member 兜底 */
+  /** 会话名/头像解析：优先后端 conversation_meta，兜底本地会话列表 */
   resolveConversation: (conversationId: number | string) => { name: string, avatar: string } | null
   /** 已确认无更多结果的会话 ID（点击"查看更多"后没有新命中时由父级标记） */
   exhaustedIds?: string[]
@@ -70,10 +79,42 @@ const props = defineProps<{
 defineEmits<{
   (e: 'select', hit: MessageHit): void
   (e: 'loadMore', group: MessageHitGroup): void
+  (e: 'openConversation', conversationId: number | string): void
 }>()
 
 // 组内超过该条数才出现"查看更多"——更少说明该会话命中大概率已在首屏拿全
 const MAX_GROUP_HITS = 5
+
+const TYPE_LABELS: Record<string, string> = {
+  image: '图片',
+  file: '文件',
+  video: '视频',
+  audio: '语音',
+  miniApp: '小程序',
+  news: '资讯',
+  markdown: 'Markdown',
+  merged_forward: '聊天记录',
+  share: '分享',
+  card: '名片',
+}
+
+const TYPE_ICONS: Record<string, string> = {
+  image: 'fas fa-image',
+  file: 'fas fa-file',
+  video: 'fas fa-video',
+  audio: 'fas fa-microphone',
+  miniApp: 'fas fa-th-large',
+  news: 'fas fa-newspaper',
+  markdown: 'fas fa-code',
+  merged_forward: 'fas fa-comments',
+  share: 'fas fa-share-alt',
+  card: 'fas fa-id-card',
+}
+
+const typeLabel = (type: string): string => TYPE_LABELS[type] || '消息'
+const typeIcon = (type: string): string => TYPE_ICONS[type] || 'fas fa-comment'
+// markdown 是文本类消息，出正文片段而非类型徽标
+const isTextType = (type: string): boolean => type === 'text' || type === 'markdown'
 
 /** 转义后再包 <mark>：消息正文按纯文本渲染，尖括号内容不会变成元素 */
 function escapeHtml(text: string): string {
@@ -85,8 +126,20 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#39;')
 }
 
+/** 预览截断：从首个关键词命中位置往前取一点上下文，命中点尽量留在窗口内 */
+function clipPreview(text: string, keyword: string, window: number): string {
+  if (text.length <= window) return text
+  const kw = keyword.trim().toLowerCase()
+  const at = kw ? text.toLowerCase().indexOf(kw) : -1
+  if (at < 0) return text.slice(0, window) + '…'
+  const start = Math.max(0, at - 10)
+  const prefix = start > 0 ? '…' : ''
+  return prefix + text.slice(start, start + window) + (start + window < text.length ? '…' : '')
+}
+
 function renderPreview(hit: MessageHit): string {
-  const text = hit.previewText
+  if (!isTextType(hit.type)) return ''
+  const text = clipPreview(hit.previewText, props.keyword, 80)
   const kw = props.keyword.trim().toLowerCase()
   if (!text || !kw) return escapeHtml(text)
   const lower = text.toLowerCase()
@@ -138,7 +191,7 @@ const groups = computed<MessageHitGroup[]>(() => {
 .message-hits-panel {
   position: relative;
   width: 100%;
-  max-height: 420px;
+  max-height: 460px;
   background: var(--sidebar-bg);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -154,7 +207,7 @@ const groups = computed<MessageHitGroup[]>(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border-color);
   font-weight: 600;
   font-size: var(--font-size-sm);
@@ -169,7 +222,7 @@ const groups = computed<MessageHitGroup[]>(() => {
 }
 
 .hits-list {
-  max-height: 380px;
+  max-height: 420px;
   overflow-y: auto;
 }
 
@@ -179,6 +232,24 @@ const groups = computed<MessageHitGroup[]>(() => {
   gap: 8px;
   padding: 8px 16px 4px;
   background: var(--panel-bg);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.hits-group-header:hover {
+  filter: brightness(0.97);
+}
+
+.hits-group-count {
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.hits-group-arrow {
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary);
+  margin-left: auto;
 }
 
 .hits-group-name {
@@ -191,18 +262,11 @@ const groups = computed<MessageHitGroup[]>(() => {
   min-width: 0;
 }
 
-.hits-group-count {
-  font-size: var(--font-size-xxs);
-  color: var(--text-secondary);
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
 .hits-item {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  padding: 6px 16px 6px 40px;
+  gap: 8px;
+  padding: 7px 16px 7px 40px;
   cursor: pointer;
   transition: background-color 0.15s ease;
   min-width: 0;
@@ -214,7 +278,7 @@ const groups = computed<MessageHitGroup[]>(() => {
 
 .hits-item-sender {
   font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  color: var(--text-color);
   flex-shrink: 0;
   max-width: 72px;
   white-space: nowrap;
@@ -222,10 +286,28 @@ const groups = computed<MessageHitGroup[]>(() => {
   text-overflow: ellipsis;
 }
 
-.hits-item-time {
+.hits-item-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hits-item-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: var(--font-size-xxs);
   color: var(--text-secondary);
+  background: var(--hover-color);
+  padding: 1px 6px;
+  border-radius: 4px;
   flex-shrink: 0;
+}
+
+.hits-item-badge i {
+  font-size: var(--font-size-xxs);
 }
 
 .hits-item-content {
@@ -244,6 +326,12 @@ const groups = computed<MessageHitGroup[]>(() => {
   border-radius: 2px;
 }
 
+.hits-item-time {
+  font-size: var(--font-size-xxs);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
 .hits-more-btn {
   margin: 4px 16px 8px 40px;
   padding: 4px 10px;
@@ -254,14 +342,18 @@ const groups = computed<MessageHitGroup[]>(() => {
   cursor: pointer;
   text-align: left;
   border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .hits-more-btn:hover {
   background: var(--hover-color);
 }
 
-.hits-loading {
-  padding: 8px 16px;
+.hits-loading,
+.hits-empty {
+  padding: 12px 16px;
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
   text-align: center;

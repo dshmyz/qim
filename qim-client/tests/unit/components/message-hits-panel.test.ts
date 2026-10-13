@@ -51,6 +51,14 @@ describe('MessageHitsPanel', () => {
     expect(mark.text()).toBe('Plan')
   })
 
+  it('长预览从首个命中位置截断，命中点保留在窗口内', () => {
+    const long = '前置背景'.repeat(20) + '目标关键词在这里' + '后续内容'.repeat(20)
+    const wrapper = mountPanel([makeHit({ previewText: long })], { keyword: '目标关键词' })
+    const content = wrapper.find('.hits-item-content').text()
+    expect(content).toContain('目标关键词')
+    expect(content.startsWith('…')).toBe(true)
+  })
+
   it('HTML 特殊字符转义，消息内容不注入元素', () => {
     const wrapper = mountPanel([makeHit({ previewText: '<img src=x onerror=alert(1)>' })], { keyword: '' })
     const content = wrapper.find('.hits-item-content')
@@ -58,9 +66,12 @@ describe('MessageHitsPanel', () => {
     expect(content.text()).toContain('<img src=x onerror=alert(1)>')
   })
 
-  it('非文本命中显示类型标签', () => {
-    const wrapper = mountPanel([makeHit({ previewText: '[图片]', type: 'image' })])
-    expect(wrapper.find('.hits-item-content').text()).toBe('[图片]')
+  it('非文本命中显示类型徽标（图标+文案），不渲染正文', () => {
+    const wrapper = mountPanel([makeHit({ previewText: '', type: 'image' })])
+    const badge = wrapper.find('.hits-item-badge')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toContain('图片')
+    expect(wrapper.find('.hits-item-content').text()).toBe('')
   })
 
   it('点击命中 emit select 并携带原始 hit', async () => {
@@ -68,6 +79,12 @@ describe('MessageHitsPanel', () => {
     const wrapper = mountPanel([hit])
     await wrapper.find('.hits-item').trigger('click')
     expect(wrapper.emitted('select')![0][0]).toEqual(hit)
+  })
+
+  it('点击会话组头 emit openConversation', async () => {
+    const wrapper = mountPanel([makeHit()])
+    await wrapper.find('.hits-group-header').trigger('click')
+    expect(wrapper.emitted('openConversation')![0][0]).toBe(100)
   })
 
   it('组内已加载条数达到上限时显示"查看更多"，exhausted 后隐藏', () => {
