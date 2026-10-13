@@ -81,7 +81,8 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
 <style scoped>
 .search-popup {
   position: relative;
-  width: 100%;
+  /* 不设 width:100%：flex 列容器内靠 align-self:stretch + 水平 margin 内缩 */
+  box-sizing: border-box;
   max-height: 300px;
   background: var(--sidebar-bg);
   border-radius: 8px;
@@ -89,7 +90,8 @@ const searchBadge = (item: SearchResultItem) => buildSearchResultBadge(item)
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
   z-index: 100;
   overflow: hidden;
-  margin-bottom: 8px;
+  /* 水平边距与上方搜索框（padding 8px）对齐，不贴侧栏边缘 */
+  margin: 0 8px 8px;
   border: 1px solid var(--border-color);
 }
 
