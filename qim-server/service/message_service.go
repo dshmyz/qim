@@ -28,20 +28,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// useFulltextForMessageKeyword 仅让 ASCII 关键词走 MySQL FULLTEXT。
-// MySQL 默认全文解析器对中文分词不可靠，中文及混合关键词必须走 LIKE。
-func useFulltextForMessageKeyword(keyword string) bool {
-	if keyword == "" {
-		return false
-	}
-	for _, r := range keyword {
-		if r > 127 {
-			return false
-		}
-	}
-	return true
-}
-
 // 消息域业务错误：带 HTTP 状态 + 业务码，经 response.ErrorFrom 统一落响应。
 // 同一语义在不同调用点文案不同（如"无权限发送"/"只能撤回"），由各返回点构造带站点文案的错误。
 var ErrMessageNotFound = pkgErr.NotFoundError("消息不存在")
@@ -1420,14 +1406,10 @@ func (s *MessageService) GetMessagesByFilter(query MessageQuery) (*MessageResult
 		dbQuery = dbQuery.Where("type = ?", query.MessageType)
 	}
 
-	// 优化：使用全文索引搜索
+	// 消息内容匹配：ngram 全文 / LIKE 由 database.ContentMatch 单源决定
 	if query.Keyword != "" {
-		if database.D.SupportsFulltext() && useFulltextForMessageKeyword(query.Keyword) {
-			dbQuery = dbQuery.Where("MATCH(content) AGAINST(? IN BOOLEAN MODE)", query.Keyword)
-		} else {
-			// SQLite / TiDB 降级：LIKE 搜索
-			dbQuery = dbQuery.Where("content LIKE ?", "%"+query.Keyword+"%")
-		}
+		cond, args := database.ContentMatch(query.Keyword)
+		dbQuery = dbQuery.Where(cond, args...)
 	}
 
 	if query.StartDate != "" {
@@ -1457,7 +1439,8 @@ func (s *MessageService) GetMessagesByFilter(query MessageQuery) (*MessageResult
 	}, nil
 }
 
-func (s *MessageService) SearchMessages(userID uint, keyword string, convID *uint, limit, offset int) ([]model.Message, error) {
+// SearchMessages 跨会话关键词搜索当前用户所在会话的消息，返回命中列表与总数（真分页）。
+func (s *MessageService) SearchMessages(userID uint, keyword string, convID *uint, limit, offset int) ([]model.Message, int64, error) {
 	db := s.db
 
 	if limit <= 0 {
@@ -1473,25 +1456,25 @@ func (s *MessageService) SearchMessages(userID uint, keyword string, convID *uin
 	query := db.Model(&model.Message{}).Joins("JOIN conversation_members ON messages.conversation_id = conversation_members.conversation_id").Where("conversation_members.user_id = ?", userID)
 
 	if keyword != "" {
-		// 优化：使用全文索引搜索
-		if database.D.SupportsFulltext() {
-			query = query.Where("MATCH(messages.content) AGAINST(? IN BOOLEAN MODE)", keyword)
-		} else {
-			// SQLite / TiDB 降级：LIKE 搜索
-			query = query.Where("messages.content LIKE ?", "%"+keyword+"%")
-		}
+		cond, args := database.ContentMatch(keyword)
+		query = query.Where(cond, args...)
 	}
 
 	if convID != nil {
 		query = query.Where("messages.conversation_id = ?", *convID)
 	}
 
-	var messages []model.Message
-	if err := query.Preload("Sender").Preload("Conversation").Preload("Conversation.Members").Preload("Conversation.Members.User").Order("messages.created_at DESC").Limit(limit).Offset(offset).Find(&messages).Error; err != nil {
-		return nil, err
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
 	}
 
-	return messages, nil
+	var messages []model.Message
+	if err := query.Preload("Sender").Preload("Conversation").Preload("Conversation.Members").Preload("Conversation.Members.User").Order("messages.created_at DESC").Limit(limit).Offset(offset).Find(&messages).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return messages, total, nil
 }
 
 func (s *MessageService) RecallMessage(msgID, userID uint) (*model.Message, error) {
@@ -1906,89 +1889,6 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 	}
 
 	return result, nil
-}
-
-func (s *MessageService) SearchMessagesByFullText(userID uint, keyword string, convID *uint, limit, offset int) ([]model.Message, error) {
-	if keyword == "" {
-		return s.SearchMessages(userID, "", convID, limit, offset)
-	}
-
-	db := s.db
-
-	if database.D.SupportsFulltext() {
-		var messages []model.Message
-		query := db.Model(&model.Message{}).
-			Joins("JOIN conversation_members ON messages.conversation_id = conversation_members.conversation_id").
-			Where("conversation_members.user_id = ?", userID).
-			Where("MATCH(messages.content) AGAINST(? IN BOOLEAN MODE)", keyword)
-
-		if convID != nil {
-			query = query.Where("messages.conversation_id = ?", *convID)
-		}
-
-		if err := query.Preload("Sender").
-			Preload("Conversation").
-			Preload("Conversation.Members").
-			Preload("Conversation.Members.User").
-			Order("messages.created_at DESC").
-			Limit(limit).
-			Offset(offset).
-			Find(&messages).Error; err != nil {
-			return nil, err
-		}
-		return messages, nil
-	}
-
-	// SQLite：使用 FTS5 虚拟表
-	// 其他不支持 FULLTEXT 的数据库：降级到 LIKE 搜索
-	if database.D.Type() == "sqlite" {
-		if limit <= 0 {
-			limit = 20
-		}
-		if limit > 100 {
-			limit = 100
-		}
-
-		var messages []model.Message
-		query := db.Raw(`
-			SELECT m.* FROM messages m
-			JOIN messages_fts5 fts ON m.id = fts.rowid
-			JOIN conversation_members cm ON m.conversation_id = cm.conversation_id
-			WHERE cm.user_id = ? AND fts.content MATCH ?
-		`, userID, keyword)
-
-		if convID != nil {
-			query = db.Raw(`
-				SELECT m.* FROM messages m
-				JOIN messages_fts5 fts ON m.id = fts.rowid
-				JOIN conversation_members cm ON m.conversation_id = cm.conversation_id
-				WHERE cm.user_id = ? AND fts.content MATCH ? AND m.conversation_id = ?
-			`, userID, keyword, *convID)
-		}
-
-		if err := query.Find(&messages).Error; err != nil {
-			return nil, err
-		}
-
-		// 预加载关联数据
-		if len(messages) > 0 {
-			msgIDs := make([]uint, len(messages))
-			for i, m := range messages {
-				msgIDs[i] = m.ID
-			}
-			db.Where("id IN ?", msgIDs).
-				Preload("Sender").
-				Preload("Conversation").
-				Preload("Conversation.Members").
-				Preload("Conversation.Members.User").
-				Find(&messages)
-		}
-
-		return messages, nil
-	}
-
-	// TiDB / 其他不支持 FULLTEXT 的数据库：降级到 LIKE 搜索
-	return s.SearchMessages(userID, keyword, convID, limit, offset)
 }
 
 // MessageResponseOptions 控制消息响应载荷构建的 per-channel / per-user 差异。

@@ -97,10 +97,25 @@ func (d *mysqlDialect) SupportsFTS5() bool { return false }
 
 func (d *mysqlDialect) CreateFulltextIndex(db *gorm.DB, table, indexName string, columns []string) {
 	if d.HasFulltextIndex(db, table, indexName) {
-		return
+		if d.fulltextIndexHasNgram(db, table, indexName) {
+			return
+		}
+		// 旧索引无 ngram 解析器：默认解析器把整段中文当一个词，中文搜索失效，必须重建
+		logger.WithModule("Database").Info("检测到无 ngram 的旧 FULLTEXT 索引，重建以支持中文分词", "table", table, "index", indexName)
+		db.Exec(d.DropIndexSQL(indexName, table))
 	}
 	cols := strings.Join(columns, ", ")
-	db.Exec(fmt.Sprintf("ALTER TABLE %s ADD FULLTEXT INDEX %s (%s)", table, indexName, cols))
+	db.Exec(fmt.Sprintf("ALTER TABLE %s ADD FULLTEXT INDEX %s (%s) WITH PARSER ngram", table, indexName, cols))
+}
+
+// fulltextIndexHasNgram 检查既有 FULLTEXT 索引是否带 ngram 解析器。
+// 探测失败按无 ngram 处理，交由上层触发一次重建。
+func (d *mysqlDialect) fulltextIndexHasNgram(db *gorm.DB, table, indexName string) bool {
+	var tableName, createSQL string
+	if err := db.Raw("SHOW CREATE TABLE `"+table+"`").Row().Scan(&tableName, &createSQL); err != nil {
+		return false
+	}
+	return strings.Contains(createSQL, "WITH PARSER ngram")
 }
 
 func (d *mysqlDialect) HasFulltextIndex(db *gorm.DB, table, indexName string) bool {
@@ -125,13 +140,13 @@ func (d *mysqlDialect) InitFulltext(db *gorm.DB) {
 	}
 	defer db.Exec("DROP TABLE IF EXISTS " + probeTable)
 
-	if err := db.Exec("ALTER TABLE " + probeTable + " ADD FULLTEXT INDEX __qim_ft_probe_idx (content)").Error; err != nil {
-		logger.WithModule("Database").Info("FULLTEXT 索引不可用，将使用 LIKE 搜索", "error", err)
+	if err := db.Exec("ALTER TABLE " + probeTable + " ADD FULLTEXT INDEX __qim_ft_probe_idx (content) WITH PARSER ngram").Error; err != nil {
+		logger.WithModule("Database").Info("FULLTEXT(ngram) 不可用，将使用 LIKE 搜索", "error", err)
 		return
 	}
 
 	d.supportsFulltext = true
-	logger.WithModule("Database").Info("数据库支持 FULLTEXT 全文索引")
+	logger.WithModule("Database").Info("数据库支持 FULLTEXT(ngram) 全文索引")
 }
 
 // sqliteDialect SQLite 方言

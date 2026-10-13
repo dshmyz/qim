@@ -116,6 +116,11 @@ func TestMySQL_MigrateDB_KeyTablesAndIndexes(t *testing.T) {
 	require.True(t, indexExists("message_read_receipts", "idx_message_user_receipt"), "已读回执唯一索引缺失")
 	require.True(t, indexExists("messages", "ft_messages_content"), "messages FULLTEXT 索引缺失")
 	require.True(t, database.D.SupportsFulltext(), "MySQL 应支持 FULLTEXT")
+
+	// ngram 解析器是中文搜索命中的前提：索引必须带 WITH PARSER ngram（旧索引会被迁移重建）
+	var createSQL string
+	require.NoError(t, db.Raw("SHOW CREATE TABLE `messages`").Row().Scan(&createSQL, &createSQL))
+	require.Contains(t, createSQL, "WITH PARSER ngram", "FULLTEXT 索引必须使用 ngram 解析器")
 }
 
 // TestMySQL_MarkAsRead_InsertsReceipts 覆盖读回执的 MySQL INSERT IGNORE 方言分支：
@@ -159,10 +164,13 @@ func TestMySQL_MarkAsRead_InsertsReceipts(t *testing.T) {
 	require.Equal(t, int64(3), receipts, "重复已读不应产生重复回执")
 }
 
-// TestMySQL_SearchMessagesByFullText 覆盖全文搜索的 MySQL MATCH...AGAINST 分支，
-// 确保走 FULLTEXT 而非 LIKE 降级。
-func TestMySQL_SearchMessagesByFullText(t *testing.T) {
+// TestMySQL_SearchMessages 覆盖跨会话消息搜索的 MySQL ngram 全文分支：
+// 中英文关键词均应命中（旧版默认解析器中文失效，ngram 迁移后恢复）；真分页 total 正确。
+func TestMySQL_SearchMessages(t *testing.T) {
 	db := mysqlTestDB(t)
+	if !database.D.SupportsFulltext() {
+		t.Skip("当前 MySQL 无 ngram FULLTEXT 能力，搜索走 LIKE，本用例不适用")
+	}
 
 	u := &model.User{Username: "u_search", PasswordHash: "x"}
 	require.NoError(t, db.Create(u).Error)
@@ -171,13 +179,38 @@ func TestMySQL_SearchMessagesByFullText(t *testing.T) {
 	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: conv.ID, UserID: u.ID, Role: "member"}).Error)
 
 	require.NoError(t, db.Create(&model.Message{ConversationID: conv.ID, SenderID: u.ID, Type: "text", Content: "hello golang gorm search"}).Error)
+	require.NoError(t, db.Create(&model.Message{ConversationID: conv.ID, SenderID: u.ID, Type: "text", Content: "今天讨论项目排期"}).Error)
 	require.NoError(t, db.Create(&model.Message{ConversationID: conv.ID, SenderID: u.ID, Type: "text", Content: "unrelated content only"}).Error)
 
 	msgSvc := service.NewMessageService(db, nil, nil)
-	res, err := msgSvc.SearchMessagesByFullText(u.ID, "golang", nil, 20, 0)
-	require.NoError(t, err, "MySQL MATCH...AGAINST 查询失败")
+
+	res, total, err := msgSvc.SearchMessages(u.ID, "golang", nil, 20, 0)
+	require.NoError(t, err, "MySQL MATCH 查询失败")
+	require.Equal(t, int64(1), total)
 	require.Len(t, res, 1, "应命中 1 条含 golang 的消息")
 	require.Contains(t, res[0].Content, "golang")
+
+	// 中文关键词：ngram 分词生效的核心回归点
+	res, total, err = msgSvc.SearchMessages(u.ID, "排期", nil, 20, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total, "中文关键词应命中 1 条")
+	require.Len(t, res, 1)
+	require.Contains(t, res[0].Content, "排期")
+
+	// 单字关键词：ContentMatch 自动降级 LIKE，仍可命中
+	res, total, err = msgSvc.SearchMessages(u.ID, "讨", nil, 20, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total, "单字关键词 LIKE 兜底应命中")
+	require.Len(t, res, 1)
+
+	// 真分页：pageSize=1 翻两页共 2 条命中
+	res, total, err = msgSvc.SearchMessages(u.ID, "content", nil, 1, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Len(t, res, 1)
+	res, _, err = msgSvc.SearchMessages(u.ID, "content", nil, 1, 1)
+	require.NoError(t, err)
+	require.Len(t, res, 1, "第二页应返回剩余 1 条")
 }
 
 // TestMySQL_SendMessage_BasicFlow 覆盖发消息热路径在 MySQL 上的基本流程：

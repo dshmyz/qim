@@ -1400,7 +1400,7 @@ func SearchMessages(c *gin.Context) {
 		convIDPtr = &cid
 	}
 
-	messages, err := msgSvc.SearchMessages(uid, keyword, convIDPtr, pageSize, offset)
+	messages, total, err := msgSvc.SearchMessages(uid, keyword, convIDPtr, pageSize, offset)
 	if err != nil {
 		response.InternalServerError(c, "搜索消息失败")
 		return
@@ -1428,7 +1428,7 @@ func SearchMessages(c *gin.Context) {
 
 	response.Success(c, gin.H{
 		"list":  responseMessages,
-		"total": len(responseMessages),
+		"total": total,
 		"page":  page,
 	})
 }

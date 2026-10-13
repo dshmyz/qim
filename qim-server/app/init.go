@@ -1359,19 +1359,17 @@ func addIndexes(db *gorm.DB) {
 
 	// 4. 消息全文搜索索引
 	if database.D.SupportsFulltext() {
-		if !database.D.HasFulltextIndex(db, "messages", "ft_messages_content") {
-			database.D.CreateFulltextIndex(db, "messages", "ft_messages_content", []string{"content"})
-			logger.WithModule("Index").Info("添加 messages FULLTEXT 全文索引")
-		}
-	} else if database.D.SupportsFTS5() {
-		// SQLite：使用 FTS5 虚拟表
-		if !tableExists(db, "messages_fts5") {
-			err := db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts5 USING fts5(content, conversation_id, created_at, tokenize='unicode61')").Error
-			if err == nil {
-				db.Exec("INSERT INTO messages_fts5(content, conversation_id, created_at) SELECT content, conversation_id, created_at FROM messages")
-				logger.WithModule("Index").Info("创建 messages FTS5 全文搜索虚拟表")
+		// CreateFulltextIndex 自带幂等：索引已存在且带 ngram 解析器则跳过，
+		// 旧版无 ngram 索引会被自动重建（默认解析器中文分词失效）
+		database.D.CreateFulltextIndex(db, "messages", "ft_messages_content", []string{"content"})
+	} else {
+		// SQLite：消息搜索降级 LIKE。历史上曾用 FTS5 虚拟表，但它只在启动时回填、
+		// 新消息无同步管线，早已烂尾——清除残留表。
+		if tableExists(db, "messages_fts5") {
+			if err := db.Exec("DROP TABLE messages_fts5").Error; err != nil {
+				logger.WithModule("Index").Warn("清除废弃的 messages_fts5 失败（不影响 LIKE 搜索）", "error", err)
 			} else {
-				logger.WithModule("Index").Warn("创建 FTS5 虚拟表失败，将使用 LIKE 搜索", "error", err)
+				logger.WithModule("Index").Info("已清除废弃的 messages_fts5 虚拟表（消息搜索走 LIKE）")
 			}
 		}
 	}

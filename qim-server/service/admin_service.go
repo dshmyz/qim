@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 
 	"gorm.io/gorm"
@@ -201,7 +202,9 @@ func (s *AdminService) SearchMessages(query AdminMessageSearchQuery) ([]AdminMes
 		Where("c.is_deleted = ?", false)
 
 	if query.Keyword != "" {
-		dbQuery = dbQuery.Where("messages.content LIKE ?", "%"+query.Keyword+"%")
+		// 消息内容匹配：ngram 全文 / LIKE 由 database.ContentMatch 单源决定
+		cond, args := database.ContentMatch(query.Keyword)
+		dbQuery = dbQuery.Where(cond, args...)
 	}
 	if query.SenderID > 0 {
 		dbQuery = dbQuery.Where("messages.sender_id = ?", query.SenderID)
