@@ -243,7 +243,9 @@ const groups = computed<MessageHitGroup[]>(() => {
   border-bottom: 1px solid var(--border-color);
   /* 标题行常驻主题浅色分层（--hover-color：浅色主题为浅蓝/浅紫，深色为亮层），
      白底白卡靠它获得第一层视觉锚点 */
-  background: var(--hover-color);
+  /* 标题分层条：比 hover-color 浅一档（条目 hover 为 50% 混合，梯度：
+     白底 < 条目 hover 50% < 标题条 70%），避免与条目悬停撞色 */
+  background: color-mix(in srgb, var(--hover-color), transparent 30%);
   font-weight: 600;
   font-size: var(--font-size-sm);
   color: var(--text-color);
@@ -286,7 +288,8 @@ const groups = computed<MessageHitGroup[]>(() => {
 }
 
 .hits-group-header:hover {
-  background-color: var(--hover-color);
+  /* 比标题条的常驻 --hover-color 浅一档，避免与头部撞色 */
+  background-color: color-mix(in srgb, var(--hover-color), transparent 50%);
 }
 
 .hits-group-count {
@@ -322,7 +325,8 @@ const groups = computed<MessageHitGroup[]>(() => {
 }
 
 .hits-item:hover {
-  background-color: var(--hover-color);
+  /* 比标题条的常驻 --hover-color 浅一档，避免与头部撞色 */
+  background-color: color-mix(in srgb, var(--hover-color), transparent 50%);
 }
 
 /* 第一行：发送人（主层级）居左，时间（次要层级）钉在右端 */
@@ -413,7 +417,7 @@ const groups = computed<MessageHitGroup[]>(() => {
 }
 
 .hits-more-btn:hover {
-  background: var(--hover-color);
+  background: color-mix(in srgb, var(--hover-color), transparent 50%);
 }
 
 .hits-loading,

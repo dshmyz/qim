@@ -129,7 +129,8 @@ const handleListScroll = () => {
   /* 与聊天记录面板标题条统一，避免两弹层并排时高度错位 */
   padding: 10px 16px;
   border-bottom: 1px solid var(--border-color);
-  background: var(--hover-color);
+  /* 标题分层条：比 hover-color 浅一档（条目 hover 为 50% 混合），与聊天记录面板统一 */
+  background: color-mix(in srgb, var(--hover-color), transparent 30%);
   font-weight: 600;
   font-size: var(--font-size-sm);
   color: var(--text-color);
@@ -173,7 +174,8 @@ const handleListScroll = () => {
 }
 
 .search-popup-item:hover {
-  background-color: var(--hover-color);
+  /* 比标题条的常驻 --hover-color 浅一档，避免与头部撞色 */
+  background-color: color-mix(in srgb, var(--hover-color), transparent 50%);
 }
 
 .search-popup-avatar {
