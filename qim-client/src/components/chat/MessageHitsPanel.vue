@@ -230,8 +230,8 @@ const groups = computed<MessageHitGroup[]>(() => {
   overflow: hidden;
   /* 水平边距与上方搜索框（padding 8px）对齐，不贴侧栏边缘 */
   margin: 0 8px 8px;
-  /* 面板专用边框变量：中国红/翡翠绿主题直给色值（其余主题回落 --border-color） */
-  border: 1px solid var(--panel-border-color, var(--border-color));
+  /* 无边框：视觉边界交给阴影 + 标题分层条 + 圆角（微信浮层同款）——
+     主题色边框线在浅色主题下反复调淡仍偏显眼，直接去掉这条线 */
   display: flex;
   flex-direction: column;
 }

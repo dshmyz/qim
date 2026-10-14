@@ -167,9 +167,6 @@
   --text-primary: var(--text-color);   /* 别名：51 个组件使用此名称，统一指向 --text-color */
   --text-secondary: var(--color-gray-500);
   --border-color: var(--color-gray-200);
-  /* 搜索弹层（聊天记录面板/搜索结果）专用边框：默认与通用边框一致，
-     中国红/翡翠绿主题在 themes.css 各自覆盖为指定浅色 */
-  --panel-border-color: var(--border-color);
   --hover-color: var(--color-primary-50);
   --active-color: var(--color-primary-600);
   --sidebar-bg: #ffffff;

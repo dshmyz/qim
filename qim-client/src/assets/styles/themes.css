@@ -417,7 +417,6 @@
   --secondary-color: #fff5f5;
   --text-color: #5c1a1a;
   --border-color: #fecaca6b;        /* 用户指定：浅红 42% 透明，叠白后极淡 */
-  --panel-border-color: #fecaca6b;  /* 搜索弹层边框直用此色，DevTools 可见 */
   --hover-color: #ffe8e8;
   --active-color: #a01830;
   --sidebar-bg: #ffffff;
@@ -470,7 +469,6 @@
   --secondary-color: #f0fff4;
   --text-color: #1a4a2e;
   --border-color: #b7e9cd6b;        /* 与红色同强度：浅绿 42% 透明 */
-  --panel-border-color: #b7e9cd6b;  /* 搜索弹层边框直用此色，DevTools 可见 */
   --hover-color: #dcf5e8;
   --active-color: #247048;
   --sidebar-bg: #ffffff;

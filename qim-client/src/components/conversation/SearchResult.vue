@@ -106,13 +106,12 @@ const handleListScroll = () => {
   flex-direction: column;
   background: var(--sidebar-bg);
   border-radius: 8px;
-  /* 与聊天记录面板同款分层：白底白卡靠阴影 + 标题分层条浮起 */
+  /* 无边框：与聊天记录面板同款，视觉边界交给阴影 + 标题分层条 */
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
   z-index: 100;
   overflow: hidden;
   /* 水平边距与上方搜索框（padding 8px）对齐，不贴侧栏边缘 */
   margin: 0 8px 8px;
-  border: 1px solid var(--panel-border-color, var(--border-color));
 }
 
 .search-popup-content {
