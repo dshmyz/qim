@@ -211,11 +211,11 @@
   --secondary-color: #fef2f2;
   --text-color: #7f1d1d;
   --text-secondary: #991b1b;
-  --border-color: #fecaca;
+  --border-color: #fecaca6b;        /* 用户指定：浅红 42% 透明 */
+  --side-options-bg: linear-gradient(135deg, #dc2626 0%, #f87171 100%);
   --hover-color: #fef2f2;
   --active-color: #b91c1c;
   --sidebar-bg: #ffffff;
-  --side-options-bg: var(--sidebar-bg);
   --content-bg: var(--color-gray-50);
   --window-controls-bg: #ffffff;
   --window-controls-left-bg: var(--window-controls-bg);
@@ -242,11 +242,11 @@
   --secondary-color: #ecfdf5;
   --text-color: #064e3b;
   --text-secondary: #065f46;
-  --border-color: #a7f3d0;
+  --border-color: #b7e9cd6b;        /* 与红色同强度：浅绿 42% 透明 */
+  --side-options-bg: linear-gradient(135deg, #2e8b57 0%, #5cb88a 100%);
   --hover-color: #ecfdf5;
   --active-color: #047857;
   --sidebar-bg: #ffffff;
-  --side-options-bg: var(--sidebar-bg);
   --content-bg: var(--color-gray-50);
   --window-controls-bg: #ffffff;
   --window-controls-left-bg: var(--window-controls-bg);
