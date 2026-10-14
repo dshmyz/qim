@@ -3,7 +3,7 @@
     <el-divider content-position="left">外部 MCP 工具</el-divider>
 
     <p class="section-desc">
-      配置 QIM 作为 MCP Client 连接的外部 MCP Server。启用后，群 @AI 普通提问的 ReAct
+      配置 {{ productName }} 作为 MCP Client 连接的外部 MCP Server。启用后，群 @AI 普通提问的 ReAct
       循环可调用这些外部工具（如计算器、天气查询），并以前端独立工具卡片呈现调用过程。
       保存后即时热同步，无需重启服务。
     </p>
@@ -125,7 +125,10 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getSystemConfig, updateSystemConfig } from '@/api/systemConfig'
+import { getProductName } from '@/config/appConfig'
 import request from '@/utils/request'
+
+const productName = getProductName()
 
 interface MCPTool {
   name: string

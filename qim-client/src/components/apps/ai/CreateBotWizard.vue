@@ -53,14 +53,6 @@
         </div>
 
         <div class="connect-section">
-          <h4><i class="fas fa-terminal"></i> 安装 CLI 工具</h4>
-          <div class="code-block" @click="copyText('go install github.com/user/qim-server/cmd/qim-mcp@latest', 'go')">
-            <code>go install github.com/user/qim-server/cmd/qim-mcp@latest</code>
-            <span class="copy-hint">{{ copiedField === 'go' ? '已复制' : '点击复制' }}</span>
-          </div>
-        </div>
-
-        <div class="connect-section">
           <h4><i class="fas fa-key"></i> 签发 Bot Token</h4>
           <div class="token-input-row">
             <input
@@ -94,31 +86,7 @@
           <label>描述</label>
           <textarea v-model="form.description" rows="3" placeholder="机器人描述"></textarea>
         </div>
-        <div class="form-group">
-          <label>模型来源</label>
-          <select v-model="form.useSystemConfig">
-            <option :value="true">使用系统默认模型</option>
-            <option :value="false">使用我的自定义配置</option>
-          </select>
-        </div>
-        <div v-if="!form.useSystemConfig" class="form-group">
-          <label>选择配置</label>
-          <select v-model="form.configId">
-            <option value="">请选择...</option>
-            <option v-for="cfg in myConfigs" :key="cfg.id" :value="cfg.id">
-              {{ cfg.config_name }} ({{ cfg.model_name }})
-            </option>
-          </select>
-          <p class="hint" v-if="myConfigs.length === 0">
-            暂无配置，请先在"我的模型配置"中添加
-          </p>
-        </div>
-        <div class="form-group">
-          <label>系统提示词</label>
-          <textarea v-model="form.system_prompt" rows="5" placeholder="定义机器人的行为和角色..."></textarea>
-        </div>
-
-        <!-- 回复模式 + Webhook 配置 + 知识库（统一子组件） -->
+        <!-- 回复模式（先选模式再出对应配置）+ Webhook 配置 + 知识库（统一子组件） -->
         <BotReplyConfigFields
           v-model:mode="form.mode"
           v-model:use-creator-notes="form.use_creator_notes"
@@ -128,6 +96,33 @@
           secret-hint="留空则不设置密钥；建议生成随机值保存到 agent 配置中"
           :vector-enabled="vectorEnabled"
         />
+
+        <!-- 模型配置（仅内置 AI 模式；外部 Agent 回复不经过内置模型，无需配置） -->
+        <template v-if="form.mode === 'internal_ai'">
+          <div class="form-group">
+            <label>模型来源</label>
+            <select v-model="form.useSystemConfig">
+              <option :value="true">使用系统默认模型</option>
+              <option :value="false">使用我的自定义配置</option>
+            </select>
+          </div>
+          <div v-if="!form.useSystemConfig" class="form-group">
+            <label>选择配置</label>
+            <select v-model="form.configId">
+              <option value="">请选择...</option>
+              <option v-for="cfg in myConfigs" :key="cfg.id" :value="cfg.id">
+                {{ cfg.config_name }} ({{ cfg.model_name }})
+              </option>
+            </select>
+            <p class="hint" v-if="myConfigs.length === 0">
+              暂无配置，请先在"我的模型配置"中添加
+            </p>
+          </div>
+          <div class="form-group">
+            <label>系统提示词</label>
+            <textarea v-model="form.system_prompt" rows="5" placeholder="定义机器人的行为和角色..."></textarea>
+          </div>
+        </template>
 
         <button class="submit-btn" @click="handleSubmit" :disabled="creating">
           {{ creating ? '创建中...' : '创建' }}
@@ -144,6 +139,7 @@ import { useBots } from '../../../composables/useBots'
 import { useModelConfigs } from '../../../composables/useModelConfigs'
 import { getStoredServerUrl } from '../../../composables/useServerUrl'
 import { useSystemConfigStore } from '../../../stores/systemConfig'
+import { buildMcpStdioConfig } from '../../../config/mcpTooling'
 import type { UserAIConfig } from '../../../types/ai'
 import BotReplyConfigFields from './BotReplyConfigFields.vue'
 
@@ -186,18 +182,9 @@ let copyTimer: ReturnType<typeof setTimeout> | null = null
 
 const serverUrl = computed(() => getStoredServerUrl())
 
-const mcpConfigJson = computed(() => {
-  const url = serverUrl.value
-  return JSON.stringify({
-    mcpServers: {
-      'qim-bot': {
-        type: 'stdio',
-        command: 'qim-mcp',
-        args: ['--server', url, '--token', mcpToken.value || '<YOUR_TOKEN>']
-      }
-    }
-  }, null, 2)
-})
+const mcpConfigJson = computed(() =>
+  buildMcpStdioConfig(serverUrl.value, mcpToken.value || '<YOUR_TOKEN>', 'qim-bot')
+)
 
 async function copyText(text: string, field: string) {
   try {
@@ -263,20 +250,29 @@ async function handleSubmit() {
     return
   }
 
-  if (!form.value.useSystemConfig && !form.value.configId) {
+  // 与后端 CreateBotRequest binding:"required" 对齐，避免后端报笼统的「参数错误」
+  if (!form.value.description.trim()) {
+    QMessage.warning('请输入机器人描述')
+    return
+  }
+
+  // 模型配置仅内置 AI 模式校验/提交（external_webhook 下该组字段已隐藏，不能被隐藏字段卡住）
+  if (form.value.mode === 'internal_ai' && !form.value.useSystemConfig && !form.value.configId) {
     QMessage.warning('请选择一个模型配置')
     return
   }
 
   creating.value = true
   try {
-    // 拼装 config：基础 AI 配置 + 回复路由配置（mode/webhook/知识库）
+    // 拼装 config：回复路由配置（mode/webhook/知识库）；模型相关字段仅内置 AI 模式提交
     const config: Record<string, any> = {
-      system_prompt: form.value.system_prompt,
-      use_system_config: form.value.useSystemConfig,
-      user_config_id: form.value.configId,
       mode: form.value.mode,
       use_creator_notes: form.value.mode === 'internal_ai' && form.value.use_creator_notes === true,
+    }
+    if (form.value.mode === 'internal_ai') {
+      config.system_prompt = form.value.system_prompt
+      config.use_system_config = form.value.useSystemConfig
+      config.user_config_id = form.value.configId
     }
     if (form.value.mode === 'external_webhook') {
       config.webhook_url = form.value.webhook_url

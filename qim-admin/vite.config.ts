@@ -14,7 +14,19 @@ export default defineConfig(({ mode }) => {
       __APP_PRODUCT_NAME_CN__: JSON.stringify(extra.productNameCN || '青雀'),
       __APP_COPYRIGHT_YEAR__: JSON.stringify(extra.copyrightYear || '2026'),
     },
-    plugins: [vue()],
+    plugins: [
+      vue(),
+      // 页面 <title> 中的产品名与 package.json build.extraMetadata.productNameCN 同源，改名不用碰 HTML
+      {
+        transformIndexHtml: {
+          order: 'pre',
+          handler: (html) => html.replace(
+            /<title>.*?<\/title>/,
+            `<title>${extra.productNameCN} - 企业级智能协作平台</title>`
+          ),
+        },
+      },
+    ],
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src'),

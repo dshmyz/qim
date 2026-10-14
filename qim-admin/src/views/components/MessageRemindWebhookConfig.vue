@@ -92,6 +92,9 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getSystemConfig, updateSystemConfig } from '@/api/systemConfig'
+import { getProductName } from '@/config/appConfig'
+
+const productName = getProductName()
 
 interface WebhookConfig {
   enabled: boolean
@@ -121,9 +124,9 @@ const config = reactive<WebhookConfig>({
 const headerList = ref<Array<{ key: string; value: string }>>([])
 
 const templates: Record<string, string> = {
-  wechat: '{"msgtype":"text","text":{"content":"{{.SenderNickname}} 提醒你查看 QIM 消息：{{.MessageContentPreview}}"}}',
-  feishu: '{"msg_type":"text","content":{"text":"{{.SenderNickname}} 提醒你查看 QIM 消息：{{.MessageContentPreview}}"}}',
-  slack: '{"text":"{{.SenderNickname}} 提醒你查看 QIM 消息：{{.MessageContentPreview}}"}',
+  wechat: `{"msgtype":"text","text":{"content":"{{.SenderNickname}} 提醒你查看 ${productName} 消息：{{.MessageContentPreview}}"}}`,
+  feishu: `{"msg_type":"text","content":{"text":"{{.SenderNickname}} 提醒你查看 ${productName} 消息：{{.MessageContentPreview}}"}}`,
+  slack: `{"text":"{{.SenderNickname}} 提醒你查看 ${productName} 消息：{{.MessageContentPreview}}"}`,
   custom: ''
 }
 

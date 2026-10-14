@@ -130,7 +130,7 @@ func CreateBot(c *gin.Context) {
 
 	var req CreateBotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误")
+		response.BadRequest(c, "请求参数错误: "+err.Error())
 		return
 	}
 
@@ -300,7 +300,7 @@ func UpdateMyBot(c *gin.Context) {
 
 	var req CreateBotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误")
+		response.BadRequest(c, "请求参数错误: "+err.Error())
 		return
 	}
 

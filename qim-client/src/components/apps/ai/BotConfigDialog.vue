@@ -9,8 +9,19 @@
         <i class="fas fa-clock"></i>
         <span>机器人当前为「{{ bot.approval_status === 'rejected' ? '已拒绝' : '待审批' }}」状态，配置和令牌签发功能暂不可用，需管理员审批通过后方可操作。</span>
       </div>
-      <!-- 模型来源 -->
-      <section class="config-section">
+      <!-- 回复模式（先选模式再出对应配置）+ Webhook 配置 + 知识库（统一子组件） -->
+      <BotReplyConfigFields
+        v-model:mode="form.mode"
+        v-model:use-creator-notes="form.use_creator_notes"
+        v-model:webhook-url="form.webhook_url"
+        v-model:webhook-secret="form.webhook_secret"
+        secret-placeholder="••••••（留空不修改）"
+        secret-hint="留空则不修改既有密钥（仅写入，服务端不回显）"
+        :vector-enabled="vectorEnabled"
+      />
+
+      <!-- 模型来源（仅内置 AI 模式；外部 Agent 回复不经过内置模型，无需配置） -->
+      <section v-if="form.mode === 'internal_ai'" class="config-section">
         <div class="section-header">
           <h4>模型来源</h4>
         </div>
@@ -49,17 +60,6 @@
           </span>
         </div>
       </section>
-
-      <!-- 回复模式 + Webhook 配置 + 知识库（统一子组件） -->
-      <BotReplyConfigFields
-        v-model:mode="form.mode"
-        v-model:use-creator-notes="form.use_creator_notes"
-        v-model:webhook-url="form.webhook_url"
-        v-model:webhook-secret="form.webhook_secret"
-        secret-placeholder="••••••（留空不修改）"
-        secret-hint="留空则不修改既有密钥（仅写入，服务端不回显）"
-        :vector-enabled="vectorEnabled"
-      />
 
       <!-- Token 管理（仅外部 Agent 需要：pull 拉取 / Bot API 回发 / MCP 均凭令牌鉴权） -->
       <section v-if="form.mode === 'external_webhook'" class="config-section">
@@ -108,14 +108,14 @@
             {{ showMcpConfig ? '收起' : '展开' }}
           </button>
         </div>
-        <p class="field-hint">支持 MCP 的 agent（Claude Code / Cursor / Claude Desktop）可免脚本接入，注册后直接调用 QIM 消息工具。</p>
+        <p class="field-hint">支持 MCP 的 agent（Claude Code / Cursor / Claude Desktop）可免脚本接入，注册后直接调用 IM 服务端的消息工具。</p>
         <div v-if="showMcpConfig" class="mcp-box">
           <div class="mcp-mode-tabs">
             <button :class="['mode-tab', { active: mcpMode === 'stdio' }]" @click="mcpMode = 'stdio'">本地 (stdio)</button>
             <button :class="['mode-tab', { active: mcpMode === 'http' }]" @click="mcpMode = 'http'">远程 (HTTP)</button>
           </div>
           <div class="form-field">
-            <label v-if="mcpMode === 'stdio'">QIM 服务端地址</label>
+            <label v-if="mcpMode === 'stdio'">IM 服务端地址</label>
             <label v-else>MCP HTTP 端点</label>
             <input v-if="mcpMode === 'stdio'" v-model="mcpServerUrl" placeholder="http://localhost:8080" />
             <input v-else v-model="mcpHttpUrl" placeholder="http://your-server:8082/mcp" />
@@ -131,8 +131,8 @@
               <i class="fas fa-copy"></i> 复制配置
             </button>
           </div>
-          <p class="field-hint" v-if="mcpMode === 'stdio'">需先安装 <code>qim-mcp</code> 二进制并加入 PATH（由服务端 <code>cmd/qim-mcp</code> 构建）。</p>
-          <p class="field-hint" v-else>远程模式：先在服务器启动 <code>qim-mcp --transport http --addr :8082 --server http://localhost:8080</code>，token 经请求头传入，无需在启动命令中暴露。</p>
+          <p class="field-hint" v-if="mcpMode === 'stdio'">需先安装 MCP 客户端工具 <code>{{ MCP_CLI_BINARY }}</code> 并加入 PATH（源码在 IM 服务端仓库的 <code>cmd/{{ MCP_CLI_BINARY }}</code>，装完即可直接使用）。</p>
+          <p class="field-hint" v-else>远程模式：先在服务器上启动 MCP 客户端工具 <code>{{ MCP_CLI_BINARY }} --transport http --addr :8082 --server http://localhost:8080</code>，token 经请求头传入，无需在启动命令中暴露。</p>
         </div>
       </section>
 
@@ -155,6 +155,7 @@ import { useSystemConfigStore } from '../../../stores/systemConfig'
 import type { BotTokenInfo, BotWebhookConfig } from '../../../types/bot'
 import QMessageBox from '../../../utils/qmessagebox'
 import BotReplyConfigFields from './BotReplyConfigFields.vue'
+import { MCP_CLI_BINARY, buildMcpStdioConfig } from '../../../config/mcpTooling'
 
 const QMessage = (window as any).$QMessage
 const props = defineProps<{ bot: any }>()
@@ -197,14 +198,7 @@ const mcpConfigJson = computed(() => {
       },
     }, null, 2)
   }
-  return JSON.stringify({
-    mcpServers: {
-      qim: {
-        command: 'qim-mcp',
-        args: ['--server', server, '--token', token],
-      },
-    },
-  }, null, 2)
+  return buildMcpStdioConfig(server, token, 'qim')
 })
 const copyMcpConfig = async () => {
   try {

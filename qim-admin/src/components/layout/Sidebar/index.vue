@@ -2,7 +2,7 @@
 <template>
   <el-aside :width="collapsed ? '64px' : '240px'" class="sidebar" :class="{ 'is-collapsed': collapsed }">
     <div class="logo-container">
-      <img src="/app-logo-v1.png" alt="QIM Logo" class="logo-image" />
+      <img src="/app-logo-v1.png" :alt="`${productName} Logo`" class="logo-image" />
       <h2 class="logo-text" v-show="!collapsed">{{ adminTitle }}</h2>
     </div>
 
@@ -40,7 +40,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { Fold, Expand } from '@element-plus/icons-vue'
-import { getAdminTitle } from '@/config/appConfig'
+import { getAdminTitle, getProductName } from '@/config/appConfig'
 import { sidebarModuleGroups } from '@/config/adminModules'
 
 defineEmits<{
@@ -54,6 +54,7 @@ defineProps<{
 const route = useRoute()
 const activeMenu = computed(() => route.path)
 const adminTitle = getAdminTitle()
+const productName = getProductName()
 </script>
 
 <style scoped>

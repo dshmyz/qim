@@ -5,8 +5,8 @@
         <h4>开发者令牌</h4>
       </div>
       <p class="field-hint">
-        用于 {{ productName }} CLI / qim-mcp 以本人身份调用用户 API。在 agent 侧通过
-        <code>--user-token qusr_…</code> 传入（如 qim-mcp），请求时以
+        用于 {{ productName }} CLI / {{ mcpBinary }} 以本人身份调用用户 API。在 agent 侧通过
+        <code>--user-token qusr_…</code> 传入（如 {{ mcpBinary }}），请求时以
         <code>Authorization: Bearer</code> 携带。令牌仅签发时显示一次，请立即复制保存。
       </p>
 
@@ -14,7 +14,7 @@
         <input
           v-model="tokenName"
           class="token-name-input"
-          placeholder="令牌名称（可选，如 cli / qim-mcp）"
+          :placeholder="`令牌名称（可选，如 cli / ${mcpBinary}）`"
           @keyup.enter="onIssueToken"
         />
         <select v-model="expiresDays" class="token-expiry-select">
@@ -69,6 +69,7 @@ import { copyToClipboard } from '../../utils/clipboard'
 import QMessage from '../../utils/qmessage'
 import QMessageBox from '../../utils/qmessagebox'
 import { PRODUCT_NAME as productName } from '../../config'
+import { MCP_CLI_BINARY as mcpBinary } from '../../config/mcpTooling'
 
 const { loading, issueToken, listTokens, revokeToken } = useUserToken()
 

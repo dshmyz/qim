@@ -18,7 +18,19 @@ export default defineConfig(({ mode }) => {
       __APP_CONTACT_EMAIL__: JSON.stringify(extra.contactEmail),
     },
     base: './',
-    plugins: [vue()],
+    plugins: [
+      vue(),
+      // 页面 <title> 中的产品名与 package.json build.productName 同源，改名不用碰 HTML
+      {
+        transformIndexHtml: {
+          order: 'pre',
+          handler: (html) => html.replace(
+            /<title>.*?<\/title>/,
+            `<title>${(pkg as any).build?.productName} - 即时通讯组件库</title>`
+          ),
+        },
+      },
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src')
