@@ -7,7 +7,6 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
-	"github.com/dshmyz/qim/qim-server/utils"
 
 	"gorm.io/gorm"
 )
@@ -164,9 +163,8 @@ func fallbackHandleMessage(c *Client, convID uint, msgType, content string, quot
 	jsonMsg, _ := json.Marshal(wsMsg)
 	c.hub.SendToConversationAsync(convID, c.userID, jsonMsg)
 
-	if c.hub.OnMessageSent != nil && !mention.IsAllMentioned(mentions) {
-		utils.SafeGo(func() { c.hub.OnMessageSent(&msg, mentionUserIDs) })
-	}
+	// AI 触发回调统一派发（system 跳过、@all 分流见 Hub.TriggerMessageSent）
+	c.hub.TriggerMessageSent(&msg, mentionUserIDs)
 }
 
 func handleReadMessage(c *Client, data interface{}) {

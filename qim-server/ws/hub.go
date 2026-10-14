@@ -10,6 +10,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/cache"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/utils"
 	"github.com/golang-jwt/jwt/v5"
 
@@ -97,11 +98,15 @@ type Hub struct {
 	// 而非每次新增需求就扩回调参数。
 	OnMessageSent func(msg *model.Message, mentionUserIDs []uint)
 
+	// OnAllMentionedSent 回调：@all 广播专用。@all 不触发 OnMessageSent（智能回复/群 bot
+	// 转发不响应 @all 是既有设计，避免噪音），但群待办提取要处理「@所有人 + 任务分派」
+	// 这类场景——由 TriggerMessageSent 分流到此回调。
+	OnAllMentionedSent func(msg *model.Message)
+
 	// HandleMessage 回调：处理 WebSocket 发送消息请求，由外部注入 MessageService 逻辑
 	HandleMessage func(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error)
 
-	// SendVersionGate 回调：客户端版本门槛判定（版本/平台是否被禁止发送），由外部注入。
-	// 返回 true 表示该连接的版本被门槛拦截；nil 表示不启用门槛。独立于 HandleMessage 注入，
+	// SendVersionGate 回调：客户端版本门槛判定（版本/平台是否被禁止发送），由外部注入。	// 返回 true 表示该连接的版本被门槛拦截；nil 表示不启用门槛。独立于 HandleMessage 注入，
 	// 避免 ws 包反向依赖 handler/service 的版本比较逻辑。
 	SendVersionGate func(clientVersion, clientPlatform string) bool
 
@@ -201,6 +206,32 @@ func safeSend(client *Client, msg []byte) (ok bool) {
 // 认证阶段 readPump 与 writePump 并发运行，不能直接 c.conn.WriteXXX，
 // 否则会与 writePump 竞争同一连接，触发 gorilla 的 concurrent write panic。
 // 非阻塞入队：认证失败/即将断连时入队失败直接丢弃即可。
+
+// TriggerMessageSent 消息发送后回调的统一派发入口（HTTP / WebSocket 两条发送路径共用）。
+// 分流规则：
+//   - system 发送者：不派发（避免一次群发给 N 个用户派生 N 个 AI 触发 goroutine）
+//   - @all 广播：只走 OnAllMentionedSent（群待办提取）——智能回复与群 bot 转发
+//     对 @all 不触发是既有设计，由 OnMessageSent 侧语义保持
+//   - 其余：OnMessageSent（智能回复 / 群 bot 转发 / 待办提取）
+//
+// @all 判定基于 msg.Content 的 mention token，与两条发送路径各自的 Parse 同源。
+func (h *Hub) TriggerMessageSent(msg *model.Message, mentionUserIDs []uint) {
+	if h == nil || msg == nil {
+		return
+	}
+	if msg.Sender.Type == "system" {
+		return
+	}
+	if mention.IsAllMentioned(mention.Parse(msg.Content)) {
+		if h.OnAllMentionedSent != nil {
+			utils.SafeGo(func() { h.OnAllMentionedSent(msg) })
+		}
+		return
+	}
+	if h.OnMessageSent != nil {
+		utils.SafeGo(func() { h.OnMessageSent(msg, mentionUserIDs) })
+	}
+}
 
 func NewHub(db *gorm.DB, jwtSecret string, nodeScheme string) *Hub {
 	// 生成节点 ID

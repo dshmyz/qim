@@ -270,6 +270,21 @@ func GetSmartReplyEngine() *SmartReplyEngine {
 	return smartReplyEngine
 }
 
+// todoExtractSubmitter 提取任务入队接口，测试可替换。
+type todoExtractSubmitter interface {
+	Submit(key uint, handle func()) error
+}
+
+// extractSubmitter 待办提取的并发护栏：全局 worker 池限 AI 并发 + 按会话串行，
+// 替换原先「每条群消息裸 go 一个提取 goroutine」的无上限形态。
+// 与回复类入口（submitConvReply 过载降级直发）语义不同：队列满（Submit 2 秒超时）
+// 时丢弃本条并记日志——待办是派生工件，过载期间宁可丢一条提取，
+// 也不能把 goroutine / AI 调用重新打满。
+var extractSubmitter todoExtractSubmitter = service.NewReplyOrchestrator(service.ReplyOrchestratorOpts{
+	Workers:   2, // 全局同时最多 2 路提取 AI 调用
+	Serialize: true, // 按会话串行，同群消息顺序处理
+})
+
 // TryExtractTodos 独立的待办提取入口。
 // 仅依赖群聊配置中的 ExtractTodos 开关，不受智能回复 Enabled/ReplyMode 等条件影响。
 func TryExtractTodos(senderID uint, conversationID uint, content string) {
@@ -308,7 +323,12 @@ func TryExtractTodosWithPreloaded(senderID uint, conv *model.Conversation, conve
 		return
 	}
 
-	go todoExtractor.ExtractAndCreateTodos(content, senderID, conversationID)
+	// 并发护栏：入队到有界 worker 池（key=会话 ID）；队列满时丢弃本条提取并记日志
+	if err := extractSubmitter.Submit(conversationID, func() {
+		todoExtractor.ExtractAndCreateTodos(content, senderID, conversationID)
+	}); err != nil {
+		logger.WithModule("TodoExtractor").Info("提取入队繁忙，跳过本条", "convID", conversationID, "error", err)
+	}
 }
 
 // resolveAIName 已收编到 service.resolveAIName（BuildMessageResponse 内部调用）。

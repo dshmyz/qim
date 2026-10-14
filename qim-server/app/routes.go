@@ -219,6 +219,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		}
 	}
 
+	// @all 广播专用：只做群待办提取。@所有人 + 任务分派（"全员周报"）是提取最该处理的
+	// 场景，且提取提示词本身支持 assignee=all；智能回复/群 bot 转发对 @all 不触发是
+	// 既有设计（避免噪音），由 Hub.TriggerMessageSent 分流保持不变。
+	hub.OnAllMentionedSent = func(msg *model.Message) {
+		handler.TryExtractTodos(msg.SenderID, msg.ConversationID, msg.Content)
+	}
+
 	avatarService.SetGroupDocumentService(groupDocSvc)
 
 	// 注入 WebSocket 通知回调（分身学习完成时推送）

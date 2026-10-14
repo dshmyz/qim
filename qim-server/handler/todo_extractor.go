@@ -36,6 +36,20 @@ type ExtractedTodo struct {
 	RemindMinutes int    `json:"remind_minutes,omitempty"` // 提前提醒分钟数
 }
 
+// maxExtractContentRunes 送入提取 prompt 的消息正文上限（rune 数）：超长粘贴/长引用
+// 一条消息就能把提取调用的 token 打爆。截断后附加标记，让模型知道内容不完整。
+const maxExtractContentRunes = 2000
+
+// runePrefix 按 rune 数取前缀——日志里的 content/result 切片如果按字节切，
+// 会把多字节 UTF-8 切出乱码。
+func runePrefix(s string, n int) string {
+	r := []rune(s)
+	if len(r) > n {
+		r = r[:n]
+	}
+	return string(r)
+}
+
 // ExtractAndCreateTodos 从消息中提取待办并创建
 func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, conversationID uint) {
 	if e.aiService == nil || !e.aiService.IsConfigured() {
@@ -50,6 +64,11 @@ func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, con
 	// 工作，负责人识别不出来后静默回退给发送者。
 	content = mention.Decode(content)
 
+	// 超长正文截断（rune 安全）
+	if runes := []rune(content); len(runes) > maxExtractContentRunes {
+		content = string(runes[:maxExtractContentRunes]) + "\n…（消息过长已截断）"
+	}
+
 	// 获取发送者信息
 	var sender model.User
 	db.First(&sender, senderID)
@@ -58,7 +77,7 @@ func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, con
 		senderName = sender.Username
 	}
 
-	logger.WithModule("TodoExtractor").Info("开始提取待办", "sender", senderName, "convID", conversationID, "content", content[:min(50, len(content))])
+	logger.WithModule("TodoExtractor").Info("开始提取待办", "sender", senderName, "convID", conversationID, "content", runePrefix(content, 50))
 
 	// 获取会话信息，获取所有成员
 	var conv model.Conversation
@@ -128,11 +147,11 @@ func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, con
 		return
 	}
 
-	logger.WithModule("TodoExtractor").Debug("AI 返回结果", "result", result[:min(200, len(result))])
+	logger.WithModule("TodoExtractor").Debug("AI 返回结果", "result", runePrefix(result, 200))
 
 	todos, err := e.parseAIResult(result)
 	if err != nil {
-		logger.WithModule("TodoExtractor").Error("解析 AI 结果失败", "error", err, "raw", result[:min(100, len(result))])
+		logger.WithModule("TodoExtractor").Error("解析 AI 结果失败", "error", err, "raw", runePrefix(result, 100))
 		return
 	}
 
