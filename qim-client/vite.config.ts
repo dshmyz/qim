@@ -27,7 +27,8 @@ export default defineConfig(({ mode }) => {
           order: 'pre',
           handler: (html) => html.replace(
             /<title>.*?<\/title>/,
-            `<title>${productName} - 即时通讯组件库</title>`
+            // 函数替换：产品名含 $&/$' 等 replace 特殊序列时不会被误解释
+            () => `<title>${productName} - 即时通讯组件库</title>`
           ),
         },
       },

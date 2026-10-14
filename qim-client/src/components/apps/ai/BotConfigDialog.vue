@@ -304,8 +304,10 @@ const onSave = async () => {
       payload.webhook_url = form.value.webhook_url
       if (form.value.webhook_secret) payload.webhook_secret = form.value.webhook_secret
     }
-    // internal_ai 模式下送 use_creator_notes；external_webhook 模式下也送（保留 false，避免模式切换后状态遗留）
-    payload.use_creator_notes = form.value.mode === 'internal_ai' && form.value.use_creator_notes === true
+    // 知识库开关仅内置 AI 模式提交；external 模式不传（服务端 nil=保留既有值，切回内置后开关不丢）
+    if (form.value.mode === 'internal_ai') {
+      payload.use_creator_notes = form.value.use_creator_notes === true
+    }
     // 模型来源：与创建向导同一约定——仅内置 AI 模式提交（该组 UI 也只在此时可见）；
     // external 模式下不传，服务端合并语义=保留既有值，切回内置模式后配置原样恢复
     if (form.value.mode === 'internal_ai') {

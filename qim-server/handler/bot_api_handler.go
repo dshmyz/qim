@@ -500,11 +500,12 @@ func (h *BotAPIHandler) UpdateBotConfig(c *gin.Context) {
 	}
 
 	var req struct {
-		Mode            string `json:"mode"`
-		WebhookURL      string `json:"webhook_url"`
-		WebhookSecret   string `json:"webhook_secret"`
-		UseSystemConfig *bool  `json:"use_system_config"` // 模型来源：nil=不修改；true=系统默认
-		UserConfigID    *uint  `json:"user_config_id"`    // 自定义配置 ID；use_system_config=false 时生效
+		Mode            string  `json:"mode"`
+		WebhookURL      *string `json:"webhook_url"`   // nil=不修改；显式空串=清空（切换 pull 模式）
+		WebhookSecret   string  `json:"webhook_secret"` // 空串=不修改（密钥仅写入不回显，无法回填比对）
+		UseCreatorNotes *bool   `json:"use_creator_notes"` // 知识库开关：nil=不修改（external 模式下前端不传，保留既有值）
+		UseSystemConfig *bool   `json:"use_system_config"` // 模型来源：nil=不修改；true=系统默认
+		UserConfigID    *uint   `json:"user_config_id"`    // 自定义配置 ID；use_system_config=false 时生效
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "请求参数错误")
@@ -520,11 +521,14 @@ func (h *BotAPIHandler) UpdateBotConfig(c *gin.Context) {
 	if req.Mode != "" {
 		cfg.Mode = req.Mode
 	}
-	if req.WebhookURL != "" {
-		cfg.WebhookURL = req.WebhookURL
+	if req.WebhookURL != nil {
+		cfg.WebhookURL = *req.WebhookURL
 	}
 	if req.WebhookSecret != "" {
 		cfg.WebhookSecret = req.WebhookSecret
+	}
+	if req.UseCreatorNotes != nil {
+		cfg.UseCreatorNotes = *req.UseCreatorNotes
 	}
 	// 模型来源：仅显式传入时更新
 	if req.UseSystemConfig != nil {
