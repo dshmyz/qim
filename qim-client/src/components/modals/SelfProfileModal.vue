@@ -490,11 +490,4 @@ const handleSave = () => {
   background: var(--active-color, #665486);
 }
 
-/* 中国红主题 */
-[data-theme="chinesered"] .action-btn.primary {
-  background: var(--primary-color, #c41e3a);
-}
-[data-theme="chinesered"] .action-btn.primary:hover {
-  background: var(--active-color, #a31d32);
-}
 </style>
