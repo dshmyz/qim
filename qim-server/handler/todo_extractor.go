@@ -10,6 +10,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/database"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
+	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/ws"
 )
 
@@ -43,6 +44,11 @@ func (e *TodoExtractor) ExtractAndCreateTodos(content string, senderID uint, con
 	}
 
 	db := database.GetDB()
+
+	// 消息落库存的是 mention token 原文（@{mention:id|urlencoded姓名}，中文经 URL 编码），
+	// 解码成 "@姓名" 纯文本再进 prompt——原样送 AI 会让「识别 @人」规则对着百分号乱码
+	// 工作，负责人识别不出来后静默回退给发送者。
+	content = mention.Decode(content)
 
 	// 获取发送者信息
 	var sender model.User
@@ -174,19 +180,30 @@ func (e *TodoExtractor) createTodo(todo ExtractedTodo, senderID uint, conversati
 	var conv model.Conversation
 	db.Preload("Members.User").First(&conv, conversationID)
 
+	// 人类成员（排除 bot 虚拟用户）：拉 bot 进群会写 ConversationMember，已删 bot 的
+	// 虚拟用户也残留成员表——指派给它会生成没有任何人能看到的幽灵任务。
+	humanMemberIDs := make([]uint, 0, len(conv.Members))
+	for _, m := range conv.Members {
+		if m.User.Type == "bot" {
+			continue
+		}
+		humanMemberIDs = append(humanMemberIDs, m.UserID)
+	}
+
 	var assigneeIDs []uint
 
 	if todo.Assignee == "all" {
-		// 指派给所有群成员（排除发送者）
-		for _, m := range conv.Members {
-			if m.UserID != senderID {
-				assigneeIDs = append(assigneeIDs, m.UserID)
+		// 指派给所有人类成员（排除发送者）
+		for _, memberID := range humanMemberIDs {
+			if memberID != senderID {
+				assigneeIDs = append(assigneeIDs, memberID)
 			}
 		}
-	} else if todo.Assignee != "" {
-		// 查找指定负责人
+	} else if todo.Assignee != "" && len(humanMemberIDs) > 0 {
+		// 只在群成员内匹配负责人：全库 nickname/username 精确查会命中群外的同名用户
+		//（重名时 First() 按主键序还可能取到更小 ID 的那个），任务跨群派给无关的人。
 		var user model.User
-		if err := db.Where("nickname = ? OR username = ?", todo.Assignee, todo.Assignee).First(&user).Error; err == nil {
+		if err := db.Where("id IN ? AND (nickname = ? OR username = ?)", humanMemberIDs, todo.Assignee, todo.Assignee).First(&user).Error; err == nil {
 			assigneeIDs = append(assigneeIDs, user.ID)
 		} else {
 			// 找不到就指派给发送者
