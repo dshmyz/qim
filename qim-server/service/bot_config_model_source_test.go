@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/dshmyz/qim/qim-server/model"
@@ -27,6 +28,30 @@ func TestParseBotConfigModelSource(t *testing.T) {
 	assert.False(t, cfg.UseSystemConfig)
 	require.NotNil(t, cfg.UserConfigID)
 	assert.Equal(t, uint(7), *cfg.UserConfigID)
+}
+
+// TestBotConfigRoundTripPreservesSystemPrompt 验证 UpdateBotConfig 的写入路径
+// （ParseBotConfig → merge → json.Marshal 回写）不会丢 system_prompt：
+// 该字段由创建向导写入、编辑对话框不提交，若结构体缺字段则每次保存都会静默抹掉它。
+func TestBotConfigRoundTripPreservesSystemPrompt(t *testing.T) {
+	stored := `{"mode":"internal_ai","system_prompt":"你是测试助手","use_system_config":true}`
+
+	cfg := ParseBotConfig(stored)
+	// 模拟 UpdateBotConfig 的合并：只改 mode，其余字段原样
+	cfg.Mode = "external_webhook"
+	out, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	// system_prompt 必须在回写后的 JSON 里原样保留
+	roundTripped := ParseBotConfig(string(out))
+	assert.Equal(t, "你是测试助手", roundTripped.SystemPrompt)
+	assert.True(t, roundTripped.UseSystemConfig)
+	assert.Equal(t, "external_webhook", roundTripped.Mode)
+
+	// external bot（向导不提交 system_prompt）的 config 里不应出现空串键
+	outEmpty, err := json.Marshal(ParseBotConfig(`{"mode":"external_webhook"}`))
+	require.NoError(t, err)
+	assert.NotContains(t, string(outEmpty), "system_prompt")
 }
 
 // TestResolveUserAIConfigProvider 验证 bot/分身共用的自选 provider 解析：

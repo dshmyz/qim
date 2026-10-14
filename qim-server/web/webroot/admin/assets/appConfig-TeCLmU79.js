@@ -1,0 +1,1 @@
+const r="NUIM".toUpperCase(),e="青雀",t={productName:r,productNameCN:e,copyrightYear:"2026"},o=()=>t.productName,c=()=>t.productNameCN,a=()=>`© ${t.copyrightYear} ${t.productName}`,n=()=>`${t.productName} Admin`;export{n as a,c as b,o as c,a as g};

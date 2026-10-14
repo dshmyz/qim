@@ -6,12 +6,13 @@ import pkg from './package.json'
 export default defineConfig(({ mode }) => {
   const isProd = mode === 'production'
   const extra = (pkg as any).build?.extraMetadata || {}
+  const productNameCN = extra.productNameCN || '青雀'
 
   return {
     define: {
       __APP_PRODUCT_NAME__: JSON.stringify(extra.productName || pkg.name),
       __APP_VERSION__: JSON.stringify(pkg.version),
-      __APP_PRODUCT_NAME_CN__: JSON.stringify(extra.productNameCN || '青雀'),
+      __APP_PRODUCT_NAME_CN__: JSON.stringify(productNameCN),
       __APP_COPYRIGHT_YEAR__: JSON.stringify(extra.copyrightYear || '2026'),
     },
     plugins: [
@@ -22,7 +23,7 @@ export default defineConfig(({ mode }) => {
           order: 'pre',
           handler: (html) => html.replace(
             /<title>.*?<\/title>/,
-            `<title>${extra.productNameCN} - 企业级智能协作平台</title>`
+            `<title>${productNameCN} - 企业级智能协作平台</title>`
           ),
         },
       },

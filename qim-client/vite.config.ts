@@ -6,12 +6,13 @@ import pkg from './package.json'
 export default defineConfig(({ mode }) => {
   const isProd = mode === 'production'
   const extra = (pkg as any).build?.extraMetadata || {}
+  const productName = (pkg as any).build?.productName || pkg.name
 
   return {
     define: {
       __APP_NAME__: JSON.stringify(pkg.name),
       __APP_VERSION__: JSON.stringify(pkg.version),
-      __APP_PRODUCT_NAME__: JSON.stringify((pkg as any).build?.productName),
+      __APP_PRODUCT_NAME__: JSON.stringify(productName),
       __APP_PRODUCT_NAME_CN__: JSON.stringify(extra.productNameCN),
       __APP_COPYRIGHT_YEAR__: JSON.stringify(extra.copyrightYear),
       __APP_RELEASE_DATE__: JSON.stringify(extra.releaseDate),
@@ -26,7 +27,7 @@ export default defineConfig(({ mode }) => {
           order: 'pre',
           handler: (html) => html.replace(
             /<title>.*?<\/title>/,
-            `<title>${(pkg as any).build?.productName} - 即时通讯组件库</title>`
+            `<title>${productName} - 即时通讯组件库</title>`
           ),
         },
       },

@@ -123,10 +123,13 @@ const config = reactive<WebhookConfig>({
 
 const headerList = ref<Array<{ key: string; value: string }>>([])
 
+// 模板是 JSON 字符串，产品名按 JSON 字符串规则转义后内插，避免名称含 " / \ 时产出非法 JSON
+const productNameJson = JSON.stringify(productName).slice(1, -1)
+
 const templates: Record<string, string> = {
-  wechat: `{"msgtype":"text","text":{"content":"{{.SenderNickname}} 提醒你查看 ${productName} 消息：{{.MessageContentPreview}}"}}`,
-  feishu: `{"msg_type":"text","content":{"text":"{{.SenderNickname}} 提醒你查看 ${productName} 消息：{{.MessageContentPreview}}"}}`,
-  slack: `{"text":"{{.SenderNickname}} 提醒你查看 ${productName} 消息：{{.MessageContentPreview}}"}`,
+  wechat: `{"msgtype":"text","text":{"content":"{{.SenderNickname}} 提醒你查看 ${productNameJson} 消息：{{.MessageContentPreview}}"}}`,
+  feishu: `{"msg_type":"text","content":{"text":"{{.SenderNickname}} 提醒你查看 ${productNameJson} 消息：{{.MessageContentPreview}}"}}`,
+  slack: `{"text":"{{.SenderNickname}} 提醒你查看 ${productNameJson} 消息：{{.MessageContentPreview}}"}`,
   custom: ''
 }
 

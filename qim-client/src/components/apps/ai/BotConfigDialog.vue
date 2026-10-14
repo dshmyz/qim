@@ -306,10 +306,13 @@ const onSave = async () => {
     }
     // internal_ai 模式下送 use_creator_notes；external_webhook 模式下也送（保留 false，避免模式切换后状态遗留）
     payload.use_creator_notes = form.value.mode === 'internal_ai' && form.value.use_creator_notes === true
-    // 模型来源：始终携带，服务端按合并语义更新（切回系统默认时服务端会清空 user_config_id）
-    payload.use_system_config = form.value.use_system_config !== false
-    if (!payload.use_system_config) {
-      payload.user_config_id = form.value.user_config_id || null
+    // 模型来源：与创建向导同一约定——仅内置 AI 模式提交（该组 UI 也只在此时可见）；
+    // external 模式下不传，服务端合并语义=保留既有值，切回内置模式后配置原样恢复
+    if (form.value.mode === 'internal_ai') {
+      payload.use_system_config = form.value.use_system_config !== false
+      if (!payload.use_system_config) {
+        payload.user_config_id = form.value.user_config_id || null
+      }
     }
     await updateConfig(props.bot.id, payload)
     QMessage.success('配置已保存')

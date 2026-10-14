@@ -27,6 +27,12 @@ type BotConfig struct {
 	// 用创建者「我的模型配置」中的自定义 provider 生成回复。
 	UseSystemConfig bool  `json:"use_system_config"`
 	UserConfigID    *uint `json:"user_config_id"`
+
+	// 内置 AI 模式的系统提示词（创建向导提交，编辑对话框不修改）。
+	// 必须在此结构体上声明：UpdateBotConfig 走 ParseBotConfig→merge→Marshal 往返，
+	// 缺此字段时任何一次保存都会把 system_prompt 从 Config JSON 里静默抹掉
+	//（message_handler 按 map 键读取，丢失后退回默认提示词）。
+	SystemPrompt string `json:"system_prompt,omitempty"`
 }
 
 // ParseBotConfig 解析 bot.Config JSON，失败或为空返回零值（Mode="" 视为 internal_ai）。
