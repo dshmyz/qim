@@ -9,6 +9,9 @@
         <i class="fas fa-clock"></i>
         <span>机器人当前为「{{ bot.approval_status === 'rejected' ? '已拒绝' : '待审批' }}」状态，配置和令牌签发功能暂不可用，需管理员审批通过后方可操作。</span>
       </div>
+      <!-- 待审批/已拒绝：整块配置区用 fieldset disabled 统一置灰，
+           避免只禁保存按钮导致「能填不能存」——服务端对该状态一律 400 -->
+      <fieldset :disabled="isPending" class="config-fieldset">
       <!-- 回复模式（先选模式再出对应配置）+ Webhook 配置 + 知识库（统一子组件） -->
       <BotReplyConfigFields
         v-model:mode="form.mode"
@@ -135,6 +138,7 @@
           <p class="field-hint" v-else>远程模式：先在服务器上启动 MCP 客户端工具 <code>{{ MCP_CLI_BINARY }} --transport http --addr :8082 --server http://localhost:8080</code>，token 经请求头传入，无需在启动命令中暴露。</p>
         </div>
       </section>
+      </fieldset>
 
       <div class="dialog-footer">
         <button class="action-btn" @click="$emit('close')">取消</button>
@@ -339,6 +343,9 @@ const formatTime = (s: string) => {
 
 <style scoped>
 .bot-config-dialog { padding: 8px 4px; display: flex; flex-direction: column; gap: 20px; max-height: 70vh; overflow-y: auto; }
+/* fieldset 默认样式会带边框并改变子项布局，这里复刻父级的纵向 flex + gap，
+   disabled 由 :disabled="isPending" 驱动，内部表单控件统一置灰 */
+.config-fieldset { border: none; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
 .loading { padding: 40px; text-align: center; color: #888; }
 .loading i { margin-right: 8px; }
 .config-section { border-top: 1px solid #eee; padding-top: 14px; }
