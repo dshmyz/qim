@@ -842,7 +842,11 @@ const scrollToMessageForJump = async (messageId: string) => {
     if (aborted()) return
     // 目标不在列表且加载已结束（老消息）→ 走完整兜底（拉取前后 20 条再定位）
     const stillMissing = !props.messages.some(m => String(m.id) === String(messageId))
-    if (stillMissing) await scrollToMessage(messageId)
+    let usedFallback = false
+    if (stillMissing) {
+      usedFallback = true
+      await scrollToMessage(messageId)
+    }
 
     if (aborted()) return
     // 补一次定位：ChatWindow 与 MessageListView 各自在 onMounted 排了 100/150ms
@@ -850,7 +854,11 @@ const scrollToMessageForJump = async (messageId: string) => {
     // 等这些延迟滚底全部落定后再定位一次，保证最终位置正确。
     await sleep(350)
     if (aborted()) return
-    scrollAndHighlightMessage(messageId)
+    // 兜底路径自身有成功/失败提示；非兜底路径定位失败时补一次提示，
+    // 避免"在列表但 DOM 永不渲染"的异常场景静默无反馈
+    if (!scrollAndHighlightMessage(messageId) && !usedFallback) {
+      QMessage.warning('消息加载完成，但无法定位到具体位置，请手动滚动查找')
+    }
   } finally {
     await sleep(400)
     suppressAutoScroll.value = false

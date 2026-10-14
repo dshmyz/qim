@@ -143,7 +143,12 @@ export const useChatStore = defineStore('chat', () => {
 
   function prependMessages(conversationId: string, newMessages: Message[]) {
     const existing = messages.value.get(conversationId) || []
-    messages.value.set(conversationId, [...newMessages, ...existing])
+    // 去重：搜索跳转的 fetch-around 会把历史片段并入列表，与后续按页加载的
+    // 区间可能重叠——不去重会渲染重复行（同 :key 冲突）。跳过已存在的条目。
+    const existingIds = new Set(existing.map(m => String(m.id)))
+    const filtered = newMessages.filter(m => !existingIds.has(String(m.id)))
+    if (filtered.length === 0) return
+    messages.value.set(conversationId, [...filtered, ...existing])
   }
 
   // 合并消息到现有列表（去重，按时间排序）

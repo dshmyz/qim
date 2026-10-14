@@ -68,9 +68,13 @@ describe('主题一致性守卫', () => {
     expect(deadInDesign).toEqual([])
   })
 
-  it('规则3：design-tokens 主题段内无重复变量定义', () => {
+  it('规则3：主题段内无重复变量定义（design-tokens 与 themes.css 的活跃段）', () => {
     for (const name of designNames) {
       const dupes = findDuplicateVarsInSection('design-tokens.css', name)
+      expect(dupes).toEqual([])
+    }
+    for (const name of themesNames) {
+      const dupes = findDuplicateVarsInSection('themes.css', name)
       expect(dupes).toEqual([])
     }
   })

@@ -2579,6 +2579,8 @@ const resolveHitConversation = (conversationId: number | string) => {
 
 const handleMessageHitSelect = async (hit: MessageHit) => {
   const conversationId = String(hit.conversationId)
+  // 两条路径都收起搜索面板，行为一致
+  searchQuery.value = ''
   // 同会话点击：ChatWindow 的 conversation watch 不触发，直接 emit 跳转
   if (sameConversationId(currentConversationId.value, conversationId)) {
     chatWindowRef.value?.scrollToMessage(String(hit.id))
@@ -2593,7 +2595,6 @@ const handleMessageHitSelect = async (hit: MessageHit) => {
     // 它内部会对不在列表的会话从 API 拉完整数据
     await handleConversationSelect({ id: conversationId } as any)
   }
-  searchQuery.value = ''
 }
 
 const messageHitsExhausted = ref<string[]>([])
