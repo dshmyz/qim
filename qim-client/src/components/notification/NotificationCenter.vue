@@ -184,7 +184,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import { useServerUrl } from '../../composables/useServerUrl'
 import { type Notification, mapNotifications } from '../../utils/notificationMapper'
@@ -195,7 +195,7 @@ interface Props {
   position: { x: number; y: number }
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -528,6 +528,18 @@ onMounted(() => {
   setTimeout(() => {
     document.addEventListener('click', handleClickOutside)
   }, 0)
+})
+
+// 组件常驻挂载（:show 仅切换可见性），onMounted 只在首次拉取——
+// 确认卡/通知等其他入口变更 handled 后，重开面板会看到过期按钮态。
+// 每次打开都重置分页并重新拉取，保证与后端终态一致。
+watch(() => props.show, (visible) => {
+  if (visible) {
+    notifications.value = []
+    page.value = 1
+    hasMore.value = true
+    loadNotifications()
+  }
 })
 
 onUnmounted(() => {
