@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +19,10 @@ func setupTodoMassDB(t *testing.T) (*gorm.DB, *ws.Hub) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
+	// 单连接：:memory: 每个连接是独立空库，不限制会让并发测试的 goroutine 看不到表
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(
 		&model.User{}, &model.Bot{}, &model.Conversation{}, &model.ConversationMember{},
 		&model.Message{}, &model.Task{}, &model.Notification{},
@@ -199,4 +205,148 @@ func TestConfirmTodoMassAssign_StateMachine(t *testing.T) {
 	var taskCount int64
 	db.Model(&model.Task{}).Count(&taskCount)
 	assert.Equal(t, int64(0), taskCount, "被拒/过期的确认不应创建任务")
+}
+
+// ── 评审修复：去重/原子性/双通道同步/伪造卡/空名 ─────────────────────────────
+
+// TestHandleTodoConfirmCard_SyncsNotificationHandled 群卡确认成功后，触发者通知
+// 中心那条 todo_mass_pending 通知应同步置 Handled，按钮不再悬空可点。
+func TestHandleTodoConfirmCard_SyncsNotificationHandled(t *testing.T) {
+	db, svc, bot, convID, creatorID, memberAID, _ := newTodoMassFixture(t)
+
+	ids, _ := json.Marshal([]uint{memberAID})
+	pend := &model.TodoMassAssign{CreatorID: creatorID, ConversationID: convID, Title: "全员周报",
+		AssigneeIDs: string(ids), Status: model.TodoMassAssignStatusPending,
+		ExpiresAt: time.Now().Add(24 * time.Hour)}
+	require.NoError(t, db.Create(pend).Error)
+	notification := &model.Notification{UserID: creatorID, Type: "todo_mass_pending",
+		Title: "待确认的全员待办", Content: "x", ActionType: "todo_mass_confirm",
+		ActionPayload: fmt.Sprintf(`{"pending_id":%d}`, pend.ID)}
+	require.NoError(t, db.Create(notification).Error)
+
+	cardContent, _ := json.Marshal(map[string]interface{}{
+		"kind": "todo_confirm", "pending_id": pend.ID, "title": "t", "text": "x",
+		"buttons": []map[string]string{{"id": "confirm", "text": "确认创建", "value": "pending:x"}},
+	})
+	cardMsg := &model.Message{ConversationID: convID, SenderID: *bot.VirtualUserID, Type: "card", Content: string(cardContent)}
+	require.NoError(t, db.Create(cardMsg).Error)
+
+	require.NoError(t, svc.HandleTodoConfirmCard(cardMsg, creatorID, "confirm"))
+
+	var refreshed model.Notification
+	require.NoError(t, db.First(&refreshed, notification.ID).Error)
+	assert.True(t, refreshed.Handled, "群卡确认后通知应同步置 Handled")
+}
+
+// TestHandleTodoConfirmCard_RejectsForgedCard 伪造卡防护：非默认 AI 助手（如用户自建
+// 外部 agent bot）发的 todo_confirm 卡不得触发平台侧确认状态机。
+func TestHandleTodoConfirmCard_RejectsForgedCard(t *testing.T) {
+	db, svc, _, convID, creatorID, memberAID, _ := newTodoMassFixture(t)
+
+	forger := &model.User{Username: "bot_forge", PasswordHash: "x", Nickname: "伪造Bot", Type: "bot"}
+	require.NoError(t, db.Create(forger).Error)
+	forgeBot := model.Bot{Name: "伪造Bot", Type: model.BotTypeCustom, CreatorID: 7, VirtualUserID: &forger.ID, IsActive: true}
+	require.NoError(t, db.Create(&forgeBot).Error)
+
+	ids, _ := json.Marshal([]uint{memberAID})
+	pend := &model.TodoMassAssign{CreatorID: creatorID, ConversationID: convID, Title: "全员周报",
+		AssigneeIDs: string(ids), Status: model.TodoMassAssignStatusPending,
+		ExpiresAt: time.Now().Add(24 * time.Hour)}
+	require.NoError(t, db.Create(pend).Error)
+
+	cardContent, _ := json.Marshal(map[string]interface{}{
+		"kind": "todo_confirm", "pending_id": pend.ID, "title": "t", "text": "x",
+		"buttons": []map[string]string{{"id": "confirm", "text": "确认创建", "value": "pending:x"}},
+	})
+	cardMsg := &model.Message{ConversationID: convID, SenderID: forger.ID, Type: "card", Content: string(cardContent)}
+	require.NoError(t, db.Create(cardMsg).Error)
+
+	assert.Error(t, svc.HandleTodoConfirmCard(cardMsg, creatorID, "confirm"), "伪造卡应被拒绝")
+
+	var taskCount int64
+	db.Model(&model.Task{}).Count(&taskCount)
+	assert.Equal(t, int64(0), taskCount, "伪造卡不得创建任务")
+	var still model.TodoMassAssign
+	require.NoError(t, db.First(&still, pend.ID).Error)
+	assert.Equal(t, model.TodoMassAssignStatusPending, still.Status, "伪造卡不得改动状态")
+}
+
+// TestConfirmTodoMassAssign_ConcurrentSingleCreation 并发确认原子性：多人（或群卡+
+// 通知中心两通道）同时点击，仅一次抢到 approved 并创建任务，任务数恰为名单人数。
+func TestConfirmTodoMassAssign_ConcurrentSingleCreation(t *testing.T) {
+	db, _, _, convID, creatorID, memberAID, memberBID := newTodoMassFixture(t)
+
+	ids, _ := json.Marshal([]uint{memberAID, memberBID})
+	pend := &model.TodoMassAssign{CreatorID: creatorID, ConversationID: convID, Title: "全员周报",
+		AssigneeIDs: string(ids), Status: model.TodoMassAssignStatusPending,
+		ExpiresAt: time.Now().Add(24 * time.Hour)}
+	require.NoError(t, db.Create(pend).Error)
+
+	const concurrency = 8
+	var wg sync.WaitGroup
+	errs := make([]error, concurrency)
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			errs[idx] = ConfirmTodoMassAssign(db, creatorID, pend.ID)
+		}(i)
+	}
+	wg.Wait()
+
+	var tasks []model.Task
+	require.NoError(t, db.Find(&tasks).Error)
+	assert.Len(t, tasks, 2, "并发确认下任务数应恰为名单人数，不得重复创建")
+
+	var success int
+	for _, err := range errs {
+		if err == nil {
+			success++
+		}
+	}
+	assert.Equal(t, 1, success, "仅一次确认应成功")
+}
+
+// TestCreateTasksForAssignees_DeletedCreatorFallback 指派人查询失败（如已注销）时
+// 文案不得渲染出空名字。
+func TestCreateTasksForAssignees_DeletedCreatorFallback(t *testing.T) {
+	db, _, _, convID, _, memberAID, _ := newTodoMassFixture(t)
+
+	ghost := &model.User{Username: "ghost", PasswordHash: "x", Nickname: "幽灵"}
+	require.NoError(t, db.Create(ghost).Error)
+	// 硬删除：模拟记录彻底不存在（软删除用户 Unscoped 仍可查到真名，是更好的行为）
+	require.NoError(t, db.Unscoped().Delete(ghost).Error)
+
+	CreateTasksForAssignees(db, MassTaskSpec{Title: "交接任务", Priority: "medium"},
+		ghost.ID, convID, []uint{memberAID})
+
+	var notification model.Notification
+	require.NoError(t, db.Where("user_id = ? AND type = ?", memberAID, "todo_assigned").First(&notification).Error)
+	assert.NotContains(t, notification.Content, "由  指派", "不得渲染空名字")
+	assert.Contains(t, notification.Content, "未知成员", "查询失败应回退占位名")
+}
+
+// TestSyncTodoConfirmCardTerminal_RewritesCard 通知中心通道确认/忽略后，群内确认卡
+// 应同步回写终态，按钮不再悬空。
+func TestSyncTodoConfirmCardTerminal_RewritesCard(t *testing.T) {
+	db, svc, bot, convID, _, _, _ := newTodoMassFixture(t)
+
+	ids, _ := json.Marshal([]uint{3})
+	pend := &model.TodoMassAssign{CreatorID: 2, ConversationID: convID, Title: "全员周报",
+		AssigneeIDs: string(ids), Status: model.TodoMassAssignStatusApproved,
+		ExpiresAt: time.Now().Add(24 * time.Hour)}
+	require.NoError(t, db.Create(pend).Error)
+
+	cardContent, _ := json.Marshal(map[string]interface{}{
+		"kind": "todo_confirm", "pending_id": pend.ID, "title": "t", "text": "原始文案",
+		"buttons": []map[string]string{{"id": "confirm", "text": "确认创建", "value": "pending:x"}},
+	})
+	cardMsg := &model.Message{ConversationID: convID, SenderID: *bot.VirtualUserID, Type: "card", Content: string(cardContent)}
+	require.NoError(t, db.Create(cardMsg).Error)
+
+	svc.SyncTodoConfirmCardTerminal(convID, pend.ID, "✓ 已确认创建")
+
+	var latest model.Message
+	require.NoError(t, db.First(&latest, cardMsg.ID).Error)
+	assert.Contains(t, latest.Content, "✓ 已确认创建", "群卡应同步回写终态")
 }

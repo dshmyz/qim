@@ -81,3 +81,27 @@ func TestCreateTodo_MassAssignAboveThresholdRequiresConfirmation(t *testing.T) {
 // 确认/忽略状态机与群内确认卡点击链路的测试已搬到 service/todo_mass_assign_test.go
 //（ConfirmTodoMassAssign / RejectTodoMassAssign / HandleTodoConfirmCard 收编到 service 层，
 // 群卡点击与通知中心动作分发共用同一状态机）。此处保留提取侧的阈值分流测试。
+
+// TestCreateTodo_MassAssignDedup 同一待办被多条消息反复提取时，pending/通知/确认卡
+// 只落第一份（任务级幂等在确认后才生效，拦不住确认前的重复卡片轰炸）。
+func TestCreateTodo_MassAssignDedup(t *testing.T) {
+	conv, _ := setupMassGroup(t, 11) // 候选 = 11 > 阈值 10
+	senderID := uint(1)
+
+	e := NewTodoExtractor(nil)
+	e.createTodo(ExtractedTodo{Title: "全员周报", Assignee: "all"}, senderID, conv.ID)
+	e.createTodo(ExtractedTodo{Title: "全员周报", Assignee: "all"}, senderID, conv.ID)
+
+	var pendCount int64
+	database.GetDB().Model(&model.TodoMassAssign{}).Count(&pendCount)
+	assert.Equal(t, int64(1), pendCount, "重复提取不应新建第二条待确认记录")
+
+	var notifCount int64
+	database.GetDB().Model(&model.Notification{}).Where("type = ?", "todo_mass_pending").Count(&notifCount)
+	assert.Equal(t, int64(1), notifCount, "重复提取不应重复发确认通知")
+
+	// 不同标题是不同待办，正常落第二条
+	e.createTodo(ExtractedTodo{Title: "另一件事", Assignee: "all"}, senderID, conv.ID)
+	database.GetDB().Model(&model.TodoMassAssign{}).Count(&pendCount)
+	assert.Equal(t, int64(2), pendCount, "不同标题的待办不受去重影响")
+}

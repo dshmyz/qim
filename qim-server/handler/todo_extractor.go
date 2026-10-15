@@ -274,6 +274,19 @@ func (e *TodoExtractor) pendMassAssign(todo ExtractedTodo, priority string, dueD
 		return
 	}
 
+	// 去重：同一待办被多条消息反复提取时，不再重复落 pending/发通知/发确认卡
+	//（任务级幂等在确认后才生效，拦不住确认前的重复卡片）。同会话提取在
+	// extractSubmitter 里按会话串行，此检查无并发窗口。
+	var dupPendCount int64
+	if err := db.Model(&model.TodoMassAssign{}).
+		Where("creator_id = ? AND conversation_id = ? AND title = ? AND status = ?",
+			senderID, conversationID, todo.Title, model.TodoMassAssignStatusPending).
+		Count(&dupPendCount).Error; err == nil && dupPendCount > 0 {
+		logger.WithModule("TodoExtractor").Info("大范围指派已有待确认记录，跳过重复创建",
+			"title", todo.Title, "convID", conversationID)
+		return
+	}
+
 	pend := model.TodoMassAssign{
 		CreatorID:      senderID,
 		ConversationID: conversationID,

@@ -246,6 +246,29 @@ func handleTodoMassRejectAction(db *gorm.DB, userID uint, notification *model.No
 	return service.RejectTodoMassAssign(db, userID, payload.PendingID)
 }
 
+// syncTodoCardTerminal 全员待办两通道终态同步：通知中心确认/忽略成功后，
+// 把群内确认卡也回写成终态（卡片按钮不再悬空可点）。best-effort：di 未就绪或
+// 找不到卡片时静默跳过，不影响通知自身的 Handled 落库。
+func syncTodoCardTerminal(db *gorm.DB, notification *model.Notification, action string) {
+	var payload struct {
+		PendingID uint `json:"pending_id"`
+	}
+	if err := json.Unmarshal([]byte(notification.ActionPayload), &payload); err != nil || payload.PendingID == 0 {
+		return
+	}
+	if gc := di.GlobalContainer; gc != nil && gc.BotMessagingService != nil {
+		var pend model.TodoMassAssign
+		if err := db.First(&pend, payload.PendingID).Error; err != nil {
+			return
+		}
+		line := "✓ 已确认创建"
+		if action == "todo_ignore" {
+			line = "✓ 已忽略"
+		}
+		gc.BotMessagingService.SyncTodoConfirmCardTerminal(pend.ConversationID, payload.PendingID, line)
+	}
+}
+
 func TogglePinNotification(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	notificationIDStr := c.Param("id")
@@ -814,6 +837,10 @@ func PatchNotification(c *gin.Context) {
 			// 确认失败（过期/非本人/已处理）不置 Handled：按钮保持可点，用户可感知失败原因
 			response.BadRequest(c, actionErr.Error())
 			return
+		}
+		// 全员待办两通道终态同步：通知中心确认/忽略成功后，把群内确认卡也回写成终态
+		if *req.Action == "confirm_create" || *req.Action == "todo_ignore" {
+			syncTodoCardTerminal(db, notification, *req.Action)
 		}
 		notification.Handled = true
 		now := time.Now()
