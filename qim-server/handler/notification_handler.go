@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -213,6 +215,34 @@ func handleConfirmAction(db *gorm.DB, notification *model.Notification) {
 }
 
 func handleRescheduleAction(db *gorm.DB, notification *model.Notification) {
+}
+
+// handleTodoMassConfirmAction 全员待办二次确认：校验通知类型后按锁定名单批量创建任务。
+func handleTodoMassConfirmAction(db *gorm.DB, userID uint, notification *model.Notification) error {
+	if notification.Type != "todo_mass_pending" {
+		return errors.New("通知类型不支持该操作")
+	}
+	var payload struct {
+		PendingID uint `json:"pending_id"`
+	}
+	if err := json.Unmarshal([]byte(notification.ActionPayload), &payload); err != nil || payload.PendingID == 0 {
+		return errors.New("通知缺少待确认记录 ID")
+	}
+	return confirmTodoMassAssign(db, userID, payload.PendingID)
+}
+
+// handleTodoMassRejectAction 全员待办忽略：记录置 rejected，不创建任务。
+func handleTodoMassRejectAction(db *gorm.DB, userID uint, notification *model.Notification) error {
+	if notification.Type != "todo_mass_pending" {
+		return errors.New("通知类型不支持该操作")
+	}
+	var payload struct {
+		PendingID uint `json:"pending_id"`
+	}
+	if err := json.Unmarshal([]byte(notification.ActionPayload), &payload); err != nil || payload.PendingID == 0 {
+		return errors.New("通知缺少待确认记录 ID")
+	}
+	return rejectTodoMassAssign(db, userID, payload.PendingID)
 }
 
 func TogglePinNotification(c *gin.Context) {
@@ -760,6 +790,7 @@ func PatchNotification(c *gin.Context) {
 			return
 		}
 		db := di.GlobalContainer.DB
+		var actionErr error
 		switch *req.Action {
 		case "accept":
 			handleAcceptAction(db, notification)
@@ -769,8 +800,18 @@ func PatchNotification(c *gin.Context) {
 			handleConfirmAction(db, notification)
 		case "reschedule":
 			handleRescheduleAction(db, notification)
+		case "confirm_create":
+			// 全员待办二次确认（AI 大范围指派）：校验归属/状态后批量创建任务
+			actionErr = handleTodoMassConfirmAction(db, uid, notification)
+		case "todo_ignore":
+			actionErr = handleTodoMassRejectAction(db, uid, notification)
 		default:
 			response.BadRequest(c, "不支持的操作")
+			return
+		}
+		if actionErr != nil {
+			// 确认失败（过期/非本人/已处理）不置 Handled：按钮保持可点，用户可感知失败原因
+			response.BadRequest(c, actionErr.Error())
 			return
 		}
 		notification.Handled = true

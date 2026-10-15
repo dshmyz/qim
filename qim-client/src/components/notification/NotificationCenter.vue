@@ -378,6 +378,11 @@ const ACTION_BUTTONS: Record<string, Array<{ value: string; label: string; style
     { value: 'approve', label: '同意', style: 'primary' },
     { value: 'reject', label: '拒绝', style: 'secondary' },
   ],
+  // 群待办大范围指派的二次确认（AI 提取 assignee=all，确认后才批量建任务）
+  todo_mass_confirm: [
+    { value: 'confirm_create', label: '确认创建', style: 'primary' },
+    { value: 'todo_ignore', label: '忽略', style: 'secondary' },
+  ],
 }
 
 const getActionButtons = (notification: Notification) => {

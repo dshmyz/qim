@@ -55,6 +55,7 @@ func setupTodoTestDB(t *testing.T) *gorm.DB {
 		&model.Group{},
 		&model.Task{},
 		&model.Notification{},
+		&model.TodoMassAssign{},
 	))
 	database.DB = db
 	return db

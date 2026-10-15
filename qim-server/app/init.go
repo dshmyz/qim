@@ -680,6 +680,7 @@ func MigrateDB(db *gorm.DB) error {
 		&model.ChannelMessageComment{}, // 依赖 User, ChannelMessage
 		&model.ShortLink{},             // 依赖 User
 		&model.Task{},                  // 依赖 User
+		&model.TodoMassAssign{},        // 群待办大范围指派的二次确认记录（assignee=all 防误判轰炸）
 		&model.RealtimeSession{},       // 独立表
 		&model.RealtimeParticipant{},   // 依赖 RealtimeSession
 		&model.AIConfig{},              // 依赖 User

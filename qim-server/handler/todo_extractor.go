@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
 	"github.com/dshmyz/qim/qim-server/ws"
+	"gorm.io/gorm"
 )
 
 // TodoExtractor 待办提取引擎
@@ -25,6 +27,11 @@ func NewTodoExtractor(aiService *ai.AIService) *TodoExtractor {
 		aiService: aiService,
 	}
 }
+
+// massAssignThreshold 大范围指派的二次确认阈值：指派人数超过它时，AI 的单次判定
+// 不再直接落库，而是给触发者发确认通知。assignee=all 常见于几百人的大群，
+// AI 一次误判（把闲聊提成待办）就是全群几百条任务+通知轰炸，必须有人工兜底。
+const massAssignThreshold = 10
 
 // ExtractedTodo 提取的待办结构
 type ExtractedTodo struct {
@@ -243,9 +250,71 @@ func (e *TodoExtractor) createTodo(todo ExtractedTodo, senderID uint, conversati
 		priority = todo.Priority
 	}
 
-	// 为每个负责人创建待办（幂等：同一负责人已存在未完成的同名+同截止任务时跳过，
-	// 防止 AI 提取对同一条待办重复触发——单次提取重复返回、或同一待办在多条消息里
-	// 被反复提到——导致任务表堆重复行，list_tasks 再把它们原样吐给模型引发对账混乱）
+	// 大范围指派二次确认：AI 一次误判的爆炸半径是全群（几百条任务+通知轰炸），
+	// 超阈值时先落待确认记录、由触发者从通知中心确认后才批量创建。
+	if len(assigneeIDs) > massAssignThreshold {
+		e.pendMassAssign(todo, priority, dueDate, senderID, conversationID, assigneeIDs)
+		return
+	}
+
+	e.createTasksForAssignees(todo, priority, dueDate, senderID, conversationID, assigneeIDs)
+}
+
+// pendMassAssign 落大范围指派的待确认记录，并给触发者发一条确认通知（只发给触发者，
+// 不打扰其他成员）。确认/忽略走通知中心通用动作分发（PATCH /notifications/:id）。
+func (e *TodoExtractor) pendMassAssign(todo ExtractedTodo, priority string, dueDate *time.Time, senderID, conversationID uint, assigneeIDs []uint) {
+	db := database.GetDB()
+
+	idsJSON, err := json.Marshal(assigneeIDs)
+	if err != nil {
+		logger.WithModule("TodoExtractor").Error("序列化指派名单失败", "error", err)
+		return
+	}
+
+	pend := model.TodoMassAssign{
+		CreatorID:      senderID,
+		ConversationID: conversationID,
+		Title:          todo.Title,
+		Description:    todo.Description,
+		DueDate:        dueDate,
+		Priority:       priority,
+		Reminder:       todo.RemindMinutes,
+		AssigneeIDs:    string(idsJSON),
+		Status:         model.TodoMassAssignStatusPending,
+		ExpiresAt:      time.Now().Add(24 * time.Hour), // 与分身草稿同款 TTL：24h 内未确认视为放弃
+	}
+	if err := db.Create(&pend).Error; err != nil {
+		logger.WithModule("TodoExtractor").Error("落待确认记录失败", "error", err)
+		return
+	}
+
+	notification := model.Notification{
+		UserID:        senderID,
+		Type:          "todo_mass_pending",
+		Title:         "待确认的全员待办",
+		Content:       fmt.Sprintf("AI 从群消息提取到「%s」，将指派给 %d 位成员，确认后才会创建", todo.Title, len(assigneeIDs)),
+		Read:          false,
+		Priority:      "important",
+		ActionType:    "todo_mass_confirm",
+		ActionPayload: fmt.Sprintf(`{"pending_id":%d}`, pend.ID),
+	}
+	db.Create(&notification)
+	if ws.GlobalHub != nil {
+		wsMsg := ws.WSMessage{Type: "new_notification", Data: notification}
+		if jsonMsg, err := json.Marshal(wsMsg); err == nil {
+			ws.GlobalHub.SendToUser(senderID, jsonMsg)
+		}
+	}
+
+	logger.WithModule("TodoExtractor").Info("大范围指派待确认", "title", todo.Title,
+		"assignees", len(assigneeIDs), "pendingID", pend.ID)
+}
+
+// createTasksForAssignees 按名单逐个创建待办（幂等：同一负责人已存在未完成的同名+同截止
+// 任务时跳过，防止 AI 提取对同一条待办重复触发——单次提取重复返回、或同一待办在多条消息里
+// 被反复提到——导致任务表堆重复行，list_tasks 再把它们原样吐给模型引发对账混乱）。
+func (e *TodoExtractor) createTasksForAssignees(todo ExtractedTodo, priority string, dueDate *time.Time, senderID, conversationID uint, assigneeIDs []uint) {
+	db := database.GetDB()
 	for _, assigneeID := range assigneeIDs {
 		dupQuery := db.Model(&model.Task{}).
 			Where("user_id = ? AND title = ? AND status != 'done'", assigneeID, todo.Title)
@@ -284,6 +353,58 @@ func (e *TodoExtractor) createTodo(todo ExtractedTodo, senderID uint, conversati
 	if len(assigneeIDs) > 1 {
 		logger.WithModule("TodoExtractor").Info("已为多人创建待办", "count", len(assigneeIDs), "title", todo.Title)
 	}
+}
+
+// confirmTodoMassAssign 触发者确认大范围指派：按锁定名单批量创建任务并逐人通知。
+// 状态机约束：仅创建者本人、仅 pending、未过期（过期时记录置 expired 拒绝执行）。
+func confirmTodoMassAssign(db *gorm.DB, userID, pendingID uint) error {
+	var pend model.TodoMassAssign
+	if err := db.First(&pend, pendingID).Error; err != nil {
+		return errors.New("待确认记录不存在")
+	}
+	if pend.CreatorID != userID {
+		return errors.New("仅触发者本人可确认")
+	}
+	if pend.Status != model.TodoMassAssignStatusPending {
+		return fmt.Errorf("该记录已处理（%s），无法重复确认", pend.Status)
+	}
+	if time.Now().After(pend.ExpiresAt) {
+		db.Model(&pend).Update("status", model.TodoMassAssignStatusExpired)
+		return errors.New("确认已过期（24 小时），请在群里重新发送该待办触发提取")
+	}
+
+	var assigneeIDs []uint
+	if err := json.Unmarshal([]byte(pend.AssigneeIDs), &assigneeIDs); err != nil {
+		return errors.New("指派名单已损坏，无法创建")
+	}
+
+	e := &TodoExtractor{}
+	e.createTasksForAssignees(
+		ExtractedTodo{Title: pend.Title, Description: pend.Description, RemindMinutes: pend.Reminder},
+		pend.Priority, pend.DueDate, pend.CreatorID, pend.ConversationID, assigneeIDs,
+	)
+	db.Model(&pend).Update("status", model.TodoMassAssignStatusApproved)
+
+	logger.WithModule("TodoExtractor").Info("大范围指派已确认创建", "pendingID", pend.ID, "assignees", len(assigneeIDs))
+	return nil
+}
+
+// rejectTodoMassAssign 触发者忽略大范围指派：记录置 rejected，不创建任何任务。
+func rejectTodoMassAssign(db *gorm.DB, userID, pendingID uint) error {
+	var pend model.TodoMassAssign
+	if err := db.First(&pend, pendingID).Error; err != nil {
+		return errors.New("待确认记录不存在")
+	}
+	if pend.CreatorID != userID {
+		return errors.New("仅触发者本人可忽略")
+	}
+	if pend.Status != model.TodoMassAssignStatusPending {
+		return fmt.Errorf("该记录已处理（%s）", pend.Status)
+	}
+	db.Model(&pend).Update("status", model.TodoMassAssignStatusRejected)
+
+	logger.WithModule("TodoExtractor").Info("大范围指派已忽略", "pendingID", pend.ID, "title", pend.Title)
+	return nil
 }
 
 // parseDueDate 解析待办截止时间字符串。
