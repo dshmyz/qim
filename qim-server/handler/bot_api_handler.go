@@ -310,6 +310,20 @@ func (h *BotAPIHandler) SubmitCardAction(c *gin.Context) {
 		return
 	}
 
+	// 全员待办确认卡（kind=todo_confirm）：不经 bot 会话链路（ForwardCardAction 要求
+	// BotConversation，普通群没有 bot 入群记录），直接执行平台侧确认状态机
+	var cardMsg model.Message
+	if err := database.GetDB().First(&cardMsg, uint(messageID)).Error; err == nil && cardMsg.Type == "card" {
+		if _, ok := service.ParseTodoConfirmCard(cardMsg.Content); ok {
+			if err := h.botMessaging.HandleTodoConfirmCard(&cardMsg, userID, req.ActionID); err != nil {
+				response.BadRequest(c, err.Error())
+				return
+			}
+			response.SuccessWithMessage(c, "操作成功", nil)
+			return
+		}
+	}
+
 	if err := h.botMessaging.ForwardCardAction(uint(messageID), userID, req.ActionID, req.Value); err != nil {
 		// 幂等命中：该用户已处理过此卡片，不重复触发 webhook，返回 200"已处理"
 		if errors.Is(err, service.ErrCardActionAlreadyHandled) {

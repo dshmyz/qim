@@ -2,18 +2,18 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/database"
+	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 	"github.com/dshmyz/qim/qim-server/pkg/mention"
+	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/ws"
-	"gorm.io/gorm"
 )
 
 // TodoExtractor 待办提取引擎
@@ -251,13 +251,16 @@ func (e *TodoExtractor) createTodo(todo ExtractedTodo, senderID uint, conversati
 	}
 
 	// 大范围指派二次确认：AI 一次误判的爆炸半径是全群（几百条任务+通知轰炸），
-	// 超阈值时先落待确认记录、由触发者从通知中心确认后才批量创建。
+	// 超阈值时先落待确认记录，由触发者从群内确认卡或通知中心确认后才批量创建。
 	if len(assigneeIDs) > massAssignThreshold {
 		e.pendMassAssign(todo, priority, dueDate, senderID, conversationID, assigneeIDs)
 		return
 	}
 
-	e.createTasksForAssignees(todo, priority, dueDate, senderID, conversationID, assigneeIDs)
+	service.CreateTasksForAssignees(db, service.MassTaskSpec{
+		Title: todo.Title, Description: todo.Description,
+		DueDate: dueDate, Priority: priority, Reminder: todo.RemindMinutes,
+	}, senderID, conversationID, assigneeIDs)
 }
 
 // pendMassAssign 落大范围指派的待确认记录，并给触发者发一条确认通知（只发给触发者，
@@ -306,106 +309,33 @@ func (e *TodoExtractor) pendMassAssign(todo ExtractedTodo, priority string, dueD
 		}
 	}
 
+	// 群内确认卡：以默认 AI 助手身份在群里发一张可点击卡片——确认动作发生在消息
+	// 上下文里，全员可见任务来源与确认状态；通知中心那条是触发者的私下提醒兜底。
+	// 两个入口指向同一状态机，幂等由 pending 状态保证。任一失败仅记日志。
+	if gc := di.GlobalContainer; gc != nil && gc.BotMessagingService != nil && gc.UserService != nil {
+		if aiUser, err := gc.UserService.GetDefaultAIAssistant(); err == nil {
+			var cardBot model.Bot
+			if err := db.Where("virtual_user_id = ?", aiUser.ID).First(&cardBot).Error; err == nil {
+				var creator model.User
+				db.Select("nickname", "username").First(&creator, senderID)
+				creatorName := creator.Nickname
+				if creatorName == "" {
+					creatorName = creator.Username
+				}
+				if err := gc.BotMessagingService.SendTodoConfirmCard(conversationID, cardBot, pend.ID, todo.Title, len(assigneeIDs), creatorName); err != nil {
+					logger.WithModule("TodoExtractor").Error("发送群内确认卡失败", "pendingID", pend.ID, "error", err)
+				}
+			}
+		}
+	}
+
 	logger.WithModule("TodoExtractor").Info("大范围指派待确认", "title", todo.Title,
 		"assignees", len(assigneeIDs), "pendingID", pend.ID)
 }
 
-// createTasksForAssignees 按名单逐个创建待办（幂等：同一负责人已存在未完成的同名+同截止
-// 任务时跳过，防止 AI 提取对同一条待办重复触发——单次提取重复返回、或同一待办在多条消息里
-// 被反复提到——导致任务表堆重复行，list_tasks 再把它们原样吐给模型引发对账混乱）。
-func (e *TodoExtractor) createTasksForAssignees(todo ExtractedTodo, priority string, dueDate *time.Time, senderID, conversationID uint, assigneeIDs []uint) {
-	db := database.GetDB()
-	for _, assigneeID := range assigneeIDs {
-		dupQuery := db.Model(&model.Task{}).
-			Where("user_id = ? AND title = ? AND status != 'done'", assigneeID, todo.Title)
-		if dueDate != nil {
-			dupQuery = dupQuery.Where("due_date = ?", *dueDate)
-		} else {
-			dupQuery = dupQuery.Where("due_date IS NULL")
-		}
-		var dupCount int64
-		if err := dupQuery.Count(&dupCount).Error; err == nil && dupCount > 0 {
-			logger.WithModule("TodoExtractor").Info("待办已存在，跳过重复创建",
-				"title", todo.Title, "assigneeID", assigneeID, "existing", dupCount)
-			continue
-		}
-
-		task := model.Task{
-			UserID:         assigneeID,
-			ConversationID: conversationID,
-			Title:          todo.Title,
-			Description:    todo.Description,
-			DueDate:        dueDate,
-			Priority:       priority,
-			Status:         "todo",
-			Reminder:       todo.RemindMinutes,
-		}
-		db.Create(&task)
-
-		logger.WithModule("TodoExtractor").Info("创建待办", "title", todo.Title, "assigneeID", assigneeID)
-
-		// 通知负责人
-		if assigneeID != senderID {
-			e.notifyTodoAssigned(task, assigneeID, senderID, conversationID)
-		}
-	}
-
-	if len(assigneeIDs) > 1 {
-		logger.WithModule("TodoExtractor").Info("已为多人创建待办", "count", len(assigneeIDs), "title", todo.Title)
-	}
-}
-
-// confirmTodoMassAssign 触发者确认大范围指派：按锁定名单批量创建任务并逐人通知。
-// 状态机约束：仅创建者本人、仅 pending、未过期（过期时记录置 expired 拒绝执行）。
-func confirmTodoMassAssign(db *gorm.DB, userID, pendingID uint) error {
-	var pend model.TodoMassAssign
-	if err := db.First(&pend, pendingID).Error; err != nil {
-		return errors.New("待确认记录不存在")
-	}
-	if pend.CreatorID != userID {
-		return errors.New("仅触发者本人可确认")
-	}
-	if pend.Status != model.TodoMassAssignStatusPending {
-		return fmt.Errorf("该记录已处理（%s），无法重复确认", pend.Status)
-	}
-	if time.Now().After(pend.ExpiresAt) {
-		db.Model(&pend).Update("status", model.TodoMassAssignStatusExpired)
-		return errors.New("确认已过期（24 小时），请在群里重新发送该待办触发提取")
-	}
-
-	var assigneeIDs []uint
-	if err := json.Unmarshal([]byte(pend.AssigneeIDs), &assigneeIDs); err != nil {
-		return errors.New("指派名单已损坏，无法创建")
-	}
-
-	e := &TodoExtractor{}
-	e.createTasksForAssignees(
-		ExtractedTodo{Title: pend.Title, Description: pend.Description, RemindMinutes: pend.Reminder},
-		pend.Priority, pend.DueDate, pend.CreatorID, pend.ConversationID, assigneeIDs,
-	)
-	db.Model(&pend).Update("status", model.TodoMassAssignStatusApproved)
-
-	logger.WithModule("TodoExtractor").Info("大范围指派已确认创建", "pendingID", pend.ID, "assignees", len(assigneeIDs))
-	return nil
-}
-
-// rejectTodoMassAssign 触发者忽略大范围指派：记录置 rejected，不创建任何任务。
-func rejectTodoMassAssign(db *gorm.DB, userID, pendingID uint) error {
-	var pend model.TodoMassAssign
-	if err := db.First(&pend, pendingID).Error; err != nil {
-		return errors.New("待确认记录不存在")
-	}
-	if pend.CreatorID != userID {
-		return errors.New("仅触发者本人可忽略")
-	}
-	if pend.Status != model.TodoMassAssignStatusPending {
-		return fmt.Errorf("该记录已处理（%s）", pend.Status)
-	}
-	db.Model(&pend).Update("status", model.TodoMassAssignStatusRejected)
-
-	logger.WithModule("TodoExtractor").Info("大范围指派已忽略", "pendingID", pend.ID, "title", pend.Title)
-	return nil
-}
+// 确认/忽略状态机与批量创建已收编到 service（ConfirmTodoMassAssign /
+// RejectTodoMassAssign / CreateTasksForAssignees）：群内确认卡的点击链路
+// （BotMessagingService.HandleTodoConfirmCard）与通知中心动作分发共用同一状态机。
 
 // parseDueDate 解析待办截止时间字符串。
 // - 带时间的格式：保留解析到的时间
@@ -438,29 +368,4 @@ func parseDueDate(s string) *time.Time {
 	return nil
 }
 
-// notifyTodoAssigned 通知负责人有新的待办
-func (e *TodoExtractor) notifyTodoAssigned(task model.Task, assigneeID uint, creatorID uint, conversationID uint) {
-	db := database.GetDB()
-
-	notification := model.Notification{
-		UserID:        assigneeID,
-		Type:          "todo_assigned",
-		Title:         "新的待办事项",
-		Content:       task.Title,
-		Read:          false,
-		Priority:      "important",
-		ActionType:    "confirm_reschedule",
-		ActionPayload: fmt.Sprintf(`{"task_id":%d}`, task.ID),
-	}
-	db.Create(&notification)
-
-	// 通过 WebSocket 推送
-	wsMsg := ws.WSMessage{
-		Type: "new_notification",
-		Data: notification,
-	}
-	jsonMsg, _ := json.Marshal(wsMsg)
-	ws.GlobalHub.SendToUser(assigneeID, jsonMsg)
-
-	logger.WithModule("TodoExtractor").Info("已通知用户", "userID", assigneeID, "title", task.Title)
-}
+// notifyTodoAssigned 已收编到 service（CreateTasksForAssignees 内部通知，文案带群名与指派人）

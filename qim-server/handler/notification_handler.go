@@ -10,6 +10,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -228,7 +229,7 @@ func handleTodoMassConfirmAction(db *gorm.DB, userID uint, notification *model.N
 	if err := json.Unmarshal([]byte(notification.ActionPayload), &payload); err != nil || payload.PendingID == 0 {
 		return errors.New("通知缺少待确认记录 ID")
 	}
-	return confirmTodoMassAssign(db, userID, payload.PendingID)
+	return service.ConfirmTodoMassAssign(db, userID, payload.PendingID)
 }
 
 // handleTodoMassRejectAction 全员待办忽略：记录置 rejected，不创建任务。
@@ -242,7 +243,7 @@ func handleTodoMassRejectAction(db *gorm.DB, userID uint, notification *model.No
 	if err := json.Unmarshal([]byte(notification.ActionPayload), &payload); err != nil || payload.PendingID == 0 {
 		return errors.New("通知缺少待确认记录 ID")
 	}
-	return rejectTodoMassAssign(db, userID, payload.PendingID)
+	return service.RejectTodoMassAssign(db, userID, payload.PendingID)
 }
 
 func TogglePinNotification(c *gin.Context) {
