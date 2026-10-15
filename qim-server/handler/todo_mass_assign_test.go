@@ -105,3 +105,37 @@ func TestCreateTodo_MassAssignDedup(t *testing.T) {
 	database.GetDB().Model(&model.TodoMassAssign{}).Count(&pendCount)
 	assert.Equal(t, int64(2), pendCount, "不同标题的待办不受去重影响")
 }
+
+// TestCreateTodo_MassAssignSkipWhenApprovedAndTasksAlive 已确认过的同名待办：
+// 名单内全部成员仍有未完成任务时，重复提取只是重申，不再发新确认卡；
+// 一旦有人完成（名单不再全员命中），允许重新走确认流程补任务。
+func TestCreateTodo_MassAssignSkipWhenApprovedAndTasksAlive(t *testing.T) {
+	conv, _ := setupMassGroup(t, 11)
+	senderID := uint(1)
+
+	e := NewTodoExtractor(nil)
+	// 第一次提取 + 模拟已确认且任务已创建
+	e.createTodo(ExtractedTodo{Title: "全员周报", Assignee: "all"}, senderID, conv.ID)
+	var pend model.TodoMassAssign
+	require.NoError(t, database.GetDB().First(&pend).Error)
+	database.GetDB().Model(&pend).Update("status", model.TodoMassAssignStatusApproved)
+	var ids []uint
+	require.NoError(t, json.Unmarshal([]byte(pend.AssigneeIDs), &ids))
+	for _, uid := range ids {
+		require.NoError(t, database.GetDB().Create(&model.Task{
+			UserID: uid, ConversationID: conv.ID, Title: "全员周报", Status: "todo",
+		}).Error)
+	}
+
+	// 全员任务仍在：重复提取应跳过
+	e.createTodo(ExtractedTodo{Title: "全员周报", Assignee: "all"}, senderID, conv.ID)
+	var pendCount int64
+	database.GetDB().Model(&model.TodoMassAssign{}).Count(&pendCount)
+	assert.Equal(t, int64(1), pendCount, "已确认且任务全员在，重复提取不应新建确认流程")
+
+	// 有人完成：允许重新确认（给漏掉的人补任务）
+	database.GetDB().Model(&model.Task{}).Where("user_id = ?", ids[0]).Update("status", "done")
+	e.createTodo(ExtractedTodo{Title: "全员周报", Assignee: "all"}, senderID, conv.ID)
+	database.GetDB().Model(&model.TodoMassAssign{}).Count(&pendCount)
+	assert.Equal(t, int64(2), pendCount, "名单不再全员命中时应允许重新确认")
+}

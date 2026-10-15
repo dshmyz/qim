@@ -287,6 +287,26 @@ func (e *TodoExtractor) pendMassAssign(todo ExtractedTodo, priority string, dueD
 		return
 	}
 
+	// 已确认过（approved）的同名待办：名单内全部成员仍有未完成任务时，重复提取
+	// 只是重申，不再走确认流程；有人已完成则允许重新确认（给漏掉的人补任务）。
+	var lastApproved model.TodoMassAssign
+	if err := db.Where("creator_id = ? AND conversation_id = ? AND title = ? AND status = ?",
+		senderID, conversationID, todo.Title, model.TodoMassAssignStatusApproved).
+		Order("id DESC").First(&lastApproved).Error; err == nil {
+		var prevIDs []uint
+		if err := json.Unmarshal([]byte(lastApproved.AssigneeIDs), &prevIDs); err == nil && len(prevIDs) > 0 {
+			var alive int64
+			db.Model(&model.Task{}).
+				Where("user_id IN ? AND title = ? AND status != 'done'", prevIDs, todo.Title).
+				Count(&alive)
+			if int(alive) == len(prevIDs) {
+				logger.WithModule("TodoExtractor").Info("全员待办已确认且任务仍在，跳过重复提取",
+					"title", todo.Title, "convID", conversationID)
+				return
+			}
+		}
+	}
+
 	pend := model.TodoMassAssign{
 		CreatorID:      senderID,
 		ConversationID: conversationID,
