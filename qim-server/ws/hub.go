@@ -106,7 +106,8 @@ type Hub struct {
 	// HandleMessage 回调：处理 WebSocket 发送消息请求，由外部注入 MessageService 逻辑
 	HandleMessage func(convID, senderID uint, msgType, content string, quotedMessageID *uint) (*model.Message, error)
 
-	// SendVersionGate 回调：客户端版本门槛判定（版本/平台是否被禁止发送），由外部注入。	// 返回 true 表示该连接的版本被门槛拦截；nil 表示不启用门槛。独立于 HandleMessage 注入，
+	// SendVersionGate 回调：客户端版本门槛判定（版本/平台是否被禁止发送），由外部注入。
+	// 返回 true 表示该连接的版本被门槛拦截；nil 表示不启用门槛。独立于 HandleMessage 注入，
 	// 避免 ws 包反向依赖 handler/service 的版本比较逻辑。
 	SendVersionGate func(clientVersion, clientPlatform string) bool
 
