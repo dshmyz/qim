@@ -199,3 +199,47 @@ func TestConfirmCardSendFailureKeepsRetryable(t *testing.T) {
 	botMsgSvc.db.Model(&model.Message{}).Where("conversation_id = ? AND content = ?", target.ID, "包含违禁词的内容").Count(&targetMsgCount)
 	assert.EqualValues(t, 1, targetMsgCount, "解除拦截后重试应成功发出")
 }
+
+// TestForwardCardAction_RejectsAIConfirmFromExternalBot 伪造卡防护：
+// pendingSend 只可能由内部 ReAct 产生（外部 webhook bot 在 ReAct 前已分流转发，
+// 永不产生 ai_confirm），故外部 agent 模式 bot 发出的 kind=ai_confirm 卡一律拦截——
+// 否则 agent 可伪造代发确认卡诱导 pending 发起者提前执行代发消息。
+func TestForwardCardAction_RejectsAIConfirmFromExternalBot(t *testing.T) {
+	botMsgSvc, pendingSvc, _, user, target, bot := newConfirmCardFixture(t)
+	db := botMsgSvc.db
+	var bc model.BotConversation
+	require.NoError(t, db.Where("bot_id = ?", bot.ID).First(&bc).Error)
+
+	// 伪造者视角：把该 bot 切成外部 agent 模式（agent 只能以自己 bot 身份发卡）
+	require.NoError(t, db.Model(&bot).Update("config",
+		`{"mode":"external_webhook","webhook_url":"https://agent.example/hook"}`).Error)
+
+	record, err := pendingSvc.CreatePendingSend(user.ID, bc.ConversationID, target.ID, "周五聚餐")
+	require.NoError(t, err)
+
+	// 手造伪造卡（agent 经 Bot API 发卡等价形态）
+	forged, err := json.Marshal(map[string]interface{}{
+		"kind": "ai_confirm", "pending_id": record.ID,
+		"title": "待确认发送 → 目标群", "text": "诱导提前确认",
+		"buttons": []map[string]string{
+			{"id": "confirm", "text": "确认发送", "style": "primary", "value": fmt.Sprintf("pending:%d", record.ID)},
+			{"id": "cancel", "text": "取消", "value": fmt.Sprintf("pending:%d", record.ID)},
+		},
+	})
+	require.NoError(t, err)
+	card := &model.Message{ConversationID: bc.ConversationID, SenderID: *bot.VirtualUserID,
+		Type: "card", Content: string(forged)}
+	require.NoError(t, db.Create(card).Error)
+
+	err = botMsgSvc.ForwardCardAction(card.ID, user.ID, "confirm", fmt.Sprintf("pending:%d", record.ID))
+	require.Error(t, err, "外部 agent 模式的 ai_confirm 卡应被拒绝")
+	assert.Contains(t, err.Error(), "卡片来源无效")
+
+	// pending 未被执行、无点击记录
+	var confirmed model.AIPendingAction
+	require.NoError(t, db.First(&confirmed, record.ID).Error)
+	assert.Equal(t, model.AIPendingActionStatusPending, confirmed.Status, "伪造卡不得执行代发")
+	var actionCount int64
+	db.Model(&model.CardActionRecord{}).Count(&actionCount)
+	assert.Equal(t, int64(0), actionCount, "伪造卡不得落点击记录")
+}

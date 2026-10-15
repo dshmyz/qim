@@ -392,6 +392,13 @@ func (s *BotMessagingService) ForwardCardAction(messageID, userID uint, actionID
 	// 不要求 bot 配置外部 webhook，也不外发事件。pending_id 以卡片内容（服务端落库）
 	// 为准，不信任客户端 value。
 	if pendingID, ok := parseAIConfirmCard(msg.Content); ok {
+		// 防伪造：pendingSend 只可能由内部 ReAct 产生（外部 webhook bot 在
+		// handleBotMessage 进 ReAct 前已分流转发，永不产生 ai_confirm）——
+		// 外部 agent 若伪造此卡，可诱导 pending 发起者提前执行代发消息。
+		// 按卡片会话 bot 的模式拦截：内部 AI 助手（默认/自建）照常放行。
+		if cfg := ParseBotConfig(bot.Config); cfg.IsExternalWebhook() {
+			return errors.New("卡片来源无效")
+		}
 		return s.handleAIConfirmCardAction(&bot, &msg, userID, actionID, pendingID)
 	}
 
