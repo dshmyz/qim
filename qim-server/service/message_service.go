@@ -428,7 +428,7 @@ func (s *MessageService) HandleGroupBotMention(convID, senderID uint, mentionedU
 			// 仅在被 @ 该 bot 时触发，天然克制；系统消息不经 SendMessage，不会递归再触发 OnMessageSent。
 			logger.WithModule("handleBotMessage").Info("bot 为 pull 模式（webhook_url 空），发系统提示",
 				"botID", bot.ID)
-			s.notifyPullModeBot(convID, senderID, bot.Name)
+			s.notifyPullModeBot(convID, bot.ID, senderID, bot.Name)
 			continue
 		}
 		logger.WithModule("handleBotMessage").Debug("命中 external webhook bot，准备转发",
@@ -507,10 +507,55 @@ func (s *MessageService) buildGroupBotContext(convID uint, content string) strin
 	return strings.Join(parts, "\n\n")
 }
 
-// notifyPullModeBot 在群会话内落一条系统提示消息：被 @ 的外部 bot 未配 webhook 回调（pull 模式），不会自动回复。
+// pullModeNoticeCooldown pull 模式系统提示的会话级冷却窗口。
+const pullModeNoticeCooldown = 5 * time.Minute
+
+// pullNoticeMaxEntries 冷却表的清扫阈值：超过后全量清理已过冷却期的条目。
+// 只在超阈值时触发一次 O(n) 遍历，此后表回到活跃窗口大小，避免无界增长。
+const pullNoticeMaxEntries = 4096
+
+// pullNoticeKey 冷却键：会话 × bot 双维度——同群多个 pull bot 各自独立冷却，
+// 互不吞提示。
+type pullNoticeKey struct {
+	convID, botID uint
+}
+
+var (
+	pullNoticeMu     sync.Mutex
+	pullNoticeLastAt = map[pullNoticeKey]time.Time{}
+)
+
+// sweepPullNotice 清理已过冷却期的条目（调用方须持锁）。
+func sweepPullNoticeLocked(now time.Time) {
+	for k, last := range pullNoticeLastAt {
+		if now.Sub(last) >= pullModeNoticeCooldown {
+			delete(pullNoticeLastAt, k)
+		}
+	}
+}
+
+// notifyPullModeBot 在群会话内落一条系统提示消息：被 @ 的外部 bot 未配 webhook 回调（pull 模式）。
 // 复用 NotifyMembersJoined 的系统消息 + WS 广播模式，便于成员在聊天流里看到原因。
-func (s *MessageService) notifyPullModeBot(convID, senderID uint, botName string) {
-	content := fmt.Sprintf("机器人「%s」未配置回调地址（pull 模式），不会自动回复；如需 @ 即回复，请到机器人设置填写 webhook_url。", botName)
+//
+// 会话×bot 级冷却：pull 模式下每次 @ 都会走到这里，不去重会把群刷满同一条提示
+//（与 webhook 投递失败提示的去重同语义）。时间戳在消息落库成功后才记账——失败不消耗冷却，
+// 下次 @ 立即重试。
+// 文案只陈述可验证的事实（未配回调地址），不断言"不会自动回复"——QIM 不知道对方是否
+// 正在轮询（qim agent loop 之类拉取程序），断言时对时错；有延迟才是这状态下必然的事。
+func (s *MessageService) notifyPullModeBot(convID, botID, senderID uint, botName string) {
+	pullNoticeMu.Lock()
+	now := time.Now()
+	key := pullNoticeKey{convID: convID, botID: botID}
+	if last, ok := pullNoticeLastAt[key]; ok && now.Sub(last) < pullModeNoticeCooldown {
+		pullNoticeMu.Unlock()
+		return
+	}
+	if len(pullNoticeLastAt) >= pullNoticeMaxEntries {
+		sweepPullNoticeLocked(now)
+	}
+	pullNoticeMu.Unlock()
+
+	content := fmt.Sprintf("机器人「%s」未配置回调地址（pull 模式），回复取决于其轮询程序是否在运行，可能有延迟。", botName)
 	systemMsg := &model.Message{
 		ConversationID: convID,
 		SenderID:       senderID,
@@ -522,6 +567,9 @@ func (s *MessageService) notifyPullModeBot(convID, senderID uint, botName string
 		logger.WithModule("HandleGroupBotMention").Error("创建 pull 模式提示消息失败", "convID", convID, "error", err)
 		return
 	}
+	pullNoticeMu.Lock()
+	pullNoticeLastAt[key] = now
+	pullNoticeMu.Unlock()
 	s.db.Model(&model.Conversation{}).Where("id = ?", convID).Updates(map[string]interface{}{
 		"last_message_id": systemMsg.ID,
 		"last_message_at": time.Now(),
@@ -1828,9 +1876,22 @@ func (s *MessageService) BatchGetMessageReadUsers(msgIDs []uint, userID uint) (m
 		db.Where("message_id IN ?", accessibleMsgIDs).Preload("User").Find(&readReceipts)
 	}
 
+	// bot 虚拟用户的回执一律不进已读列表：分母已排除 bot（见下），分子须同口径，
+	// 否则 pull bot「拉取即读」写入的回执会让机器人出现在已读名单里、且 ReadCount 失真。
+	botVirtualUserIDs := make(map[uint]bool)
+	var botVirtualIDs []uint
+	db.Model(&model.Bot{}).Where("virtual_user_id IS NOT NULL").
+		Pluck("virtual_user_id", &botVirtualIDs)
+	for _, id := range botVirtualIDs {
+		botVirtualUserIDs[id] = true
+	}
+
 	// 按消息 ID 分组
 	receiptsByMsg := make(map[uint][]model.MessageReadReceipt)
 	for _, r := range readReceipts {
+		if r.User != nil && botVirtualUserIDs[r.User.ID] {
+			continue
+		}
 		receiptsByMsg[r.MessageID] = append(receiptsByMsg[r.MessageID], r)
 	}
 

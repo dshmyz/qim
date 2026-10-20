@@ -11,6 +11,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -39,6 +40,7 @@ func GetMyBots(c *gin.Context) {
 		response.InternalServerError(c, "获取 Bot 列表失败")
 		return
 	}
+	service.FillBotOnline(bots)
 
 	// 组装包含审批状态的响应
 	type BotWithApproval struct {

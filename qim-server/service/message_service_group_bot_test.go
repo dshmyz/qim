@@ -127,9 +127,15 @@ func TestHandleGroupBotMention_IgnoresNoMentionOrNonGroup(t *testing.T) {
 
 // TestHandleGroupBotMention_PullModeNotices 外部 webhook bot 未配回调地址（pull 模式）时，
 // @ 它不投递 webhook，但会在群内落一条系统提示，避免成员无感知。
+// 提示按会话×bot 双维度冷却：连续 @ 同一 bot 不刷屏；同群另一个 pull bot 不被吞。
 func TestHandleGroupBotMention_PullModeNotices(t *testing.T) {
 	db := setupBotMessagingTestDB(t)
 	svc := NewMessageService(db, nil, nil)
+
+	// 冷却表是包级内存状态，各测试用的内存库会话 id 都从 1 开始，不清会互相压制
+	pullNoticeMu.Lock()
+	pullNoticeLastAt = map[pullNoticeKey]time.Time{}
+	pullNoticeMu.Unlock()
 
 	botUser := &model.User{Username: "pullbot", Nickname: "拉取机器人", Type: "bot"}
 	human := &model.User{Username: "ph", Nickname: "成员", Type: "user"}
@@ -160,6 +166,31 @@ func TestHandleGroupBotMention_PullModeNotices(t *testing.T) {
 	require.NoError(t, err, "应创建 pull 模式提示消息")
 	assert.Contains(t, notice.Content, "PullAgent")
 	assert.Contains(t, notice.Content, "pull 模式")
+	// 文案只陈述可验证事实：QIM 不知道对方是否在轮询，不能断言"不会自动回复"
+	assert.NotContains(t, notice.Content, "不会自动回复")
+
+	// 连续 @ 受冷却，不刷屏
+	svc.HandleGroupBotMention(group.ID, human.ID, []uint{botUser.ID}, "@拉取机器人 还在吗")
+	var count int64
+	db.Model(&model.Message{}).
+		Where("conversation_id = ? AND type = ?", group.ID, "system").Count(&count)
+	assert.EqualValues(t, 1, count, "冷却期内不应重复提示")
+
+	// 冷却按 bot 独立：同群另一个 pull bot 被 @ 应有自己的提示，不被前者吞掉
+	botUser2 := &model.User{Username: "pullbot2", Nickname: "拉取机器人2", Type: "bot"}
+	require.NoError(t, db.Create(botUser2).Error)
+	bot2 := &model.Bot{
+		Name: "PullAgent2", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &botUser2.ID,
+		Config: `{"mode":"external_webhook","webhook_url":""}`,
+	}
+	require.NoError(t, db.Create(bot2).Error)
+	require.NoError(t, db.Create(&model.ConversationMember{ConversationID: group.ID, UserID: botUser2.ID}).Error)
+	require.NoError(t, db.Create(&model.BotConversation{BotID: bot2.ID, ConversationID: group.ID}).Error)
+
+	svc.HandleGroupBotMention(group.ID, human.ID, []uint{botUser2.ID}, "@拉取机器人2 在吗")
+	db.Model(&model.Message{}).
+		Where("conversation_id = ? AND type = ?", group.ID, "system").Count(&count)
+	assert.EqualValues(t, 2, count, "同群第二个 pull bot 的提示不应被第一个的冷却吞掉")
 }
 
 // TestHandleBotMessage_ExternalWebhook_ForwardsToWebhook 单聊外部 agent：用户在 1:1 bot 会话

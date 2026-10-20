@@ -94,7 +94,7 @@ func TestBotStreaming_HappyPath(t *testing.T) {
 	assert.Equal(t, float64(msg.ID), data["id"])
 
 	// 2. 追加第一段
-	require.NoError(t, svc.StreamChunk(bot, msg.ID, "Hello", false))
+	require.NoError(t, svc.StreamChunk(bot, msg.ID, "Hello", false, false))
 	msgType, data = readWS(t, conn)
 	require.Equal(t, "message_updated", msgType)
 	assert.Equal(t, "Hello", data["content"])
@@ -102,14 +102,14 @@ func TestBotStreaming_HappyPath(t *testing.T) {
 	assert.Equal(t, true, data["is_streaming"])
 
 	// 3. 追加第二段（验证累加为全量替换语义）
-	require.NoError(t, svc.StreamChunk(bot, msg.ID, " world", false))
+	require.NoError(t, svc.StreamChunk(bot, msg.ID, " world", false, false))
 	msgType, data = readWS(t, conn)
 	require.Equal(t, "message_updated", msgType)
 	assert.Equal(t, "Hello world", data["content"])
 	assert.Equal(t, true, data["is_streaming"])
 
 	// 4. 收尾 -> markdown + is_streaming:false + 会话最后消息更新
-	require.NoError(t, svc.StreamChunk(bot, msg.ID, "", true))
+	require.NoError(t, svc.StreamChunk(bot, msg.ID, "", true, false))
 	msgType, data = readWS(t, conn)
 	require.Equal(t, "message_updated", msgType)
 	assert.Equal(t, "Hello world", data["content"])
@@ -130,6 +130,37 @@ func TestBotStreaming_HappyPath(t *testing.T) {
 	require.NotNil(t, conv.LastMessageAt)
 }
 
+// TestStreamChunk_AbortDeletesPlaceholder abort 丢弃流式占位：消息软删（终态不可再追加分段），
+// WS 广播 message_deleted——pull 模式 agent 在智能体判定无需回复时以此回收 typing 气泡，
+// 避免 finish 空内容留下空气泡。
+func TestStreamChunk_AbortDeletesPlaceholder(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupServiceTestDB(t)
+	hub := ws.NewHub(db, "test-secret", "http")
+	go hub.Run()
+	svc := NewBotMessagingService(db, hub)
+
+	bot, user, _ := setupStreamingBot(t, db)
+	conn := dialUserWS(t, hub, user.ID)
+
+	msg, err := svc.SendOutbound(bot, user.ID, "", "streaming", nil, nil)
+	require.NoError(t, err)
+	readWS(t, conn) // new_message
+
+	// abort：软删 + message_deleted 广播
+	require.NoError(t, svc.StreamChunk(bot, msg.ID, "", false, true))
+	msgType, data := readWS(t, conn)
+	require.Equal(t, "message_deleted", msgType)
+	assert.EqualValues(t, msg.ID, data["message_id"])
+
+	// 终态：消息已被软删；对已删消息追加分段/收尾应报「消息不存在」
+	var count int64
+	db.Unscoped().Model(&model.Message{}).Where("id = ?", msg.ID).Count(&count)
+	assert.EqualValues(t, 1, count, "软删（deleted_at 非空）而非物理删除")
+	err = svc.StreamChunk(bot, msg.ID, "x", true, false)
+	require.Error(t, err, "已丢弃的占位不可再追加分段")
+}
+
 // TestStreamChunk_RefreshesUpdatedAt 回归：StreamChunk 的 map Updates 必须刷新 updated_at。
 // 僵尸流式清理（CleanupStaleStreamingMessages）按 updated_at < now-10min 判定僵尸，
 // 若活跃流每段不刷 updated_at，活跃流超 10min 就被误杀收尾。此测试锁住该安全前提。
@@ -147,7 +178,7 @@ func TestStreamChunk_RefreshesUpdatedAt(t *testing.T) {
 	// 等 >1s 超过任何亚秒精度，确保时间戳确有推进空间
 	time.Sleep(1100 * time.Millisecond)
 
-	require.NoError(t, svc.StreamChunk(bot, msg.ID, "delta", false))
+	require.NoError(t, svc.StreamChunk(bot, msg.ID, "delta", false, false))
 
 	var after model.Message
 	require.NoError(t, db.First(&after, msg.ID).Error)
@@ -168,7 +199,7 @@ func TestStreamChunk_RejectsNonStreaming(t *testing.T) {
 	msg, err := svc.SendOutbound(bot, user.ID, "hi", "markdown", nil, nil)
 	require.NoError(t, err)
 
-	err = svc.StreamChunk(bot, msg.ID, " more", false)
+	err = svc.StreamChunk(bot, msg.ID, " more", false, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "非流式消息")
 }
@@ -189,7 +220,7 @@ func TestStreamChunk_RejectsNonOwningBot(t *testing.T) {
 	botB := &model.Bot{Name: "Other", Type: model.BotTypeAssistant, IsActive: true, VirtualUserID: &virtualB.ID}
 	require.NoError(t, db.Create(botB).Error)
 
-	err = svc.StreamChunk(botB, msg.ID, "x", false)
+	err = svc.StreamChunk(botB, msg.ID, "x", false, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "会话不属于该 bot")
 }

@@ -56,6 +56,7 @@ func AdminGetExternalBots(c *gin.Context) {
 			external = append(external, allBots[i])
 		}
 	}
+	service.FillBotOnline(external) // 运维视图：外部 bot 驱动进程是否在心跳
 
 	total := int64(len(external))
 	start := (page - 1) * pageSize

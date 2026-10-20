@@ -338,6 +338,10 @@ type Bot struct {
 	VirtualUserID *uint          `json:"virtual_user_id" gorm:"index"` // 关联虚拟用户 ID
 	GroupID       *uint          `json:"group_id" gorm:"index"`        // 群聊AI助手关联的群ID
 	IsTemplate    bool           `json:"is_template" gorm:"default:false"`
+	// Online 外部 agent bot 的运行状态（心跳推导），不落库：外部 agent（pull 模式
+	// agent loop / MCP 驱动进程）定期 POST /bot/heartbeat，handler 侧用
+	// service.FillBotOnline 填充。空omitempty——未填充时不出现在 JSON 里。
+	Online bool `json:"online,omitempty" gorm:"-"`
 }
 
 // AI使用日志

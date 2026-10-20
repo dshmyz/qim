@@ -8,6 +8,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/di"
 	"github.com/dshmyz/qim/qim-server/model"
 	"github.com/dshmyz/qim/qim-server/pkg/response"
+	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/ws"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,7 @@ func GetBots(c *gin.Context) {
 		"is_active = ? AND (creator_id = 0 OR is_template = ? OR creator_id = ?)",
 		true, true, uid,
 	).Find(&bots)
+	service.FillBotOnline(bots) // 外部 agent bot 的驱动进程心跳状态
 
 	response.Success(c, bots)
 }

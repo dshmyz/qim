@@ -119,6 +119,29 @@ func (h *BotAPIHandler) SendMessage(c *gin.Context) {
 	})
 }
 
+// Whoami 返回当前令牌对应的 bot 自身身份。
+// GET /api/v1/bot/me  (BotAuthMiddleware)
+//
+// 存在意义：pull 模式 agent 要判断群里一条消息的 @{mention:<virtual_user_id>} 是否指向自己，
+// 而虚拟用户 id 只有 bot 自己该拿到。没有这个端点就只能让用户去 /bots/my 手抄，
+// 换环境/重建 bot 后必然漂移。
+func (h *BotAPIHandler) Whoami(c *gin.Context) {
+	botVal, _ := c.Get("bot")
+	bot, ok := botVal.(*model.Bot)
+	if !ok || bot == nil {
+		response.Unauthorized(c, "Bot 身份无效")
+		return
+	}
+	response.Success(c, gin.H{
+		"id":              bot.ID,
+		"name":            bot.Name,
+		"description":     bot.Description,
+		"type":            bot.Type,
+		"virtual_user_id": bot.VirtualUserID,
+		"is_active":       bot.IsActive,
+	})
+}
+
 // ListBotGroups 列出该 bot 已入群的群会话（conversation_id + 群名），供 agent 主动群发前发现群。
 // GET /api/v1/bot/groups  (BotAuthMiddleware)
 func (h *BotAPIHandler) ListBotGroups(c *gin.Context) {
@@ -138,6 +161,28 @@ func (h *BotAPIHandler) ListBotGroups(c *gin.Context) {
 		groups = []service.BotGroupConversation{}
 	}
 	response.Success(c, groups)
+}
+
+// ListBotConversations 列出该 bot 关联的全部会话（群聊 + 1:1 私聊，含 conv_type 与名称），
+// 供 pull 模式 agent 自动发现轮询范围，私聊无需再用 --thread 手工指定。
+// GET /api/v1/bot/conversations  (BotAuthMiddleware)
+func (h *BotAPIHandler) ListBotConversations(c *gin.Context) {
+	botVal, _ := c.Get("bot")
+	bot, ok := botVal.(*model.Bot)
+	if !ok || bot == nil {
+		response.Unauthorized(c, "Bot 身份无效")
+		return
+	}
+
+	convs, err := h.botMessaging.ListBotConversations(bot.ID, bot.VirtualUserID)
+	if err != nil {
+		response.InternalServerError(c, "查询会话失败")
+		return
+	}
+	if convs == nil {
+		convs = []service.BotConversationSummary{}
+	}
+	response.Success(c, convs)
 }
 
 // GetBotMessages 外部 agent pull 读取自己会话的消息（增量轮询）。
@@ -233,10 +278,11 @@ func (h *BotAPIHandler) StreamChunk(c *gin.Context) {
 	var req struct {
 		ContentDelta string `json:"content_delta"`
 		Finish       bool   `json:"finish"`
+		Abort        bool   `json:"abort"` // 丢弃流式占位（智能体判定无需回复时）
 	}
 	_ = c.ShouldBindJSON(&req) // 允许空 body（仅 finish）
 
-	if err := h.botMessaging.StreamChunk(bot, uint(messageID), req.ContentDelta, req.Finish); err != nil {
+	if err := h.botMessaging.StreamChunk(bot, uint(messageID), req.ContentDelta, req.Finish, req.Abort); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
@@ -283,6 +329,64 @@ func (h *BotAPIHandler) UpdateMessage(c *gin.Context) {
 	}
 
 	response.SuccessWithMessage(c, "消息已更新", nil)
+}
+
+// Heartbeat 外部 agent 驱动进程心跳：标记本 bot 在线（TTL 90s）。
+// POST /api/v1/bot/heartbeat  (BotAuthMiddleware)
+//
+// pull 模式下这是唯一的健康信号——loop 停转时用户只能靠「@ 了没人理」发现。
+// bot 列表 / 运维视图按 service.BotOnline 展示在线状态。
+func (h *BotAPIHandler) Heartbeat(c *gin.Context) {
+	botVal, _ := c.Get("bot")
+	bot, ok := botVal.(*model.Bot)
+	if !ok || bot == nil {
+		response.Unauthorized(c, "Bot 身份无效")
+		return
+	}
+	service.MarkBotPresent(bot.ID)
+	response.SuccessWithMessage(c, "心跳已记录", nil)
+}
+
+// MarkRead bot 上报会话已读（pull 模式「拉取即读」）。
+// POST /api/v1/bot/read  (BotAuthMiddleware)
+//
+// 以 bot 虚拟用户身份写已读回执：否则私聊里用户发出的消息永远「未读」，
+// 已读回执对 pull bot 形同虚设。群聊里 bot 的回执不计入已读分母（read-count
+// 逻辑排除 bot 虚拟用户），标记无害。
+func (h *BotAPIHandler) MarkRead(c *gin.Context) {
+	botVal, _ := c.Get("bot")
+	bot, ok := botVal.(*model.Bot)
+	if !ok || bot == nil {
+		response.Unauthorized(c, "Bot 身份无效")
+		return
+	}
+	if bot.VirtualUserID == nil {
+		response.BadRequest(c, "bot 未配置虚拟用户")
+		return
+	}
+
+	var req struct {
+		ThreadID uint `json:"thread_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.ThreadID == 0 {
+		response.BadRequest(c, "缺少 thread_id")
+		return
+	}
+	if !h.botMessaging.BotOwnsConversation(bot.ID, req.ThreadID) {
+		response.Forbidden(c, "会话不属于该 bot")
+		return
+	}
+
+	msgSvc := di.GlobalContainer.MessageService
+	if msgSvc == nil {
+		response.InternalServerError(c, "消息服务不可用")
+		return
+	}
+	if err := msgSvc.MarkAsRead(req.ThreadID, *bot.VirtualUserID); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.SuccessWithMessage(c, "已标记已读", nil)
 }
 
 // SubmitCardAction 用户点击 bot 卡片按钮 -> 转发 action 到外部 agent webhook。

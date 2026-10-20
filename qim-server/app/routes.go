@@ -395,9 +395,13 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 		botAPIHandler := handler.NewBotAPIHandler(di.GlobalContainer.BotMessagingService)
 		// 600/min：agent 典型 1~3s 轮询 + 流式分段（stream-stdin 每行一次 POST），60/min 会被打满。
 		botAPI := api.Group("/bot", middleware.BotAuthMiddleware(), middleware.BotRateLimitMiddleware(middleware.NewBotRateLimiter(600, time.Minute)))
+		botAPI.GET("/me", botAPIHandler.Whoami)
 		botAPI.POST("/messages", botAPIHandler.SendMessage)
 		botAPI.GET("/messages", botAPIHandler.GetBotMessages)
 		botAPI.GET("/groups", botAPIHandler.ListBotGroups)
+		botAPI.GET("/conversations", botAPIHandler.ListBotConversations)
+		botAPI.POST("/read", botAPIHandler.MarkRead)
+		botAPI.POST("/heartbeat", botAPIHandler.Heartbeat)
 		botAPI.POST("/messages/:id/stream", botAPIHandler.StreamChunk)
 		botAPI.PUT("/messages/:id", botAPIHandler.UpdateMessage)
 

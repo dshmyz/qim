@@ -443,3 +443,59 @@ func TestListBotGroupConversations(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, empty, 0)
 }
+
+// TestListBotConversations 全会话发现：群聊（带群名）+ 1:1 私聊（带对端昵称）都返回，
+// 未关联的会话不出现；virtualUserID 为 nil 时私聊跳过但群发现不受影响。
+func TestListBotConversations(t *testing.T) {
+	db := setupBotMessagingTestDB(t)
+	svc := NewBotMessagingService(db, nil)
+
+	vUser := &model.User{Username: "allconv_v", Nickname: "全能Agent", Type: "bot"}
+	db.Create(vUser)
+	bot := &model.Bot{Name: "AllConvAgent", Type: model.BotTypeCustom, IsActive: true, VirtualUserID: &vUser.ID}
+	db.Create(bot)
+
+	// 已入群
+	group := &model.Conversation{Type: "group"}
+	db.Create(group)
+	db.Create(&model.Group{ConversationID: group.ID, GroupType: "group", Name: "发现群", CreatorID: 1})
+	_, err := svc.EnsureBotGroupConversation(bot.ID, group.ID)
+	require.NoError(t, err)
+
+	// 1:1 私聊：对端用户 99（EnsureBotConversation 会建会话+双方成员+关联）
+	peer := &model.User{Username: "alice_dm", Nickname: "爱丽丝", Type: "user"}
+	db.Create(peer)
+	dmConv, _, err := svc.EnsureBotConversation(bot.ID, peer.ID)
+	require.NoError(t, err)
+
+	// 未关联的群：不应出现
+	orphan := &model.Conversation{Type: "group"}
+	db.Create(orphan)
+
+	convs, err := svc.ListBotConversations(bot.ID, bot.VirtualUserID)
+	require.NoError(t, err)
+	require.Len(t, convs, 2)
+
+	byID := map[uint]BotConversationSummary{}
+	for _, c := range convs {
+		byID[c.ConversationID] = c
+	}
+	g, ok := byID[group.ID]
+	require.True(t, ok, "已入群应返回")
+	assert.Equal(t, "group", g.ConvType)
+	assert.Equal(t, "发现群", g.Name)
+
+	d, ok := byID[dmConv.ID]
+	require.True(t, ok, "私聊应返回")
+	assert.Equal(t, "bot", d.ConvType)
+	assert.Equal(t, "爱丽丝", d.Name)
+
+	_, ok = byID[orphan.ID]
+	assert.False(t, ok, "未关联会话不应返回")
+
+	// virtualUserID=nil：私聊跳过，群照常
+	onlyGroups, err := svc.ListBotConversations(bot.ID, nil)
+	require.NoError(t, err)
+	require.Len(t, onlyGroups, 1)
+	assert.Equal(t, "group", onlyGroups[0].ConvType)
+}

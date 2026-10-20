@@ -302,6 +302,47 @@ type BotGroupConversation struct {
 	GroupName      string `json:"group_name"`
 }
 
+// BotConversationSummary 是 bot 关联的全部会话摘要（群聊 + 1:1 私聊），
+// 供 pull 模式 agent 自动发现轮询范围。Name：群聊=群名，私聊=对端用户昵称（可能为空）。
+type BotConversationSummary struct {
+	ConversationID uint   `json:"conversation_id"`
+	ConvType       string `json:"conv_type"` // group | bot
+	Name           string `json:"name"`
+}
+
+// ListBotConversations 列出 bot 关联的全部会话（群聊 type=group + 1:1 私聊 type=bot）。
+// 群聊复用 ListBotGroupConversations；私聊按 BotConversation 关联 + 对端成员昵称展开。
+// 供 GET /api/v1/bot/conversations；/bot/groups 保持只返群的旧语义。
+func (s *BotMessagingService) ListBotConversations(botID uint, virtualUserID *uint) ([]BotConversationSummary, error) {
+	groups, err := s.ListBotGroupConversations(botID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]BotConversationSummary, 0, len(groups))
+	for _, g := range groups {
+		out = append(out, BotConversationSummary{ConversationID: g.ConversationID, ConvType: "group", Name: g.GroupName})
+	}
+
+	// 私聊：bot 的 type=bot 会话，取唯一对端人类成员昵称。
+	// virtualUserID 缺失时无法区分对端，跳过私聊（群发现不受影响）。
+	if virtualUserID != nil && *virtualUserID > 0 {
+		var dms []BotConversationSummary
+		err = s.db.
+			Table("bot_conversations").
+			Select("bot_conversations.conversation_id AS conversation_id, 'bot' AS conv_type, COALESCE(u.nickname, '') AS name").
+			Joins("JOIN conversations conv ON conv.id = bot_conversations.conversation_id AND conv.type = 'bot' AND conv.is_deleted = 0").
+			Joins("JOIN conversation_members cm ON cm.conversation_id = bot_conversations.conversation_id AND cm.user_id <> ?", *virtualUserID).
+			Joins("LEFT JOIN users u ON u.id = cm.user_id").
+			Where("bot_conversations.bot_id = ?", botID).
+			Scan(&dms).Error
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, dms...)
+	}
+	return out, nil
+}
+
 // ListBotGroupConversations 列出 bot 已入群的群会话（BotConversation 关联且会话类型为 group）。
 // 供 agent 主动群发前发现可用的群 conversation_id。
 func (s *BotMessagingService) ListBotGroupConversations(botID uint) ([]BotGroupConversation, error) {
@@ -317,6 +358,15 @@ func (s *BotMessagingService) ListBotGroupConversations(botID uint) ([]BotGroupC
 		return nil, err
 	}
 	return rows, nil
+}
+
+// BotOwnsConversation 校验 bot 与会话存在 BotConversation 关联（1:1 私聊与群通用）。
+// 供 Bot API 出站/已读上报等按会话操作的归属校验。
+func (s *BotMessagingService) BotOwnsConversation(botID, convID uint) bool {
+	var botConv model.BotConversation
+	err := s.db.Where("bot_id = ? AND conversation_id = ?", botID, convID).
+		First(&botConv).Error
+	return err == nil
 }
 
 // cardButton 卡片按钮的最小契约字段。
@@ -557,7 +607,11 @@ func cardActionText(content, actionID string) (string, error) {
 // 校验消息为 streaming 类型且归属该 bot，累加 contentDelta，推 message_updated 到用户。
 // finish=true 时把 Type 改为 markdown（最终渲染）并更新会话最后消息。
 // 客户端 handleMessageUpdated 是替换语义，故每次推送全量 Content。
-func (s *BotMessagingService) StreamChunk(bot *model.Bot, messageID uint, contentDelta string, finish bool) error {
+// StreamChunk 追加流式分段或收尾/丢弃流式占位。
+// Abort=true 时丢弃占位（软删消息 + message_deleted 广播）：pull 模式 agent 先建流式
+// 占位再调用本地智能体，智能体判定无需回复时以此收场，避免留下一条空气泡
+//（finish 空内容转 markdown 仍会渲染空消息，不适用）。
+func (s *BotMessagingService) StreamChunk(bot *model.Bot, messageID uint, contentDelta string, finish, abort bool) error {
 	if bot == nil || bot.VirtualUserID == nil {
 		return errors.New("bot 未配置虚拟用户")
 	}
@@ -575,6 +629,14 @@ func (s *BotMessagingService) StreamChunk(bot *model.Bot, messageID uint, conten
 	if err := s.db.Where("conversation_id = ? AND bot_id = ?", msg.ConversationID, bot.ID).
 		First(&botConv).Error; err != nil {
 		return errors.New("会话不属于该 bot")
+	}
+
+	if abort {
+		if err := s.db.Delete(&msg).Error; err != nil {
+			return err
+		}
+		s.pushMessageDeleted(msg, *bot.VirtualUserID)
+		return nil
 	}
 
 	// 事务内读-改-写，防并发 delta 互相覆盖
@@ -620,6 +682,20 @@ func (s *BotMessagingService) StreamChunk(bot *model.Bot, messageID uint, conten
 	s.pushMessageUpdated(msg, *bot.VirtualUserID, msg.Type == "streaming")
 
 	return nil
+}
+
+// pushMessageDeleted 推 message_deleted 事件到会话（排除发送方 bot 的虚拟用户），
+// 供流式占位丢弃（StreamChunk abort）使用；客户端收到后移除该气泡。
+func (s *BotMessagingService) pushMessageDeleted(msg model.Message, excludeUserID uint) {
+	if s.hub == nil {
+		return
+	}
+	wsMsg := ws.WSMessage{Type: "message_deleted", Data: map[string]interface{}{
+		"message_id":      msg.ID,
+		"conversation_id": msg.ConversationID,
+	}}
+	jsonMsg, _ := json.Marshal(wsMsg)
+	s.hub.SendToConversation(msg.ConversationID, excludeUserID, jsonMsg)
 }
 
 // pushMessageUpdated 推 message_updated 事件到会话（排除 excludeUserID，即发送方 bot 的虚拟用户）。
