@@ -14,6 +14,8 @@ export interface Bot {
   creatorName: string
   virtualUserId?: number
   isActive: boolean
+  /** 外部 agent 驱动进程心跳在线（服务端由 /bot/heartbeat TTL 推导，未填充时不出现在响应里） */
+  online?: boolean
   createdAt: string
   updatedAt: string
 }

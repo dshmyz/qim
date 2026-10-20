@@ -67,6 +67,21 @@
           </p>
         </div>
 
+        <div class="connect-section" v-if="isPullMode">
+          <h4><i class="fas fa-terminal"></i> Pull 模式接入（无公网 / 本地智能体）</h4>
+          <p class="section-desc">
+            webhook_url 留空即 pull 模式：由本机常驻的轮询程序替机器人收发消息，
+            群内默认只响应 @ 机器人的消息，私聊每条都回复。
+          </p>
+          <div class="code-block" @click="copyText(loopCommand, 'loop')">
+            <pre><code>{{ loopCommand }}</code></pre>
+            <span class="copy-hint">{{ copiedField === 'loop' ? '已复制' : '点击复制' }}</span>
+          </div>
+          <p class="section-hint">
+            运行后机器人卡片会亮起「驱动进程在线」；qim CLI 安装与 launchd 常驻配置见 docs/CLI使用指南.md
+          </p>
+        </div>
+
         <div class="connect-section">
           <h4><i class="fas fa-plug"></i> MCP Server 配置</h4>
           <p class="section-desc">将以下内容加入 Claude Code / Cursor 的 MCP 配置：</p>
@@ -184,6 +199,20 @@ const serverUrl = computed(() => getStoredServerUrl())
 
 const mcpConfigJson = computed(() =>
   buildMcpStdioConfig(serverUrl.value, mcpToken.value || '<YOUR_TOKEN>', 'qim-bot')
+)
+
+// pull 模式（外部 Agent + webhook_url 留空）：无公网也能接入，驱动程序为本地常驻
+// agent loop。向导按模式给出对应的接引命令，避免用户拿到令牌后不知下一步。
+const isPullMode = computed(() =>
+  form.value.mode === 'external_webhook' && !form.value.webhook_url.trim()
+)
+const loopCommand = computed(() =>
+  [
+    '# 1. 配置服务地址与令牌（令牌见上方/「Token 管理」，仅签发时显示一次）',
+    `qim config set --server ${serverUrl.value} --token ${mcpToken.value || 'qbot_...'}`,
+    '# 2. 启动轮询（需常驻：macOS 用 launchd，Linux 用 systemd --user）',
+    "qim agent loop --agent-cmd 'claude -p --output-format text'",
+  ].join('\n')
 )
 
 async function copyText(text: string, field: string) {

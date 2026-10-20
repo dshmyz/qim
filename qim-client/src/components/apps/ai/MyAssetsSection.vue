@@ -33,7 +33,9 @@
             <i v-else class="fas fa-robot"></i>
           </div>
           <div class="bot-info">
-            <h4>{{ bot.name }}</h4>
+            <h4>{{ bot.name }}
+              <span v-if="bot.online" class="online-dot" title="驱动进程在线"></span>
+            </h4>
             <p>{{ bot.description || '暂无描述' }}</p>
             <span v-if="bot.approval_status === 'pending'" class="status-tag pending">待审批</span>
             <span v-else-if="bot.approval_status === 'rejected'" class="status-tag rejected">已拒绝</span>
@@ -117,6 +119,8 @@ interface Bot {
   description?: string
   avatar?: string
   approval_status: string
+  /** 外部 agent 驱动进程心跳在线（/bot/heartbeat TTL 推导；未心跳的 bot 无此字段） */
+  online?: boolean
 }
 
 interface Config {
@@ -328,6 +332,18 @@ defineEmits([
 }
 .status-tag.pending { background: #fff7e6; color: #d46b08; border: 1px solid #ffd591; }
 .status-tag.rejected { background: #fff1f0; color: #cf1322; border: 1px solid #ffa39e; }
+
+/* 外部 agent bot 驱动进程在线标记（心跳推导，见 POST /bot/heartbeat） */
+.online-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #52c41a;
+  vertical-align: middle;
+  box-shadow: 0 0 0 3px rgba(82, 196, 26, 0.15);
+}
 
 .use-btn {
   width: 100%;
