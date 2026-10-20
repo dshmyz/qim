@@ -130,7 +130,7 @@ QIM 侧配置：机器人 → 模式选「外部 Agent」、webhook_url 留空�
 
 用法：
   %[1]s config set --server http://localhost:8080 --token qbot_...
-  %[1]s agent loop --agent-cmd 'claude -p --output-format text'
+  %[1]s agent loop --command 'claude -p --output-format text'
 
 智能体通过 stdin 收到提示词（原文里的 @ token 已还原成 @姓名），stdout 即回复正文。
 prompt 不会被拼进命令行，因此不会被消息内容注入。
@@ -144,7 +144,7 @@ prompt 不会被拼进命令行，因此不会被消息内容注入。
 		SilenceUsage: true,
 		Run: func(cmd *cobra.Command, args []string) {
 			if strings.TrimSpace(agentCmd) == "" {
-				die("--agent-cmd 必填：智能体的非交互调用命令（prompt 走 stdin）")
+				die("--command 必填：智能体的非交互调用命令（prompt 走 stdin）")
 			}
 			acceptTypes := map[string]bool{}
 			for _, t := range strings.Split(accept, ",") {
@@ -194,7 +194,7 @@ prompt 不会被拼进命令行，因此不会被消息内容注入。
 	}
 
 	f := loop.Flags()
-	f.StringVar(&agentCmd, "agent-cmd", "", "智能体非交互命令（必填；prompt 从 stdin 读，stdout 为回复）")
+	f.StringVar(&agentCmd, "command", "", "智能体非交互命令（必填；prompt 从 stdin 读，stdout 为回复）")
 	f.DurationVar(&interval, "interval", 2*time.Second, "轮询间隔")
 	f.DurationVar(&agentTimeout, "agent-timeout", 120*time.Second, "单次智能体调用超时")
 	f.StringVar(&threadsRaw, "thread", "", "只轮询这些会话（逗号分隔的 conversation_id）；空=自动发现全部群聊+私聊")

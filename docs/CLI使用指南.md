@@ -300,7 +300,7 @@ QIM 服务端连不到你的智能体（无公网、部署在 NAT 后）时，`w
 
 ```bash
 qim config set --server http://localhost:8080 --token qbot_...
-qim agent loop --agent-cmd 'claude -p --output-format text'
+qim agent loop --command 'claude -p --output-format text'
 ```
 
 - 智能体经 **stdin** 收到提示词（`@` token 已还原成 `@姓名`，附最近 10 条上下文），
@@ -313,7 +313,7 @@ qim agent loop --agent-cmd 'claude -p --output-format text'
 
 | 参数 | 说明 |
 |------|------|
-| `--agent-cmd` | **必填**，智能体非交互命令（prompt 走 stdin） |
+| `--command` | **必填**，智能体非交互命令（prompt 走 stdin） |
 | `--interval` | 轮询间隔，默认 `2s` |
 | `--thread` | 只轮询指定会话（逗号分隔）；空 = 自动发现全部已入群 |
 | `--mention-only` | 默认 `true`，只响应 @ 本机器人的消息 |

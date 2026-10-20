@@ -211,7 +211,7 @@ const loopCommand = computed(() =>
     '# 1. 配置服务地址与令牌（令牌见上方/「Token 管理」，仅签发时显示一次）',
     `qim config set --server ${serverUrl.value} --token ${mcpToken.value || 'qbot_...'}`,
     '# 2. 启动轮询（需常驻：macOS 用 launchd，Linux 用 systemd --user）',
-    "qim agent loop --agent-cmd 'claude -p --output-format text'",
+    "qim agent loop --command 'claude -p --output-format text'",
   ].join('\n')
 )
 
