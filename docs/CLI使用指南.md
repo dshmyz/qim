@@ -90,6 +90,7 @@ qim config show
 | `qim messages search` | 按关键词搜索消息 |
 | `qim stream` | 追加流式分段到已有消息 |
 | `qim stream-stdin` | 从 stdin 逐行读取，流式发送 |
+| `qim agent loop` | 轮询新消息 → 调用本地智能体 → 回写（无 webhook 的桌面接入） |
 
 ### 任务与日历
 
@@ -287,6 +288,43 @@ qim messages poll --thread user1 --type card_action --once --output json
 
 # 4. 根据用户选择继续处理
 ```
+
+### 桌面智能体：无 webhook 的 pull 接入
+
+QIM 服务端连不到你的智能体（无公网、部署在 NAT 后）时，`webhook_url` 只能留空，
+由 `qim agent loop` 常驻轮询补上"谁先动"这一环：拉到新消息 → 交给本地智能体 → 回写到同一会话。
+
+**QIM 侧**：机器人 → 配置 → 模式「外部 Agent」→ webhook_url 留空 → 签发令牌 → 群详情页拉进群。
+
+**智能体侧**：
+
+```bash
+qim config set --server http://localhost:8080 --token qbot_...
+qim agent loop --agent-cmd 'claude -p --output-format text'
+```
+
+- 智能体经 **stdin** 收到提示词（`@` token 已还原成 `@姓名`，附最近 10 条上下文），
+  **stdout** 即回复正文。提示词绝不拼进命令行，群消息内容不可能被当作 shell 执行。
+- 群内默认只响应 @ 本机器人的消息；单聊或希望每条都处理，加 `--mention-only=false`。
+- 水位线落盘 `~/.qim/agent-loop-state.json`：重启不重放、不重复回复。冷启动自动跳到最新，
+  `--replay` 才会把历史 @ 全部回一遍（慎用）。
+- 自身身份（虚拟用户 id）经 `GET /api/v1/bot/me` 自动发现，不必手抄。
+- 智能体失败重试 3 次后跳过该条并推进水位（stderr 有 error 记录），不会让整个会话停摆。
+
+| 参数 | 说明 |
+|------|------|
+| `--agent-cmd` | **必填**，智能体非交互命令（prompt 走 stdin） |
+| `--interval` | 轮询间隔，默认 `2s` |
+| `--thread` | 只轮询指定会话（逗号分隔）；空 = 自动发现全部已入群 |
+| `--mention-only` | 默认 `true`，只响应 @ 本机器人的消息 |
+| `--agent-timeout` | 单次智能体调用超时，默认 `120s` |
+| `--reply-type` | 回复消息类型，默认 `markdown` |
+| `--state` | 水位线文件路径 |
+| `--prompt` | 自定义提示词模板 |
+| `--dry-run` / `--once` / `--verbose` | 只打印不执行 / 只扫一轮 / 输出跳过明细 |
+
+**必须常驻**：pull 模式没有推送，进程不跑就没有人应答。用 launchd（macOS）或
+`systemd --user`（Linux）开机拉起即可。
 
 ### Shell 脚本自动化
 

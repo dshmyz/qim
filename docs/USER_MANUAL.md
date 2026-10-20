@@ -276,6 +276,24 @@
 - 超过 `MaxAttempts=4` 次进入**死信**（`dead`），保留 `last_error` 供排查。
 - 管理后台 **Bot 运维 → Webhook 投递监控** 可查看投递状态，支持**手动重投**（`done` 不可重投）。
 
+### 9.4 纯 pull 模式（QIM 连不到 agent 时）
+
+`webhook_url` 留空即为纯 pull：QIM 不主动投递，靠 agent 自己 `GET /api/v1/bot/messages?thread_id=&after_id=` 增量拉取；回写仍用 `POST /api/v1/bot/messages`（`conversation_id` 必须等于 `thread_id`）。
+
+仓库自带常驻实现 **`qim agent loop`**（轮询 → 调本地智能体 → 回写），用法见 [CLI 使用指南](./CLI使用指南.md)。相关端点：
+
+| 端点 | 说明 |
+|------|------|
+| `GET /api/v1/bot/me` | 本机器人身份（含 `virtual_user_id`），供判断消息里 `@{mention:<id>}` 是否指向自己 |
+| `GET /api/v1/bot/groups` | 已入群的群会话列表 |
+| `GET /api/v1/bot/messages?thread_id=&after_id=` | 增量拉取会话消息 |
+
+与 webhook 模式的差异（pull 模式**没有**这些服务端兜底）：
+
+- 无 outbox 重试/死信/手动重投；无 `group_context`（群记忆+知识库上下文只随 webhook payload 下发）；无「思考中」占位。
+- 延迟 = agent 轮询间隔；agent 不运行就没有人应答。
+- 群里被 @ 时会落一条系统提示（同会话 5 分钟冷却），说明该 bot 未配回调、回复可能有延迟。
+
 ---
 
 ## 10. QIM CLI

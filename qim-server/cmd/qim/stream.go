@@ -67,6 +67,15 @@ func streamChunk(msgID uint64, delta string, finish bool) error {
 	return err
 }
 
+// streamChunkAbort 丢弃一条流式占位（服务端软删 + message_deleted 广播）。
+// 供 agent loop 在智能体判定无需回复/调用失败时回收 typing 气泡。
+func streamChunkAbort(msgID uint64) error {
+	cfg := mustConfig()
+	body, _ := json.Marshal(map[string]any{"abort": true})
+	_, err := httpPost(cfg, fmt.Sprintf("%s/api/v1/bot/messages/%d/stream", cfg.ServerURL, msgID), body)
+	return err
+}
+
 func pipeStreamInput(r io.Reader, msgID uint64, send func(uint64, string, bool) error) error {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
