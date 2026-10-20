@@ -111,6 +111,13 @@
                 </el-tag>
               </template>
             </el-table-column>
+            <el-table-column label="驱动进程" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.online ? 'success' : 'info'" size="small" effect="plain">
+                  {{ row.online ? '在线' : '离线' }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column prop="webhook_url" label="Webhook URL" min-width="240" show-overflow-tooltip />
             <el-table-column label="待投递" width="90" align="center">
               <template #default="{ row }">

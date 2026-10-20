@@ -10,6 +10,8 @@ export interface ExternalBot {
   is_active: boolean
   mode: string
   webhook_url: string
+  /** 驱动进程心跳状态（服务端 TTL 90s 推导，见 POST /bot/heartbeat） */
+  online?: boolean
   pending_count: number
   dead_count: number
   created_at: string
