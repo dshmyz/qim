@@ -98,7 +98,7 @@ func TestExecuteWithToolsMockLLM_KicksMember(t *testing.T) {
 		AssistantName:   "AI助手",
 	}
 
-	reply, err := graph.ExecuteWithTools(context.Background(), input, service.ToolsetBuiltin)
+	reply, err := graph.ExecuteWithTools(context.Background(), input)
 	require.NoError(t, err)
 	assert.NotEmpty(t, reply, "AI 应返回非空回复")
 	t.Logf("AI 回复: %q", reply)
@@ -156,7 +156,7 @@ func TestExecuteWithToolsMockLLM_RejectsPlainMember(t *testing.T) {
 		AssistantName:   "AI助手",
 	}
 
-	reply, err := graph.ExecuteWithTools(context.Background(), input, service.ToolsetBuiltin)
+	reply, err := graph.ExecuteWithTools(context.Background(), input)
 	// MultiStep ReAct 契约：工具执行失败时错误以 tool 角色消息回喂给 LLM，而非向调用方抛出。
 	// 因此普通成员发起时此处不应返回 error，而是返回非空回复；关键不变式是被踢者仍在群。
 	require.NoError(t, err)

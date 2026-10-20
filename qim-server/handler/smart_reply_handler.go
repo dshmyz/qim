@@ -440,7 +440,7 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 		func() *model.Message { return nil }, &toolCalls, nil, nil)
 	var toolEvidence []string
 	feedback = feedbackWithEvidence(feedback, &toolEvidence)
-	reply, err := e.smartReplyGraph.ExecuteWithTools(ctx, input, service.ToolsetBuiltin, feedback)
+	reply, err := e.smartReplyGraph.ExecuteWithTools(ctx, input, feedback)
 	if err != nil {
 		// 工具链路整体失败（如 ErrStreamingToolsNotSupported 之外的硬错）时降级编译图整段生成
 		log.Printf("[SmartReplyGraph] auto 带工具生成失败，降级编译图: %v", err)
@@ -849,17 +849,20 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		input.SkipKnowledge = true
 		e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID, "带",
 			func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback) (string, error) {
-				return e.smartReplyGraph.ExecuteWithTools(c, i, service.ToolsetBuiltin, fb)
+				return e.smartReplyGraph.ExecuteWithTools(c, i, fb)
 			},
 			func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback, onChunk func(ai.StreamChunk) error) (bool, error) {
-				return e.smartReplyGraph.ExecuteWithToolsStream(c, i, service.ToolsetBuiltin, fb, onChunk)
+				return e.smartReplyGraph.ExecuteWithToolsStream(c, i, fb, onChunk)
 			})
 		return
 	}
 
-	// 后台开启外部 MCP 群启用时，普通提问走带外部工具的流式 ReAct：
-	// LLM 可在自然语言下自主调用外部工具，挂起期间向用户发"正在调用…"过程反馈。
-	// 注意：不再设 SkipKnowledge=true，否则群即使开了外部工具，@AI 普通提问也会失去
+	// 后台开启外部 MCP 群启用时，普通提问改走「外部工具变体」：除内置工具外另附
+	// 外部工具的触发/输出组织指引（input.ExternalToolGuide），LLM 可在自然语言下自主调用
+	// 外部工具，挂起期间向用户发"正在调用…"过程反馈。工具白名单两条分支同为
+	// 内置 ∪ 外部（groupAssistantAllowedTools），差异只在指引与 kind 日志标签——
+	// 开外部 MCP 不再让 search_knowledge/list_tasks 等内置能力被顶掉。
+	// 注意：不设 SkipKnowledge=true，否则即使开了外部工具，@AI 普通提问也会失去
 	// 知识库/记忆上下文，导致无依据应答。知识注入由 prepareInput 按需独立判断（如引用图片时跳过）。
 	if e.smartReplyGraph.HasExternalTools() {
 		e.handleAIMentionWithExternalTools(ctx, input, conversationID, assistantName, userID)
@@ -872,10 +875,10 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 	// 逐 token 打字 + 工具卡片；不支持时 handleAIMentionWithTools 内部降级非流式。
 	e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID, "带",
 		func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback) (string, error) {
-			return e.smartReplyGraph.ExecuteWithTools(c, i, service.ToolsetBuiltin, fb)
+			return e.smartReplyGraph.ExecuteWithTools(c, i, fb)
 		},
 		func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback, onChunk func(ai.StreamChunk) error) (bool, error) {
-			return e.smartReplyGraph.ExecuteWithToolsStream(c, i, service.ToolsetBuiltin, fb, onChunk)
+			return e.smartReplyGraph.ExecuteWithToolsStream(c, i, fb, onChunk)
 		})
 }
 
@@ -1072,17 +1075,19 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 		"kind", kind, "toolCalls", len(toolCalls))
 }
 
-// handleAIMentionWithExternalTools 普通提问（非管理指令）走带外部 MCP 工具的流式 ReAct
-// 回复。与 handleAIMentionWithTools 共用骨架，仅工具执行走外部 MCP 工具集，详见其上注释。
+// handleAIMentionWithExternalTools 普通提问（非管理指令）且后台开了外部 MCP 时的流式 ReAct
+// 回复。与 handleAIMentionWithTools 共用骨架、共用工具白名单（内置 ∪ 外部），差异只有两点：
+// 置位 input.ExternalToolGuide 追加外部工具的触发/输出组织指引，以及 kind="外部" 日志标签。
 // 传入流式执行器：Provider 支持流式 tool-call 时 final 答案逐 token 送出；否则降级到
-// 非流式 ExecuteWithTools（ToolsetExternal）。
+// 非流式 ExecuteWithTools。
 func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint) {
+	input.ExternalToolGuide = true
 	e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID, "外部",
 		func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback) (string, error) {
-			return e.smartReplyGraph.ExecuteWithTools(c, i, service.ToolsetExternal, fb)
+			return e.smartReplyGraph.ExecuteWithTools(c, i, fb)
 		},
 		func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback, onChunk func(ai.StreamChunk) error) (bool, error) {
-			return e.smartReplyGraph.ExecuteWithToolsStream(c, i, service.ToolsetExternal, fb, onChunk)
+			return e.smartReplyGraph.ExecuteWithToolsStream(c, i, fb, onChunk)
 		})
 }
 

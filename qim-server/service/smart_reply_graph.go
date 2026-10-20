@@ -130,10 +130,17 @@ type SmartReplyContext struct {
 	// 纯流式/无工具路径保持 false（零值），完全不影响原有提示词上下文。
 	HasTools bool
 
-	// AllowedTools 本次回复可调用的工具名白名单（由 preparedHistory 按工具集填值）。
+	// AllowedTools 本次回复可调用的工具名白名单（由 preparedHistory 统一填值）。
 	// 供 buildSystemPrompt 用 ai.BuildCapabilityPrompt 动态注入真实能力自述；
 	// 为空表示无工具（私人对话/无工具路径），此时只注入静态能力，不声称任何工具。
 	AllowedTools []string
+
+	// ExternalToolGuide 是否附加外部工具的触发/输出组织指引
+	//（externalToolTriggerGuideMessage / externalToolOutputGuideMessage）。
+	// 只由「@AI 普通提问且确有外部工具」的路径置位：那两条指引促使模型主动调用外部工具、
+	// 并把工具结果组织成自然段落，对数据提问有用；管理指令（踢人/禁言）与 auto 自动回复
+	// 不必被它推着去调工具，保持零值。工具白名单本身不受此标记影响——见 groupAssistantAllowedTools。
+	ExternalToolGuide bool
 }
 
 type SmartReplyResult struct {
@@ -408,27 +415,10 @@ func externalToolTriggerGuideMessage() *schema.Message {
 	}
 }
 
-// SmartReplyToolset 群助手带工具回复时可用的工具集：内置群管理工具 或 外部 MCP 工具。
-// 工具轴是调用方的真实选择（普通提问只用外部工具、管理指令只用内置工具），故作为参数传入；
-// 流式/非流式因返回类型与降级语义不同，保留为两个独立方法。
-type SmartReplyToolset int
-
-const (
-	// ToolsetBuiltin 内置群管理工具（groupAssistantAllowedTools）。
-	ToolsetBuiltin SmartReplyToolset = iota
-	// ToolsetExternal 外部 MCP 工具（mcpGateway.ListExternalToolNames），并追加输出组织指引。
-	ToolsetExternal
-)
-
-// toolsetToolNames 返回指定工具集的白名单工具名。
-func (g *SmartReplyGraph) toolsetToolNames(t SmartReplyToolset) []string {
-	if t == ToolsetExternal {
-		return g.mcpGateway.ListExternalToolNames()
-	}
-	return g.groupAssistantAllowedTools()
-}
-
-// ExecuteWithTools 带工具的非流式回复（管理指令/普通提问共用，工具集由 t 指定）。
+// ExecuteWithTools 带工具的非流式回复（管理指令/普通提问/auto 共用）。
+// 工具白名单恒为 groupAssistantAllowedTools()：内置群工具 ∪（若后台开启）外部 MCP 工具——
+// 两类工具同时可用，不再按路径二选一（此前普通提问走外部工具集时会静默丢掉
+// search_knowledge/list_tasks 等内置能力）。
 // 走 GetCompletionWithToolsMultiStep 注入白名单 AI 工具并多步循环，LLM 返回 tool call 时
 // 真实执行。callerCtx 用 input.UserID，isSystemAdmin 校验生效，即仅群主/管理员发起的
 // 管理指令会被工具执行，普通成员指令被工具拒绝。
@@ -436,9 +426,9 @@ func (g *SmartReplyGraph) toolsetToolNames(t SmartReplyToolset) []string {
 // 错误以 tool 角色消息回喂给 LLM（见 ai_service.go 中 ReAct 循环），让群助手基于错误
 // 生成自然回复，而不是像旧路径那样把错误硬抛到 handler 直接静默失败。
 // feedback 为可选的每步工具执行回调（variadic，nil 即不回调），供调用方收集工具调用
-// 记录做卡片展示；与外部工具路径共用同一 MultiStep 钩子（ai.ReActStepCallback）。
-func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartReplyContext, t SmartReplyToolset, feedback ...ai.ReActStepCallback) (string, error) {
-	historyMessages, taskType, err := g.preparedHistory(input, t)
+// 记录做卡片展示；流式/非流式路径共用同一 MultiStep 钩子（ai.ReActStepCallback）。
+func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartReplyContext, feedback ...ai.ReActStepCallback) (string, error) {
+	historyMessages, taskType, err := g.preparedHistory(input)
 	if err != nil {
 		return "", err
 	}
@@ -448,7 +438,7 @@ func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartRepl
 		onStep = feedback[0]
 	}
 	return g.aiService.GetCompletionWithToolsMultiStep(
-		taskType, einoMessagesToAIMessages(historyMessages), callerCtx, g.toolsetToolNames(t),
+		taskType, einoMessagesToAIMessages(historyMessages), callerCtx, input.AllowedTools,
 		ai.MaxReActSteps, onStep,
 	)
 }
@@ -464,19 +454,19 @@ func (g *SmartReplyGraph) HasExternalTools() bool {
 	return len(g.mcpGateway.ListExternalToolNames()) > 0
 }
 
-// ExecuteWithToolsStream 真·流式的带工具 ReAct（管理指令/普通提问共用，工具集由 t 指定），
-// 与 ExecuteWithTools 同序（外部工具集含输出组织指引），final 答案逐 token 经 onChunk 流出。
-// 返回 (streamed=true) 表示已走流式逐 token；若 Provider 不支持流式 tool-call 则返回
-// (streamed=false, err=ai.ErrStreamingToolsNotSupported)，调用方降级到非流式 ExecuteWithTools。
+// ExecuteWithToolsStream 真·流式的带工具 ReAct（管理指令/普通提问共用），与 ExecuteWithTools
+// 同序（同一份工具白名单；input.ExternalToolGuide 置位时另附输出组织指引），final 答案逐 token
+// 经 onChunk 流出。返回 (streamed=true) 表示已走流式逐 token；若 Provider 不支持流式 tool-call
+// 则返回 (streamed=false, err=ai.ErrStreamingToolsNotSupported)，调用方降级到非流式 ExecuteWithTools。
 // onStep 与 onChunk 均有意义：工具事件走 onStep（卡片），答案逐 token 走 onChunk。
-func (g *SmartReplyGraph) ExecuteWithToolsStream(ctx context.Context, input *SmartReplyContext, t SmartReplyToolset, onStep ai.ReActStepCallback, onChunk func(chunk ai.StreamChunk) error) (streamed bool, err error) {
-	historyMessages, taskType, err := g.preparedHistory(input, t)
+func (g *SmartReplyGraph) ExecuteWithToolsStream(ctx context.Context, input *SmartReplyContext, onStep ai.ReActStepCallback, onChunk func(chunk ai.StreamChunk) error) (streamed bool, err error) {
+	historyMessages, taskType, err := g.preparedHistory(input)
 	if err != nil {
 		return false, err
 	}
 	callerCtx := &ai.CallerContext{UserID: input.UserID}
 	err = g.aiService.GetCompletionWithToolsStreamMultiStep(
-		ctx, taskType, einoMessagesToAIMessages(historyMessages), callerCtx, g.toolsetToolNames(t),
+		ctx, taskType, einoMessagesToAIMessages(historyMessages), callerCtx, input.AllowedTools,
 		ai.MaxReActSteps, onStep, onChunk,
 	)
 	if errors.Is(err, ai.ErrStreamingToolsNotSupported) {
@@ -485,20 +475,22 @@ func (g *SmartReplyGraph) ExecuteWithToolsStream(ctx context.Context, input *Sma
 	return err == nil, err
 }
 
-// preparedHistory 补齐输入上下文并构造历史消息；外部工具集追加输出组织指引
-// （见 externalToolOutputGuideMessage）。两种流式/非流式路径共用同一准备骨架。
+// preparedHistory 补齐输入上下文并构造历史消息；input.ExternalToolGuide 置位时追加
+// 外部工具的触发/输出组织指引（见 externalToolOutputGuideMessage）。两种流式/非流式
+// 路径共用同一准备骨架，工具白名单也在此统一填值并复用给 ReAct，保证「提示词里声明的
+// 能力」与「实际放行的工具」永不背离。
 // 返回值附带任务类型：被引用图片同样经 resolveQuotedImageTaskType 路由/降级，
 // 避免带工具路径以 TaskTypeChat 把图片 base64 发给纯文本模型直接 400。
-func (g *SmartReplyGraph) preparedHistory(input *SmartReplyContext, t SmartReplyToolset) ([]*schema.Message, ai.TaskType, error) {
+func (g *SmartReplyGraph) preparedHistory(input *SmartReplyContext) ([]*schema.Message, ai.TaskType, error) {
 	if err := g.prepareInput(input); err != nil {
 		return nil, ai.TaskTypeChat, err
 	}
 	// 带工具路径：声明本次携带了工具，供 buildSystemPrompt 注入能力边界（有工具=如实执行；无工具=诚实说明）。
 	input.HasTools = true
-	input.AllowedTools = g.toolsetToolNames(t)
+	input.AllowedTools = g.groupAssistantAllowedTools()
 	taskType := g.resolveQuotedImageTaskType(input)
 	history := g.buildHistoryMessages(input)
-	if t == ToolsetExternal {
+	if input.ExternalToolGuide {
 		history = append(history, externalToolTriggerGuideMessage())
 		history = append(history, externalToolOutputGuideMessage())
 	}
