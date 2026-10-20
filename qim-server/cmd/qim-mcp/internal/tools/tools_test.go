@@ -284,6 +284,28 @@ func TestListGroupConversations(t *testing.T) {
 	assert.Equal(t, "/api/v1/bot/groups", r.path)
 }
 
+func TestListConversations(t *testing.T) {
+	srv, reqs := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		json.NewEncoder(w).Encode(map[string]any{"data": []any{
+			map[string]any{"conversation_id": float64(5), "conv_type": "group", "name": "项目组A"},
+			map[string]any{"conversation_id": float64(42), "conv_type": "bot", "name": "爱丽丝"},
+		}})
+	})
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
+
+	out := callTool(t, cs, "list_conversations", map[string]any{})
+	assert.Contains(t, out, `"conversation_id":5`)
+	assert.Contains(t, out, `"conv_type":"group"`)
+	assert.Contains(t, out, "项目组A")
+	assert.Contains(t, out, `"conversation_id":42`)
+	assert.Contains(t, out, `"conv_type":"bot"`)
+	assert.Contains(t, out, "爱丽丝")
+
+	r := lastReq(reqs)
+	assert.Equal(t, "GET", r.method)
+	assert.Equal(t, "/api/v1/bot/conversations", r.path)
+}
+
 func TestSendMessage_ByConversation(t *testing.T) {
 	srv, reqs := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
 		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"message_id": float64(55), "conversation_id": float64(5)}})

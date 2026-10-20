@@ -37,8 +37,13 @@ func Register(s *mcp.Server, a *Adapter) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_group_conversations",
-		Description: "列出该 agent 已入群的群会话（conversation_id + 群名）。要在群里主动发言（未被用户 @ 时）前，先调用本工具发现可用的群 conversation_id，再以 send_message 的 conversation_id 参数发到该群。返回每行一条 JSON。",
+		Description: "列出该 agent 已入群的群会话（conversation_id + 群名）。要在群里主动发言（未被用户 @ 时）前，先调用本工具发现可用的群 conversation_id，再以 send_message 的 conversation_id 参数发到该群。返回每行一条 JSON。只需群时可调用本工具；需要连用户私聊一起发现时用 list_conversations。",
 	}, a.listGroupConversations)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_conversations",
+		Description: "列出该 agent 关联的全部会话：群聊（conv_type=group，name=群名）+ 与用户的 1:1 私聊（conv_type=bot，name=对端昵称）。用于发现用户私聊的 conversation_id（用户先发来私聊消息后，读/回这些消息都需要它；群发场景用 list_group_conversations 即可）。返回每行一条 JSON。",
+	}, a.listConversations)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "send_message",
@@ -269,6 +274,24 @@ func (a *Adapter) listGroupConversations(ctx context.Context, req *mcp.CallToolR
 	}
 	if len(lines) == 0 {
 		lines = append(lines, "(该 agent 尚未被拉入任何群)")
+	}
+	return textResult(strings.Join(lines, "\n")), nil, nil
+}
+
+// listConversationsParams 无入参，仅占位（go-sdk 要求 handler 必带 input 参数）。
+type listConversationsParams struct{}
+
+func (a *Adapter) listConversations(ctx context.Context, req *mcp.CallToolRequest, p listConversationsParams) (*mcp.CallToolResult, any, error) {
+	convs, err := a.api.ListBotConversations()
+	if err != nil {
+		return nil, nil, fmt.Errorf("list_conversations 失败: %w", err)
+	}
+	var lines []string
+	for _, c := range convs {
+		lines = append(lines, fmt.Sprintf(`{"conversation_id":%d,"conv_type":%q,"name":%q}`, c.ConversationID, c.ConvType, c.Name))
+	}
+	if len(lines) == 0 {
+		lines = append(lines, "(该 agent 还没有任何会话：被拉进群或与用户建立私聊后才会出现)")
 	}
 	return textResult(strings.Join(lines, "\n")), nil, nil
 }

@@ -115,6 +115,29 @@ func (c *BotAPIClient) ListBotGroups() ([]BotGroup, error) {
 	return resp.Data, nil
 }
 
+// BotConversationSummary 是 bot 关联的全部会话摘要（群聊 + 1:1 私聊）。
+type BotConversationSummary struct {
+	ConversationID uint64 `json:"conversation_id"`
+	ConvType       string `json:"conv_type"` // group | bot
+	Name           string `json:"name"`      // 群名 或 对端用户昵称（可能为空）
+}
+
+// ListBotConversations 列出该 bot 关联的全部会话（群聊 + 1:1 私聊），
+// 供读/回用户私聊前发现 conversation_id（用户先发来私聊消息时，agent 无法自行得知 id）。
+func (c *BotAPIClient) ListBotConversations() ([]BotConversationSummary, error) {
+	body, err := c.get(c.serverURL + "/api/v1/bot/conversations")
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Data []BotConversationSummary `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+	return resp.Data, nil
+}
+
 // SendMessage 发送一条消息，返回新消息 ID 与会话 ID。msgType: text|markdown|card|streaming。
 func (c *BotAPIClient) SendMessage(toUserID, threadID uint64, content, msgType string) (msgID, convID uint64, err error) {
 	payload := map[string]any{
