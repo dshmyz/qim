@@ -423,10 +423,14 @@ func (s *MessageService) HandleGroupBotMention(convID, senderID uint, mentionedU
 			continue // 仅外部 webhook agent
 		}
 		if cfg.WebhookURL == "" {
-			// pull 模式外部 bot：无回调地址，不投递也不会自动回复。
-			// 向群内回一条系统提示，避免成员 @ 后无反应却不知何故（可感知）。
-			// 仅在被 @ 该 bot 时触发，天然克制；系统消息不经 SendMessage，不会递归再触发 OnMessageSent。
-			logger.WithModule("handleBotMessage").Info("bot 为 pull 模式（webhook_url 空），发系统提示",
+			// pull 模式外部 bot：无回调地址，不投递 webhook。
+			// 驱动进程在线（心跳 TTL 内）时完全不打扰——提示的存在意义是解释
+			// 「为什么没人理」，bot 在线时回复马上就到，提示反而与 typing 气泡矛盾。
+			// 仅离线时提示（含会话×bot 级冷却）；系统消息不经 SendMessage，不会递归再触发。
+			if BotOnline(bot.ID) {
+				continue
+			}
+			logger.WithModule("handleBotMessage").Info("bot 为 pull 模式且驱动离线，发系统提示",
 				"botID", bot.ID)
 			s.notifyPullModeBot(convID, bot.ID, senderID, bot.Name)
 			continue

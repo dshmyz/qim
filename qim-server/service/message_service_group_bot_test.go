@@ -132,9 +132,10 @@ func TestHandleGroupBotMention_PullModeNotices(t *testing.T) {
 	db := setupBotMessagingTestDB(t)
 	svc := NewMessageService(db, nil, nil)
 
-	// 冷却表是包级内存状态，各测试用的内存库会话 id 都从 1 开始，不清会互相压制
+	// 冷却表/心跳表是包级内存状态，各测试用的内存库会话 id 都从 1 开始，不清会互相压制
 	pullNoticeMu.Lock()
 	pullNoticeLastAt = map[pullNoticeKey]time.Time{}
+	botPresenceLast = map[uint]time.Time{}
 	pullNoticeMu.Unlock()
 
 	botUser := &model.User{Username: "pullbot", Nickname: "拉取机器人", Type: "bot"}
@@ -191,6 +192,19 @@ func TestHandleGroupBotMention_PullModeNotices(t *testing.T) {
 	db.Model(&model.Message{}).
 		Where("conversation_id = ? AND type = ?", group.ID, "system").Count(&count)
 	assert.EqualValues(t, 2, count, "同群第二个 pull bot 的提示不应被第一个的冷却吞掉")
+
+	// 驱动进程在线（心跳 TTL 内）的 pull bot：不再提示——回复马上就到，
+	// 提示与「正在输入」气泡互相矛盾。离线时才提示。
+	MarkBotPresent(bot.ID)
+	svc.HandleGroupBotMention(group.ID, human.ID, []uint{botUser.ID}, "@拉取机器人 又来了")
+	db.Model(&model.Message{}).
+		Where("conversation_id = ? AND type = ?", group.ID, "system").Count(&count)
+	assert.EqualValues(t, 2, count, "驱动在线时不应落提示")
+
+	// 收尾清心跳，防跨测试污染（包级内存表，bot id 在各测试间会撞）
+	pullNoticeMu.Lock()
+	botPresenceLast = map[uint]time.Time{}
+	pullNoticeMu.Unlock()
 }
 
 // TestHandleBotMessage_ExternalWebhook_ForwardsToWebhook 单聊外部 agent：用户在 1:1 bot 会话
