@@ -28,6 +28,8 @@ export interface AIReplyQualityMetrics {
     autoAttempts: number
     autoReplies: number
     qualityRejected: number
+    qualityAdvisory: number
+    qualitySkipped: number
     qualityCheckFailed: number
     manualMentions: number
     userIgnored: number
@@ -35,6 +37,8 @@ export interface AIReplyQualityMetrics {
   rates: {
     autoReplyRate: number
     qualityRejectionRate: number
+    qualityAdvisoryRate: number
+    qualitySkippedRate: number
     qualityFailureRate: number
     manualMentionRate: number
     userIgnoredRate: number

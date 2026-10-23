@@ -255,17 +255,21 @@ func BuildEmptyReplyFallback(toolCalls []ToolCallRecord, hasError bool, mentionP
 	return body
 }
 
-// PersistAIMessageExtra 把工具调用记录 + 命中的知识来源合并持久化到消息 Extra（JSON），
-// 供回放/REST 回放/刷新后工具卡片与「知识来源」徽章仍可见。实时推送由 feedback 闭包
-// 已发（ai_tool_call 事件），此处只管落库快照。无 tool_calls 且无 sources 时为 no-op。
-// getMsg 返回 nil（消息从未创建）时安全跳过，不 panic。
-func PersistAIMessageExtra(getMsg func() *model.Message, toolCalls []ToolCallRecord, sources []KnowledgeSource) {
+// PersistAIMessageExtra 把工具调用记录 + 命中的知识来源 + 质量门旁路意见合并持久化到消息
+// Extra（JSON），供回放/REST 回放/刷新后工具卡片与「知识来源」徽章仍可见。实时推送由
+// feedback 闭包已发（ai_tool_call 事件），此处只管落库快照。qualityNotes 为 @AI 质量门
+// 旁路放行时的核验意见（verdict.Reason），非空时写 quality_note 键（本期前端不展示）。
+// 无任何内容时为 no-op。getMsg 返回 nil（消息从未创建）时安全跳过，不 panic。
+func PersistAIMessageExtra(getMsg func() *model.Message, toolCalls []ToolCallRecord, sources []KnowledgeSource, qualityNotes ...string) {
 	extra := map[string]interface{}{}
 	if len(toolCalls) > 0 {
 		extra["tool_calls"] = toolCalls
 	}
 	if len(sources) > 0 {
 		extra["knowledge_sources"] = sources
+	}
+	if note := strings.TrimSpace(strings.Join(qualityNotes, "；")); note != "" {
+		extra["quality_note"] = note
 	}
 	if len(extra) == 0 {
 		return

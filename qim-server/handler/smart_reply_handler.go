@@ -36,6 +36,10 @@ type SmartReplyEngine struct {
 	avatarTriggerSvc   AvatarTriggerDecider
 	smartReplyGraph    *service.SmartReplyGraph
 	qualityGateEnabled bool
+	// mentionGateBlock @AI 提问回复未通过质量核验时是否阻断发送（ai.reply_quality_gate_mention_block）。
+	// 默认 false=旁路放行：正文照发，仅记指标与失败案例；true=恢复旧行为（拦截+通知卡片）。
+	// auto 自动回复始终阻断，不受此项控制。
+	mentionGateBlock  bool
 	convReplyWorker    *service.ReplyOrchestrator // 群助手回复的并发控制（限并发+会话串行）
 	decisionLog        *service.AvatarDecisionLogService
 	failureCases       *service.FailureCaseService
@@ -144,6 +148,7 @@ func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 		enabled := di.GlobalContainer.AiThresholdService.GetFloat("ai.reply_quality_gate", 1) >= 0.5
 		e.smartReplyGraph.SetQualityGateEnabled(enabled)
 		e.qualityGateEnabled = enabled
+		e.mentionGateBlock = di.GlobalContainer.AiThresholdService.GetFloat("ai.reply_quality_gate_mention_block", 0) >= 0.5
 	}
 
 	// 注入被引用文件正文读取器，使 @AI 引用文件消息时可把文件内容喂给 AI（nil 时安全降级）。
@@ -462,10 +467,10 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 		return
 	}
 	if e.qualityGateEnabled {
-		evidence := strings.Join(append([]string{input.KnowledgeCtx, input.MemoryCtx, input.ChatHistory}, toolEvidence...), "\n\n")
-		verdict, verr := e.aiService.ValidateReply(userContent, evidence, reply)
+		// 核验与决策分离：runQualityGate 只核验（含空 evidence 快速通道），阻断决策在此收口——
+		// auto 自动回复无人在环，不通过即拦截并通知。
+		verdict, skipped, verr := e.runQualityGate(input, reply, toolEvidence)
 		if verr != nil {
-			service.GlobalAIReplyMetrics.RecordQualityCheckFailed()
 			log.Printf("[SmartReplyQuality] 核验失败，拒绝自动发送: %v", verr)
 			e.recordReplyOutcome(service.ReplySceneGroupAuto, true, conversationID, 0, "quality")
 			e.messageSender.NotifyReplyDecision(conversationID, SmartReplyDecision{
@@ -475,7 +480,7 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 			})
 			return
 		}
-		if !verdict.ShouldSend() {
+		if !skipped && !verdict.ShouldSend() {
 			service.GlobalAIReplyMetrics.RecordQualityRejected()
 			reason := verdict.Reason
 			if reason == "" {
@@ -507,52 +512,73 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 	log.Printf("[SmartReplyGraph] 已发送智能回复到会话 %d", conversationID)
 }
 
-// validateReplyBeforeSend 统一处理群助手所有非工具流式回复的发送前质量门。
-// 失败时不发送正文，由调用方把原因反馈给用户，避免“先发出去再发现幻觉”。
-func (e *SmartReplyEngine) validateReplyBeforeSend(input *service.SmartReplyContext, reply string, toolEvidence []string) bool {
+// runQualityGate 只执行发送前核验，不做任何发送/通知决策（核验与决策分离）。
+// evidence 与生成侧上下文同源：QualityEvidenceBlocks 单点拼装，调用方 append 工具结果。
+// 返回值：
+//   - skipped=true：evidence 全空（judge 无判据，verdict 是「可用资料为空」类噪声），
+//     跳过核验直接放行，已记 RecordQualitySkipped；或回复为空/总开关关闭。
+//   - err!=nil：核验调用失败，已记 RecordQualityCheckFailed，由调用方按场景决策。
+//   - 其余返回 verdict，调用方按 ShouldSend 与场景策略收口（auto 阻断 / @AI 旁路或阻断）。
+func (e *SmartReplyEngine) runQualityGate(input *service.SmartReplyContext, reply string, toolEvidence []string) (verdict *ai.ReplyQualityVerdict, skipped bool, err error) {
 	if !e.qualityGateEnabled || strings.TrimSpace(reply) == "" {
-		return true
+		return nil, true, nil
 	}
-	quoted := ""
-	if input.Quoted != nil {
-		quoted = input.Quoted.Text
+	evidenceBlocks := input.QualityEvidenceBlocks()
+	if len(evidenceBlocks) == 0 && len(toolEvidence) == 0 {
+		service.GlobalAIReplyMetrics.RecordQualitySkipped()
+		return nil, true, nil
 	}
-	evidenceParts := []string{
-		input.KnowledgeCtx,
-		input.MemoryCtx,
-		input.ChatHistory,
-		quoted,
-		input.PendingTasks,
-	}
-	evidenceParts = append(evidenceParts, toolEvidence...)
-	evidence := strings.Join(evidenceParts, "\n\n")
-	verdict, err := e.aiService.ValidateReply(input.Message, evidence, reply)
-	if err != nil {
+	evidence := strings.Join(append(evidenceBlocks, toolEvidence...), "\n\n")
+	v, verr := e.aiService.ValidateReply(input.Message, evidence, reply)
+	if verr != nil {
 		service.GlobalAIReplyMetrics.RecordQualityCheckFailed()
-		log.Printf("[SmartReplyQuality] @AI 核验不可用，拒绝发送: %v", err)
-		e.messageSender.NotifyReplyDecision(input.ConversationID, SmartReplyDecision{
-			Action: SmartReplyAskUser, ReasonCode: "quality_check_unavailable",
-			Reason:  "回复质量核验暂时不可用，未自动发送，请由你决定是否重试",
-			Actions: []string{"mention_ai", "adjust_settings"},
-		})
-		return false
+		return nil, false, verr
+	}
+	return &v, false, nil
+}
+
+// validateReplyBeforeSend @AI 发送前质量门决策。核验在 runQualityGate，场景策略在此收口。
+// 返回 (send, qualityNote)：
+//   - 核验通过/跳过/调用失败 → 放行（@AI 是用户点名提问，扣下答案的代价比不完美答案更高；
+//     核验不可用同样放行，仅记指标）。
+//   - 核验不通过 → 默认旁路放行：记 QualityAdvisory 计数 + quality_advisory 失败案例
+//     （治理看板与补丁进化的案例来源不断），verdict 理由作为 qualityNote 随消息 Extra
+//     落库（本期不上屏）；mention 阻断配置（ai.reply_quality_gate_mention_block）开启时
+//     恢复旧行为：拦截发送并通知卡片。
+//   - auto 自动回复不走本函数（generateAndSendReplyWithGraph 内联阻断决策）。
+func (e *SmartReplyEngine) validateReplyBeforeSend(input *service.SmartReplyContext, reply string, toolEvidence []string) (send bool, qualityNote string) {
+	verdict, skipped, err := e.runQualityGate(input, reply, toolEvidence)
+	if skipped {
+		return true, ""
+	}
+	if err != nil {
+		log.Printf("[SmartReplyQuality] @AI 核验不可用，旁路放行: %v", err)
+		return true, ""
 	}
 	if verdict.ShouldSend() {
-		return true
+		return true, ""
 	}
-	service.GlobalAIReplyMetrics.RecordQualityRejected()
 	reason := verdict.Reason
 	if reason == "" {
 		reason = "回复未通过相关性或事实依据核验"
 	}
-	log.Printf("[SmartReplyQuality] @AI 拒绝发送: reason=%s", reason)
+	if !e.mentionGateBlock {
+		service.GlobalAIReplyMetrics.RecordQualityAdvisory()
+		log.Printf("[SmartReplyQuality] @AI 未通过核验，旁路放行: relevant=%v supported=%v hallucinate=%v reason=%s",
+			verdict.Relevant, verdict.Supported, verdict.Hallucinate, reason)
+		e.recordFailureCase("quality_advisory", input.ConversationID, input.Message, reply)
+		return true, reason
+	}
+	service.GlobalAIReplyMetrics.RecordQualityRejected()
+	log.Printf("[SmartReplyQuality] @AI 拒绝发送: relevant=%v supported=%v hallucinate=%v reason=%s",
+		verdict.Relevant, verdict.Supported, verdict.Hallucinate, reason)
 	e.recordFailureCase("quality", input.ConversationID, input.Message, reply)
 	e.messageSender.NotifyReplyDecision(input.ConversationID, SmartReplyDecision{
 		Action: SmartReplyAskUser, ReasonCode: "quality_rejected",
 		Reason: reason, Confidence: verdict.Confidence,
 		Actions: []string{"mention_ai", "adjust_settings", "ignore"},
 	})
-	return false
+	return false, ""
 }
 
 func (e *SmartReplyEngine) generateAndSendReplyLegacy(userID uint, conversationID uint, userContent string, intent *ai.MessageIntent) {
@@ -964,7 +990,8 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 		if streamed {
 			hasBody := strings.TrimSpace(mention.StripTokens(sentBody.String())) != ""
 			if hasBody {
-				if !e.validateReplyBeforeSend(input, sentBody.String(), toolEvidence) {
+				send, qualityNote := e.validateReplyBeforeSend(input, sentBody.String(), toolEvidence)
+				if !send {
 					var evID uint
 					if m := getMsg(); m != nil {
 						evID = m.ID
@@ -986,8 +1013,8 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 						break
 					}
 				}
-				// 有正文：工具调用记录 + 命中的知识来源合并持久化，回放/刷新后卡片与徽章仍可见。
-				e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
+				// 有正文：工具调用记录 + 命中的知识来源 + 旁路核验意见合并持久化，回放/刷新后仍可见。
+				e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources, qualityNote)
 			} else {
 				// 空回：模型没生成任何正文。@AI 后不应完全静默——按失败原因补细分兜底文案
 				// （工具失败点出工具名 / 工具成功指向卡片 / 纯空回提示换问法）。
@@ -1024,7 +1051,8 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 	hasReply := strings.TrimSpace(reply) != ""
 
 	if hasReply {
-		if !e.validateReplyBeforeSend(input, reply, toolEvidence) {
+		send, qualityNote := e.validateReplyBeforeSend(input, reply, toolEvidence)
+		if !send {
 			var evID uint
 			if m := getMsg(); m != nil {
 				evID = m.ID
@@ -1048,8 +1076,8 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 				break
 			}
 		}
-		// 有正文：工具调用记录 + 命中的知识来源合并持久化，回放/刷新后卡片与徽章仍可见。
-		e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
+		// 有正文：工具调用记录 + 命中的知识来源 + 旁路核验意见合并持久化，回放/刷新后仍可见。
+		e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources, qualityNote)
 	} else {
 		// 空回：@AI 后不应完全静默。按原因补细分兜底文案（工具失败点出工具名 /
 		// 技术失败提示重试 / 纯空回提示换问法）；有工具调用则保留卡片，但不挂知识引用。
@@ -1099,8 +1127,8 @@ func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context,
 // 懒创建，避免把 getMsg() 作为参数无条件求值——否则在流式一开始就失败、既无正文也无工具
 // 或无知识来源的路径上，会强制落库一条空消息并在收尾时广播空白气泡（配合 finish 在
 // created==nil 时跳过以彻底杜绝）。全部调用点原先传 getMsg() 返回值，现改为传 getMsg 函数。
-func (e *SmartReplyEngine) persistAIMessageExtra(getMsg func() *model.Message, toolCalls []ToolCallRecord, sources []service.KnowledgeSource) {
-	service.PersistAIMessageExtra(getMsg, toolCalls, sources)
+func (e *SmartReplyEngine) persistAIMessageExtra(getMsg func() *model.Message, toolCalls []ToolCallRecord, sources []service.KnowledgeSource, qualityNotes ...string) {
+	service.PersistAIMessageExtra(getMsg, toolCalls, sources, qualityNotes...)
 }
 
 // knowledgeSourcesExtra 把命中的知识来源转成供 SendAIMessage 写入 Extra 的 map；

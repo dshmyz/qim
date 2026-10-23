@@ -52,6 +52,21 @@ type AvatarReplyContext struct {
 	BypassScope bool
 }
 
+// QualityEvidenceBlocks 返回发送前质量门（ValidateReply/ImproveReply）的「可用资料」分块，
+// trim 后非空才收录。与生成侧上下文必须同源：结构体的动态上下文字段（NoteContext/
+// GroupKnowledge/MemoryContext/History/TaskContext）注入了 prompt 的都应在此出现，
+// 否则 judge 看不到生成模型实际参考的资料，会把回复里的正常内容误判为无依据。
+// 新增上下文字段时同步更新本方法（与 SmartReplyContext.QualityEvidenceBlocks 同构）。
+func (c *AvatarReplyContext) QualityEvidenceBlocks() []string {
+	return nonEmptyBlocks(
+		c.NoteContext,
+		c.GroupKnowledge,
+		c.MemoryContext,
+		c.History,
+		c.TaskContext,
+	)
+}
+
 // 用户自选模型在回复阶段的临时描述统一由 ai_config_service.go 的 customProvider 承担
 // （与 resolveUserAIConfigProvider 共用），此处不再单独定义 customModelProvider 以免重复漂移。
 
@@ -268,13 +283,9 @@ func (g *AvatarReplyGraph) executeWithSources(ctx context.Context, userID uint, 
 
 	reply = truncateReply(input, reply)
 	if g.qualityGateEnabled {
-		evidence := strings.Join([]string{
-			input.NoteContext,
-			input.GroupKnowledge,
-			input.MemoryContext,
-			input.History,
-			input.TaskContext,
-		}, "\n\n")
+		// evidence 与生成侧上下文同源（QualityEvidenceBlocks 单点），防止 judge 与生成模型
+		// 看到的资料漂移导致误判。
+		evidence := strings.Join(input.QualityEvidenceBlocks(), "\n\n")
 		verdict, verr := g.aiService.ValidateReply(message, evidence, reply)
 		if verr != nil {
 			logger.WithModule("diag").Warn(fmt.Sprintf("[Diag] 分身回复质量核验失败，拒绝自动发送: userID=%d convID=%d err=%v", userID, conversationID, verr))
@@ -451,13 +462,8 @@ func (g *AvatarReplyGraph) completeReply(input *AvatarReplyContext, aiMessages [
 	}
 	reply = truncateReply(input, reply)
 	if g.qualityGateEnabled {
-		evidence := strings.Join([]string{
-			input.NoteContext,
-			input.GroupKnowledge,
-			input.MemoryContext,
-			input.History,
-			input.TaskContext,
-		}, "\n\n")
+		// evidence 与生成侧上下文同源（QualityEvidenceBlocks 单点）。
+		evidence := strings.Join(input.QualityEvidenceBlocks(), "\n\n")
 		verdict, verr := g.aiService.ValidateReply(input.Message, evidence, reply)
 		if verr != nil {
 			return "", input.Sources, fmt.Errorf("reply quality check unavailable: %w", verr)

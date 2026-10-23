@@ -248,6 +248,8 @@ const aiQualityCards = computed(() => {
   return [
     { label: '自动回复率', value: quality.rates.autoReplyRate, count: quality.counters.autoReplies },
     { label: '质量拒绝率', value: quality.rates.qualityRejectionRate, count: quality.counters.qualityRejected },
+    { label: '旁路放行率', value: quality.rates.qualityAdvisoryRate, count: quality.counters.qualityAdvisory },
+    { label: '空资料跳过率', value: quality.rates.qualitySkippedRate, count: quality.counters.qualitySkipped },
     { label: '核验失败率', value: quality.rates.qualityFailureRate, count: quality.counters.qualityCheckFailed },
     { label: '手动 @AI 率', value: quality.rates.manualMentionRate, count: quality.counters.manualMentions },
     { label: '用户忽略率', value: quality.rates.userIgnoredRate, count: quality.counters.userIgnored }

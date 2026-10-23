@@ -143,6 +143,39 @@ type SmartReplyContext struct {
 	ExternalToolGuide bool
 }
 
+// QualityEvidenceBlocks 返回发送前质量门（ValidateReply）的「可用资料」分块，
+// trim 后非空才收录。调用方需另把工具执行结果（toolEvidence）append 到尾部——
+// 工具输出只存在于 handler 的 feedback 收集器，context 不持有。
+//
+// 与生成侧上下文必须同源：本结构体的动态上下文字段（KnowledgeCtx/MemoryCtx/ChatHistory/
+// Quoted/PendingTasks）注入了 prompt 的，都应在此出现，否则 judge 看不到生成模型实际参考
+// 的资料，会把回复里的正常内容误判为「无依据/幻觉」而拒绝发送（ChatHistory 断源曾致
+// @AI 引用群聊历史被「可用资料为空」误拒）。新增上下文字段时同步更新本方法。
+func (c *SmartReplyContext) QualityEvidenceBlocks() []string {
+	quoted := ""
+	if c.Quoted != nil {
+		quoted = c.Quoted.Text
+	}
+	return nonEmptyBlocks(
+		c.KnowledgeCtx,
+		c.MemoryCtx,
+		c.ChatHistory,
+		quoted,
+		c.PendingTasks,
+	)
+}
+
+// nonEmptyBlocks 过滤掉 trim 后为空的 evidence 分块（避免空段在 judge prompt 里堆「可用资料：」空标题）。
+func nonEmptyBlocks(parts ...string) []string {
+	blocks := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if strings.TrimSpace(p) != "" {
+			blocks = append(blocks, p)
+		}
+	}
+	return blocks
+}
+
 type SmartReplyResult struct {
 	Reply    string
 	IsStream bool
@@ -475,8 +508,9 @@ func (g *SmartReplyGraph) ExecuteWithToolsStream(ctx context.Context, input *Sma
 	return err == nil, err
 }
 
-// preparedHistory 补齐输入上下文并构造历史消息；input.ExternalToolGuide 置位时追加
-// 外部工具的触发/输出组织指引（见 externalToolOutputGuideMessage）。两种流式/非流式
+// preparedHistory 补齐输入上下文并构造历史消息；input.ExternalToolGuide 置位时由
+// buildSystemPrompt 注入外部工具的触发/输出组织指引（见 externalToolOutputGuideMessage）。
+// 两种流式/非流式
 // 路径共用同一准备骨架，工具白名单也在此统一填值并复用给 ReAct，保证「提示词里声明的
 // 能力」与「实际放行的工具」永不背离。
 // 返回值附带任务类型：被引用图片同样经 resolveQuotedImageTaskType 路由/降级，
@@ -490,10 +524,10 @@ func (g *SmartReplyGraph) preparedHistory(input *SmartReplyContext) ([]*schema.M
 	input.AllowedTools = g.groupAssistantAllowedTools()
 	taskType := g.resolveQuotedImageTaskType(input)
 	history := g.buildHistoryMessages(input)
-	if input.ExternalToolGuide {
-		history = append(history, externalToolTriggerGuideMessage())
-		history = append(history, externalToolOutputGuideMessage())
-	}
+	// 外部工具指引不再作为独立消息追加到历史之后：方舟等 OpenAI 兼容端点强制 system
+	// 消息必须位于消息序列开头，尾部 system 会被 step 1 直接 400
+	// "System message must be at the beginning"。指引已并入 buildSystemPrompt
+	// 的 input.ExternalToolGuide 分支，随首条 system 消息下发。
 	return history, taskType, nil
 }
 
@@ -1094,6 +1128,12 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 	hasRecentAI := false
 	keptSelf := 0
 	maxSelf := g.recentAIMessagesLimit()
+	// 同步把注入 prompt 的历史折叠进 input.ChatHistory：发送前质量门（validateReplyBeforeSend）
+	// 以 KnowledgeCtx/MemoryCtx/ChatHistory/工具结果为「可用资料」判幻觉，而带工具路径
+	// （ExecuteWithTools/Stream）此前从不填 ChatHistory——judge 看到空资料，把回复里
+	// 引用群聊历史的正常内容误判为「可用资料为空/无依据」而拒绝发送。单点在此回填，
+	// @AI 三条路径与 auto 带工具路径的 evidence 同源（编译图路径由 createHistoryNode 填，互不冲突）。
+	var historyLines []string
 	for _, msg := range filteredMessages {
 		senderName := msg.Sender.Nickname
 		if senderName == "" {
@@ -1112,6 +1152,7 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 					Role:    schema.Assistant,
 					Content: content,
 				})
+				historyLines = append(historyLines, fmt.Sprintf("[assistant]: %s", collapseHistoryContent(content)))
 			} else {
 				foldedFar = append(foldedFar, content)
 			}
@@ -1123,13 +1164,16 @@ func (g *SmartReplyGraph) buildHistoryMessages(input *SmartReplyContext) []*sche
 				Role:    schema.User,
 				Content: fmt.Sprintf("[当前用户]: %s", content),
 			})
+			historyLines = append(historyLines, fmt.Sprintf("[当前用户]: %s", collapseHistoryContent(content)))
 		} else {
 			result = append(result, &schema.Message{
 				Role:    schema.User,
 				Content: fmt.Sprintf("[%s]: %s", senderName, content),
 			})
+			historyLines = append(historyLines, fmt.Sprintf("[%s]: %s", senderName, collapseHistoryContent(content)))
 		}
 	}
+	input.ChatHistory = strings.Join(historyLines, "\n")
 
 	// 多轮上下文：检测到最近窗口内有 AI 回复，在 system prompt 追加提示
 	if hasRecentAI && len(result) > 0 {
@@ -1613,6 +1657,13 @@ func (g *SmartReplyGraph) buildSystemPrompt(input *SmartReplyContext) string {
 		sb.WriteString("- 你可以调用系统提供的工具来获取实时数据或执行操作；调用前先确认工具是否适合当前问题\n")
 		sb.WriteString("- 工具返回结果要如实使用；工具未返回或返回失败时，如实告知，不要编造一个成功的结果\n")
 		sb.WriteString("- 没有一个工具能覆盖的问题，坦率说明做不到，不要假装已调用或虚拟出答案\n")
+		// 外部工具触发/输出组织指引（仅外部 MCP 群启用时）：并入 system prompt 而非追加
+		// 独立 system 消息——方舟等 OpenAI 兼容端点强制 system 必须位于消息序列开头，
+		// 尾部 system 会被 step 1 直接 400 "System message must be at the beginning"。
+		if input.ExternalToolGuide {
+			sb.WriteString("\n" + externalToolTriggerGuideMessage().Content + "\n\n" +
+				externalToolOutputGuideMessage().Content + "\n")
+		}
 	} else {
 		sb.WriteString("- 当前未提供实时查询或执行工具，你只能基于已注入的上下文和你自己的知识回答\n")
 		sb.WriteString("- 遇到你无法得知的信息（如实时状态、他人私有数据、需要系统操作的请求），诚实说明你做不到，不要编造或猜测\n")

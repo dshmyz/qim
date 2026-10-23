@@ -42,6 +42,8 @@ func (h *MonitorHandler) GetAIReplyQualityMetrics(c *gin.Context) {
 		"rates": gin.H{
 			"autoReplyRate":        rate(s.AutoReplies),
 			"qualityRejectionRate": rate(s.QualityRejected),
+			"qualityAdvisoryRate":  rate(s.QualityAdvisory),
+			"qualitySkippedRate":   rate(s.QualitySkipped),
 			"qualityFailureRate":   rate(s.QualityCheckFailed),
 			"manualMentionRate":    rate(s.ManualMentions),
 			"userIgnoredRate":      rate(s.UserIgnored),

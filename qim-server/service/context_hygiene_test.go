@@ -187,4 +187,17 @@ func TestBuildHistoryMessagesWindowed(t *testing.T) {
 			t.Fatalf("远期自身回复不应作为独立 assistant 轮次回灌: %q", m.Content)
 		}
 	}
+
+	// ChatHistory 须同步回填（质量门 evidence 依据）：近期历史在内，远期折叠段不在
+	// （远期只进 system note，judge 无需重复看到）。
+	if in.ChatHistory == "" {
+		t.Fatal("buildHistoryMessages 应回填 input.ChatHistory 供质量门 evidence 使用")
+	}
+	if !strings.Contains(in.ChatHistory, "[当前用户]: 近期用户消息") ||
+		!strings.Contains(in.ChatHistory, "[assistant]: 近期助手回复-对的") {
+		t.Fatalf("ChatHistory 应包含近期用户/助手历史, got=%q", in.ChatHistory)
+	}
+	if strings.Contains(in.ChatHistory, "远期助手回复-方案A可行") {
+		t.Fatalf("远期自身回复不应回填进 ChatHistory: %q", in.ChatHistory)
+	}
 }
