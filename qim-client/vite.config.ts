@@ -82,37 +82,35 @@ export default defineConfig(({ mode }) => {
             if (id.includes('node_modules')) {
               return 'vendor'
             }
-            // 聊天主模块
-            if (id.includes('/components/chat/')) {
-              return 'chat'
+            // 以下业务模块互相引用密集（chat↔group↔settings↔ai↔calendar↔file），
+            // 且入口对它们全部是静态引入（首屏必然一起加载）。拆开会产生 chunk 级
+            // 循环依赖：环内任一模块顶层跨 chunk 取值（如 logger 顶层 new 时调
+            // getProductName、SFC 的 _export_sfc 落在别的 chunk）就会在打包后报
+            // "Cannot access 't' before initialization"，dev 不分包所以只在包里炸。
+            // 因此合并为单一 main chunk，根治 12 条 chunk 环；notes/task 等
+            // 真正按需动态加载的模块仍保持独立分包。
+            // 聊天主模块 + 群聊/设置/AI/日历/文件（互相成环的六个合并）
+            if (
+              id.includes('/components/chat/') ||
+              id.includes('/components/apps/ai/') ||
+              id.includes('/components/apps/AIAssistantApp') ||
+              id.includes('/components/apps/CalendarApp') ||
+              id.includes('/components/apps/FileManagementApp') ||
+              id.includes('/components/settings/') ||
+              id.includes('/components/avatar/') ||
+              id.includes('/components/shared/Group') ||
+              id.includes('/components/modals/CreateGroup') ||
+              id.includes('/components/modals/GroupModals')
+            ) {
+              return 'main'
             }
-            // AI 相关
-            if (id.includes('/components/apps/ai/') || id.includes('/components/apps/AIAssistantApp')) {
-              return 'ai'
-            }
-            // 日历应用
-            if (id.includes('/components/apps/CalendarApp')) {
-              return 'calendar'
-            }
-            // 文件管理
-            if (id.includes('/components/apps/FileManagementApp')) {
-              return 'file'
-            }
-            // 便签 + 笔记
+            // 便签 + 笔记（入口动态引入，保持独立按需加载）
             if (id.includes('/components/apps/StickyNotesApp') || id.includes('/components/apps/NotesApp')) {
               return 'notes'
             }
-            // 任务管理
+            // 任务管理（入口动态引入，保持独立按需加载）
             if (id.includes('/components/apps/task/')) {
               return 'task'
-            }
-            // 设置相关
-            if (id.includes('/components/settings/') || id.includes('/components/avatar/')) {
-              return 'settings'
-            }
-            // 群聊相关
-            if (id.includes('/components/shared/Group') || id.includes('/components/modals/CreateGroup') || id.includes('/components/modals/GroupModals')) {
-              return 'group'
             }
           }
         }

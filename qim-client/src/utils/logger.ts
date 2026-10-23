@@ -21,11 +21,17 @@ class Logger {
     this.config = {
       level: config.level ?? (isDev ? LogLevel.DEBUG : LogLevel.ERROR),
       enableConsole: config.enableConsole ?? isDev,
-      prefix: config.prefix ?? `[${getProductName()}]`
+      // prefix 默认值惰性解析（见 formatMessage）：不能在构造期调用 getProductName()——
+      // 本模块顶层就 new Logger()，打包分包后 appConfig 与 logger 可能位于相互循环
+      // 引用的 chunk，构造期跨 chunk 取值会踩「Cannot access before initialization」TDZ
+      prefix: config.prefix ?? ''
     }
   }
 
   private formatMessage(level: string, ...args: any[]): string {
+    if (!this.config.prefix) {
+      this.config.prefix = `[${getProductName()}]`
+    }
     return `${this.config.prefix} [${level}] ${new Date().toISOString()}`
   }
 

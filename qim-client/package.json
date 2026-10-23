@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:3000 && electron --no-sandbox .\"",
-    "build": "vite build",
+    "build": "vite build --config vite.config.ts && node scripts/check-chunk-cycles.cjs",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.ts,.tsx",
     "typecheck": "vue-tsc --noEmit",
