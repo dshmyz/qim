@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import GroupList from '../shared/GroupList.vue'
 import OrgTree from '../shared/OrgTree.vue'
 import AppPanel from '../shared/AppPanel.vue'
@@ -61,6 +61,8 @@ interface Props {
   messageHitsExhausted?: string[]
   /** 会话元信息解析：由 Main 提供（优先后端 conversation_meta，本地列表兜底） */
   resolveMessageHitConversation?: (conversationId: number | string) => { name: string, avatar: string } | null
+  /** 人员/群组搜索进行中（含防抖等待窗口）：空结果区据此显示"搜索中…"而非"无搜索结果" */
+  searchLoading?: boolean
 }
 
 const props = defineProps<Props>()
@@ -98,12 +100,28 @@ const userName = computed(() => {
   return props.currentUser?.nickname || props.currentUser?.username || '我的账号'
 })
 
-const filteredConversations = computed(() => {
-  if (!props.searchQuery) return props.conversations
-  const query = props.searchQuery.toLowerCase()
-  return props.conversations.filter(conv =>
-    conv.name?.toLowerCase().includes(query)
-  )
+// 搜索结果面的滚动条显隐：静止隐藏，指针进入/滚动中浮现（与会话列表同款）。
+// 显隐由 JS 切换 class 驱动——不能用 ::-webkit-scrollbar-thumb:hover，
+// Chromium 伪元素不响应容器 :hover 且拖动后会粘滞。
+const searchHovered = ref(false)
+const searchScrolling = ref(false)
+let searchScrollTimer: ReturnType<typeof setTimeout> | undefined
+const handleSearchScroll = () => {
+  searchScrolling.value = true
+  if (searchScrollTimer) clearTimeout(searchScrollTimer)
+  searchScrollTimer = setTimeout(() => {
+    searchScrolling.value = false
+  }, 600)
+}
+onUnmounted(() => {
+  if (searchScrollTimer) clearTimeout(searchScrollTimer)
+})
+
+// 结果容器在查询之间复用（同一个 v-if 节点），浏览器会保留上一次的 scrollTop；
+// 换词时归零，避免新结果从中段开始、前几条藏在视口上方。
+const searchResultsRef = ref<HTMLElement | null>(null)
+watch(() => props.searchQuery, () => {
+  if (searchResultsRef.value) searchResultsRef.value.scrollTop = 0
 })
 
 // 消息命中的会话名/头像解析：默认查本地会话列表；Main 传入 resolver 时
@@ -177,40 +195,56 @@ defineExpose({ focusSearch })
     <div class="sidebar-content" v-show="!collapsed">
       <KeepAlive>
         <div v-if="activeOption === 'recent'" key="recent" class="content-section recent-content-section">
-          <SearchResult
-            v-if="searchQuery && searchResults.length > 0"
-            :searchQuery="searchQuery"
-            :searchResults="searchResults"
-            @select="(item) => $emit('searchResultSelect', item)"
-            @privateChat="(item) => $emit('searchResultPrivateChat', item)"
-            @applyJoin="(item) => $emit('searchResultApplyJoin', item)"
-          />
-          <MessageHitsPanel
-            v-if="searchQuery && (messageHits?.length || messageHitsLoading)"
-            :hits="messageHits || []"
-            :total="messageHitsTotal || 0"
-            :keyword="searchQuery"
-            :server-url="serverUrl"
-            :resolve-conversation="resolveHitConversation"
-            :exhausted-ids="messageHitsExhausted || []"
-            :is-loading-more="messageHitsLoading"
-            @select="(hit) => $emit('messageHitSelect', hit)"
-            @loadMore="(group) => $emit('messageHitsLoadMore', group)"
-            @openConversation="(cid) => $emit('messageHitsOpenConversation', cid)"
-          />
-          <div v-else-if="searchQuery && !messageHits?.length && !messageHitsLoading" class="message-hits-empty">
-            无相关聊天记录
+          <!-- 搜索态与列表态互斥：结果面是内容区唯一的滚动容器，人员/群组与聊天记录
+               作为分组排在其中，不再与会话列表在同一 flex 列里竞争高度（此前多个独立
+               max-height + flex 收缩会把结果行压成半行）。 -->
+          <div
+            v-if="searchQuery.trim()"
+            ref="searchResultsRef"
+            class="search-results"
+            :class="{ 'is-hovered': searchHovered, 'is-scrolling': searchScrolling }"
+            @scroll.passive="handleSearchScroll"
+            @mouseenter="searchHovered = true"
+            @mouseleave="searchHovered = false"
+          >
+            <SearchResult
+              v-if="searchResults.length > 0"
+              :searchQuery="searchQuery"
+              :searchResults="searchResults"
+              @select="(item) => $emit('searchResultSelect', item)"
+              @privateChat="(item) => $emit('searchResultPrivateChat', item)"
+              @applyJoin="(item) => $emit('searchResultApplyJoin', item)"
+            />
+            <MessageHitsPanel
+              v-if="messageHits?.length || messageHitsLoading"
+              :hits="messageHits || []"
+              :total="messageHitsTotal || 0"
+              :keyword="searchQuery"
+              :server-url="serverUrl"
+              :resolve-conversation="resolveHitConversation"
+              :exhausted-ids="messageHitsExhausted || []"
+              :is-loading-more="messageHitsLoading"
+              @select="(hit) => $emit('messageHitSelect', hit)"
+              @loadMore="(group) => $emit('messageHitsLoadMore', group)"
+              @openConversation="(cid) => $emit('messageHitsOpenConversation', cid)"
+            />
+            <div v-if="!searchResults.length && !messageHits?.length && !messageHitsLoading" class="search-empty">
+              {{ searchLoading ? '搜索中…' : '无搜索结果' }}
+            </div>
           </div>
-          <ConversationList
-            :conversations="filteredConversations"
-            :currentConversationId="currentConversationId"
-            :serverUrl="serverUrl"
-            :hasMore="hasMoreConversations"
-            :isLoading="isLoadingConversations"
-            @select="(conv) => $emit('selectConversation', conv)"
-            @contextMenu="(event, conv) => $emit('conversationContextMenu', event, conv)"
-            @loadMore="$emit('loadMoreConversations')"
-          />
+          <!-- 会话列表只隐藏不卸载：保留实例与滚动位置，退出搜索回到原来的位置 -->
+          <div v-show="!searchQuery.trim()" class="conversation-list-slot">
+            <ConversationList
+              :conversations="conversations"
+              :currentConversationId="currentConversationId"
+              :serverUrl="serverUrl"
+              :hasMore="hasMoreConversations"
+              :isLoading="isLoadingConversations"
+              @select="(conv) => $emit('selectConversation', conv)"
+              @contextMenu="(event, conv) => $emit('conversationContextMenu', event, conv)"
+              @loadMore="$emit('loadMoreConversations')"
+            />
+          </div>
         </div>
         
         <div v-else-if="activeOption === 'org'" key="org" class="content-section">
@@ -424,11 +458,45 @@ defineExpose({ focusSearch })
   position: relative;
 }
 
-.message-hits-empty {
-  padding: 12px 16px;
+/* 搜索结果面：搜索态下内容区唯一的滚动容器。
+   人员/群组与聊天记录作为分组排列其中，各分组不再自带 max-height 与滚动，
+   高度策略只存在于这一处——这是多块并存时不再互相挤压的关键。 */
+.search-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.search-results::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.search-results::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.search-results.is-hovered::-webkit-scrollbar-thumb,
+.search-results.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--color-gray-300);
+}
+
+.search-empty {
+  padding: 24px 16px;
+  text-align: center;
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
-  text-align: center;
+}
+
+/* 会话列表槽位：搜索期间 v-show 隐藏而非卸载，退出搜索保留滚动位置。
+   ConversationList 是 fragment 根，v-show 只能落在这一层包装上（flex 列容器，
+   让列表自身的 flex:1 / 空态的 min-height 行为保持不变）。 */
+.conversation-list-slot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .recent-content-section {

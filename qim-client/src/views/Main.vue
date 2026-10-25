@@ -86,6 +86,7 @@
         :messageHitsLoading="messageHitsLoading"
         :messageHitsExhausted="messageHitsExhausted"
         :resolveMessageHitConversation="resolveHitConversation"
+        :search-loading="isSearching"
         @update:searchQuery="searchQuery = $event"
         @showUserProfile="showSelfProfile"
         @showNotification="handleNotificationCenter"
@@ -2430,11 +2431,11 @@ const sortedConversations = computed(() => {
 })
 
 const filteredConversations = computed(() => {
-  if (!searchQuery.value) {
+  if (!searchQuery.value.trim()) {
     return sortedConversations.value
   }
-  
-  const query = searchQuery.value.toLowerCase()
+
+  const query = searchQuery.value.trim().toLowerCase()
   return sortedConversations.value.filter(conv => 
     conv.name.toLowerCase().includes(query) ||
     (conv.lastMessage?.content && decodeToPlainText(conv.lastMessage.content).toLowerCase().includes(query)) ||
@@ -2449,22 +2450,26 @@ const filteredConversations = computed(() => {
 const isSearching = ref(false)
 
 // 处理搜索
-const handleSearch = async (query) => {
+const handleSearch = async (query: string) => {
   if (!query.trim()) {
     searchResults.value = []
+    isSearching.value = false
     return
   }
-  
+
   isSearching.value = true
   try {
     const response = await request(`/api/v1/users/search?q=${encodeURIComponent(query)}`)
+    // 输入已变：该响应属于上一次查询，丢弃，避免旧结果覆盖新结果
+    if (query.trim() !== searchQuery.value.trim()) return
     if (response.code === 0) {
       searchResults.value = response.data || []
     }
   } catch (error) {
     logger.error('搜索失败:', error)
   } finally {
-    isSearching.value = false
+    // 只有当前查询的请求才有资格结束"搜索中"状态
+    if (query.trim() === searchQuery.value.trim()) isSearching.value = false
   }
 }
 
@@ -2642,6 +2647,8 @@ const handleMessageHitsLoadMore = async (group: MessageHitGroup) => {
 watch(searchQuery, (newQuery) => {
   // 简单的防抖实现
   clearTimeout(window.searchTimeout)
+  // 防抖等待期也算"搜索中"：否则侧栏会在结果回来前闪一下"无搜索结果"
+  isSearching.value = !!newQuery.trim()
   window.searchTimeout = setTimeout(() => {
     handleSearch(newQuery)
 

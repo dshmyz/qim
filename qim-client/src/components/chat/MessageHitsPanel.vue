@@ -4,13 +4,7 @@
       <span>聊天记录</span>
       <span class="hits-count">{{ total }} 条相关消息</span>
     </div>
-    <div
-      class="hits-list"
-      :class="{ 'is-hovered': isHovered, 'is-scrolling': isScrolling }"
-      @scroll="handleListScroll"
-      @mouseenter="isHovered = true"
-      @mouseleave="isHovered = false"
-    >
+    <div class="hits-list">
       <div v-for="group in groups" :key="group.conversationId" class="hits-group">
         <div class="hits-group-header" @click="$emit('openConversation', group.conversationId)">
           <Avatar :src="group.avatar" :name="group.name" :server-url="serverUrl" size="xs" />
@@ -52,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import Avatar from '../shared/Avatar.vue'
 
 export interface MessageHit {
@@ -89,20 +83,6 @@ defineEmits<{
   (e: 'loadMore', group: MessageHitGroup): void
   (e: 'openConversation', conversationId: number | string): void
 }>()
-
-// 滚动条显隐：静止隐藏，指针进入/滚动中浮现（与会话列表同款交互）。
-// 显隐由 JS 切换 class 驱动——不能用 ::-webkit-scrollbar-thumb:hover，
-// Chromium 伪元素不响应容器 :hover 且拖动后会粘滞。
-const isHovered = ref(false)
-const isScrolling = ref(false)
-let scrollTimer: ReturnType<typeof setTimeout> | undefined
-const handleListScroll = () => {
-  isScrolling.value = true
-  if (scrollTimer) clearTimeout(scrollTimer)
-  scrollTimer = setTimeout(() => {
-    isScrolling.value = false
-  }, 600)
-}
 
 // 组内超过该条数才出现"查看更多"——更少说明该会话命中大概率已在首屏拿全
 const MAX_GROUP_HITS = 5
@@ -217,21 +197,13 @@ const groups = computed<MessageHitGroup[]>(() => {
 
 <style scoped>
 .message-hits-panel {
-  position: relative;
-  /* 不设 width:100%：flex 列容器内靠 align-self:stretch + 水平 margin 内缩，
-     显式 width:100% 会让 margin 溢出父容器 8px */
   box-sizing: border-box;
-  max-height: 460px;
+  /* 聊天记录分组：高度自适应，滚动与高度策略统一由父级 .search-results 负责。
+     不再自带 max-height / 阴影 / 内滚动——与搜索结果分组并存时，
+     多个独立上限会在固定高度容器里互相挤压。 */
   background: var(--sidebar-bg);
-  border-radius: 8px;
-  /* 浮层与侧栏同为 --sidebar-bg（浅色主题均纯白），靠阴影与标题分层条浮起 */
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-  z-index: 100;
-  overflow: hidden;
   /* 水平边距与上方搜索框（padding 8px）对齐，不贴侧栏边缘 */
   margin: 0 8px 8px;
-  /* 无边框：视觉边界交给阴影 + 标题分层条 + 圆角（微信浮层同款）——
-     主题色边框线在浅色主题下反复调淡仍偏显眼，直接去掉这条线 */
   display: flex;
   flex-direction: column;
 }
@@ -240,13 +212,16 @@ const groups = computed<MessageHitGroup[]>(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* 分组标题常驻：长列表滚动时保持分组上下文（sticky 相对父级滚动容器） */
+  position: sticky;
+  top: 0;
+  z-index: 1;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border-color);
-  /* 标题行常驻主题浅色分层（--hover-color：浅色主题为浅蓝/浅紫，深色为亮层），
-     白底白卡靠它获得第一层视觉锚点 */
   /* 标题分层条：比 hover-color 浅一档（条目 hover 为 50% 混合，梯度：
-     白底 < 条目 hover 50% < 标题条 70%），避免与条目悬停撞色 */
-  background: color-mix(in srgb, var(--hover-color), transparent 30%);
+     白底 < 条目 hover 50% < 标题条 70%），避免与条目悬停撞色。
+     必须不透明：吸顶后行会从其下方滚过，半透明会让文字透出来。 */
+  background: color-mix(in srgb, var(--hover-color) 70%, var(--sidebar-bg));
   font-weight: 600;
   font-size: var(--font-size-sm);
   color: var(--text-color);
@@ -257,26 +232,6 @@ const groups = computed<MessageHitGroup[]>(() => {
   font-weight: normal;
   font-size: var(--font-size-xxs);
   color: var(--text-secondary);
-}
-
-.hits-list {
-  max-height: 420px;
-  overflow-y: auto;
-}
-
-/* 滚动条：静止隐藏，指针进入/滚动中浮现（与会话列表同款，class 由 JS 切换） */
-.hits-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.hits-list::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 3px;
-}
-
-.hits-list.is-hovered::-webkit-scrollbar-thumb,
-.hits-list.is-scrolling::-webkit-scrollbar-thumb {
-  background: var(--color-gray-300);
 }
 
 .hits-group-header {
