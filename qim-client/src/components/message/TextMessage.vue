@@ -185,7 +185,15 @@ const canCollapse = ref(false)
 
 const measure = () => {
   const el = contentEl.value
-  if (el) canCollapse.value = el.scrollHeight > el.clientHeight + 1
+  if (!el) return
+  // 溢出判定始终以「折叠态钳制高度」为基准：临时套用 is-collapsed 测量后还原。
+  // 若按当前状态测，展开后 max-height 移除、scrollHeight===clientHeight，
+  // onUpdated 会把 canCollapse 置回 false，按钮消失导致无法再收起。
+  // 阈值仍只在 CSS 一处定义（.text-content.is-collapsed 的 max-height）。
+  el.classList.add('is-collapsed')
+  const overflowing = el.scrollHeight > el.clientHeight + 1
+  el.classList.toggle('is-collapsed', collapsed.value)
+  canCollapse.value = overflowing
 }
 
 let resizeObserver: ResizeObserver | null = null

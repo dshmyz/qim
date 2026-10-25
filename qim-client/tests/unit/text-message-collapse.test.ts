@@ -60,4 +60,31 @@ describe('TextMessage 长文本折叠', () => {
     // 未溢出时折叠 class 存在但 max-height 是 no-op，不影响展示
     expect(wrapper.find('.text-content').classes()).toContain('is-collapsed')
   })
+
+  it('展开后仍保留「收起」按钮，可再次收起（回归：溢出判定不受当前状态影响）', async () => {
+    // 折叠态：自然高 500 钳到 100；展开态：不再钳制，二者相等。
+    // 桩按元素是否带 is-collapsed 区分两种状态，模拟真实布局行为
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get() { return 500 }
+    })
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get() { return this.classList.contains('is-collapsed') ? 100 : 500 }
+    })
+    const wrapper = await mountText('这是一段很长很长的文本内容')
+    expect(wrapper.find('.text-expand-btn').text()).toBe('▾ 展开全文')
+
+    // 展开：onUpdated 里的重测曾把按钮摘掉——按钮必须保留
+    await wrapper.find('.text-expand-btn').trigger('click')
+    expect(wrapper.find('.text-content').classes()).not.toContain('is-collapsed')
+    await nextTick()
+    expect(wrapper.find('.text-expand-btn').exists()).toBe(true)
+    expect(wrapper.find('.text-expand-btn').text()).toBe('▴ 收起')
+
+    // 仍可再收起
+    await wrapper.find('.text-expand-btn').trigger('click')
+    expect(wrapper.find('.text-content').classes()).toContain('is-collapsed')
+    expect(wrapper.find('.text-expand-btn').text()).toBe('▾ 展开全文')
+  })
 })
