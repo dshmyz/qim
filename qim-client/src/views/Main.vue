@@ -2430,22 +2430,10 @@ const sortedConversations = computed(() => {
   })
 })
 
-const filteredConversations = computed(() => {
-  if (!searchQuery.value.trim()) {
-    return sortedConversations.value
-  }
-
-  const query = searchQuery.value.trim().toLowerCase()
-  return sortedConversations.value.filter(conv => 
-    conv.name.toLowerCase().includes(query) ||
-    (conv.lastMessage?.content && decodeToPlainText(conv.lastMessage.content).toLowerCase().includes(query)) ||
-    (conv.members && conv.members.some(member => 
-      member.name.toLowerCase().includes(query)
-    )) ||
-    (conv.type === 'group' && '群聊'.includes(query)) ||
-    (conv.type === 'single' && '用户'.includes(query))
-  )
-})
+// 搜索态下侧栏只渲染搜索结果面（人员/群组 + 聊天记录），会话列表整体 v-show 隐藏，
+// 所以这里不再做本地过滤——那段过滤结果永远不可见，却会在每次按键时对所有会话
+// 跑一遍 decodeToPlainText 与成员名匹配。列表按原排序完整传入即可。
+const filteredConversations = computed(() => sortedConversations.value)
 
 const isSearching = ref(false)
 
