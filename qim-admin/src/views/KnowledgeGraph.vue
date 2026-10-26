@@ -5,6 +5,9 @@
         <div class="toolbar-left">
           <h2 class="page-title">知识图谱可视化</h2>
           <p class="page-desc">展示知识库中的实体关系和知识关联</p>
+          <p class="page-desc truncate-hint" v-if="stats.truncated">
+            图谱较大：仅渲染前 {{ graphNodes.length }} 个节点 / {{ graphEdges.length }} 条关系（共 {{ stats.totalNodes }} / {{ stats.totalEdges }}）
+          </p>
         </div>
         <div class="toolbar-right">
           <el-button @click="handleRefresh">
@@ -156,6 +159,8 @@ interface GraphData {
   edges: EGEdge[]
   total_nodes: number
   total_edges: number
+  knowledge_count?: number
+  truncated?: boolean
 }
 
 const loading = ref(false)
@@ -189,6 +194,7 @@ const stats = ref({
   totalNodes: 0,
   totalEdges: 0,
   knowledgeCount: 0,
+  truncated: false,
 })
 
 // 归一化后交给统一渲染组件 EChartsGraph 的节点/边
@@ -216,7 +222,8 @@ const fetchGraphData = async () => {
     stats.value = {
       totalNodes: data.total_nodes,
       totalEdges: data.total_edges,
-      knowledgeCount: data.nodes.filter((n: EGNode) => n.type === 'knowledge').length,
+      knowledgeCount: data.knowledge_count ?? data.nodes.filter((n: EGNode) => n.type === 'knowledge').length,
+      truncated: !!data.truncated,
     }
 
     graphNodes.value = data.nodes
@@ -396,5 +403,8 @@ onMounted(() => {
 .node-source-item .el-icon {
   flex-shrink: 0;
   color: var(--el-text-color-secondary);
+}
+.truncate-hint {
+  color: var(--el-color-warning);
 }
 </style>

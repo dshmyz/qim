@@ -61,6 +61,9 @@
           />
           <button class="btn btn-sm" @click="searchMemories">搜索</button>
           <button class="btn btn-sm" @click="loadMemories">刷新</button>
+          <span v-if="memoryTotal > 0" class="memory-total">
+            共 {{ memoryTotal }} 条<template v-if="memoryTotal > memories.length">（显示最近 {{ memories.length }} 条）</template>
+          </span>
           <button class="btn btn-sm btn-danger" @click="clearMemories">清空全部</button>
         </div>
         <div v-if="memories.length === 0" class="memory-empty">
@@ -375,6 +378,7 @@ async function handleRefreshDocuments() {
 
 // ===== 群记忆 =====
 const memories = ref<GroupMemory[]>([])
+const memoryTotal = ref(0)
 const searchQuery = ref('')
 
 function formatMemoryTime(ts: string): string {
@@ -383,12 +387,24 @@ function formatMemoryTime(ts: string): string {
   return new Date(n * 1000).toLocaleString('zh-CN', { hour12: false })
 }
 
+async function loadMemoryCount() {
+  try {
+    const res = await request(`/api/v1/groups/${props.groupId}/group-memories/count`)
+    if (res.code === 0) {
+      memoryTotal.value = res.data?.count ?? 0
+    }
+  } catch (e) {
+    console.error('统计群记忆失败', e)
+  }
+}
+
 async function loadMemories() {
   try {
     const res = await request(`/api/v1/groups/${props.groupId}/group-memories`)
     if (res.code === 0) {
       memories.value = res.data || []
     }
+    await loadMemoryCount()
   } catch (e) {
     console.error('加载群记忆失败', e)
   }
@@ -399,6 +415,7 @@ async function deleteMemory(docId: string) {
     const res = await request(`/api/v1/groups/${props.groupId}/group-memories/${docId}`, { method: 'DELETE' })
     if (res.code === 0) {
       memories.value = memories.value.filter(m => m.doc_id !== docId)
+      memoryTotal.value = Math.max(0, memoryTotal.value - 1)
     }
   } catch (e) {
     console.error('删除群记忆失败', e)
@@ -448,6 +465,7 @@ async function clearMemories() {
     const res = await request(`/api/v1/groups/${props.groupId}/group-memories`, { method: 'DELETE' })
     if (res.code === 0) {
       memories.value = []
+      memoryTotal.value = 0
     }
   } catch (e) {
     console.error('清空群记忆失败', e)
@@ -479,12 +497,16 @@ onMounted(() => {
 })
 
 // 切到知识库 tab：若存在处理中的文档则立即刷新并开始轮询；切走则停止轮询
+// 切到群记忆 tab：立即加载列表与总数（此前只能手动刷新）
 watch(activeTab, () => {
   if (activeTab.value === 'knowledge') {
     loadDocuments()
     scheduleDocStatusPolling()
   } else {
     stopDocStatusPolling()
+  }
+  if (activeTab.value === 'memory') {
+    loadMemories()
   }
 })
 
@@ -518,6 +540,7 @@ onUnmounted(() => {
 .btn-danger:hover { background: rgba(229, 72, 77, 0.08); }
 .memory-tab { padding: 16px 20px; }
 .memory-toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.memory-total { align-self: center; font-size: var(--font-size-xs); color: var(--text-secondary); }
 .memory-search-input { flex: 1; min-width: 200px; padding: 6px 12px; border: 1px solid var(--border-color, #ddd); border-radius: 6px; font-size: var(--font-size-sm); }
 .memory-empty { color: var(--text-secondary, #999); padding: 24px 0; text-align: center; font-size: var(--font-size-sm); }
 .memory-list { display: flex; flex-direction: column; gap: 10px; }

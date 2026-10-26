@@ -2,32 +2,45 @@
   <div class="ai-graph">
     <div class="graph-toolbar">
       <div v-if="stats.totalNodes" class="graph-stats">
-        <span>节点 {{ stats.totalNodes }}</span>
-        <span>关系 {{ stats.totalEdges }}</span>
+        <span>节点 {{ shownNodes }}<template v-if="stats.truncated"> / 共 {{ stats.totalNodes }}</template></span>
+        <span>关系 {{ shownEdges }}<template v-if="stats.truncated"> / 共 {{ stats.totalEdges }}</template></span>
+        <span v-if="stats.truncated" class="graph-hint">已按预算截断</span>
       </div>
-      <button class="btn btn-sm" @click="loadGraph">
-        <i class="fas fa-sync-alt"></i> 刷新
-      </button>
+      <div class="graph-actions">
+        <button class="btn btn-sm" :disabled="rebuilding" @click="rebuildGraph">
+          <i class="fas" :class="rebuilding ? 'fa-spinner fa-spin' : 'fa-hammer'"></i>
+          {{ rebuilding ? '重建中' : '重建图谱' }}
+        </button>
+        <button class="btn btn-sm" :disabled="loading" @click="loadGraph">
+          <i class="fas" :class="loading ? 'fa-spinner fa-spin' : 'fa-sync-alt'"></i> 刷新
+        </button>
+      </div>
     </div>
 
     <div class="graph-body">
       <div class="graph-stage">
-        <div v-if="loading" class="graph-empty">
-          <div class="loading-spinner"></div>
-        </div>
-        <div v-else-if="stats.totalNodes === 0" class="graph-empty">
+        <div v-if="errorMsg" class="graph-error">{{ errorMsg }}</div>
+        <div v-if="!errorMsg && !loading && stats.totalNodes === 0" class="graph-empty">
           <i class="fas fa-project-diagram"></i>
           <p>暂无知识图谱。为群知识库绑定并处理文档后，图谱会自动生成。</p>
         </div>
-        <div v-else ref="graphRef" class="graph-canvas">
+        <!-- v-else-if 而非 v-else：出错时不能同时渲染一块空白画布 -->
+        <div v-else-if="!errorMsg" ref="graphRef" class="graph-canvas">
+          <!-- 加载中保留画布挂载，避免每次刷新销毁/重建 ECharts 实例 -->
           <EChartsGraph
+            v-if="graphNodes.length"
             :nodes="graphNodes"
             :edges="graphEdges"
             :type-colors="typeColors"
             :show-legend="false"
+            :max-labeled-nodes="40"
+            :max-edges="graphEdgeBudget(graphNodes.length)"
             @node-click="onNodeClick"
             @blank-click="clearDetail"
           />
+          <div v-if="loading" class="graph-overlay">
+            <div class="loading-spinner"></div>
+          </div>
         </div>
       </div>
 
@@ -67,8 +80,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import EChartsGraph, { type GraphNode as EGNode, type GraphEdge as EGEdge } from '../../shared/EChartsGraph.vue'
+import { graphEdgeBudget } from '@/utils/graph-limits'
 
 interface Props {
   groupId: number
@@ -79,13 +93,22 @@ const props = defineProps<Props>()
 
 const graphRef = ref<HTMLElement | null>(null)
 const loading = ref(false)
+const rebuilding = ref(false)
+const errorMsg = ref('')
 const selectedNode = ref<EGNode | null>(null)
 
-const stats = ref({ totalNodes: 0, totalEdges: 0 })
+const stats = ref({ totalNodes: 0, totalEdges: 0, truncated: false })
 
 // 归一化后交给统一渲染组件 EChartsGraph 的节点/边；群图谱包含知识文档与实体节点及关系边
 const graphNodes = ref<EGNode[]>([])
 const graphEdges = ref<EGEdge[]>([])
+// 实际渲染数量（与截断前的真实总数区分展示）；边只统计两端都存在且在预算内的部分
+const shownNodes = computed(() => graphNodes.value.length)
+const shownEdges = computed(() => {
+  const ids = new Set(graphNodes.value.map(n => String(n.id)))
+  const valid = graphEdges.value.filter(e => ids.has(String(e.source)) && ids.has(String(e.target)))
+  return Math.min(valid.length, graphEdgeBudget(graphNodes.value.length))
+})
 // 群知识图谱：知识文档青 / 实体绿（与 admin 一致），关系边由 EChartsGraph 默认渲染
 const typeColors: Record<string, [string, string]> = {
   knowledge: ['#5eead4', '#14b8a6'],      // 青 · 知识文档节点
@@ -100,40 +123,82 @@ const typeLabel = (type: string) => {
   return map[type] || type
 }
 
-async function loadGraph() {
-  loading.value = true
-  clearDetail()
-  let graph: { nodes: EGNode[]; edges: EGEdge[]; total_nodes?: number; total_edges?: number } | undefined
+const authHeaders = () => ({ 'Authorization': `Bearer ${localStorage.getItem('token')}` })
+const REQUEST_TIMEOUT_MS = 15000
+// 重建要逐文档重写节点/关系（上限 500 篇），比读图慢得多，给更长的超时但同样要能中止。
+const REBUILD_TIMEOUT_MS = 60000
+
+// 图谱构建在服务端是同步的，大群可能较慢：超时主动中止，避免界面无限转圈。
+async function fetchGraph(): Promise<void> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS)
   try {
     const res = await fetch(
       `${props.serverUrl}/api/v1/groups/${props.groupId}/knowledge-graph?max_nodes=80`,
-      { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
+      { headers: authHeaders(), signal: ctrl.signal }
     )
     const data = await res.json()
     if (data.code !== 0) {
-      renderEmpty()
-      return
+      throw new Error(data.message || '加载知识图谱失败')
     }
     const raw = data.data
-    graph = raw || { nodes: [], edges: [] }
-    stats.value = { totalNodes: raw?.total_nodes || 0, totalEdges: raw?.total_edges || 0 }
+    stats.value = {
+      totalNodes: raw?.total_nodes || 0,
+      totalEdges: raw?.total_edges || 0,
+      truncated: !!raw?.truncated,
+    }
+    graphNodes.value = raw?.nodes || []
+    graphEdges.value = raw?.edges || []
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function loadGraph() {
+  if (loading.value) return
+  loading.value = true
+  errorMsg.value = ''
+  clearDetail()
+  try {
+    await fetchGraph()
   } catch (e) {
     console.error('加载群知识图谱失败', e)
+    errorMsg.value = '加载知识图谱失败或超时，请稍后重试'
     renderEmpty()
-    return
   } finally {
     loading.value = false
   }
-  if (graph && graph.nodes && graph.nodes.length) {
-    graphNodes.value = graph.nodes
-    graphEdges.value = graph.edges || []
-  } else {
-    renderEmpty()
+}
+
+// 重建图谱：清理旧版全连接边与孤儿节点。服务端仅允许群主/管理员调用。
+async function rebuildGraph() {
+  if (rebuilding.value) return
+  if (!window.confirm('将按现有文档重建本群知识图谱，并清理旧版冗余关系。确认继续？')) return
+  rebuilding.value = true
+  errorMsg.value = ''
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), REBUILD_TIMEOUT_MS)
+  try {
+    const res = await fetch(
+      `${props.serverUrl}/api/v1/groups/${props.groupId}/knowledge-graph/rebuild`,
+      { method: 'POST', headers: authHeaders(), signal: ctrl.signal }
+    )
+    const data = await res.json()
+    if (data.code !== 0) {
+      throw new Error(data.message || '重建失败')
+    }
+    await loadGraph()
+  } catch (e) {
+    console.error('重建群知识图谱失败', e)
+    errorMsg.value = '重建图谱失败或超时，请稍后重试'
+  } finally {
+    clearTimeout(timer)
+    rebuilding.value = false
   }
 }
 
 function renderEmpty() {
-  stats.value = { totalNodes: 0, totalEdges: 0 }
+  stats.value = { totalNodes: 0, totalEdges: 0, truncated: false }
   graphNodes.value = []
   graphEdges.value = []
 }
@@ -153,6 +218,11 @@ onMounted(loadGraph)
 .ai-graph { position: relative; min-height: 320px; }
 .graph-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-color, #eee); }
 .graph-stats { display: flex; gap: 16px; font-size: var(--font-size-xs); color: var(--text-secondary, #666); }
+.graph-actions { display: flex; gap: 8px; }
+.graph-hint { color: var(--warning-color, #d97706); }
+.graph-error { padding: 8px 16px; font-size: var(--font-size-xs); color: var(--danger-color, #dc2626); }
+.graph-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--card-bg, rgba(255,255,255,0.72)); z-index: 10; }
+.btn:disabled { opacity: 0.6; cursor: default; }
 .btn { padding: 4px 12px; font-size: var(--font-size-xs); background: var(--card-bg, #f5f5f5); color: var(--text-color, #333); border: 1px solid var(--border-color, #ddd); border-radius: 6px; cursor: pointer; }
 .btn:hover { background: var(--primary-color-alpha, rgba(99, 102, 241, 0.08)); }
 .graph-body { display: flex; align-items: stretch; }

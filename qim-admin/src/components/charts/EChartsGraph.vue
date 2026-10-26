@@ -30,6 +30,11 @@ const props = withDefaults(defineProps<{
   showLegend?: boolean
   showEdgeLabel?: boolean
   sizeByCount?: boolean
+  // 节点数超过该值就关闭常显标签。0 = 不限制：admin 图谱靠标签阅读，
+  // 默认 max_nodes=50，若按 40 截标签会默认看不到任何节点名。
+  maxLabeledNodes?: number
+  // 前端兜底边预算。0 = 不限制：后端已按 max_nodes×4 截断，这里无需再静默砍边。
+  maxEdges?: number
 }>(), {
   edges: () => [],
   typeColors: () => ({
@@ -42,6 +47,8 @@ const props = withDefaults(defineProps<{
   showLegend: true,
   showEdgeLabel: false,
   sizeByCount: false,
+  maxLabeledNodes: 0,
+  maxEdges: 0,
 })
 
 const emit = defineEmits<{
@@ -51,16 +58,17 @@ const emit = defineEmits<{
 
 const elRef = ref<HTMLDivElement | null>(null)
 let chart: any = null
+let echartsLib: any = null
+let renderSeq = 0
 
 const BASE_SIZE = 22
 const MAX_COUNT_SCALE = 4
+// 节点过多时关闭力导向逐帧动画（每帧 O(n²) 且不收敛）。与标签显隐解耦：
+// 标签策略交给宿主的 maxLabeledNodes（admin 默认不限制），动画阈值按规模兜底。
+const MAX_ANIMATED_NODES = 40
 
-function gradientFor(echarts: any, type: string): any {
-  const colors = props.typeColors[type] || props.typeColors.knowledge || ['#c4b5fd', '#8b5cf6']
-  return new (echarts.graphic as any).LinearGradient(0, 0, 0, 1, [
-    { offset: 0, color: colors[0] },
-    { offset: 1, color: colors[1] },
-  ])
+function colorsFor(type: string): [string, string] {
+  return props.typeColors[type] || props.typeColors.knowledge || ['#c4b5fd', '#8b5cf6']
 }
 
 function legendData(): { name: string; itemStyle: { color: string } }[] {
@@ -71,19 +79,17 @@ function legendData(): { name: string; itemStyle: { color: string } }[] {
   }))
 }
 
-async function render() {
-  if (!elRef.value) return
-  disposeChart()
+async function ensureECharts(): Promise<any> {
+  if (echartsLib) return echartsLib
+  const mod = await import('echarts')
+  echartsLib = (mod as any).default ?? mod
+  return echartsLib
+}
 
-  let echarts: any
-  try {
-    const mod = await import('echarts')
-    echarts = mod.default ?? mod
-  } catch (e) {
-    console.error('加载图谱引擎失败', e)
-    return
-  }
-
+function buildOption() {
+  const totalNodes = props.nodes.length
+  // 标签是否常显由宿主决定（maxLabeledNodes=0 表示不限制）。
+  const showAllLabels = props.maxLabeledNodes <= 0 || totalNodes <= props.maxLabeledNodes
   const nodes = props.nodes.map((n) => {
     const size = props.sizeByCount && n.count
       ? BASE_SIZE + Math.min(Math.max(n.count, 1), MAX_COUNT_SCALE) * 5
@@ -98,41 +104,45 @@ async function render() {
       type: n.type,
       count: n.count ?? 1,
       symbolSize: size,
+      // 纯色 + 无阴影：力导向每帧重绘时，逐节点渐变与 shadowBlur 是主要瓶颈。
       itemStyle: {
-        color: gradientFor(echarts, n.type),
+        color: colorsFor(n.type)[1],
         borderColor: '#fff',
-        borderWidth: 1.5,
-        shadowBlur: 12,
-        shadowColor: 'rgba(0,0,0,0.25)',
+        borderWidth: 1,
       },
       _raw: n,
     }
   })
 
-  const links = (props.edges || []).map((e) => {
-    const weight = e.weight || 1
-    const link: Record<string, any> = {
-      source: e.source,
-      target: e.target,
-      weight,
-      lineStyle: {
-        width: Math.max(1.6, Math.min(1.6 + weight * 1.5, 4.5)),
-        opacity: Math.max(0.55, Math.min(0.55 + weight * 0.2, 0.95)),
-        curveness: 0.05,
-        color: '#8f6fa6',
-      },
-    }
-    if (props.showEdgeLabel && e.label) {
-      link.label = { show: true, color: '#7c8698', fontSize: 10 }
-    }
-    return link
-  })
+  const known = new Set(nodes.map((n) => n.name))
+  // 预算由宿主传（0=不限制）：admin 图谱的后端已按 max_nodes×4 截断，
+  // 再按返回节点数算预算会在返回节点偏少时静默多砍一批边。
+  const edgeLimit = props.maxEdges > 0 ? props.maxEdges : Number.POSITIVE_INFINITY
+  const links = (props.edges || [])
+    .filter((e) => known.has(String(e.source)) && known.has(String(e.target)))
+    .slice(0, edgeLimit)
+    .map((e) => {
+      const weight = e.weight || 1
+      const link: Record<string, any> = {
+        source: e.source,
+        target: e.target,
+        weight,
+        lineStyle: {
+          width: Math.max(1.2, Math.min(1.2 + weight, 3.5)),
+          opacity: 0.6,
+          curveness: 0.05,
+          color: '#8f6fa6',
+        },
+      }
+      if (props.showEdgeLabel && e.label) {
+        link.label = { show: true, color: '#7c8698', fontSize: 10 }
+      }
+      return link
+    })
 
-  chart = echarts.init(elRef.value)
-  const option = {
+  return {
     backgroundColor: 'transparent',
-    animationDuration: 600,
-    animationEasingUpdate: 'quinticInOut',
+    animation: totalNodes <= MAX_ANIMATED_NODES,
     tooltip: {
       trigger: 'item',
       confine: true,
@@ -158,15 +168,16 @@ async function render() {
           edgeLength: 120,
           gravity: 0.1,
           friction: 0.6,
-          layoutAnimation: true,
+          // 大图关闭逐帧布局动画（每帧 O(n²) 永不收敛）；小图保留收拢过程。
+          layoutAnimation: totalNodes <= MAX_ANIMATED_NODES,
         },
         emphasis: {
           focus: 'adjacency',
+          label: { show: true },
           lineStyle: { width: 3, opacity: 1 },
-          itemStyle: { shadowBlur: 20, shadowColor: 'rgba(0,0,0,0.35)' },
         },
         label: {
-          show: true,
+          show: showAllLabels,
           fontSize: 12,
           color: '#333',
           position: 'bottom',
@@ -182,15 +193,33 @@ async function render() {
       },
     ],
   }
-  chart.setOption(option)
+}
 
-  chart.on('click', (params: any) => {
-    if (params.dataType === 'node' && params.data?._raw) {
-      emit('node-click', params.data._raw as GraphNode)
-    } else {
-      emit('blank-click')
-    }
-  })
+async function render() {
+  if (!elRef.value) return
+  const seq = ++renderSeq
+  let echarts: any
+  try {
+    echarts = await ensureECharts()
+  } catch (e) {
+    console.error('加载图谱引擎失败', e)
+    return
+  }
+  // 并发重绘保护：等待 echarts 加载期间若 props 又变了，以最后一次为准。
+  if (seq !== renderSeq || !elRef.value) return
+
+  if (!chart) {
+    chart = echarts.init(elRef.value)
+    chart.on('click', (params: any) => {
+      if (params.dataType === 'node' && params.data?._raw) {
+        emit('node-click', params.data._raw as GraphNode)
+      } else {
+        emit('blank-click')
+      }
+    })
+  }
+  // 复用实例 + notMerge：避免每次刷新 dispose/init 造成的整图重建与实例泄漏。
+  chart.setOption(buildOption(), true)
 }
 
 function disposeChart() {
@@ -200,12 +229,17 @@ function disposeChart() {
   }
 }
 
-// 容器尺寸变化时同步画布（如右侧详情卡片出现/收起改变容器宽度），
-// 否则 init 时定死的 canvas 会以旧尺寸溢出、盖住相邻面板。
+// 容器尺寸变化时同步画布（如右侧详情卡片出现/收起改变容器宽度）。
+// 防抖：拖拽窗口/过渡动画期间会连续触发，逐帧 resize 会叠加在布局计算上。
+let resizeTimer: ReturnType<typeof setTimeout> | null = null
 function handleResize() {
-  if (!chart || !elRef.value) return
-  if (elRef.value.clientWidth <= 0 || elRef.value.clientHeight <= 0) return
-  chart.resize && chart.resize()
+  if (resizeTimer) clearTimeout(resizeTimer)
+  resizeTimer = setTimeout(() => {
+    resizeTimer = null
+    if (!chart || !elRef.value) return
+    if (elRef.value.clientWidth <= 0 || elRef.value.clientHeight <= 0) return
+    chart.resize && chart.resize()
+  }, 150)
 }
 
 let ro: ResizeObserver | null = null
@@ -226,6 +260,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (ro) ro.disconnect()
+  if (resizeTimer) clearTimeout(resizeTimer)
+  renderSeq++
   disposeChart()
 })
 </script>
