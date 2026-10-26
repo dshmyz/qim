@@ -509,6 +509,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.PUT("/groups/:id/ai-settings", handler.UpdateGroupAISettings)
 			// 群助手群级记忆管理
 			authed.GET("/groups/:id/group-memories", handler.GetGroupMemories)
+			authed.GET("/groups/:id/group-memories/count", handler.GetGroupMemoryCount)
 			authed.DELETE("/groups/:id/group-memories/:memory_id", handler.DeleteGroupMemory)
 			authed.PUT("/groups/:id/group-memories/:memory_id", handler.UpdateGroupMemory)
 			authed.DELETE("/groups/:id/group-memories", handler.ClearGroupMemories)
@@ -523,6 +524,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, hub *ws.Hub) {
 			authed.POST("/groups/:id/ai-documents/batch-retry", handler.BatchRetryDocuments)
 			// 群知识图谱（非管理员，群成员可查看自己群的知识图谱）
 			authed.GET("/groups/:id/knowledge-graph", handler.GetGroupKnowledgeGraph)
+			// 重建群知识图谱（群主/管理员）：清理旧版全连接边与孤儿节点
+			authed.POST("/groups/:id/knowledge-graph/rebuild", handler.RebuildGroupKnowledgeGraph)
 			// 设置/取消管理员
 			authed.PUT("/groups/:id/members/:user_id/role", handler.SetMemberRole)
 			// 转让群主
