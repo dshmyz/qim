@@ -9,10 +9,19 @@ import (
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/dshmyz/qim/qim-server/ws"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+// streamChunkSaveInterval 控制流式消息的落库节流窗口。
+// 流式期间的实时性由 WS 广播承接（前端不读库），落库只为崩溃恢复保留进度；
+// 逐 token 落库会把同一行 UPDATE 写上千次，按窗口合并后降为按秒级频率落库，
+// 终态由 finish 落库。
+// 声明为 var 以便测试缩小窗口。
+var streamChunkSaveInterval = 500 * time.Millisecond
 
 type MessageSender interface {
 	SendAIMessage(conversationID uint, content string, assistantName string, extra map[string]interface{}) error
@@ -136,6 +145,7 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 	var created *model.Message
 	var conv *model.Conversation
 	accumulatedContent := ""
+	var lastSavedAt time.Time // 上次落库时间：sendChunk 据此按窗口节流
 
 	// 幂等创建：已创建则直接返回当前消息；未创建则取 AI 发送者、加载会话、
 	// 构造空流式消息并落库，随后缓存 conv 供 finish 广播复用。全程同一 goroutine 顺序调用。
@@ -190,9 +200,16 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 			return err
 		}
 		msg.Content = accumulatedContent
-		if err := s.db.Save(msg).Error; err != nil {
-			logger.WithModule("MessageSender").Error("保存流式消息失败", "error", err)
-			return err
+		// 落库按窗口节流：lastSavedAt 零值保证首块立即落库；此后每窗口一次。
+		// 广播不受影响，每帧仍用最新全文实时下发。
+		if time.Since(lastSavedAt) >= streamChunkSaveInterval {
+			// Omit 关联：Sender 已显式设过 SenderID，默认 Save 会顺带 upsert users 行，
+			// 流式期间每窗口白写一次。
+			if err := s.db.Omit(clause.Associations).Save(msg).Error; err != nil {
+				logger.WithModule("MessageSender").Error("保存流式消息失败", "error", err)
+				return err
+			}
+			lastSavedAt = time.Now()
 		}
 		if s.hub != nil {
 			msgData := gin.H{
@@ -233,7 +250,7 @@ func (s *WebSocketMessageSender) SendStreamingAIMessage(conversationID uint, ass
 		}
 		msg.Content = accumulatedContent
 		msg.Type = "markdown"
-		if err := s.db.Save(msg).Error; err != nil {
+		if err := s.db.Omit(clause.Associations).Save(msg).Error; err != nil {
 			logger.WithModule("MessageSender").Error("完成流式消息失败", "error", err)
 			return nil
 		}
