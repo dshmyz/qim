@@ -748,9 +748,19 @@ func (h *AIHandler) GetKnowledgeGraph(c *gin.Context) {
 	}
 
 	query := c.Query("query")
-	maxNodes := 50
+	maxNodes := 80
 	if maxNodesStr := c.Query("max_nodes"); maxNodesStr != "" {
 		fmt.Sscanf(maxNodesStr, "%d", &maxNodes)
+	}
+	if maxNodes < 1 {
+		maxNodes = 1
+	}
+	if maxNodes > 200 {
+		maxNodes = 200
+	}
+	maxEdges := 0
+	if maxEdgesStr := c.Query("max_edges"); maxEdgesStr != "" {
+		fmt.Sscanf(maxEdgesStr, "%d", &maxEdges)
 	}
 
 	// 群集合（group_{id}）走真正的拓扑构建（文档/实体节点 + 关系边 + 实体反查），
@@ -759,7 +769,7 @@ func (h *AIHandler) GetKnowledgeGraph(c *gin.Context) {
 		groupID, _ := strconv.ParseUint(m[1], 10, 32)
 		docSvc := di.GlobalContainer.GroupDocumentService
 		if docSvc != nil {
-			graph, err := docSvc.BuildGroupKnowledgeGraph(uint(groupID), query, maxNodes)
+			graph, err := docSvc.BuildGroupKnowledgeGraph(uint(groupID), query, maxNodes, maxEdges)
 			if err != nil {
 				logger.WithModule("GroupKnowledgeGraph").Error("构建群知识图谱失败", "groupID", groupID, "error", err)
 			} else {
@@ -769,6 +779,7 @@ func (h *AIHandler) GetKnowledgeGraph(c *gin.Context) {
 					"total_nodes":     graph.TotalNodes,
 					"total_edges":     graph.TotalEdges,
 					"knowledge_count": graph.KnowledgeCount,
+					"truncated":       graph.Truncated,
 				})
 				return
 			}

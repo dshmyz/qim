@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -98,6 +101,34 @@ func (s *GroupDocumentService) UpdateDocument(doc *model.GroupDocument) error {
 
 func (s *GroupDocumentService) DeleteDocument(id uint) error {
 	return s.db.Delete(&model.GroupDocument{}, id).Error
+}
+
+// RemoveGroupDocument 解绑群文档：删除数据库记录，同时清理向量切片与图谱节点/边。
+// 旧实现只删 group_documents 行，解绑后的文档内容仍会被检索到、图里也长期残留。
+func (s *GroupDocumentService) RemoveGroupDocument(groupID, fileID uint) (int, error) {
+	var docs []model.GroupDocument
+	if err := s.db.Where("group_id = ? AND file_id = ?", groupID, fileID).Find(&docs).Error; err != nil {
+		return 0, err
+	}
+	collectionName := fmt.Sprintf("group_%d", groupID)
+	removed := 0
+	for _, d := range docs {
+		if err := s.deleteDocumentVectors(collectionName, d.ID); err != nil {
+			// 切片没删干净就不能删记录：group_documents 行一旦没了，这批向量就无法再按
+			// doc_id 定位，解绑的文档会继续被检索到、继续进 AI 回答。保留记录即可重试。
+			logger.WithModule("GroupDocument").Error("删除文档切片失败，保留文档记录",
+				"docID", d.ID, "error", err)
+			return removed, fmt.Errorf("删除文档切片失败: %w", err)
+		}
+		if err := s.deleteDocumentGraph(groupID, d.ID); err != nil {
+			logger.WithModule("GroupDocument").Warn("删除文档图谱失败", "docID", d.ID, "error", err)
+		}
+		if err := s.db.Delete(&model.GroupDocument{}, d.ID).Error; err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
 }
 
 func (s *GroupDocumentService) GetDocumentsWithStatus(groupID uint) ([]map[string]interface{}, error) {
@@ -305,6 +336,7 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 
 	// 逐块向量化（无批量 embedding API，串行调用），收集后一次性批量写入，
 	// 把 N 次分散的 Badger 写事务合并为一次 UpsertBatch，降低写入开销。
+	// 单块 embedding 带 3 次指数退避重试（见 embedWithRetry）。
 	type pendingChunk struct {
 		docID string
 		vec   []float32
@@ -316,7 +348,9 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 		if len(chunk.Content) < 10 {
 			continue // 跳过太短的片段
 		}
-		embedding, err := s.aiService.Embed(chunk.Content)
+		// 函数级重试（3 次指数退避）：embedding 服务偶发 5xx/网络抖动曾直接废掉
+		// 整个文档（旧向量已删，只能全量重来）。只重试，不改变失败语义。
+		embedding, err := embedWithRetry(s.aiService, chunk.Content)
 		if err != nil {
 			s.db.Model(status).Updates(map[string]interface{}{
 				"status": "failed",
@@ -376,6 +410,27 @@ func (s *GroupDocumentService) ProcessDocument(groupDocID uint) (err error) {
 	return nil
 }
 
+// embedWithRetry 对单条 embedding 调用做 3 次指数退避重试（200ms/400ms/800ms）。
+// Embedding 服务偶发 5xx/网络抖动不应让整个文档处理失败（旧向量已删，
+// 失败意味着用户必须手动重试全量）。3 次后仍失败按原错误返回。
+func embedWithRetry(aiSvc *ai.AIService, text string) ([]float32, error) {
+	const attempts = 3
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(1<<(i-1)) * 200 * time.Millisecond)
+		}
+		vec, err := aiSvc.Embed(text)
+		if err == nil {
+			return vec, nil
+		}
+		lastErr = err
+		logger.WithModule("GroupDocument").Warn("embedding 调用失败，准备重试",
+			"attempt", i+1, "maxAttempts", attempts, "error", err)
+	}
+	return nil, lastErr
+}
+
 // deleteDocumentVectors 删除某个文档的所有语义切片（按 metadata.doc_id 过滤）。
 //
 // gracedb 没有 delete-by-metadata API，仍需遍历集合逐条核对 metadata；但把匹配到的
@@ -387,6 +442,11 @@ func (s *GroupDocumentService) deleteDocumentVectors(collectionName string, docI
 	}
 	ids, err := s.gracedbDB.ListEmbeddingIDs(collectionName)
 	if err != nil {
+		// 集合不存在 = 该文档从未产生切片（绑定后未处理过），按"无可删"返回成功；
+		// 其余错误必须上抛，否则调用方会误以为切片已清干净。
+		if errors.Is(err, types.ErrNotFound) {
+			return nil
+		}
 		return err
 	}
 	docIDStr := fmt.Sprintf("%d", docID)
@@ -405,62 +465,145 @@ func (s *GroupDocumentService) deleteDocumentVectors(collectionName string, docI
 	}
 	if err := s.gracedbDB.DeleteEmbeddingBatch(collectionName, toDelete); err != nil {
 		logger.WithModule("GroupDocument").Warn("批量删除文档切片失败", "docID", docID, "count", len(toDelete), "error", err)
+		return err
 	}
 	return nil
 }
 
-// buildDocumentGraph 为单个群文档建立实体关系图（GraphRAG MVP）。
+// 群知识图谱的预算与构造规则。
 //
-// 写入方式（幂等）：UpsertNode/UpsertEdge 覆盖式更新，重复处理同一文档不会产生重复节点。
-// 结构：一个 document 节点 + 从正文抽取的实体节点，文档→实体 "mentions" 边，
-// 实体间在同一文档内共现的 "co_occurs" 边。
+// 旧实现把「同一文档内实体两两全连接」写成持久化的 co_occurs 边，边数随实体数平方增长；
+// 再叠加 BFS 两跳，80 个节点能带出上千条边，前端力导向直接卡死。这里改为：
+//   - 存储层只保留 文档→实体 mentions 边（线性规模）；
+//   - 实体间关系在「构建时」按跨文档共现计算，且每个实体只保留有限邻居；
+//   - 实体节点 ID 带群前缀，避免跨群共享同一 entity 节点导致串味。
+const (
+	groupGraphDefaultMaxNodes = 80
+	groupGraphHardMaxNodes    = 200
+	groupGraphEdgesPerNode    = 4 // 默认边预算 = 节点数 × 该系数
+	groupGraphHardMaxEdges    = 1200
+	groupGraphEdgePerEntity   = 6   // 每个实体最多保留的跨文档共现邻居
+	groupGraphMaxDocs         = 500 // 单群参与建图的文档上限（按创建时间倒序取最近）
+	groupGraphMinCoDoc        = 2   // 实体对至少共同出现在多少个文档才建边
+	groupGraphPairEntityCap   = 40  // 单文档参与共现配对的实体上限
+)
+
+func groupDocNodeID(groupID, docID uint) string {
+	return fmt.Sprintf("g%d:doc:%d", groupID, docID)
+}
+
+func groupEntityNodeID(groupID uint, name string) string {
+	return fmt.Sprintf("g%d:entity:%s", groupID, name)
+}
+
+// legacyDocNodeID / legacyEntityNodeID 是旧版全局命名空间下的节点 ID，仅用于清理与迁移。
+func legacyDocNodeID(docID uint) string { return fmt.Sprintf("doc:%d", docID) }
+
+func legacyEntityNodeID(name string) string { return "entity:" + name }
+
+// validGraphEntity 过滤建图实体：保留 PRD-2024-001 / BUG-123 / bug-123 这类编号 token，
+// 丢掉 co-occurs / e-mail 这类自然语言连字符词，以及 utf-8 / sha-256 这类通用技术编码。
+// 历史数据里已经写入的噪音实体也靠这道过滤在构建期自然消失，无需重新抽取正文。
+func validGraphEntity(name string) bool {
+	name = strings.TrimSpace(name)
+	r := []rune(name)
+	if len(r) < 3 || len(r) > 40 {
+		return false
+	}
+	hasDigit, hasLetter := false, false
+	for _, c := range name {
+		if c >= '0' && c <= '9' {
+			hasDigit = true
+		}
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+			hasLetter = true
+		}
+	}
+	if !hasDigit || !hasLetter {
+		return false
+	}
+	switch strings.ToLower(name) {
+	case "utf-8", "utf-16", "utf-32", "sha-1", "sha-256", "sha-512", "md5", "base64":
+		return false
+	}
+	return true
+}
+
+func filterGraphEntities(names []string) []string {
+	seen := make(map[string]bool, len(names))
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if !validGraphEntity(n) || seen[n] {
+			continue
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	return out
+}
+
+// buildDocumentGraph 为单个群文档建立实体关系图。
 //
-// MVP 采用确定性抽取（无额外 LLM 调用），仅识别文档编码等明确 token；
-// LLM 级实体抽取作为后续增强，不在本次范围。
+// 存储结构（幂等）：一个文档节点 + 实体节点 + 文档→实体 mentions 边。
+// 实体间关系不再落库（见 groupGraph 常量组的说明），由 BuildGroupKnowledgeGraph
+// 按跨文档共现现算，边数天然有界。重复处理同一文档前先清掉旧边，避免实体减少后残留。
 func (s *GroupDocumentService) buildDocumentGraph(groupID, docID uint, title, text string) error {
 	if s.gracedbDB == nil {
 		return nil
 	}
-	g := s.gracedbDB.Graph()
-
-	docNodeID := fmt.Sprintf("doc:%d", docID)
-	docNode := &graph.GraphNode{
-		ID:     docNodeID,
-		Type:   "document",
-		Labels: []string{"group_document"},
-		Properties: map[string]string{
-			"group_id": fmt.Sprintf("%d", groupID),
-			"doc_id":   fmt.Sprintf("%d", docID),
-			"title":    title,
-		},
+	if err := s.deleteDocumentGraph(groupID, docID); err != nil {
+		logger.WithModule("GroupDocument").Warn("清理旧图谱失败，继续重建",
+			"groupID", groupID, "docID", docID, "error", err)
 	}
-	if err := g.UpsertNode(docNode); err != nil {
+
+	entities := filterGraphEntities(extractGraphEntities(text))
+	if err := s.writeDocumentGraph(groupID, docID, title, entities); err != nil {
+		return err
+	}
+
+	logger.WithModule("GroupDocument").Info("文档知识图谱构建完成",
+		"group_id", groupID, "doc_id", docID, "entities", len(entities))
+	return nil
+}
+
+// writeDocumentGraph 写入规范化后的文档节点与 mentions 边（不做清理，调用方负责）。
+func (s *GroupDocumentService) writeDocumentGraph(groupID, docID uint, title string, entities []string) error {
+	g := s.gracedbDB.Graph()
+	docNodeID := groupDocNodeID(groupID, docID)
+
+	props := map[string]string{
+		"group_id": fmt.Sprintf("%d", groupID),
+		"doc_id":   fmt.Sprintf("%d", docID),
+		"title":    title,
+	}
+	if len(entities) > 0 {
+		if raw, err := json.Marshal(entities); err == nil {
+			props["entities"] = string(raw)
+		}
+	}
+	if err := g.UpsertNode(&graph.GraphNode{
+		ID:         docNodeID,
+		Type:       "document",
+		Labels:     []string{"group_document"},
+		Properties: props,
+	}); err != nil {
 		return fmt.Errorf("写入文档节点失败: %w", err)
 	}
 
-	entities := extractGraphEntities(text)
-	entitySet := make(map[string]bool)
 	for _, e := range entities {
-		if entitySet[e] {
-			continue
-		}
-		entitySet[e] = true
-
-		// 实体节点
-		entityID := "entity:" + e
+		entityID := groupEntityNodeID(groupID, e)
 		if err := g.UpsertNode(&graph.GraphNode{
 			ID:     entityID,
 			Type:   "entity",
 			Labels: []string{"extracted"},
 			Properties: map[string]string{
-				"name":   e,
-				"doc_id": fmt.Sprintf("%d", docID),
+				"name":     e,
+				"group_id": fmt.Sprintf("%d", groupID),
 			},
 		}); err != nil {
 			return fmt.Errorf("写入实体节点失败: %w", err)
 		}
-
-		// 文档 → 实体 mentions 边
 		if err := g.UpsertEdge(&graph.GraphEdge{
 			ID:         fmt.Sprintf("%s-mentions-%s", docNodeID, entityID),
 			FromNodeID: docNodeID,
@@ -471,29 +614,6 @@ func (s *GroupDocumentService) buildDocumentGraph(groupID, docID uint, title, te
 			return fmt.Errorf("写入 mentions 边失败: %w", err)
 		}
 	}
-
-	// 实体共现边（同一文档内的实体彼此 co_occurs），便于关系问答联动多个实体
-	entList := make([]string, 0, len(entitySet))
-	for e := range entitySet {
-		entList = append(entList, e)
-	}
-	for i := 0; i < len(entList); i++ {
-		for j := i + 1; j < len(entList); j++ {
-			a, b := "entity:"+entList[i], "entity:"+entList[j]
-			if err := g.UpsertEdge(&graph.GraphEdge{
-				ID:         fmt.Sprintf("%s-co-%s", a, b),
-				FromNodeID: a,
-				ToNodeID:   b,
-				Type:       "co_occurs",
-				Weight:     1.0,
-			}); err != nil {
-				return fmt.Errorf("写入共现边失败: %w", err)
-			}
-		}
-	}
-
-	logger.WithModule("GroupDocument").Info("文档知识图谱构建完成",
-		"doc_id", docID, "entities", len(entities))
 	return nil
 }
 
@@ -510,7 +630,7 @@ func extractGraphEntities(text string) []string {
 	// 编码类 token：大写字母(可带数字) 或 数字后跟连字符和数字，如 PRD-2024-001 / BUG-123 / V1.2-3
 	codeRe := regexp.MustCompile(`[A-Za-z][A-Za-z0-9]*[-_][0-9A-Za-z]+(?:[-_][0-9A-Za-z]+)*`)
 	for _, m := range codeRe.FindAllString(text, -1) {
-		if len(m) < 3 || len(m) > 40 {
+		if !validGraphEntity(m) {
 			continue
 		}
 		if !seen[m] {
@@ -519,6 +639,212 @@ func extractGraphEntities(text string) []string {
 		}
 	}
 	return out
+}
+
+// entityNameFromNode 取节点上的实体名，兼容新旧两种节点 ID 命名空间。
+func entityNameFromNode(n *graph.GraphNode) string {
+	if n == nil {
+		return ""
+	}
+	if v := strings.TrimSpace(n.Properties["name"]); v != "" {
+		return v
+	}
+	if i := strings.Index(n.ID, ":entity:"); i >= 0 {
+		return n.ID[i+len(":entity:"):]
+	}
+	return strings.TrimPrefix(n.ID, "entity:")
+}
+
+// mentionEntities 读取某文档节点出边（mentions）上的实体名。
+func (s *GroupDocumentService) mentionEntities(docNodeID string) []string {
+	if s.gracedbDB == nil {
+		return nil
+	}
+	nodes, _, err := s.gracedbDB.Graph().GetNeighbors(docNodeID, graph.NeighborOptions{
+		Direction: "out", EdgeTypes: []string{"mentions"}, MaxDepth: 1,
+	})
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		if n.Type != "entity" {
+			continue
+		}
+		if name := entityNameFromNode(n); name != "" {
+			names = append(names, name)
+		}
+	}
+	return filterGraphEntities(names)
+}
+
+// documentEntityNames 返回文档参与建图的实体名，兼容三种历史形态：
+// 新节点属性 entities（当前写入格式）→ 新节点 mentions 边 → 旧版全局节点 mentions 边。
+func (s *GroupDocumentService) documentEntityNames(groupID, docID uint) []string {
+	if s.gracedbDB == nil {
+		return nil
+	}
+	g := s.gracedbDB.Graph()
+	docNodeID := groupDocNodeID(groupID, docID)
+	if n, err := g.GetNode(docNodeID); err == nil && n != nil {
+		if raw := n.Properties["entities"]; raw != "" {
+			var names []string
+			if json.Unmarshal([]byte(raw), &names) == nil {
+				if filtered := filterGraphEntities(names); len(filtered) > 0 {
+					return filtered
+				}
+			}
+		}
+		if names := s.mentionEntities(docNodeID); len(names) > 0 {
+			return names
+		}
+	}
+	return s.mentionEntities(legacyDocNodeID(docID))
+}
+
+// deleteDocumentGraph 删除文档节点及其 mentions 边，并回收不再被任何文档提及的实体节点。
+// 新旧两套命名空间都清理，保证升级/解绑后不残留。
+func (s *GroupDocumentService) deleteDocumentGraph(groupID, docID uint) error {
+	if s.gracedbDB == nil {
+		return nil
+	}
+	g := s.gracedbDB.Graph()
+	for _, docNodeID := range []string{groupDocNodeID(groupID, docID), legacyDocNodeID(docID)} {
+		if _, err := g.GetNode(docNodeID); err != nil {
+			continue
+		}
+		nodes, edges, err := g.GetNeighbors(docNodeID, graph.NeighborOptions{Direction: "out"})
+		if err == nil {
+			for _, e := range edges {
+				_ = g.DeleteEdge(e.ID)
+			}
+			for _, n := range nodes {
+				if n.Type == "entity" {
+					s.gcEntityNode(n.ID)
+				}
+			}
+		}
+		if err := g.DeleteNode(docNodeID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// gcEntityNode 在没有 mentions 边引用时删除实体节点（实体仍被其它文档引用则保留）。
+func (s *GroupDocumentService) gcEntityNode(entityNodeID string) {
+	if s.gracedbDB == nil {
+		return
+	}
+	g := s.gracedbDB.Graph()
+	_, mentions, err := g.GetNeighbors(entityNodeID, graph.NeighborOptions{
+		Direction: "both", EdgeTypes: []string{"mentions"},
+	})
+	if err != nil || len(mentions) > 0 {
+		return
+	}
+	_ = g.DeleteNode(entityNodeID)
+}
+
+// rebuildLegacyDocumentGraph 清理单个文档的旧版全局命名空间节点与 co_occurs 边。
+// 只处理 doc:{id} 旧节点：删除其 mentions/co_occurs 边后，实体节点在不再被任何
+// 文档提及时回收。新命名空间 g{id}: 下的节点不受影响。
+func (s *GroupDocumentService) rebuildLegacyDocumentGraph(groupID, docID uint) {
+	if s.gracedbDB == nil {
+		return
+	}
+	g := s.gracedbDB.Graph()
+	docNodeID := legacyDocNodeID(docID)
+	if _, err := g.GetNode(docNodeID); err != nil {
+		return
+	}
+	nodes, edges, err := g.GetNeighbors(docNodeID, graph.NeighborOptions{Direction: "both"})
+	if err == nil {
+		for _, e := range edges {
+			_ = g.DeleteEdge(e.ID)
+		}
+	}
+	_ = g.DeleteNode(docNodeID)
+	for _, n := range nodes {
+		if n.Type != "entity" {
+			continue
+		}
+		_, coEdges, cerr := g.GetNeighbors(n.ID, graph.NeighborOptions{
+			Direction: "both", EdgeTypes: []string{"co_occurs"},
+		})
+		if cerr == nil {
+			for _, e := range coEdges {
+				_ = g.DeleteEdge(e.ID)
+			}
+		}
+		s.gcEntityNode(n.ID)
+	}
+}
+
+// purgeDocumentGraphForRebuild 兼容保留：完整清理某文档的新旧两套图谱节点/边。
+func (s *GroupDocumentService) purgeDocumentGraphForRebuild(groupID, docID uint) {
+	if s.gracedbDB == nil {
+		return
+	}
+	s.rebuildLegacyDocumentGraph(groupID, docID)
+	if err := s.deleteDocumentGraph(groupID, docID); err != nil {
+		logger.WithModule("GroupDocument").Warn("清理文档图谱失败",
+			"groupID", groupID, "docID", docID, "error", err)
+	}
+}
+
+// GroupGraphRebuildResult 描述一次图谱重建的结果，供管理端展示。
+type GroupGraphRebuildResult struct {
+	Documents int `json:"documents"`
+	Nodes     int `json:"nodes"`
+	Edges     int `json:"edges"`
+}
+
+// RebuildGroupKnowledgeGraph 按当前存储文档重建某群的图谱：
+//   - 把旧版全局命名空间（doc:{id} / entity:{name}）迁移为群内命名空间；
+//   - 删除旧版持久化的 co_occurs 全连接边（边爆炸根因）；
+//   - 丢弃抽取规则下已判为噪音的实体（构建期同样会过滤，这里顺带清理存储）。
+//
+// 只读现有图数据，不重新解析文件正文，因此可在管理端同步触发。
+func (s *GroupDocumentService) RebuildGroupKnowledgeGraph(groupID uint) (*GroupGraphRebuildResult, error) {
+	if s.gracedbDB == nil {
+		return nil, fmt.Errorf("图谱服务未初始化")
+	}
+	var docs []model.GroupDocument
+	if err := s.db.Preload("File").Where("group_id = ?", groupID).
+		Order("created_at DESC").Limit(groupGraphMaxDocs).Find(&docs).Error; err != nil {
+		return nil, fmt.Errorf("读取群文档失败: %w", err)
+	}
+
+	result := &GroupGraphRebuildResult{Documents: len(docs)}
+	type pendingDoc struct {
+		id    uint
+		title string
+		names []string
+	}
+	pending := make([]pendingDoc, 0, len(docs))
+	for _, d := range docs {
+		names := s.documentEntityNames(groupID, d.ID)
+		title := fmt.Sprintf("文档#%d", d.ID)
+		if d.File.Name != "" {
+			title = d.File.Name
+		}
+		pending = append(pending, pendingDoc{id: d.ID, title: title, names: names})
+	}
+	// 先写后清：全部新节点写入成功后才清理旧数据，中途失败旧图保持完整（不至于空图）。
+	for _, p := range pending {
+		if err := s.writeDocumentGraph(groupID, p.id, p.title, p.names); err != nil {
+			return result, err
+		}
+		result.Nodes += 1 + len(p.names)
+		result.Edges += len(p.names)
+	}
+	for _, p := range pending {
+		s.rebuildLegacyDocumentGraph(groupID, p.id)
+	}
+	logger.WithModule("GroupDocument").Info("群知识图谱重建完成",
+		"groupID", groupID, "documents", result.Documents, "nodes", result.Nodes, "edges", result.Edges)
+	return result, nil
 }
 
 func (s *GroupDocumentService) SearchKnowledge(groupID uint, query string, topK int) ([]SearchResult, error) {
@@ -553,9 +879,10 @@ func (s *GroupDocumentService) SearchKnowledgeByDoc(groupID uint, docID uint, qu
 
 // ExpandGraphKnowledge 基于向量召回的顶命中文档，扩展其知识图谱邻接上下文（GraphRAG）。
 //
-// 流程：searchHybrid 取 topK 命中 → 对顶命中的 doc 节点做两跳 GraphBFS → 把命中的
-// 实体/关联文档格式化为文本。用于"关系问答"（如 PRD-2024-001 关联了哪些人/文档），
-// 普通向量检索难答，"实体→邻接"补上。无图谱数据时返回空串，不阻断正常答复。
+// 命中文档 → 该文档抽取的实体 → 这些实体 mentions 反查到的其它文档标题。
+// 存储层只保留 mentions 边，实体间关系不落库，因此"跨文档关联"通过实体反查
+// 实现（旧版靠 BFS 两跳，被历史 co_occurs 全连接边放大；此处反查天然有界：
+// 单文档最多 8 个实体、每实体最多 3 个关联文档）。无图谱数据时返回空串，不阻断。
 func (s *GroupDocumentService) ExpandGraphKnowledge(groupID uint, query string, topK int) string {
 	if s.gracedbDB == nil {
 		return ""
@@ -566,47 +893,66 @@ func (s *GroupDocumentService) ExpandGraphKnowledge(groupID uint, query string, 
 		return ""
 	}
 
-	g := s.gracedbDB.Graph()
+	const (
+		maxEntitiesPerDoc = 8
+		maxRelatedPerEnt  = 3
+	)
 	var parts []string
 	seen := make(map[string]bool)
 	for _, hit := range resp.Results {
 		if len(parts) >= 12 {
 			break
 		}
-		docID := hit.Metadata["doc_id"]
-		if docID == "" {
+		docIDStr := hit.Metadata["doc_id"]
+		if docIDStr == "" || seen[docIDStr] {
 			continue
 		}
-		docNodeID := "doc:" + docID
-		if seen[docNodeID] {
+		seen[docIDStr] = true
+		docID, perr := strconv.ParseUint(docIDStr, 10, 32)
+		if perr != nil {
 			continue
 		}
-		seen[docNodeID] = true
+		names := s.documentEntityNames(groupID, uint(docID))
+		if len(names) > maxEntitiesPerDoc {
+			names = names[:maxEntitiesPerDoc]
+		}
+		if len(names) == 0 {
+			continue
+		}
 
-		res, err := g.BFS(docNodeID, graph.NeighborOptions{MaxDepth: 2})
-		if err != nil || res == nil || len(res.Nodes) == 0 {
-			continue
-		}
-		// 汇总去重后的实体/关联节点名
-		var names []string
-		for _, n := range res.Nodes {
-			if n.ID == docNodeID {
+		// 实体反查：这些实体还出现在哪些文档（供"XX 关联了哪些文档"类问答）。
+		relatedSet := make(map[string]bool)
+		var related []string
+		for _, name := range names {
+			nodes, _, nerr := s.gracedbDB.Graph().GetNeighbors(groupEntityNodeID(groupID, name),
+				graph.NeighborOptions{Direction: "both", EdgeTypes: []string{"mentions"}, MaxDepth: 1})
+			if nerr != nil {
 				continue
 			}
-			label := n.ID
-			if v, ok := n.Properties["name"]; ok {
-				label = v
-			} else if v, ok := n.Properties["title"]; ok {
-				label = "文档:" + v
+			for _, n := range nodes {
+				if n.Type != "document" || !strings.HasPrefix(n.ID, fmt.Sprintf("g%d:doc:", groupID)) {
+					continue
+				}
+				title := n.Properties["title"]
+				if title == "" || title == hit.Title || relatedSet[title] {
+					continue
+				}
+				relatedSet[title] = true
+				related = append(related, title)
+				if len(related) >= maxEntitiesPerDoc*maxRelatedPerEnt {
+					break
+				}
 			}
-			if !containsStr(names, label) {
-				names = append(names, label)
+			if len(related) >= maxEntitiesPerDoc*maxRelatedPerEnt {
+				break
 			}
 		}
-		if len(names) > 0 {
-			parts = append(parts, fmt.Sprintf("[图谱] 文档 %s 关联: %s",
-				hit.Title, strings.Join(names, "、")))
+
+		line := fmt.Sprintf("[图谱] 文档 %s 关联: %s", hit.Title, strings.Join(names, "、"))
+		if len(related) > 0 {
+			line += fmt.Sprintf("；这些实体还出现在：%s", strings.Join(related, "、"))
 		}
+		parts = append(parts, line)
 	}
 	if len(parts) == 0 {
 		return ""
@@ -616,12 +962,14 @@ func (s *GroupDocumentService) ExpandGraphKnowledge(groupID uint, query string, 
 
 // GroupKnowledgeGraphResult 表示群聊知识图谱的归一化渲染结果，供 admin/client 两个图谱接口共用。
 // 对齐分身 BuildMemoryGraph 的形态：实体/知识节点 + 关系边 + 节点反查（related）。
+// TotalNodes/TotalEdges 是裁剪前的真实规模，Truncated 表示本次响应已按预算截断。
 type GroupKnowledgeGraphResult struct {
 	Nodes          []map[string]interface{}
 	Edges          []map[string]interface{}
 	TotalNodes     int
 	TotalEdges     int
 	KnowledgeCount int
+	Truncated      bool
 }
 
 func emptyGroupKnowledgeGraph() *GroupKnowledgeGraphResult {
@@ -631,138 +979,248 @@ func emptyGroupKnowledgeGraph() *GroupKnowledgeGraphResult {
 	}
 }
 
-// BuildGroupKnowledgeGraph 从 gracedb 存储图读取某群的知识拓扑并归一化为可渲染数据（GraphRAG）。
+// BuildGroupKnowledgeGraph 从存储图读取某群的知识拓扑并归一化为可渲染数据。
 //
-// 相比旧实现（直接平铺向量块、无关系边），这里真正体现"文档→实体"拓扑：取该群全部文档，
-// 对每个 doc 节点做两跳 BFS 采集邻接实体与 mentions/co_occurs 边，并携带实体反查
-// （该实体出现在哪些文档，对应分身 memories[].terms 的关联回查）。无图谱数据时返回
-// 空结构，不报错、不阻断。
-func (s *GroupDocumentService) BuildGroupKnowledgeGraph(groupID uint, query string, maxNodes int) (*GroupKnowledgeGraphResult, error) {
+// 存储层每个文档只有 文档→实体 mentions 边；实体间关系在这里按「跨文档共现」现算：
+// 只有共同出现在 >= groupGraphMinCoDoc 个文档的实体对才建边，且每个实体最多保留
+// groupGraphEdgePerEntity 个邻居。这样边数从 O(实体²) 降到 O(实体×常数)，且关系
+// 有实际含义（"这两个编码常在项目文档里一起出现"），不是旧版的无差别全连接。
+func (s *GroupDocumentService) BuildGroupKnowledgeGraph(groupID uint, query string, maxNodes, maxEdges int) (*GroupKnowledgeGraphResult, error) {
 	if s.gracedbDB == nil {
 		return emptyGroupKnowledgeGraph(), nil
 	}
 	if maxNodes <= 0 {
-		maxNodes = 50
+		maxNodes = groupGraphDefaultMaxNodes
+	}
+	if maxNodes > groupGraphHardMaxNodes {
+		maxNodes = groupGraphHardMaxNodes
+	}
+	if maxEdges <= 0 {
+		maxEdges = maxNodes * groupGraphEdgesPerNode
+	}
+	if maxEdges > groupGraphHardMaxEdges {
+		maxEdges = groupGraphHardMaxEdges
 	}
 
-	// 预加载 File 以拿到文档标题（GetDocumentsByGroup 不预加载，这里单独查一次）
+	// 预加载 File 以拿到文档标题（GetDocumentsByGroup 不预加载，这里单独查一次）。
+	// 单群最多取最近 groupGraphMaxDocs 篇，避免超大群一次构建拖垮接口。
 	var docs []model.GroupDocument
-	if err := s.db.Preload("File").Where("group_id = ?", groupID).Find(&docs).Error; err != nil {
+	if err := s.db.Preload("File").Where("group_id = ?", groupID).
+		Order("created_at DESC").Limit(groupGraphMaxDocs).Find(&docs).Error; err != nil {
 		return nil, fmt.Errorf("读取群文档失败: %w", err)
 	}
 
-	g := s.gracedbDB.Graph()
-
-	// 节点聚合：以存储图节点 ID（doc:{id} / entity:{name}）为键
-	type aggNode struct {
-		id      string
-		label   string
-		typ     string
-		count   int
-		related []string // 实体反查：所在文档标题
+	type docInfo struct {
+		id       uint
+		title    string
+		entities []string
 	}
-	nodeMap := make(map[string]*aggNode)
-	var nodeOrder []string
-	addNode := func(id, label, typ string) *aggNode {
-		a, ok := nodeMap[id]
-		if !ok {
-			a = &aggNode{id: id, label: label, typ: typ}
-			nodeMap[id] = a
-			nodeOrder = append(nodeOrder, id)
-		}
-		return a
-	}
-
-	// 边聚合：以 "from|to" 为键去重并累计权重
-	type aggEdge struct {
-		from, to string
-		label    string
-		weight   float64
-	}
-	edgeMap := make(map[string]*aggEdge)
-	var edgeOrder []string
-	addEdge := func(from, to, label string, w float64) {
-		key := from + "\x00" + to
-		e, ok := edgeMap[key]
-		if !ok {
-			e = &aggEdge{from: from, to: to, label: label}
-			edgeMap[key] = e
-			edgeOrder = append(edgeOrder, key)
-		}
-		e.weight += w
-	}
-
+	infos := make([]docInfo, 0, len(docs))
+	entityDocFreq := make(map[string]int)
+	entityTitles := make(map[string][]string)
 	for _, d := range docs {
 		title := fmt.Sprintf("文档#%d", d.ID)
 		if d.File.Name != "" {
 			title = d.File.Name
 		}
-		docNodeID := fmt.Sprintf("doc:%d", d.ID)
-		docAgg := addNode(docNodeID, title, "knowledge")
-		docAgg.count++
-
-		res, err := g.BFS(docNodeID, graph.NeighborOptions{MaxDepth: 2})
-		if err != nil || res == nil {
-			continue
-		}
-		for _, n := range res.Nodes {
-			if n.ID == docNodeID || n.Type != "entity" {
-				continue
-			}
-			name := n.ID
-			if v, ok := n.Properties["name"]; ok && v != "" {
-				name = v
-			}
-			a := addNode(n.ID, name, "entity")
-			a.count++
-			if !containsStr(a.related, title) {
-				a.related = append(a.related, title)
-			}
-			addEdge(docNodeID, n.ID, "mentions", 1)
-		}
-		for _, e := range res.Edges {
-			if e.Type == "co_occurs" {
-				addEdge(e.FromNodeID, e.ToNodeID, "co_occurs", e.Weight)
+		ents := s.documentEntityNames(groupID, d.ID)
+		infos = append(infos, docInfo{id: d.ID, title: title, entities: ents})
+		for _, e := range ents {
+			entityDocFreq[e]++
+			if len(entityTitles[e]) < 8 && !containsStr(entityTitles[e], title) {
+				entityTitles[e] = append(entityTitles[e], title)
 			}
 		}
 	}
 
-	// 裁剪到 maxNodes：优先保留文档节点，再按出现顺序补实体节点
-	kept := make(map[string]bool)
-	for _, id := range nodeOrder {
-		if len(kept) >= maxNodes {
-			break
+	// 跨文档共现统计：单文档内两两全连接是旧版边爆炸的根因，这里只在文档维度计数。
+	pairCount := make(map[string]int)
+	for _, info := range infos {
+		freq := make([]string, 0, len(info.entities))
+		for _, e := range info.entities {
+			if entityDocFreq[e] >= groupGraphMinCoDoc {
+				freq = append(freq, e)
+			}
 		}
-		kept[id] = true
+		if len(freq) > groupGraphPairEntityCap {
+			sort.Slice(freq, func(i, j int) bool {
+				if entityDocFreq[freq[i]] != entityDocFreq[freq[j]] {
+					return entityDocFreq[freq[i]] > entityDocFreq[freq[j]]
+				}
+				return freq[i] < freq[j]
+			})
+			freq = freq[:groupGraphPairEntityCap]
+		}
+		for i := 0; i < len(freq); i++ {
+			for j := i + 1; j < len(freq); j++ {
+				a, b := freq[i], freq[j]
+				if a > b {
+					a, b = b, a
+				}
+				pairCount[a+"\x00"+b]++
+			}
+		}
 	}
-	nodes := make([]map[string]interface{}, 0, len(kept))
-	for _, id := range nodeOrder {
-		if !kept[id] {
-			continue
+
+	// 节点预算：文档最多占三分之一，其余按文档频次留给实体。
+	totalNodes := len(infos) + len(entityDocFreq)
+	docQuota := maxNodes / 3
+	if docQuota < 1 {
+		docQuota = 1
+	}
+	if docQuota > len(infos) {
+		docQuota = len(infos)
+	}
+	keptDocs := infos[:docQuota]
+
+	entityNames := make([]string, 0, len(entityDocFreq))
+	for e := range entityDocFreq {
+		entityNames = append(entityNames, e)
+	}
+	sort.Slice(entityNames, func(i, j int) bool {
+		if entityDocFreq[entityNames[i]] != entityDocFreq[entityNames[j]] {
+			return entityDocFreq[entityNames[i]] > entityDocFreq[entityNames[j]]
 		}
-		a := nodeMap[id]
+		return entityNames[i] < entityNames[j]
+	})
+	entityQuota := maxNodes - len(keptDocs)
+	if entityQuota > len(entityNames) {
+		entityQuota = len(entityNames)
+	}
+	keptEntities := entityNames[:entityQuota]
+
+	keptEntity := make(map[string]bool, len(keptEntities))
+	for _, e := range keptEntities {
+		keptEntity[e] = true
+	}
+	keptDoc := make(map[uint]bool, len(keptDocs))
+	for _, d := range keptDocs {
+		keptDoc[d.id] = true
+	}
+
+	nodes := make([]map[string]interface{}, 0, len(keptDocs)+len(keptEntities))
+	for _, d := range keptDocs {
+		nodes = append(nodes, map[string]interface{}{
+			"id":    groupDocNodeID(groupID, d.id),
+			"label": d.title,
+			"type":  "knowledge",
+			"data":  map[string]interface{}{"content": d.title, "count": 1},
+		})
+	}
+	for _, e := range keptEntities {
 		data := map[string]interface{}{
-			"content": a.label,
-			"count":   a.count,
+			"content": e,
+			"count":   entityDocFreq[e],
 		}
-		if a.typ == "entity" && len(a.related) > 0 {
-			data["related"] = a.related
+		if titles := entityTitles[e]; len(titles) > 0 {
+			data["related"] = titles
 		}
 		nodes = append(nodes, map[string]interface{}{
-			"id":    a.id,
-			"label": a.label,
-			"type":  a.typ,
+			"id":    groupEntityNodeID(groupID, e),
+			"label": e,
+			"type":  "entity",
 			"data":  data,
 		})
 	}
 
-	// 只有两端都保留的边才输出
-	edges := make([]map[string]interface{}, 0)
-	for _, key := range edgeOrder {
-		e := edgeMap[key]
-		if !kept[e.from] || !kept[e.to] {
+	type candidateEdge struct {
+		from, to string
+		label    string
+		weight   int
+	}
+	candidates := make([]candidateEdge, 0)
+	totalMentions := 0
+	for _, info := range infos {
+		totalMentions += len(info.entities)
+		if !keptDoc[info.id] {
 			continue
 		}
+		from := groupDocNodeID(groupID, info.id)
+		for _, e := range info.entities {
+			if keptEntity[e] {
+				candidates = append(candidates, candidateEdge{from, groupEntityNodeID(groupID, e), "mentions", 1})
+			}
+		}
+	}
+
+	type neighborRef struct {
+		name   string
+		weight int
+	}
+	neighbors := make(map[string][]neighborRef)
+	totalCoOccurs := 0
+	for key, count := range pairCount {
+		if count < groupGraphMinCoDoc {
+			continue
+		}
+		totalCoOccurs++
+		parts := strings.SplitN(key, "\x00", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		a, b := parts[0], parts[1]
+		if !keptEntity[a] || !keptEntity[b] {
+			continue
+		}
+		neighbors[a] = append(neighbors[a], neighborRef{b, count})
+		neighbors[b] = append(neighbors[b], neighborRef{a, count})
+	}
+	coEdges := make(map[string]int)
+	for name, list := range neighbors {
+		sort.Slice(list, func(i, j int) bool {
+			if list[i].weight != list[j].weight {
+				return list[i].weight > list[j].weight
+			}
+			return list[i].name < list[j].name
+		})
+		if len(list) > groupGraphEdgePerEntity {
+			list = list[:groupGraphEdgePerEntity]
+		}
+		for _, it := range list {
+			a, b := name, it.name
+			if a > b {
+				a, b = b, a
+			}
+			key := a + "\x00" + b
+			if w, ok := coEdges[key]; !ok || it.weight > w {
+				coEdges[key] = it.weight
+			}
+		}
+	}
+	// 按 key 升序遍历：map 迭代顺序随机，下面 sort.SliceStable 会保留同权重项的原始
+	// 顺序，若不先定序，每次构建在边预算边界上保留的 co_occurs 边会不一样（同一份数据
+	// 刷新一次拓扑就"自己变了"）。
+	coKeys := make([]string, 0, len(coEdges))
+	for key := range coEdges {
+		coKeys = append(coKeys, key)
+	}
+	sort.Strings(coKeys)
+	for _, key := range coKeys {
+		parts := strings.SplitN(key, "\x00", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		candidates = append(candidates, candidateEdge{
+			groupEntityNodeID(groupID, parts[0]),
+			groupEntityNodeID(groupID, parts[1]),
+			"co_occurs",
+			coEdges[key],
+		})
+	}
+
+	// mentions 优先保留（文档与实体的挂接是理解图谱的前提），其余按权重降序。
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].label != candidates[j].label {
+			return candidates[i].label == "mentions"
+		}
+		return candidates[i].weight > candidates[j].weight
+	})
+	totalEdges := totalMentions + totalCoOccurs
+	if len(candidates) > maxEdges {
+		candidates = candidates[:maxEdges]
+	}
+	edges := make([]map[string]interface{}, 0, len(candidates))
+	for _, e := range candidates {
 		edges = append(edges, map[string]interface{}{
 			"source": e.from,
 			"target": e.to,
@@ -772,7 +1230,9 @@ func (s *GroupDocumentService) BuildGroupKnowledgeGraph(groupID uint, query stri
 		})
 	}
 
-	// 可选查询节点：连到所有保留的知识节点（保留 admin 旧行为）
+	truncated := totalNodes > len(nodes) || totalEdges > len(edges)
+
+	// 可选查询节点：连到保留的知识节点（保留 admin 旧行为）。
 	if query != "" {
 		queryNode := map[string]interface{}{
 			"id":    "query_node",
@@ -793,19 +1253,13 @@ func (s *GroupDocumentService) BuildGroupKnowledgeGraph(groupID uint, query stri
 		}
 	}
 
-	knowledgeCount := 0
-	for _, n := range nodes {
-		if t, _ := n["type"].(string); t == "knowledge" {
-			knowledgeCount++
-		}
-	}
-
 	return &GroupKnowledgeGraphResult{
 		Nodes:          nodes,
 		Edges:          edges,
-		TotalNodes:     len(nodes),
-		TotalEdges:     len(edges),
-		KnowledgeCount: knowledgeCount,
+		TotalNodes:     totalNodes,
+		TotalEdges:     totalEdges,
+		KnowledgeCount: len(keptDocs),
+		Truncated:      truncated,
 	}, nil
 }
 

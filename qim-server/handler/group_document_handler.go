@@ -93,9 +93,19 @@ func GetGroupKnowledgeGraph(c *gin.Context) {
 		return
 	}
 
-	maxNodes := 50
+	maxNodes := 80
 	if maxNodesStr := c.Query("max_nodes"); maxNodesStr != "" {
 		fmt.Sscanf(maxNodesStr, "%d", &maxNodes)
+	}
+	if maxNodes < 1 {
+		maxNodes = 1
+	}
+	if maxNodes > 200 {
+		maxNodes = 200
+	}
+	maxEdges := 0
+	if maxEdgesStr := c.Query("max_edges"); maxEdgesStr != "" {
+		fmt.Sscanf(maxEdgesStr, "%d", &maxEdges)
 	}
 
 	// 从存储图构建真正的拓扑（文档/实体节点 + 关系边 + 实体反查），对齐分身知识图谱。
@@ -108,11 +118,12 @@ func GetGroupKnowledgeGraph(c *gin.Context) {
 			"total_nodes":     0,
 			"total_edges":     0,
 			"knowledge_count": 0,
+			"truncated":       false,
 		})
 		return
 	}
 
-	graph, err := docSvc.BuildGroupKnowledgeGraph(group.ID, "", maxNodes)
+	graph, err := docSvc.BuildGroupKnowledgeGraph(group.ID, "", maxNodes, maxEdges)
 	if err != nil {
 		logger.WithModule("GroupKnowledgeGraph").Error("构建群知识图谱失败", "groupID", group.ID, "error", err)
 		response.Success(c, gin.H{
@@ -121,6 +132,7 @@ func GetGroupKnowledgeGraph(c *gin.Context) {
 			"total_nodes":     0,
 			"total_edges":     0,
 			"knowledge_count": 0,
+			"truncated":       false,
 		})
 		return
 	}
@@ -131,6 +143,7 @@ func GetGroupKnowledgeGraph(c *gin.Context) {
 		"total_nodes":     graph.TotalNodes,
 		"total_edges":     graph.TotalEdges,
 		"knowledge_count": graph.KnowledgeCount,
+		"truncated":       graph.Truncated,
 	})
 }
 
@@ -295,9 +308,51 @@ func RemoveGroupDocument(c *gin.Context) {
 		return
 	}
 
-	db.Where("group_id = ? AND file_id = ?", group.ID, uint(fileID)).Delete(&model.GroupDocument{})
+	docSvc := di.GlobalContainer.GroupDocumentService
+	if docSvc == nil {
+		response.InternalServerError(c, "文档服务未初始化")
+		return
+	}
+	if _, err := docSvc.RemoveGroupDocument(group.ID, uint(fileID)); err != nil {
+		logger.WithModule("GroupDocument").Error("解绑群文档失败",
+			"groupID", group.ID, "fileID", fileID, "error", err)
+		response.InternalServerError(c, "文档解绑失败")
+		return
+	}
 
 	response.SuccessWithMessage(c, "文档解绑成功", nil)
+}
+
+// RebuildGroupKnowledgeGraph 重建指定群的知识图谱。
+// 清理旧版全局命名空间节点与全连接 co_occurs 边，按现有文档重新写入群内命名空间。
+// 只读现有图数据、不重新解析正文，可由群主/管理员同步触发。
+func RebuildGroupKnowledgeGraph(c *gin.Context) {
+	convIDStr := c.Param("id")
+	convID, err := strconv.ParseUint(convIDStr, 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的群ID")
+		return
+	}
+
+	db := database.GetDB()
+	group, _, ok := requireGroupAdmin(c, db, uint(convID))
+	if !ok {
+		return
+	}
+
+	docSvc := di.GlobalContainer.GroupDocumentService
+	if docSvc == nil {
+		response.InternalServerError(c, "文档服务未初始化")
+		return
+	}
+	result, err := docSvc.RebuildGroupKnowledgeGraph(group.ID)
+	if err != nil {
+		logger.WithModule("GroupKnowledgeGraph").Error("重建群图谱失败",
+			"groupID", group.ID, "error", err)
+		response.InternalServerError(c, "重建图谱失败")
+		return
+	}
+	response.Success(c, result)
 }
 
 func GetGroupDocumentsWithStatus(c *gin.Context) {
