@@ -1374,6 +1374,13 @@ func (g *SmartReplyGraph) createMemoryNode() *compose.Lambda {
 	})
 }
 
+// FilterMemoryByScore 剔除分数低于 floor 的记忆召回。注入 prompt 与来源徽章共用此
+// 门槛，避免低分记忆"不展示给用户但已悄悄参与生成"。导出供 legacy 注入链路
+// （SmartReplyEngine 降级路径）与 graph 主路径共用，保证两边门槛一致。
+func FilterMemoryByScore(results []SearchResult, floor float64) []SearchResult {
+	return filterMemoryByScore(results, floor)
+}
+
 // filterMemoryByScore 剔除分数低于 floor 的记忆召回。注入 prompt 与来源徽章共用此
 // 门槛，避免低分记忆"不展示给用户但已悄悄参与生成"。
 func filterMemoryByScore(results []SearchResult, floor float64) []SearchResult {

@@ -58,6 +58,23 @@ func (s *GroupMemoryService) conflictThreshold() float64 {
 	return 0.3
 }
 
+// maxGroupMemories 每群记忆条目上限：超限后不再新增（合并进旧条目仍允许）。
+func (s *GroupMemoryService) maxGroupMemories() int {
+	if s.thresholdSvc != nil {
+		return s.thresholdSvc.GetInt("ai.group_memory_max_count", 500)
+	}
+	return 500
+}
+
+// importanceFloor 新记忆的重要度下限（1-5 档）：低于此值的判定不落库。
+// 判定口径 2=偶发、3=共识；默认 2.5 = 只记共识及以上，偶发琐碎自然被挡。
+func (s *GroupMemoryService) importanceFloor() float64 {
+	if s.thresholdSvc != nil {
+		return s.thresholdSvc.GetFloat("ai.group_memory_importance_floor", 2.5)
+	}
+	return 2.5
+}
+
 // memoryMerge 判定新记忆相对最相关旧记忆的合并关系；判定器未注入时用共享 LLM 默认实现。
 func (s *GroupMemoryService) memoryMerge(newMemo, oldMemo string) (MemoryMergeKind, error) {
 	if s.mergeCheck != nil {
@@ -67,6 +84,9 @@ func (s *GroupMemoryService) memoryMerge(newMemo, oldMemo string) (MemoryMergeKi
 }
 
 const groupMemoryNamespace = "group_assistant"
+
+// groupMemoryCountEnumerateLimit 容量判定的全量枚举上限（与 GetMemoryCount 同源）。
+const groupMemoryCountEnumerateLimit = 100000
 
 // Remember 把一条值得记的群消息写入群级记忆库。
 func (s *GroupMemoryService) Remember(groupID uint, conversationID uint, content string, importance float64) error {
@@ -176,6 +196,30 @@ func (s *GroupMemoryService) saveConsolidatedGroupMemory(groupID, conversationID
 		}
 	}
 
+	// 重要度下限（仅新增分支，合并/冲突更新不受限）：判定为"偶发/琐碎"的记忆不占位。
+	if ref.Importance < s.importanceFloor() {
+		logger.WithModule("GroupMemoryService").Debug("群记忆重要度低于门槛，跳过落库",
+			"groupID", groupID, "importance", ref.Importance)
+		return false, nil
+	}
+
+	// 容量上限（仅新增分支，合并分支不受限）：达到上限后新记忆不再占位，
+	// 靠冲突/复述合并与归档腾位。阈值可由管理后台 ai.group_memory_max_count 调整。
+	if max := s.maxGroupMemories(); max > 0 {
+		total, terr := s.countGroupMemories(groupID)
+		switch {
+		case terr != nil:
+			// 计数失败不阻断写入（容量上限只是卫生动作），但必须留痕：
+			// 否则阈值配错/库异常时上限会静默失效，直到桶彻底失控才被发现。
+			logger.WithModule("GroupMemoryService").Warn("群记忆容量统计失败，本次跳过上限判定",
+				"groupID", groupID, "error", terr)
+		case total >= max:
+			logger.WithModule("GroupMemoryService").Warn("群记忆达到容量上限，拒绝新增",
+				"groupID", groupID, "total", total, "max", max)
+			return false, nil
+		}
+	}
+
 	memoryID := fmt.Sprintf("groupmem_%d_%d", groupID, time.Now().UnixMilli())
 	_, err := s.db.SaveMemory(types.MemorySaveRequest{
 		MemoryID:   memoryID,
@@ -185,9 +229,13 @@ func (s *GroupMemoryService) saveConsolidatedGroupMemory(groupID, conversationID
 		Namespace:  groupMemoryNamespace,
 		Importance: importance01(ref.Importance),
 		Metadata: map[string]interface{}{
-			"conversation_id":           fmt.Sprintf("%d", conversationID),
-			"remembered_at":             fmt.Sprintf("%d", time.Now().Unix()),
-			"importance":                fmt.Sprintf("%.1f", ref.Importance),
+			"conversation_id": fmt.Sprintf("%d", conversationID),
+			"remembered_at":   fmt.Sprintf("%d", time.Now().Unix()),
+			"importance":      fmt.Sprintf("%.1f", ref.Importance),
+			// 可迁移范围：群记忆本质是群级共享知识，统一落 global。
+			// 显式写入而非留空，语义自文档化；当前 Recall 不按 scope 过滤
+			//（群记忆只在群内召回，天然有边界），将来引入群内私约场景时可直接启用过滤。
+			"knowledge_memory_scope":    "global",
 			"knowledge_memory_summary":  "true",
 			"knowledge_memory_themes":   ref.Themes,
 			"knowledge_memory_entities": ref.Entities,
@@ -250,6 +298,7 @@ func (s *GroupMemoryService) Recall(groupID uint, query string, topK int) ([]Sea
 	}
 
 	var results []SearchResult
+	touchIDs := make([]string, 0, len(resp.Results))
 	for _, hit := range resp.Results {
 		metadataStr := make(map[string]string)
 		for k, v := range hit.Memory.Metadata {
@@ -263,6 +312,16 @@ func (s *GroupMemoryService) Recall(groupID uint, query string, topK int) ([]Sea
 			Metadata: metadataStr,
 			DocID:    hit.Memory.ID,
 		})
+		touchIDs = append(touchIDs, hit.Memory.ID)
+	}
+	// 召回续命：命中的记忆批量 Touch（刷新 LastAccessAt/AccessCount），
+	// 让被频繁引用的核心共识不随时间衰减到被归档。单事务、逐条容错，
+	// 失败仅影响强度计算，不影响本次召回结果。
+	if len(touchIDs) > 0 {
+		if err := s.db.Vector().TouchMemories(touchIDs); err != nil {
+			logger.WithModule("GroupMemoryService").Warn("召回 Touch 失败",
+				"groupID", groupID, "count", len(touchIDs), "error", err)
+		}
 	}
 	return results, nil
 }
@@ -285,7 +344,24 @@ func (s *GroupMemoryService) ShouldRememberWithImportance(message string) (Remem
 	return evaluateRemember(s.aiService, prompt, message)
 }
 
+// countGroupMemories 枚举本群有效（未归档/未过期）记忆总条数。
+// gracedb 没有按桶计数 API，走与 GetMemoryCount 相同的空查询枚举路径；仅在
+// 写入前做容量判定时调用（受 groupWriteMutex 保护，每群一次写一组查询）。
+func (s *GroupMemoryService) countGroupMemories(groupID uint) (int, error) {
+	resp, err := s.db.SearchMemory(types.MemorySearchRequest{
+		UserID:    fmt.Sprintf("%d", groupID),
+		Scope:     "user",
+		Namespace: groupMemoryNamespace,
+		TopK:      groupMemoryCountEnumerateLimit,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return len(resp.Results), nil
+}
+
 // GetGroupMemories 列出本群记忆条目（按相关性近似排序）。
+// 保持纯数组响应：老客户端按数组解析该接口，不要在此叠加 total 字段破坏兼容。
 func (s *GroupMemoryService) GetGroupMemories(groupID uint, limit int) ([]MemoryRecord, error) {
 	if s.db == nil {
 		logger.WithModule("GroupMemoryService").Info("向量数据库未初始化，返回空群记忆列表")
@@ -312,7 +388,7 @@ func (s *GroupMemoryService) GetGroupMemories(groupID uint, limit int) ([]Memory
 		return nil, err
 	}
 
-	var records []MemoryRecord
+	records := make([]MemoryRecord, 0, len(resp.Results))
 	for _, hit := range resp.Results {
 		metadataStr := make(map[string]string)
 		for k, v := range hit.Memory.Metadata {
@@ -330,12 +406,17 @@ func (s *GroupMemoryService) GetGroupMemories(groupID uint, limit int) ([]Memory
 }
 
 // GetMemoryCount 返回本群记忆条目数。
+// 直接走计数枚举，不经 GetGroupMemories：后者会顺带触发懒归档并逐条构造 MemoryRecord，
+// 计数路径只需要条数（面板每次打开都会同时调列表，归档由列表那次负责）。
 func (s *GroupMemoryService) GetMemoryCount(groupID uint) (int64, error) {
-	memories, err := s.GetGroupMemories(groupID, 100000)
+	if s.db == nil {
+		return 0, nil
+	}
+	n, err := s.countGroupMemories(groupID)
 	if err != nil {
 		return 0, err
 	}
-	return int64(len(memories)), nil
+	return int64(n), nil
 }
 
 // DeleteMemory 删除单条群记忆。

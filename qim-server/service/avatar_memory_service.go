@@ -235,6 +235,7 @@ func (s *AvatarMemoryService) recall(userID uint, query string, topK int, conver
 
 	currentConv := fmt.Sprintf("%d", conversationID)
 	var results []SearchResult
+	touchIDs := make([]string, 0, len(resp.Results))
 	for _, hit := range resp.Results {
 		metadataStr := make(map[string]string)
 		for k, v := range hit.Memory.Metadata {
@@ -248,6 +249,8 @@ func (s *AvatarMemoryService) recall(userID uint, query string, topK int, conver
 		// 对话级记忆过滤：scope=conversation 且记录对话与当前对话不一致时剔除。
 		// scope 缺失/为空视为 global（保守不丢知识）；conversation 级但缺 conversation_id
 		// 无法匹配，一并剔除（安全）。
+		// Touch 续命：实际注入（通过过滤）的记忆才刷新强度，让主人的高频记忆不被归档。
+		// 被 scope 过滤剔除的候选不 Touch（没被用就不算被引用）。
 		if filterByConversation && metadataStr["knowledge_memory_scope"] == "conversation" &&
 			metadataStr["conversation_id"] != currentConv {
 			continue
@@ -258,6 +261,13 @@ func (s *AvatarMemoryService) recall(userID uint, query string, topK int, conver
 			Metadata: metadataStr,
 			DocID:    hit.Memory.ID,
 		})
+		touchIDs = append(touchIDs, hit.Memory.ID)
+	}
+	if len(touchIDs) > 0 {
+		if err := s.db.Vector().TouchMemories(touchIDs); err != nil {
+			logger.WithModule("AvatarMemoryService").Warn("召回 Touch 失败",
+				"userID", userID, "count", len(touchIDs), "error", err)
+		}
 	}
 	return results, nil
 }

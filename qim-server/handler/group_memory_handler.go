@@ -51,7 +51,7 @@ func resolveGroupForMemory(c *gin.Context) (*model.Group, bool) {
 	return group, true
 }
 
-// GetGroupMemories 列出本群群记忆条目。
+// GetGroupMemories 列出本群群记忆条目（纯数组响应，与老客户端契约一致）。
 func GetGroupMemories(c *gin.Context) {
 	memorySvc := di.GlobalContainer.GroupMemoryService
 	if memorySvc == nil {
@@ -68,6 +68,26 @@ func GetGroupMemories(c *gin.Context) {
 		return
 	}
 	response.Success(c, memories)
+}
+
+// GetGroupMemoryCount 返回本群记忆总条数（列表接口只返回前 50 条，计数用于面板展示"共 N 条"）。
+// 独立路由而非改列表响应结构：列表接口是纯数组契约，老客户端按数组解析，不能破坏。
+func GetGroupMemoryCount(c *gin.Context) {
+	memorySvc := di.GlobalContainer.GroupMemoryService
+	if memorySvc == nil {
+		response.Success(c, gin.H{"count": 0})
+		return
+	}
+	group, ok := resolveGroupForMemory(c)
+	if !ok {
+		return
+	}
+	count, err := memorySvc.GetMemoryCount(group.ID)
+	if err != nil {
+		response.InternalServerError(c, "统计群记忆失败")
+		return
+	}
+	response.Success(c, gin.H{"count": count})
 }
 
 // DeleteGroupMemory 删除单条群记忆。

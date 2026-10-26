@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dshmyz/gracedb/pkg/gracedb"
 	"github.com/dshmyz/gracedb/pkg/types"
@@ -13,6 +14,108 @@ import (
 
 // GroupMemoryService 在向量库/AI 服务未配置时必须安全降级为 no-op，
 // 不能让群助手回复路径因记忆服务缺失而报错。以下用 nil db / nil aiService 验证。
+
+// TestGroupMemoryService_ImportanceFloor 低于重要度下限的判定不落库；
+// 注入阈值服务后用极低门槛放行。
+func TestGroupMemoryService_ImportanceFloor(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+
+	svc := &GroupMemoryService{db: db, aiService: nil}
+	ref := MemoryReflection{Summary: "某人随口提到今天天气不错", Importance: 2}
+
+	ok, err := svc.ConsolidateGroupMessage(7, 1, 42, "小王", "今天天气不错", nil, nil)
+	if err != nil {
+		t.Fatalf("ConsolidateGroupMessage 失败: %v", err)
+	}
+	// aiService 为 nil 时 reflectConsolidated 的 evaluateRemember 走默认判定；
+	// 这里直接用 saveConsolidatedGroupMemory 验证门槛本身，绕开 LLM 判定。
+	ok, err = svc.saveConsolidatedGroupMemory(7, 1, 42, "小王", ref, nil)
+	if err != nil {
+		t.Fatalf("saveConsolidatedGroupMemory 失败: %v", err)
+	}
+	if ok {
+		t.Fatal("重要度 2 低于默认门槛 2.5 不应落库")
+	}
+	if count := countMemories(db, "7", groupMemoryNamespace); count != 0 {
+		t.Fatalf("不应产生记忆条目，got %d", count)
+	}
+
+	// 注入阈值服务把门槛降到 1，同一条应放行
+	thr := newThresholdServiceForTest(map[string]float64{"ai.group_memory_importance_floor": 1})
+	svc.SetThresholdService(thr)
+	ok, err = svc.saveConsolidatedGroupMemory(7, 1, 42, "小王", ref, nil)
+	if err != nil {
+		t.Fatalf("saveConsolidatedGroupMemory(低门槛) 失败: %v", err)
+	}
+	if !ok {
+		t.Fatal("门槛降到 1 后重要度 2 应放行落库")
+	}
+}
+
+// TestGroupMemoryService_CapacityCap 达到每群容量上限后拒绝新增，但合并（复述刷新）不受限。
+func TestGroupMemoryService_CapacityCap(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+
+	svc := &GroupMemoryService{db: db, aiService: nil}
+	thr := newThresholdServiceForTest(map[string]float64{"ai.group_memory_max_count": 2})
+	svc.SetThresholdService(thr)
+
+	seed := func(id, content string) {
+		t.Helper()
+		if _, err := db.SaveMemory(types.MemorySaveRequest{
+			MemoryID: id, UserID: "9", Scope: "user", Namespace: groupMemoryNamespace,
+			Content: content, Importance: 0.8, Metadata: map[string]interface{}{"importance": "4.0"},
+		}); err != nil {
+			t.Fatalf("预置记忆失败: %v", err)
+		}
+	}
+	seed("groupmem_9_1", "记忆甲")
+	seed("groupmem_9_2", "记忆乙")
+
+	// 已达上限：新增被拒
+	ref := MemoryReflection{Summary: "全新记忆丙", Importance: 4}
+	ok, err := svc.saveConsolidatedGroupMemory(9, 1, 42, "小王", ref, nil)
+	if err != nil {
+		t.Fatalf("saveConsolidatedGroupMemory 失败: %v", err)
+	}
+	if ok {
+		t.Fatal("达到容量上限后不应新增")
+	}
+	if count := countMemories(db, "9", groupMemoryNamespace); count != 2 {
+		t.Fatalf("容量上限下条目数应保持 2，got %d", count)
+	}
+
+	// 合并不受上限限制：对旧记忆做近义复述应成功刷新
+	svc.SetMergeCheck(func(_, _ string) (MemoryMergeKind, error) { return MemoryMergeDuplicate, nil })
+	memories := []SearchResult{
+		{Content: "记忆甲", Score: 0.9, DocID: "groupmem_9_1", Metadata: map[string]string{"importance": "4.0"}},
+	}
+	ok, err = svc.saveConsolidatedGroupMemory(9, 1, 42, "小王", MemoryReflection{Summary: "记忆甲的复述", Importance: 4}, memories)
+	if err != nil {
+		t.Fatalf("合并请求失败: %v", err)
+	}
+	if !ok {
+		t.Fatal("容量上限不应阻止复述合并刷新")
+	}
+	if count := countMemories(db, "9", groupMemoryNamespace); count != 2 {
+		t.Fatalf("合并不应新增条目，期望 2 条，got %d", count)
+	}
+}
+
+func newThresholdServiceForTest(values map[string]float64) *AiThresholdService {
+	svc := &AiThresholdService{}
+	svc.cache = values
+	svc.cacheExpiry = time.Now().Add(time.Hour)
+	return svc
+}
 
 func newNilGroupMemoryService() *GroupMemoryService {
 	return &GroupMemoryService{db: nil, aiService: nil}
@@ -51,6 +154,55 @@ func TestGroupMemoryService_ShouldRememberNilAI(t *testing.T) {
 
 // 隔离契约：群记忆的 namespace 必须与分身记忆（"avatar"）不同，
 // 且 UserID 用 groupID 键--这条契约保证两套记忆不串。改动 namespace 需同步迁移数据。
+// TestGroupMemoryService_RecallTouches 回召命中的记忆应被 Touch（LastAccessAt 刷新），
+// 使被引用记忆的强度随访问续期而不落入归档。
+func TestGroupMemoryService_RecallTouches(t *testing.T) {
+	db, err := gracedb.Open(t.TempDir()+"/gracedb", gracedb.WithEmbedder(fakeEmbedder{}))
+	if err != nil {
+		t.Fatalf("打开临时 gracedb 失败: %v", err)
+	}
+	defer db.Close()
+
+	svc := &GroupMemoryService{db: db, aiService: nil}
+	id := "groupmem_11_1"
+	if _, err := db.SaveMemory(types.MemorySaveRequest{
+		MemoryID: id, UserID: "11", Scope: "user", Namespace: groupMemoryNamespace,
+		Content: "发布窗口定在周五下午", Importance: 0.8,
+		Metadata: map[string]interface{}{"importance": "4.0"},
+	}); err != nil {
+		t.Fatalf("预置群记忆失败: %v", err)
+	}
+
+	rec0, err := db.GetMemory(id)
+	if err != nil {
+		t.Fatalf("读取记忆失败: %v", err)
+	}
+	if rec0.LastAccessAt != nil {
+		t.Fatalf("初始状态不应有 LastAccessAt: %v", rec0.LastAccessAt)
+	}
+
+	time.Sleep(10 * time.Millisecond)
+	results, err := svc.Recall(11, "发布窗口", 2)
+	if err != nil {
+		t.Fatalf("Recall 失败: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("召回应命中预置记忆")
+	}
+
+	rec1, err := db.GetMemory(id)
+	if err != nil {
+		t.Fatalf("Touch 后读取记忆失败: %v", err)
+	}
+	if rec1.LastAccessAt == nil {
+		t.Fatal("Recall 后 LastAccessAt 应被刷新（Touch 续命）")
+	}
+	if rec1.AccessCount != 1 {
+		t.Fatalf("Recall 后 AccessCount 应为 1，got %d", rec1.AccessCount)
+	}
+}
+
+// TestGroupMemoryService_NamespaceIsolation(t *testing.T) 见下方原测试。
 func TestGroupMemoryService_NamespaceIsolation(t *testing.T) {
 	assert.Equal(t, "group_assistant", groupMemoryNamespace, "群记忆 namespace 必须与分身(avatar)隔离")
 	assert.NotEqual(t, "avatar", groupMemoryNamespace, "群记忆不得复用分身 namespace")

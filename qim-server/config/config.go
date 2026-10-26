@@ -51,6 +51,8 @@ var Thresholds = []AiThresholdConfig{
 	{Key: "ai.memory_source_threshold", Default: 0.3, Min: 0, Max: 1, Label: "群记忆来源硬下限", Description: "低于此分的群记忆视为噪音，不进「知识来源」徽章；最终展示取召回内排序靠前的记忆（0-1）"},
 	{Key: "ai.memory_recall_threshold", Default: 0.5, Min: 0, Max: 1, Label: "记忆召回门槛", Description: "分身记忆 Recall 分数门槛，低于此分的记忆不注入 prompt 也不计入依据；记忆不再单独放行范围外（0-1）"},
 	{Key: "ai.conflict_detection_threshold", Default: 0.3, Min: 0, Max: 1, Label: "冲突检测门槛", Description: "新旧记忆相关分达到此门槛时才触发语义冲突检测；混合加权分下真实相关记忆典型 0.3-0.5（0-1）"},
+	{Key: "ai.group_memory_max_count", Default: 500, Min: 50, Max: 5000, Label: "群记忆容量上限", Description: "每群群记忆条目上限；超限后新记忆仍可经冲突/复述合并进旧条目，但不再新增占位，防止活跃群记忆库无限膨胀（50-5000）"},
+	{Key: "ai.group_memory_importance_floor", Default: 2.5, Min: 1, Max: 5, Label: "群记忆重要度下限", Description: "LLM 判定重要度低于此值的新记忆不落库（1-5）；判定口径里 2=偶发、3=共识，默认 2.5 意味着只记共识及以上"},
 	{Key: "ai.context_history_limit", Default: 20, Min: 1, Max: 100, Label: "上下文历史条数", Description: "注入到 AI prompt 的最近对话消息条数上限（分身默认 10、群助手默认 20；管理员调整后两路径同用该值）"},
 	{Key: "ai.recent_ai_messages_limit", Default: 5, Min: 0, Max: 20, Label: "近期 AI 回复条数", Description: "上下文中保留的近期 AI 回复消息条数上限（防自我复制）；超出按远期折叠（0-20）"},
 	{Key: "ai.knowledge_llm_rerank", Default: 1, Min: 0, Max: 1, IsBool: true, Label: "知识检索相关性校验", Description: "开启后知识库检索结果经 LLM 二次校验相关性，过滤误召回（0=关 1=开）"},

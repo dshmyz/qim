@@ -14,8 +14,9 @@ import (
 //
 // 在列表访问（GetUserMemories / GetGroupMemories）路径上顺带触发一次
 // ArchiveWeakMemoriesUser，把"既弱又长期闲置"的记忆打上 Archived 软删标记，
-// 使其自动从默认召回与空查询枚举中消失（软遗忘）。它不物理删除、可逆（清掉
-// Archived 标记即恢复），因此即使误归档也能找回——适合做成渐进式卫生动作。
+// 使其自动从默认召回与空查询枚举中消失（软遗忘）。它不物理删除；但 gracedb
+// 未暴露 un-archive API（UpdateMemory 会保留 Archived 标记），恢复需以同一
+// memoryID 重新 SaveMemory。因此阈值保持保守，避免误归档难以挽回。
 const (
 	// lazyArchiveCooldown 同一桶两次归档的最小间隔，避免每次打开面板/构建图谱
 	// 都去扫桶做一次归档（那会是热点写路径上的 O(桶大小) 扫描）。

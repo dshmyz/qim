@@ -243,6 +243,8 @@ func InitContainer(cfg *config.Config, hub *ws.Hub) (*Container, error) {
 		// system_configs 读取，后台修改即生效；未注入时服务内部回退默认值。
 		avatarMemorySvc.SetThresholdService(aiThresholdService)
 		groupMemorySvc.SetThresholdService(aiThresholdService)
+		// 群记忆后台归档：不再依赖用户打开「记忆」面板才触发（间隔 0 用默认 24h）。
+		service.StartMemoryArchiveSweeper(vectorSvc.GetDB(), 0)
 	}
 
 	// 注入向量服务到相关服务

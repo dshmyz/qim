@@ -36,13 +36,16 @@ type SmartReplyEngine struct {
 	avatarTriggerSvc   AvatarTriggerDecider
 	smartReplyGraph    *service.SmartReplyGraph
 	qualityGateEnabled bool
+	// memorySourceThreshold legacy 注入链路的记忆分数门槛，与 graph 侧
+	// ai.memory_source_threshold 同源同默认（0.3），保证降级路径行为一致。
+	memorySourceThreshold float64
 	// mentionGateBlock @AI 提问回复未通过质量核验时是否阻断发送（ai.reply_quality_gate_mention_block）。
 	// 默认 false=旁路放行：正文照发，仅记指标与失败案例；true=恢复旧行为（拦截+通知卡片）。
 	// auto 自动回复始终阻断，不受此项控制。
-	mentionGateBlock  bool
-	convReplyWorker    *service.ReplyOrchestrator // 群助手回复的并发控制（限并发+会话串行）
-	decisionLog        *service.AvatarDecisionLogService
-	failureCases       *service.FailureCaseService
+	mentionGateBlock bool
+	convReplyWorker  *service.ReplyOrchestrator // 群助手回复的并发控制（限并发+会话串行）
+	decisionLog      *service.AvatarDecisionLogService
+	failureCases     *service.FailureCaseService
 }
 
 // SetFailureCaseService 注入失败案例记录服务（差评/质量门拒绝时快照案例）。
@@ -81,6 +84,9 @@ func NewSmartReplyEngine(aiService *ai.AIService, detector *ai.IntentDetector) *
 		}),
 		qualityGateEnabled: true,
 		decisionLog:        service.NewAvatarDecisionLogService(database.GetDB()),
+		// 与 graph 侧 memorySourceThreshold() 同默认：未注入阈值服务时也必须按 0.3
+		// 过滤，不能让零值把 legacy 链路变成"全放行"。
+		memorySourceThreshold: 0.3,
 	}
 }
 
@@ -141,14 +147,18 @@ func (e *SmartReplyEngine) InitSmartReplyGraph() error {
 	)
 
 	// 注入 AI 阈值服务：群 @AI 的知识来源分数门槛从 system_configs 读取，
-	// 后台修改即生效；容器中未初始化（nil）时 graph 内部回退默认 0.6。
+	// 后台修改即生效；容器未初始化（nil）时 graph 内部回退默认 0.3（legacy 链路同源）。
 	e.smartReplyGraph.SetThresholdService(di.GlobalContainer.AiThresholdService)
 	e.smartReplyGraph.SetToolScopeService(di.GlobalContainer.ToolScopeService)
+	// 先落默认值再按配置覆盖：阈值服务为 nil 时 legacy 链路仍要与 graph 侧同门槛（0.3），
+	// 否则 float64 零值会把 FilterMemoryByScore 变成"全放行"，低分记忆悄悄进 prompt。
+	e.memorySourceThreshold = 0.3
 	if di.GlobalContainer.AiThresholdService != nil {
 		enabled := di.GlobalContainer.AiThresholdService.GetFloat("ai.reply_quality_gate", 1) >= 0.5
 		e.smartReplyGraph.SetQualityGateEnabled(enabled)
 		e.qualityGateEnabled = enabled
 		e.mentionGateBlock = di.GlobalContainer.AiThresholdService.GetFloat("ai.reply_quality_gate_mention_block", 0) >= 0.5
+		e.memorySourceThreshold = di.GlobalContainer.AiThresholdService.GetFloat("ai.memory_source_threshold", 0.3)
 	}
 
 	// 注入被引用文件正文读取器，使 @AI 引用文件消息时可把文件内容喂给 AI（nil 时安全降级）。
@@ -608,7 +618,10 @@ func (e *SmartReplyEngine) generateAndSendReplyLegacy(userID uint, conversationI
 	if e.groupMemorySvc != nil && ctx.Group != nil {
 		memoryResults, err := e.groupMemorySvc.Recall(ctx.Group.ID, userContent, 2)
 		if err == nil && len(memoryResults) > 0 {
-			if memoryCtx := service.GroupMemoryCtxText(memoryResults); memoryCtx != "" {
+			// 与 graph 主路径同源：低于 ai.memory_source_threshold 的记忆不注入，
+			// 避免 graph 降级到 legacy 后门槛变松（低分记忆悄悄参与生成）。
+			picked := service.FilterMemoryByScore(memoryResults, e.memorySourceThreshold)
+			if memoryCtx := service.GroupMemoryCtxText(picked); memoryCtx != "" {
 				systemPrompt += "\n\n" + memoryCtx
 			}
 		}
