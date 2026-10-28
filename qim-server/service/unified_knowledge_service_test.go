@@ -476,8 +476,9 @@ func (m *blockingReranker) callCount() int {
 }
 
 // TestFilterByReranker_TimeoutStopsJudgingKeepsRemaining 回归：LLM 相关性校验阶段有总超时预算
-// （默认 15s，测试注入 30ms）。首条判定阻塞耗尽预算后，循环在逐条间的 judgeCtx.Err() 检查处
-// 提前退出：不再发起新判定（calls==1），未判片段全部保留（宁可多留不可阻塞整条回复）。
+// （默认 15s，测试注入 30ms）。判定改为 rerankJudgeConcurrency 有界并发后，首批最多并发
+// 发起 rerankJudgeConcurrency 条；预算耗尽后不再发起新判定，未判片段全部保留
+// （宁可多留不可阻塞整条回复），且输出仍按原序。
 func TestFilterByReranker_TimeoutStopsJudgingKeepsRemaining(t *testing.T) {
 	svc := NewUnifiedKnowledgeService(nil, nil, nil, nil)
 	svc.rerankJudgeTimeout = 30 * time.Millisecond // 注入短预算，避免等默认 15s
@@ -489,15 +490,17 @@ func TestFilterByReranker_TimeoutStopsJudgingKeepsRemaining(t *testing.T) {
 		{Title: "A", Score: 0.9, Content: "cA"},
 		{Title: "B", Score: 0.8, Content: "cB"},
 		{Title: "C", Score: 0.7, Content: "cC"},
+		{Title: "D", Score: 0.6, Content: "cD"},
+		{Title: "E", Score: 0.5, Content: "cE"},
 	}
 	filtered := svc.filterByReranker("q", snips)
 
-	// 只判了首条（被超时打断）；B、C 未发起判定即保留。
-	assert.Equal(t, 1, blocking.callCount(), "预算耗尽后不得再发起新判定")
-	require.Len(t, filtered, 3, "未判片段应全部保留")
+	// 首批并发判定占满并发位后阻塞到预算耗尽；超时后不再发起新判定。
+	assert.Equal(t, rerankJudgeConcurrency, blocking.callCount(), "预算耗尽后不得再发起新判定")
+	require.Len(t, filtered, len(snips), "未判片段应全部保留")
 	titles := make([]string, 0, len(filtered))
 	for _, s := range filtered {
 		titles = append(titles, s.Title)
 	}
-	assert.Equal(t, []string{"A", "B", "C"}, titles, "原序保留，未判片段不被丢弃")
+	assert.Equal(t, []string{"A", "B", "C", "D", "E"}, titles, "原序保留，未判片段不被丢弃")
 }

@@ -31,7 +31,7 @@ type SmartReplyEngine struct {
 	memorySvc          *service.AvatarMemoryService
 	groupMemorySvc     *service.GroupMemoryService
 	promptBuilder      *SmartPromptBuilder
-	messageSender      *WebSocketMessageSender
+	messageSender      AIResponseSender
 	avatarWorkerPool   *service.AvatarWorkerPool
 	avatarTriggerSvc   AvatarTriggerDecider
 	smartReplyGraph    *service.SmartReplyGraph
@@ -46,6 +46,23 @@ type SmartReplyEngine struct {
 	convReplyWorker  *service.ReplyOrchestrator // 群助手回复的并发控制（限并发+会话串行）
 	decisionLog      *service.AvatarDecisionLogService
 	failureCases     *service.FailureCaseService
+}
+
+// AIResponseSender 群助手回复所需的「发送侧」能力集合。
+// 生产实现是 WebSocketMessageSender；抽成接口是为了让 计划 → 执行 → 投递 → 核验标注
+// 这条主链路可以被集成测试覆盖（此前发送端是具体类型，测试无法注入假实现，
+// 导致 handler 层只能靠手点验证）。
+type AIResponseSender interface {
+	// StreamingAISender 提供流式气泡（sendChunk/getMsg/finish）、工具卡事件与「思考中」占位。
+	service.StreamingAISender
+	// NotifyReplyStartedStatus 同上，附带回合阶段文案（"正在看图片…"/"正在处理…"）。
+	NotifyReplyStartedStatus(conversationID uint, assistantName string, status string)
+	// NotifyReplyDecision 通知「这次为什么回/不回」，避免未回复时静默。
+	NotifyReplyDecision(conversationID uint, decision SmartReplyDecision)
+	// SendAIMessage 发送整段 AI 消息（auto 自动回复等非流式场景）。
+	SendAIMessage(conversationID uint, content string, assistantName string, extra map[string]interface{}) error
+	// BroadcastQualityUpdate 把核验存疑标注增量推给会话（客户端按消息 id 合并）。
+	BroadcastQualityUpdate(msgID, conversationID uint, ann service.QualityAnnotation)
 }
 
 // SetFailureCaseService 注入失败案例记录服务（差评/质量门拒绝时快照案例）。
@@ -446,19 +463,27 @@ func (e *SmartReplyEngine) generateAndSendReplyWithGraph(userID uint, conversati
 		IsAIMention:     false,
 	}
 
-	// auto 路径走带内置工具的多步 ReAct（非流式，工具跑完拿全文再过质量门）：
-	// search_knowledge/list_tasks/list_calendar_events 等按提问者 scope 取数，
-	// auto 模式下"查数据类"问题不再以"无法查询"收场。工具调用记录收集后随消息
-	// Extra 持久化（回放后卡片可见）；getMsg 恒 nil——auto 无流式气泡，跳过实时推卡片。
+	// auto 路径同样经回合计划：核验恒阻断（无流式气泡，发出去就收不回），
+	// 是否挂工具、要不要两段式与 @AI 路径同一套规则。
+	plan := service.PlanGroupTurn(service.TurnInput{
+		Intent:               intent,
+		Question:             userContent,
+		GroupTools:           e.smartReplyGraph.GroupTools(),
+		ExternalToolsEnabled: e.smartReplyGraph.HasExternalTools(),
+		VisionDisableTools:   e.smartReplyGraph.VisionDisableTools(),
+		QualityGateEnabled:   e.qualityGateEnabled,
+		MentionGateBlock:     e.mentionGateBlock,
+		Auto:                 true,
+	})
 	var toolCalls []ToolCallRecord
 	feedback := service.NewToolCallFeedback(e.messageSender, conversationID,
 		func() *model.Message { return nil }, &toolCalls, nil, nil)
 	var toolEvidence []string
 	feedback = feedbackWithEvidence(feedback, &toolEvidence)
-	reply, err := e.smartReplyGraph.ExecuteWithTools(ctx, input, feedback)
+	reply, err := e.smartReplyGraph.ExecuteTurn(ctx, plan, input, feedback)
 	if err != nil {
 		// 工具链路整体失败（如 ErrStreamingToolsNotSupported 之外的硬错）时降级编译图整段生成
-		log.Printf("[SmartReplyGraph] auto 带工具生成失败，降级编译图: %v", err)
+		log.Printf("[SmartReplyGraph] auto 回合执行失败（mode=%s），降级编译图: %v", plan.Mode.String(), err)
 		result, gerr := e.smartReplyGraph.Execute(ctx, input)
 		if gerr != nil {
 			log.Printf("[SmartReplyGraph] AI 回复生成失败: %v", gerr)
@@ -589,6 +614,64 @@ func (e *SmartReplyEngine) validateReplyBeforeSend(input *service.SmartReplyCont
 		Actions: []string{"mention_ai", "adjust_settings", "ignore"},
 	})
 	return false, ""
+}
+
+// runQualityGateAsync 正文已随流送达后的核验：只记录指标与失败案例，不回传、不阻断；
+// 未通过时把「存疑」标注写进消息 Extra 并增量广播（正文已经发出，标注是事后补上的）。
+// 与 validateReplyBeforeSend 的分工：后者是「核验可阻断（mentionGateBlock）」时的同步决策；
+// 旁路模式下核验不再影响发送，放后台跑，避免整段回复被它拖住。
+func (e *SmartReplyEngine) runQualityGateAsync(input *service.SmartReplyContext, reply string, toolEvidence []string, getMsg func() *model.Message) {
+	if !e.qualityGateEnabled || strings.TrimSpace(reply) == "" {
+		return
+	}
+	// 快照入参：异步执行时请求作用域的 input 已随调用返回，浅拷贝只读使用避免与后续清理竞争。
+	cp := *input
+	evidence := append([]string(nil), toolEvidence...)
+	utils.SafeGo(func() {
+		verdict, skipped, err := e.runQualityGate(&cp, reply, evidence)
+		if skipped {
+			return
+		}
+		if err != nil {
+			log.Printf("[SmartReplyQuality] @AI 异步核验不可用: %v", err)
+			return
+		}
+		if verdict.ShouldSend() {
+			return
+		}
+		service.GlobalAIReplyMetrics.RecordQualityAdvisory()
+		log.Printf("[SmartReplyQuality] @AI 异步核验未通过（已放行并标注存疑）: relevant=%v supported=%v hallucinate=%v reason=%s",
+			verdict.Relevant, verdict.Supported, verdict.Hallucinate, verdict.Reason)
+		e.recordFailureCase("quality_advisory", cp.ConversationID, cp.Message, reply)
+		e.annotateQualityDoubtful(getMsg(), verdict.Reason, verdict.Confidence)
+	})
+}
+
+// annotateQualityDoubtful 把「核验存疑」写入消息 Extra 并广播增量更新：
+// 消息已经发送完成，标注在核验结束后补上，客户端按 id 合并到已显示的气泡。
+func (e *SmartReplyEngine) annotateQualityDoubtful(msg *model.Message, reason string, confidence float32) {
+	if msg == nil {
+		return
+	}
+	ann := service.QualityAnnotation{
+		Status:     "doubtful",
+		Reason:     reason,
+		Confidence: confidence,
+		At:         time.Now().Unix(),
+	}
+	extra, err := service.MergeMessageExtra(msg.Extra, map[string]interface{}{"quality": ann})
+	if err != nil {
+		log.Printf("[SmartReplyQuality] 合并存疑标注失败: %v", err)
+		return
+	}
+	if db := database.GetDB(); db != nil {
+		if err := db.Model(&model.Message{}).Where("id = ?", msg.ID).Update("extra", extra).Error; err != nil {
+			log.Printf("[SmartReplyQuality] 写入存疑标注失败: msgID=%d err=%v", msg.ID, err)
+			return
+		}
+	}
+	msg.Extra = extra
+	e.messageSender.BroadcastQualityUpdate(msg.ID, msg.ConversationID, ann)
 }
 
 func (e *SmartReplyEngine) generateAndSendReplyLegacy(userID uint, conversationID uint, userContent string, intent *ai.MessageIntent) {
@@ -882,42 +965,43 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		IsSelfQuote:     isSelfQuote,
 	}
 
-	// 管理操作指令（踢人/加人/禁言等）：注入 AI 群管理工具，LLM 返回 tool call 时真实执行。
-	// 仅系统管理员发起的指令会被工具执行。跳过知识注入（管理指令不需要知识上下文）。
-	if intent, derr := e.intentDetector.Detect(question, userID, conversationID); derr == nil && ShouldUseToolsForMention(intent) {
-		input.SkipKnowledge = true
-		e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID, "带",
-			func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback) (string, error) {
-				return e.smartReplyGraph.ExecuteWithTools(c, i, fb)
-			},
-			func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback, onChunk func(ai.StreamChunk) error) (bool, error) {
-				return e.smartReplyGraph.ExecuteWithToolsStream(c, i, fb, onChunk)
-			})
-		return
+	// 意图只算一次：它既是回合计划的输入，也决定是否跳过知识注入。
+	// 意图检测不可用时传 nil（计划按"保守走工具"处理，与旧行为一致）。
+	var intent *ai.MessageIntent
+	if e.intentDetector != nil {
+		if it, derr := e.intentDetector.Detect(question, userID, conversationID); derr == nil {
+			intent = it
+		}
 	}
 
-	// 后台开启外部 MCP 群启用时，普通提问改走「外部工具变体」：除内置工具外另附
-	// 外部工具的触发/输出组织指引（input.ExternalToolGuide），LLM 可在自然语言下自主调用
-	// 外部工具，挂起期间向用户发"正在调用…"过程反馈。工具白名单两条分支同为
-	// 内置 ∪ 外部（groupAssistantAllowedTools），差异只在指引与 kind 日志标签——
-	// 开外部 MCP 不再让 search_knowledge/list_tasks 等内置能力被顶掉。
-	// 注意：不设 SkipKnowledge=true，否则即使开了外部工具，@AI 普通提问也会失去
-	// 知识库/记忆上下文，导致无依据应答。知识注入由 prepareInput 按需独立判断（如引用图片时跳过）。
-	if e.smartReplyGraph.HasExternalTools() {
-		e.handleAIMentionWithExternalTools(ctx, input, conversationID, assistantName, userID)
-		return
+	// 回合计划是唯一的决策点：是否带图、带工具、核验策略、投递策略都在 service.PlanGroupTurn。
+	plan := service.PlanGroupTurn(service.TurnInput{
+		Intent:               intent,
+		Question:             question,
+		HasImage:             e.smartReplyGraph.QuotedHasImage(quotedMessageID),
+		GroupTools:           e.smartReplyGraph.GroupTools(),
+		ExternalToolsEnabled: e.smartReplyGraph.HasExternalTools(),
+		VisionDisableTools:   e.smartReplyGraph.VisionDisableTools(),
+		QualityGateEnabled:   e.qualityGateEnabled,
+		MentionGateBlock:     e.mentionGateBlock,
+	})
+	kind := "带"
+	if plan.ExternalGuide {
+		kind = "外部"
 	}
+	logger.WithModule("SmartReply").Info("@AI 回合计划",
+		"mode", plan.Mode.String(), "tools", len(plan.Tools),
+		"delivery", int(plan.Delivery), "gate", int(plan.Gate), "conversationID", conversationID)
 
-	// 普通提问默认也走带内置工具的流式 ReAct（B 治理：群助手查数据能力）：
-	// search_knowledge/list_tasks/list_calendar_events 等按提问者 scope 取数，
-	// "我周三有什么会"这类问题不再以"无法查询"收场。支持流式 tool-call 的 provider
-	// 逐 token 打字 + 工具卡片；不支持时 handleAIMentionWithTools 内部降级非流式。
-	e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID, "带",
+	onStatus := func(status string) {
+		e.messageSender.NotifyReplyStartedStatus(conversationID, assistantName, status)
+	}
+	e.handleAIMentionWithTools(ctx, plan, input, conversationID, assistantName, userID, kind,
 		func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback) (string, error) {
-			return e.smartReplyGraph.ExecuteWithTools(c, i, fb)
+			return e.smartReplyGraph.ExecuteTurn(c, plan, i, fb)
 		},
 		func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback, onChunk func(ai.StreamChunk) error) (bool, error) {
-			return e.smartReplyGraph.ExecuteWithToolsStream(c, i, fb, onChunk)
+			return e.smartReplyGraph.ExecuteTurnStream(c, plan, i, onStatus, fb, onChunk)
 		})
 }
 
@@ -932,7 +1016,7 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 // 下方渲染工具卡片，不再拼进正文），工具调用列表写进消息 Extra（tool_calls）供回放/刷新
 // 后卡片仍可见。kind 取 "带"（内置群管理工具）或 "外部"（外部 MCP 工具），用于区分日志。
 // execStream 可为 nil（无流式能力时）——此时直接走下面的非流式路径。
-func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint, kind string, exec func(context.Context, *service.SmartReplyContext, ai.ReActStepCallback) (string, error), execStream func(context.Context, *service.SmartReplyContext, ai.ReActStepCallback, func(ai.StreamChunk) error) (bool, error)) {
+func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, plan service.ReplyTurnPlan, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint, kind string, exec func(context.Context, *service.SmartReplyContext, ai.ReActStepCallback) (string, error), execStream func(context.Context, *service.SmartReplyContext, ai.ReActStepCallback, func(ai.StreamChunk) error) (bool, error)) {
 	// AI 开始处理：先推开始事件供前端「思考中」占位（首个流式帧到达前）。
 	// 本函数仅在 messageSender 非 nil 时被调用（引擎装配保证），此处不再重复判空。
 	e.messageSender.NotifyReplyStarted(conversationID, assistantName)
@@ -960,7 +1044,11 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 	var toolEvidence []string
 	feedback = feedbackWithEvidence(feedback, &toolEvidence)
 
-	// 先尝试真·流式路径：正文先缓冲，质量门通过后才送出，避免流式输出无法撤回。
+	// 先尝试真·流式路径。发送时机由回合计划决定：
+	//   - DeliveryLive（核验旁路/关闭）：核验结果不改变"发或不发"，正文边流边发，
+	//     核验改为事后异步记录——用户立刻看到首字。
+	//   - DeliveryBuffered（核验可阻断）：正文先缓冲，核验通过才送出，避免发出去再撤回。
+	liveSend := plan.Delivery == service.DeliveryLive
 	if execStream != nil {
 		var sentBody strings.Builder
 		streamed, serr := execStream(ctx, input, feedback, func(chunk ai.StreamChunk) error {
@@ -969,6 +1057,18 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 				return nil
 			}
 			sentBody.WriteString(c)
+			if !liveSend {
+				return nil
+			}
+			// mention 前缀只拼一次；发送失败不中断生成（正文仍会落库），避免把投递故障
+			// 误记成一次模型调用失败。
+			if mentionPending {
+				c = mentionPrefix + c
+				mentionPending = false
+			}
+			if sendErr := sendChunk(c); sendErr != nil {
+				logger.WithModule("SmartReply").Error("流式发送失败（继续生成）", "error", sendErr)
+			}
 			return nil
 		})
 		if serr != nil && !errors.Is(serr, ai.ErrStreamingToolsNotSupported) {
@@ -1003,31 +1103,37 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 		if streamed {
 			hasBody := strings.TrimSpace(mention.StripTokens(sentBody.String())) != ""
 			if hasBody {
-				send, qualityNote := e.validateReplyBeforeSend(input, sentBody.String(), toolEvidence)
-				if !send {
-					var evID uint
-					if m := getMsg(); m != nil {
-						evID = m.ID
+				if liveSend {
+					// 正文已随流上屏：核验只做事后记录（指标/失败案例），不阻挡也不改写已发内容。
+					e.runQualityGateAsync(input, sentBody.String(), toolEvidence, getMsg)
+					e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
+				} else {
+					send, qualityNote := e.validateReplyBeforeSend(input, sentBody.String(), toolEvidence)
+					if !send {
+						var evID uint
+						if m := getMsg(); m != nil {
+							evID = m.ID
+						}
+						e.recordReplyOutcome(service.ReplySceneGroupMention, true, conversationID, evID, "quality")
+						finish()
+						return
 					}
-					e.recordReplyOutcome(service.ReplySceneGroupMention, true, conversationID, evID, "quality")
-					finish()
-					return
+					for _, chunk := range splitReplyChunks(sentBody.String()) {
+						if chunk == "" {
+							continue
+						}
+						if mentionPending {
+							chunk = mentionPrefix + chunk
+							mentionPending = false
+						}
+						if sendErr := sendChunk(chunk); sendErr != nil {
+							logger.WithModule("SmartReply").Error("发送核验通过的流式回复失败", "error", sendErr)
+							break
+						}
+					}
+					// 有正文：工具调用记录 + 命中的知识来源 + 旁路核验意见合并持久化，回放/刷新后仍可见。
+					e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources, qualityNote)
 				}
-				for _, chunk := range splitReplyChunks(sentBody.String()) {
-					if chunk == "" {
-						continue
-					}
-					if mentionPending {
-						chunk = mentionPrefix + chunk
-						mentionPending = false
-					}
-					if sendErr := sendChunk(chunk); sendErr != nil {
-						logger.WithModule("SmartReply").Error("发送核验通过的流式回复失败", "error", sendErr)
-						break
-					}
-				}
-				// 有正文：工具调用记录 + 命中的知识来源 + 旁路核验意见合并持久化，回放/刷新后仍可见。
-				e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources, qualityNote)
 			} else {
 				// 空回：模型没生成任何正文。@AI 后不应完全静默——按失败原因补细分兜底文案
 				// （工具失败点出工具名 / 工具成功指向卡片 / 纯空回提示换问法）。
@@ -1116,21 +1222,8 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, input *
 		"kind", kind, "toolCalls", len(toolCalls))
 }
 
-// handleAIMentionWithExternalTools 普通提问（非管理指令）且后台开了外部 MCP 时的流式 ReAct
-// 回复。与 handleAIMentionWithTools 共用骨架、共用工具白名单（内置 ∪ 外部），差异只有两点：
-// 置位 input.ExternalToolGuide 追加外部工具的触发/输出组织指引，以及 kind="外部" 日志标签。
-// 传入流式执行器：Provider 支持流式 tool-call 时 final 答案逐 token 送出；否则降级到
-// 非流式 ExecuteWithTools。
-func (e *SmartReplyEngine) handleAIMentionWithExternalTools(ctx context.Context, input *service.SmartReplyContext, conversationID uint, assistantName string, userID uint) {
-	input.ExternalToolGuide = true
-	e.handleAIMentionWithTools(ctx, input, conversationID, assistantName, userID, "外部",
-		func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback) (string, error) {
-			return e.smartReplyGraph.ExecuteWithTools(c, i, fb)
-		},
-		func(c context.Context, i *service.SmartReplyContext, fb ai.ReActStepCallback, onChunk func(ai.StreamChunk) error) (bool, error) {
-			return e.smartReplyGraph.ExecuteWithToolsStream(c, i, fb, onChunk)
-		})
-}
+// handleAIMentionWithExternalTools 已移除：外部工具指引由回合计划（plan.ExternalGuide）
+// 统一决定，普通提问与管理指令共用同一条执行路径。
 
 // persistAIMessageExtra 把群助手回复的工具调用与知识来源合并写进消息 Extra（JSON），
 // 供刷新/REST 回放后工具卡片与「知识来源」徽章仍可见。两者任一无内容则只写有内容的键，
@@ -1179,7 +1272,7 @@ func (e *SmartReplyEngine) buildMentionPrefix(conversationID, userID uint) strin
 // newToolCallFeedback 构造群 @AI 带工具回复的 ReAct 进度回调（内置工具与外部工具路径共用）。
 // 逻辑已下沉到 service.NewToolCallFeedback（与专属机器人回复路径共用，避免重复），
 // 此处仅做类型适配：*WebSocketMessageSender 满足 service.StreamingAISender 接口。
-func newToolCallFeedback(sender *WebSocketMessageSender, conversationID uint, getMsg func() *model.Message, toolCalls *[]ToolCallRecord, toolTitles, toolDescriptions map[string]string) ai.ReActStepCallback {
+func newToolCallFeedback(sender AIResponseSender, conversationID uint, getMsg func() *model.Message, toolCalls *[]ToolCallRecord, toolTitles, toolDescriptions map[string]string) ai.ReActStepCallback {
 	return service.NewToolCallFeedback(sender, conversationID, getMsg, toolCalls, toolTitles, toolDescriptions)
 }
 
@@ -1238,12 +1331,9 @@ func splitReplyChunks(reply string) []string {
 	return chunks
 }
 
-// ShouldUseToolsForMention 判断 @AI 提及是否应走带工具路径（管理操作指令）。
-// command 意图（移除/踢出/添加/邀请/禁言/解封/设置管理员/取消管理员等）走带工具，
-// 其他意图（chat/query/alert/todo）保持流式纯文本回复。
-func ShouldUseToolsForMention(intent *ai.MessageIntent) bool {
-	return intent != nil && intent.Type == "command"
-}
+// ShouldUseToolsForMention 已由回合计划取代：管理指令（command 意图）通过
+// service.PlanGroupTurn 的 SkipKnowledge / Mode 判定，不再单独提供入口。
+
 
 func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uint, question string, originalContent string, conv *model.Conversation, assistantName string) {
 	ctx := e.promptBuilder.BuildPromptContext(conversationID, userID)

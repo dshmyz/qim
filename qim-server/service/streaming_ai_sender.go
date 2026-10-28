@@ -240,19 +240,48 @@ func BuildEmptyReplyFallback(toolCalls []ToolCallRecord, hasError bool, mentionP
 			}
 		}
 		if len(failed) > 0 {
-			body = "我调用了「" + strings.Join(failed, "」「") + "」但没有成功，暂时给不出结果，你可以稍后再试。"
+			body = BuildFailureReply(FailureNoResult, FailureDetail{FailedTools: failed})
 		} else {
 			body = "已执行以上操作，结果见上方工具卡片。"
 		}
 	} else if hasError {
-		body = "抱歉，我这边处理时出了点问题，没能生成回复，请稍后再试一次。"
+		body = BuildFailureReply(FailureModelUnavailable, FailureDetail{})
 	} else {
-		body = "抱歉，我没有想到合适的回答，你可以换个问法再问我一次。"
+		body = BuildFailureReply(FailureNoResult, FailureDetail{})
 	}
 	if mentionPrefix != "" {
 		return mentionPrefix + body
 	}
 	return body
+}
+
+// QualityAnnotation 回复的可信度标注，写在消息 Extra 的 quality 键上，随消息响应拍平给前端。
+// 目前只有 doubtful（核验存疑）一种状态：正文照发，但如实告诉用户"这条可能不准"，
+// 并给出反馈入口。与 quality_note 的区别：后者是治理内部记录，不出现在用户界面。
+type QualityAnnotation struct {
+	Status     string  `json:"status"` // 目前仅 "doubtful"
+	Reason     string  `json:"reason,omitempty"`
+	Confidence float32 `json:"confidence,omitempty"`
+	At         int64   `json:"at,omitempty"` // 标注时间（unix 秒）
+}
+
+// MergeMessageExtra 把 kv 合并进消息 Extra（JSON 对象）并返回新的 JSON 字符串。
+// 空/非法 Extra 按空对象处理（历史脏数据不阻断标注），由调用方负责落库与广播。
+func MergeMessageExtra(extraJSON string, kv map[string]interface{}) (string, error) {
+	m := map[string]interface{}{}
+	if strings.TrimSpace(extraJSON) != "" {
+		if err := json.Unmarshal([]byte(extraJSON), &m); err != nil || m == nil {
+			m = map[string]interface{}{}
+		}
+	}
+	for k, v := range kv {
+		m[k] = v
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return extraJSON, err
+	}
+	return string(b), nil
 }
 
 // PersistAIMessageExtra 把工具调用记录 + 命中的知识来源 + 质量门旁路意见合并持久化到消息

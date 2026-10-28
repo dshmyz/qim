@@ -467,10 +467,12 @@ func (s *AIService) GetCompletionWithToolsMultiStep(taskType TaskType, messages 
 		if err != nil {
 			// 首轮即失败时降级到 prompt engineering（与单轮行为一致）
 			if step == 1 {
-				aiLog().Warn("react native function calling not supported, falling back", "error", err)
+				aiLog().Warn("react native function calling not supported, falling back",
+					"provider", provider.Name(), "model", modelName, "taskType", taskType, "error", err)
 				return s.getCompletionWithToolsPromptEngineering(taskType, messages, callerCtx, allowed, overrides...)
 			}
-			return "", fmt.Errorf("react step %d provider error: %w", step, err)
+			return "", fmt.Errorf("react step %d provider error (provider=%s model=%s task=%s): %w",
+				step, provider.Name(), modelName, taskType, err)
 		}
 
 		// 无工具调用 → 最终回答
@@ -685,7 +687,16 @@ func (s *AIService) GetCompletionWithToolsStreamMultiStep(ctx context.Context, t
 			}
 			// 该步模型调用失败：落调用事实（成功=false）
 			s.emitModelCall(provider.Name(), modelName, taskType, stepFinish, false, time.Since(stepStart).Milliseconds())
-			return fmt.Errorf("react stream step %d provider error: %w", step, err)
+			// 错误串带上实际路由，否则上游只回 body（如 max_completion_tokens 超限），
+			// 无法判断是哪个 provider/模型/任务路由发出去的。
+			effectiveModel := modelName
+			if effectiveModel == "" {
+				effectiveModel = "(provider default)"
+			}
+			aiLog().Error("react stream step failed", "step", step,
+				"provider", provider.Name(), "model", effectiveModel, "taskType", taskType, "error", err)
+			return fmt.Errorf("react stream step %d provider error (provider=%s model=%s task=%s): %w",
+				step, provider.Name(), effectiveModel, taskType, err)
 		}
 		// 该步模型调用成功（含正常 tool_calls 回合与 final stop 回合）
 		s.emitModelCall(provider.Name(), modelName, taskType, stepFinish, true, time.Since(stepStart).Milliseconds())

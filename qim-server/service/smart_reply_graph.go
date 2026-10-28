@@ -411,7 +411,9 @@ func (g *SmartReplyGraph) resolveQuotedImageTaskType(input *SmartReplyContext) a
 	input.Quoted = &QuotedContext{
 		Kind: QuotedFailed,
 		Name: input.Quoted.Name,
-		Text: fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但你当前无法查看图片。请如实向对方说明你看不到这张图片，并请对方用文字描述图片内容；不要总结或复述之前的对话。若对方引用图片的同时还提出了其他问题，请照常回答。回答尽量简短（一两句），先直接给出结论。\n\n回复示例：「我看不到这张图片（当前模型不支持看图），请把图片里的关键信息用文字发出来。」", input.Quoted.Name),
+		Text: fmt.Sprintf("📷 %s一条图片消息「%s」，但你当前没有可用的视觉模型：%s 请如实向对方说明。不要总结或复述之前的对话；若对方引用图片的同时还提出了其他问题，请照常回答，回答尽量简短（一两句），先直接给出结论。",
+			refPrefix, input.Quoted.Name,
+			BuildFailureReply(FailureMediaUnreadable, FailureDetail{MediaType: "图片", Name: input.Quoted.Name})),
 	}
 	return ai.TaskTypeChat
 }
@@ -448,58 +450,69 @@ func externalToolTriggerGuideMessage() *schema.Message {
 	}
 }
 
-// ExecuteWithTools 带工具的非流式回复（管理指令/普通提问/auto 共用）。
-// 工具白名单恒为 groupAssistantAllowedTools()：内置群工具 ∪（若后台开启）外部 MCP 工具——
-// 两类工具同时可用，不再按路径二选一（此前普通提问走外部工具集时会静默丢掉
-// search_knowledge/list_tasks 等内置能力）。
-// 走 GetCompletionWithToolsMultiStep 注入白名单 AI 工具并多步循环，LLM 返回 tool call 时
-// 真实执行。callerCtx 用 input.UserID，isSystemAdmin 校验生效，即仅群主/管理员发起的
-// 管理指令会被工具执行，普通成员指令被工具拒绝。
-// 采用 MultiStep 而非单轮 core 的原因：工具执行出错时（如"用户不存在"）MultiStep 会把
-// 错误以 tool 角色消息回喂给 LLM（见 ai_service.go 中 ReAct 循环），让群助手基于错误
-// 生成自然回复，而不是像旧路径那样把错误硬抛到 handler 直接静默失败。
-// feedback 为可选的每步工具执行回调（variadic，nil 即不回调），供调用方收集工具调用
-// 记录做卡片展示；流式/非流式路径共用同一 MultiStep 钩子（ai.ReActStepCallback）。
-func (g *SmartReplyGraph) ExecuteWithTools(ctx context.Context, input *SmartReplyContext, feedback ...ai.ReActStepCallback) (string, error) {
-	historyMessages, taskType, err := g.preparedHistory(input)
+// ExecuteTurn 非流式执行一个回合并返回全文（auto 自动回复用）。
+// 模式由 ReplyTurnPlan 决定（见 reply_turn.go），本函数不再自行判断带不带工具：
+//   - DirectChat / VisionOnly：单次模型调用；
+//   - ToolReAct：带 plan.Tools 的 ReAct；
+//   - VisionThenAct：先按视觉任务识别图片，再把识别结果作为文本上下文带工具执行。
+//
+// callerCtx 用 input.UserID，工具内的 isSystemAdmin 校验生效——仅群主/管理员发起的
+// 管理指令会被真实执行。采用 MultiStep 而非单轮的原因见 ai 包 ReAct 实现：工具报错会以
+// tool 消息回喂模型，让它基于错误生成自然回复，而不是把错误硬抛到 handler 静默失败。
+func (g *SmartReplyGraph) ExecuteTurn(ctx context.Context, plan ReplyTurnPlan, input *SmartReplyContext, feedback ...ai.ReActStepCallback) (string, error) {
+	historyMessages, taskType, err := g.preparedHistory(input, plan)
 	if err != nil {
 		return "", err
 	}
-	callerCtx := &ai.CallerContext{UserID: input.UserID}
 	var onStep ai.ReActStepCallback
 	if len(feedback) > 0 {
 		onStep = feedback[0]
 	}
+	aiMessages := einoMessagesToAIMessages(historyMessages)
+
+	switch plan.Mode {
+	case TurnVisionThenAct:
+		return g.runVisionThenAct(ctx, plan, input, taskType, aiMessages, onStep)
+	case TurnToolReAct:
+		return g.runReAct(ctx, taskType, aiMessages, input, plan, onStep)
+	default: // TurnDirectChat / TurnVisionOnly
+		return g.aiService.GetCompletion(taskType, aiMessages)
+	}
+}
+
+// ExecuteTurnStream 流式执行一个回合。返回值语义与旧 ExecuteWithToolsStream 一致：
+// (streamed=true) 表示已走流式；Provider 不支持流式 tool-call 时返回
+// (false, ai.ErrStreamingToolsNotSupported)，调用方降级到非流式 ExecuteTurn。
+// onStatus 在阶段切换时下发可见状态文案（首字前的安抚提示），可为 nil。
+func (g *SmartReplyGraph) ExecuteTurnStream(ctx context.Context, plan ReplyTurnPlan, input *SmartReplyContext, onStatus func(status string), onStep ai.ReActStepCallback, onChunk func(chunk ai.StreamChunk) error) (bool, error) {
+	historyMessages, taskType, err := g.preparedHistory(input, plan)
+	if err != nil {
+		return false, err
+	}
+	aiMessages := einoMessagesToAIMessages(historyMessages)
+
+	switch plan.Mode {
+	case TurnVisionThenAct:
+		return g.streamVisionThenAct(ctx, plan, input, taskType, aiMessages, onStatus, onStep, onChunk)
+	case TurnToolReAct:
+		return g.streamReAct(ctx, taskType, aiMessages, input, plan, onStep, onChunk)
+	default: // TurnDirectChat / TurnVisionOnly
+		return true, g.aiService.GetCompletionStreamWithContext(ctx, taskType, aiMessages, onChunk)
+	}
+}
+
+// runReAct 非流式带工具执行。
+func (g *SmartReplyGraph) runReAct(ctx context.Context, taskType ai.TaskType, messages []ai.Message, input *SmartReplyContext, plan ReplyTurnPlan, onStep ai.ReActStepCallback) (string, error) {
 	return g.aiService.GetCompletionWithToolsMultiStep(
-		taskType, einoMessagesToAIMessages(historyMessages), callerCtx, input.AllowedTools,
+		taskType, messages, &ai.CallerContext{UserID: input.UserID}, plan.Tools,
 		ai.MaxReActSteps, onStep,
 	)
 }
 
-// HasExternalTools 报告群 AI 普通提问路径是否有可用的外部 MCP 工具。
-// 仅当「网关已注入 && 后台开启 external_mcp:group_enabled && 确有已注册外部工具」
-// 才返回 true，用于路由普通提问进带外部工具的流式 ReAct；其余情况（默认关闭）
-// 保持原有纯流式路径，零行为变化。
-func (g *SmartReplyGraph) HasExternalTools() bool {
-	if g.mcpGateway == nil || !g.mcpGateway.GroupEnabled() {
-		return false
-	}
-	return len(g.mcpGateway.ListExternalToolNames()) > 0
-}
-
-// ExecuteWithToolsStream 真·流式的带工具 ReAct（管理指令/普通提问共用），与 ExecuteWithTools
-// 同序（同一份工具白名单；input.ExternalToolGuide 置位时另附输出组织指引），final 答案逐 token
-// 经 onChunk 流出。返回 (streamed=true) 表示已走流式逐 token；若 Provider 不支持流式 tool-call
-// 则返回 (streamed=false, err=ai.ErrStreamingToolsNotSupported)，调用方降级到非流式 ExecuteWithTools。
-// onStep 与 onChunk 均有意义：工具事件走 onStep（卡片），答案逐 token 走 onChunk。
-func (g *SmartReplyGraph) ExecuteWithToolsStream(ctx context.Context, input *SmartReplyContext, onStep ai.ReActStepCallback, onChunk func(chunk ai.StreamChunk) error) (streamed bool, err error) {
-	historyMessages, taskType, err := g.preparedHistory(input)
-	if err != nil {
-		return false, err
-	}
-	callerCtx := &ai.CallerContext{UserID: input.UserID}
-	err = g.aiService.GetCompletionWithToolsStreamMultiStep(
-		ctx, taskType, einoMessagesToAIMessages(historyMessages), callerCtx, input.AllowedTools,
+// streamReAct 流式带工具执行；不支持流式 tool-call 时把哨兵错误交给调用方降级。
+func (g *SmartReplyGraph) streamReAct(ctx context.Context, taskType ai.TaskType, messages []ai.Message, input *SmartReplyContext, plan ReplyTurnPlan, onStep ai.ReActStepCallback, onChunk func(ai.StreamChunk) error) (bool, error) {
+	err := g.aiService.GetCompletionWithToolsStreamMultiStep(
+		ctx, taskType, messages, &ai.CallerContext{UserID: input.UserID}, plan.Tools,
 		ai.MaxReActSteps, onStep, onChunk,
 	)
 	if errors.Is(err, ai.ErrStreamingToolsNotSupported) {
@@ -508,27 +521,169 @@ func (g *SmartReplyGraph) ExecuteWithToolsStream(ctx context.Context, input *Sma
 	return err == nil, err
 }
 
-// preparedHistory 补齐输入上下文并构造历史消息；input.ExternalToolGuide 置位时由
-// buildSystemPrompt 注入外部工具的触发/输出组织指引（见 externalToolOutputGuideMessage）。
-// 两种流式/非流式
-// 路径共用同一准备骨架，工具白名单也在此统一填值并复用给 ReAct，保证「提示词里声明的
-// 能力」与「实际放行的工具」永不背离。
-// 返回值附带任务类型：被引用图片同样经 resolveQuotedImageTaskType 路由/降级，
-// 避免带工具路径以 TaskTypeChat 把图片 base64 发给纯文本模型直接 400。
-func (g *SmartReplyGraph) preparedHistory(input *SmartReplyContext) ([]*schema.Message, ai.TaskType, error) {
+// runVisionThenAct 非流式两段式：先识图，再带工具执行。识图成功但行动失败时仍返回
+// 识图结果（用户至少能看到"图里是什么"），不把已获得的信息一起丢掉。
+func (g *SmartReplyGraph) runVisionThenAct(ctx context.Context, plan ReplyTurnPlan, input *SmartReplyContext, visionTask ai.TaskType, messages []ai.Message, onStep ai.ReActStepCallback) (string, error) {
+	if visionTask != ai.TaskTypeVision {
+		// 未配置视觉路由：图片已在 prepareInput 里降级为"看不到"的文字提示，退回单段带工具。
+		return g.runReAct(ctx, ai.TaskTypeChat, messages, input, plan, onStep)
+	}
+	understanding, err := g.aiService.GetCompletion(visionTask, messages)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(understanding) == "" {
+		return understanding, nil
+	}
+	g.applyImageUnderstanding(input, understanding)
+	actionMsgs := einoMessagesToAIMessages(g.buildTurnHistory(input, plan))
+	action, err := g.runReAct(ctx, g.aiService.ChatTaskType(actionMsgs), actionMsgs, input, plan, onStep)
+	if err != nil {
+		return understanding, err
+	}
+	if strings.TrimSpace(action) == "" {
+		return understanding, nil
+	}
+	return understanding + "\n\n" + action, nil
+}
+
+// streamVisionThenAct 流式两段式：第一段识图正文直接上屏；第二段带工具执行并把结果续写
+// 在同一气泡里。第二段若 Provider 不支持流式 tool-call，退化为非流式并把正文补发，
+// 不回到调用方的整回合降级（否则第一段的识图内容会被重复生成）。
+func (g *SmartReplyGraph) streamVisionThenAct(ctx context.Context, plan ReplyTurnPlan, input *SmartReplyContext, visionTask ai.TaskType, messages []ai.Message, onStatus func(string), onStep ai.ReActStepCallback, onChunk func(ai.StreamChunk) error) (bool, error) {
+	if visionTask != ai.TaskTypeVision {
+		return g.streamReAct(ctx, ai.TaskTypeChat, messages, input, plan, onStep, onChunk)
+	}
+	if onStatus != nil && len(plan.Status) > 0 {
+		onStatus(plan.Status[0])
+	}
+	var understanding strings.Builder
+	err := g.aiService.GetCompletionStreamWithContext(ctx, visionTask, messages, func(chunk ai.StreamChunk) error {
+		if chunk.Content != "" {
+			understanding.WriteString(chunk.Content)
+		}
+		return onChunk(chunk)
+	})
+	if err != nil {
+		return true, err
+	}
+	if strings.TrimSpace(understanding.String()) == "" {
+		// 识图没有产出：不再执行动作，避免带着空上下文去调工具。
+		return true, nil
+	}
+	if onStatus != nil && len(plan.Status) > 1 {
+		onStatus(plan.Status[1])
+	}
+	g.applyImageUnderstanding(input, understanding.String())
+	actionMsgs := einoMessagesToAIMessages(g.buildTurnHistory(input, plan))
+	actionTask := g.aiService.ChatTaskType(actionMsgs)
+	serr := g.aiService.GetCompletionWithToolsStreamMultiStep(
+		ctx, actionTask, actionMsgs, &ai.CallerContext{UserID: input.UserID}, plan.Tools,
+		ai.MaxReActSteps, onStep, onChunk,
+	)
+	if serr == nil {
+		return true, nil
+	}
+	if !errors.Is(serr, ai.ErrStreamingToolsNotSupported) {
+		return true, serr
+	}
+	reply, ferr := g.runReAct(ctx, actionTask, actionMsgs, input, plan, onStep)
+	if ferr != nil {
+		return true, ferr
+	}
+	if strings.TrimSpace(reply) == "" {
+		return true, nil
+	}
+	return true, onChunk(ai.StreamChunk{Content: "\n\n" + reply})
+}
+
+// applyImageUnderstanding 把第一段识图结果改写为文本上下文：第二段重建历史时不再携带
+// 图片（图片与 tools 永不同请求），但仍能让模型看到"图里是什么"。
+func (g *SmartReplyGraph) applyImageUnderstanding(input *SmartReplyContext, understanding string) {
+	name := ""
+	if input.Quoted != nil {
+		name = input.Quoted.Name
+	}
+	input.Quoted = &QuotedContext{
+		Kind: QuotedText,
+		Name: name,
+		Text: "【图片识别结果】\n" + understanding,
+	}
+}
+
+// GroupTools 返回本次群作用域可用的工具（内置 ∪ 外部），供回合计划使用。
+func (g *SmartReplyGraph) GroupTools() []string {
+	return g.groupAssistantAllowedTools()
+}
+
+// VisionDisableTools 报告 ai.vision_disable_tools 是否开启（带图时不挂工具）。
+func (g *SmartReplyGraph) VisionDisableTools() bool {
+	if g.thresholdSvc == nil {
+		return true
+	}
+	return g.thresholdSvc.GetInt("ai.vision_disable_tools", 1) != 0
+}
+
+// QuotedHasImage 报告被引用/自引用的消息是否为图片：回合计划需要"是否带图"来决定
+// 视觉单轮还是两段式。消息类型只有一次按主键的查询，代价可忽略。
+func (g *SmartReplyGraph) QuotedHasImage(quotedMessageID *uint) bool {
+	if quotedMessageID == nil {
+		return false
+	}
+	var msgType string
+	if err := g.db.Model(&model.Message{}).
+		Where("id = ?", *quotedMessageID).
+		Select("type").Scan(&msgType).Error; err != nil {
+		return false
+	}
+	return msgType == "image"
+}
+
+// HasExternalTools 报告群 AI 普通提问路径是否有可用的外部 MCP 工具。
+// 仅当「网关已注入 && 后台开启 external_mcp:group_enabled && 确有已注册外部工具」
+// 才返回 true；回合计划据此决定是否注入外部工具指引。
+func (g *SmartReplyGraph) HasExternalTools() bool {
+	if g.mcpGateway == nil || !g.mcpGateway.GroupEnabled() {
+		return false
+	}
+	return len(g.mcpGateway.ListExternalToolNames()) > 0
+}
+
+// preparedHistory 补齐输入上下文并按回合计划落定工具边界，再构造历史消息。
+// 工具白名单在此统一填值并复用给 ReAct，保证「提示词里声明的能力」与「实际放行的工具」
+// 永不背离；不挂工具时同时清掉 HasTools 与外部工具指引，避免模型产出假工具调用。
+// 任务类型经 resolveQuotedImageTaskType 路由/降级：被引用图片在有视觉路由时走 vision，
+// 否则降级为"看不到"文字提示，避免把 base64 发给纯文本模型直接 400。
+func (g *SmartReplyGraph) preparedHistory(input *SmartReplyContext, plan ReplyTurnPlan) ([]*schema.Message, ai.TaskType, error) {
 	if err := g.prepareInput(input); err != nil {
 		return nil, ai.TaskTypeChat, err
 	}
-	// 带工具路径：声明本次携带了工具，供 buildSystemPrompt 注入能力边界（有工具=如实执行；无工具=诚实说明）。
-	input.HasTools = true
-	input.AllowedTools = g.groupAssistantAllowedTools()
+	g.applyPlanFlags(input, plan)
 	taskType := g.resolveQuotedImageTaskType(input)
-	history := g.buildHistoryMessages(input)
-	// 外部工具指引不再作为独立消息追加到历史之后：方舟等 OpenAI 兼容端点强制 system
-	// 消息必须位于消息序列开头，尾部 system 会被 step 1 直接 400
-	// "System message must be at the beginning"。指引已并入 buildSystemPrompt
-	// 的 input.ExternalToolGuide 分支，随首条 system 消息下发。
-	return history, taskType, nil
+	return g.buildHistoryMessages(input), taskType, nil
+}
+
+// buildTurnHistory 在不重跑 prepareInput（检索很贵）的前提下按计划重建历史，
+// 供两段式第二段使用。
+func (g *SmartReplyGraph) buildTurnHistory(input *SmartReplyContext, plan ReplyTurnPlan) []*schema.Message {
+	g.applyPlanFlags(input, plan)
+	return g.buildHistoryMessages(input)
+}
+
+// applyPlanFlags 把计划里的工具边界写到上下文中。
+func (g *SmartReplyGraph) applyPlanFlags(input *SmartReplyContext, plan ReplyTurnPlan) {
+	if plan.SkipKnowledge {
+		input.SkipKnowledge = true
+	}
+	if plan.WantsTools() {
+		input.HasTools = true
+		input.AllowedTools = append([]string(nil), plan.Tools...)
+		input.ExternalToolGuide = plan.ExternalGuide
+		return
+	}
+	input.HasTools = false
+	input.AllowedTools = nil
+	input.ExternalToolGuide = false
 }
 
 // prepareInput 补齐 SmartReplyContext 的群/用户/待办/成员/知识库/记忆等上下文，
@@ -676,7 +831,7 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 			fileID := parseQuotedFileID(quoted.Content)
 			if fileID == 0 {
 				// 被引用的是文件消息但拿不到文件 id（Content 缺失/非 JSON）
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条文件消息「%s」，但其内容缺少可解析的文件信息，无法读取正文。请说明你无法读取该文件，可请对方重新发送。", quotedName))
+				warn(QuotedFailed, quotedName, "📄 "+BuildMediaUnreadablePrompt(refPrefix, "文件", quotedName, false, ""))
 			} else if name, text, err := g.quotedFile.ExtractTextForContext(fileID); err == nil {
 				text = truncateQuotedFileText(text)
 				if text != "" {
@@ -688,10 +843,12 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 				}
 			} else if errors.Is(err, ErrQuotedFileTooLarge) {
 				// 文件过大：提示语区别于"类型不支持"
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条文件消息「%s」，但其体积过大（超过 20MB），无法一次性读入上下文。请说明你只能读取较小的文本/文档文件，可建议对方拆分成多份。", quotedName))
+				warn(QuotedFailed, quotedName, "📄 "+BuildMediaUnreadablePrompt(refPrefix, "文件", quotedName, true,
+					"对方可拆分成多份重新发送。"))
 			} else {
 				// 类型不支持 / 解析失败 / 存储读取失败：显式告知 AI，让它诚实回复"读不了"
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条文件消息「%s」，但该文件无法读取正文（类型不在可读取范围：txt/md/csv/json/pdf/docx/xlsx/pptx，或存在其他读取/解析错误）。请说明你无法读取该文件内容，可建议对方转成上述格式或上传到群知识库。", quotedName))
+				warn(QuotedFailed, quotedName, "📄 "+BuildMediaUnreadablePrompt(refPrefix, "文件", quotedName, false,
+					"可建议对方转成 txt/md/csv/json/pdf/docx/xlsx/pptx，或上传到群知识库。"))
 			}
 		case "image":
 			// 图片：走多模态路径，成功则注入 base64 data URL，失败降级为"看不了"。
@@ -702,25 +859,30 @@ func (g *SmartReplyGraph) prepareInput(input *SmartReplyContext) error {
 			quotedName := nameOfQuoted(quoted.Content)
 			fileID := parseQuotedFileID(quoted.Content)
 			if fileID == 0 {
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但其内容缺少可解析的图片信息，无法读取。请如实说明你看不到该图片，可请对方重新发送。", quotedName))
+				warn(QuotedFailed, quotedName, "📷 "+BuildMediaUnreadablePrompt(refPrefix, "图片", quotedName, false, ""))
 			} else if name, dataURL, derr := g.quotedFile.ImageURLForContext(fileID); derr == nil && dataURL != "" {
 				logger.WithModule("SmartReplyGraph").Info("引用图片读取成功",
 					"fileID", fileID, "name", name, "dataURLLen", len(dataURL))
 				warn(QuotedImage, name, fmt.Sprintf("📷 "+refPrefix+"一张图片「%s」，%s。", name, imageInstruction))
 				input.Quoted.ImageURL = dataURL
 			} else if errors.Is(derr, ErrQuotedImageTooLarge) {
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但其体积过大（超过 5MB），无法读入上下文。请如实说明你看不到该图片，可建议对方压缩后重新发送。", quotedName))
+				logger.WithModule("SmartReplyGraph").Warn("引用图片过大，降级为看不到",
+					"fileID", fileID, "name", quotedName, "error", derr)
+				warn(QuotedFailed, quotedName, "📷 "+BuildMediaUnreadablePrompt(refPrefix, "图片", quotedName, true, ""))
 			} else {
 				// 读取失败 / 存储读取失败 / reader 未实现多模态：显式告知 AI 看不到图，诚实回复。
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📷 "+refPrefix+"一条图片消息「%s」，但该图片当前无法读入上下文（读取失败或图片不可用）。请如实说明你看不到该图片，可建议对方重新发送。", quotedName))
+				logger.WithModule("SmartReplyGraph").Warn("引用图片读取失败，降级为看不到",
+					"fileID", fileID, "name", quotedName, "error", derr)
+				warn(QuotedFailed, quotedName, "📷 "+BuildMediaUnreadablePrompt(refPrefix, "图片", quotedName, false, ""))
 			}
 		case "video", "audio":
 			// 视频/语音消息：内容无法解析进上下文，但可带上文件名让 AI 知道引的是什么。
 			mt := mediaTypeName(quoted.Type)
 			if quotedName := parseQuotedFileName(quoted.Content); quotedName != "" {
-				warn(QuotedFailed, quotedName, fmt.Sprintf("📄 "+refPrefix+"一条%s消息「%s」，但该类型目前无法解析其内容进上下文。请如实说明你无法读取该%s。", mt, quotedName, mt))
+				warn(QuotedFailed, quotedName, "📄 "+BuildMediaUnreadablePrompt(refPrefix, mt, quotedName, false,
+					"这类内容暂时无法解析进上下文。"))
 			} else {
-				warn(QuotedFailed, mt, fmt.Sprintf("📄 "+refPrefix+"一条%s消息，但该类型目前无法解析其内容进上下文。请如实说明你无法读取该%s。", mt, mt))
+				warn(QuotedFailed, mt, "📄 "+BuildMediaUnreadablePrompt(refPrefix, mt, "", false, "这类内容暂时无法解析进上下文。"))
 			}
 		case "text", "markdown":
 			// 文本/markdown：原文直接注入（mention token 与历史注入一致保留，不剥离）。

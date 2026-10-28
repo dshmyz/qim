@@ -89,6 +89,17 @@ export interface Message {
   // 外部工具调用记录：前端据此在气泡下方渲染独立工具调用卡片（不拼进正文）。
   // 实时由 ai_tool_call WS 事件追加，回放从 Extra 解析。参考 capability-console。
   tool_calls?: ToolCallRecord[]
+  // 回复可信度标注（后端核验存疑时写入 Extra 的 quality 键，随响应/增量推送下发）。
+  // 目前只有 doubtful 一种状态：正文照发，但如实提示用户"可能不准"并提供反馈入口。
+  quality?: AIQualityAnnotation
+}
+
+// AIQualityAnnotation 回复的可信度标注（见后端 service.QualityAnnotation）。
+export interface AIQualityAnnotation {
+  status: 'doubtful' | string
+  reason?: string
+  confidence?: number
+  at?: number
 }
 
 // ToolCallRecord 外部 AI 工具调用的一条结构化记录（后端 ai_tool_call 事件 / Extra 持久化）。

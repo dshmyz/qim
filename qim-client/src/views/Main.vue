@@ -729,6 +729,7 @@ import ShareModal from '../components/modals/ShareModal.vue'
 const UserProfile = defineAsyncComponent(() => import('../components/modals/UserProfile.vue'))
 const NotificationCenter = defineAsyncComponent(() => import('../components/notification/NotificationCenter.vue'))
 import { mapNotification } from '../utils/notificationMapper'
+import { buildMessageUpdate } from '../utils/messageUpdate'
 import { detectPlatform } from '../utils/platform'
 import { showReminder } from '../utils/notify'
 const CreateGroupModal = defineAsyncComponent(() => import('../components/modals/CreateGroupModal.vue'))
@@ -1978,25 +1979,22 @@ const handleMessageDeleted = (data: any) => {
   }
 }
 
-// 处理消息更新（流式消息分段追加 / 完成后 content、type、is_streaming 变更）
+// 处理消息更新（流式消息分段追加 / 完成后 content、type、is_streaming 变更 /
+// 核验存疑标注的 quality 增量）；字段合并规则见 buildMessageUpdate
 const handleMessageUpdated = (data: any) => {
   logger.log('消息更新:', data)
   const convId = data.conversation_id?.toString()
   const msgId = data.id?.toString()
-  if (!convId || !msgId || !data.content) return
-
-  // 流式分段推送携带 type + is_streaming：流式中保持 streaming 气泡，
-  // finish 时 type=markdown、is_streaming=false，气泡转为最终渲染
-  const updates: Partial<Message> = { content: data.content }
-  if (data.type) updates.type = data.type
-  if (data.is_streaming !== undefined) updates.isStreaming = data.is_streaming
+  const updates = buildMessageUpdate(data)
+  if (!convId || !msgId || !updates) return
 
   // 优先用数据库 ID 更新
   const msgs = chatStore.messages.get(convId)
   if (msgs && msgs.some(m => m.id === msgId)) {
     chatStore.updateMessage(convId, msgId, updates)
-  } else if (msgs) {
-    // 数据库 ID 找不到，找最后一个 stream_xxx 占位消息更新
+  } else if (msgs && data.content) {
+    // 数据库 ID 找不到，找最后一个 stream_xxx 占位消息更新（仅正文更新走此路径：
+    // 标注只对已落库的消息有意义）
     // 增加时间窗：只匹配 60 秒内的流式消息，避免误匹配旧消息
     const now = Date.now()
     const streamMsg = [...msgs].reverse().find(m =>
@@ -2008,8 +2006,8 @@ const handleMessageUpdated = (data: any) => {
     }
   }
 
-  // 只有是当前会话时才滚动
-  if (currentConversationId.value === convId) {
+  // 只有是当前会话且确有正文变化时才滚动（标注更新不应打断阅读位置）
+  if (data.content && currentConversationId.value === convId) {
     nextTick(() => {
       chatWindowRef.value?.scrollToBottom(true)
       requestAnimationFrame(() => chatWindowRef.value?.scrollToBottom(true))

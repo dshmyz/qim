@@ -52,6 +52,21 @@ func TestSmartReplyGraph_HasExternalTools(t *testing.T) {
 	})
 }
 
+// toolPlan 构造「带工具」回合计划：工具集与外部指引都取自 graph 自身，
+// 用于验证 preparedHistory 落定的工具边界（提示词声明与实际放行永不背离）。
+// externalGuide 为 true 时模拟外部 MCP 已启用的普通提问路径；false 模拟管理指令/auto
+// 等不注入外部工具指引的路径。
+func toolPlan(g *SmartReplyGraph, externalGuide bool) ReplyTurnPlan {
+	return PlanGroupTurn(TurnInput{
+		Intent:               &ai.MessageIntent{Type: "query"},
+		Question:             "我周三有什么会",
+		GroupTools:           g.GroupTools(),
+		ExternalToolsEnabled: externalGuide && g.HasExternalTools(),
+		VisionDisableTools:   true,
+		QualityGateEnabled:   true,
+	})
+}
+
 // hasExternalToolGuides 判断历史消息里是否含外部工具的触发/输出组织指引。
 func hasExternalToolGuides(history []*schema.Message) (trigger, output bool) {
 	for _, m := range history {
@@ -93,7 +108,7 @@ func TestPreparedHistory_UnionToolsAndExternalGuide(t *testing.T) {
 
 	t.Run("白名单=内置∪外部", func(t *testing.T) {
 		input := &SmartReplyContext{ConversationID: conv.ID, UserID: 1, Message: "我周三有什么会"}
-		_, _, err := g.preparedHistory(input)
+		_, _, err := g.preparedHistory(input, toolPlan(g, true))
 		require.NoError(t, err)
 
 		assert.Contains(t, input.AllowedTools, "search_knowledge", "内置查询工具应保留")
@@ -105,7 +120,7 @@ func TestPreparedHistory_UnionToolsAndExternalGuide(t *testing.T) {
 
 	t.Run("未置位指引=不追加（管理指令/auto 路径）", func(t *testing.T) {
 		input := &SmartReplyContext{ConversationID: conv.ID, UserID: 1, Message: "踢掉张三"}
-		history, _, err := g.preparedHistory(input)
+		history, _, err := g.preparedHistory(input, toolPlan(g, false))
 		require.NoError(t, err)
 
 		trigger, output := hasExternalToolGuides(history)
@@ -118,7 +133,7 @@ func TestPreparedHistory_UnionToolsAndExternalGuide(t *testing.T) {
 			ConversationID: conv.ID, UserID: 1, Message: "算一下 3.5 × 7",
 			ExternalToolGuide: true,
 		}
-		history, _, err := g.preparedHistory(input)
+		history, _, err := g.preparedHistory(input, toolPlan(g, true))
 		require.NoError(t, err)
 
 		trigger, output := hasExternalToolGuides(history)

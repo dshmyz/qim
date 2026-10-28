@@ -4,36 +4,40 @@ import (
 	"testing"
 
 	"github.com/dshmyz/qim/qim-server/ai"
+	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestShouldUseToolsForMention 钉死：只有 command 意图走带工具路径，其他意图走流式纯文本。
-func TestShouldUseToolsForMention(t *testing.T) {
-	tests := []struct {
-		name   string
-		intent *ai.MessageIntent
-		want   bool
-	}{
-		{"command 走带工具", &ai.MessageIntent{Type: "command", Confidence: 0.8}, true},
-		{"chat 走流式", &ai.MessageIntent{Type: "chat"}, false},
-		{"query 走流式", &ai.MessageIntent{Type: "query"}, false},
-		{"alert 走流式", &ai.MessageIntent{Type: "alert"}, false},
-		{"todo 走流式", &ai.MessageIntent{Type: "todo"}, false},
-		{"nil 走流式", nil, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, ShouldUseToolsForMention(tt.intent))
-		})
-	}
+// planFor 用最小输入跑一次回合计划（群作用域只放群管理工具，避免依赖 DB 白名单配置）。
+func planFor(intent *ai.MessageIntent, question string) service.ReplyTurnPlan {
+	return service.PlanGroupTurn(service.TurnInput{
+		Intent:             intent,
+		Question:           question,
+		GroupTools:         []string{"group_management"},
+		VisionDisableTools: true,
+		QualityGateEnabled: true,
+	})
 }
 
-// TestIntentDetectorCommandTriggersTools 端到端钉死：@AI 管理操作指令（踢人/加人/禁言等）
-// 被 IntentDetector 识别为 command 意图，从而走带工具路径；普通聊天/咨询不走。
-// 这条测试保护"群聊AI助手代管成员"能力：一旦 @AI 路径被改回不带工具的流式，
+// commandPlan 构造一个「管理指令」回合计划：带工具、跳过知识注入。
+// 供群管理端到端测试直接驱动 ExecuteTurn（模拟 @AI 发起管理操作）。
+func commandPlan(g *service.SmartReplyGraph, input *service.SmartReplyContext) service.ReplyTurnPlan {
+	return service.PlanGroupTurn(service.TurnInput{
+		Intent:             &ai.MessageIntent{Type: "command"},
+		Question:           input.Message,
+		GroupTools:         g.GroupTools(),
+		VisionDisableTools: true,
+		QualityGateEnabled: true,
+	})
+}
+
+// TestIntentDetectorCommandDrivesPlan 端到端钉死：@AI 管理操作指令（踢人/加人/禁言等）
+// 被 IntentDetector 识别为 command 意图，从而进入带工具路径并跳过知识注入；
+// 普通寒暄则走直答、不挂工具。
+// 这条测试保护"群聊 AI 助手代管成员"能力：一旦管理指令不再进工具路径，
 // 或 IntentDetector 不再识别管理操作词，测试会失败。
-func TestIntentDetectorCommandTriggersTools(t *testing.T) {
+func TestIntentDetectorCommandDrivesPlan(t *testing.T) {
 	detector := ai.NewIntentDetector(nil)
 
 	commands := []string{
@@ -47,19 +51,17 @@ func TestIntentDetectorCommandTriggersTools(t *testing.T) {
 	for _, c := range commands {
 		intent, err := detector.Detect(c, 1, 1)
 		require.NoError(t, err, "Detect(%q)", c)
-		assert.True(t, ShouldUseToolsForMention(intent),
-			"Detect(%q) 应识别为 command 走带工具，实际 type=%s", c, intent.Type)
+		plan := planFor(intent, c)
+		assert.True(t, plan.WantsTools(), "Detect(%q) 应进入带工具路径，实际 mode=%s", c, plan.Mode)
+		assert.True(t, plan.SkipKnowledge, "Detect(%q) 管理指令应跳过知识注入", c)
 	}
 
-	nonCommands := []string{
-		"今天天气不错",
-		"你好呀",
-		"这个功能怎么用",
-	}
-	for _, c := range nonCommands {
+	smallTalk := []string{"今天天气不错", "你好呀", "这个功能怎么用"}
+	for _, c := range smallTalk {
 		intent, err := detector.Detect(c, 1, 1)
 		require.NoError(t, err, "Detect(%q)", c)
-		assert.False(t, ShouldUseToolsForMention(intent),
-			"Detect(%q) 不应走带工具，实际 type=%s", c, intent.Type)
+		plan := planFor(intent, c)
+		assert.False(t, plan.SkipKnowledge, "Detect(%q) 非管理指令不应跳过知识注入", c)
+		assert.NotEqual(t, service.TurnVisionThenAct, plan.Mode, "Detect(%q) 无图不应进入两段式", c)
 	}
 }

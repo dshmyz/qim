@@ -51,6 +51,8 @@ export function useMainMessageHandlers() {
       // 外部工具调用记录（后端从 message.Extra 解析后放入响应体顶层，历史回放用）：
       // 仅在实际有内容时才赋值，避免 undefined 覆盖 receiveMessage 已累积的流式 tool_calls。
       ...(computeToolCalls(msg) ? { tool_calls: computeToolCalls(msg) } : {}),
+      // 回复可信度标注（核验存疑）：后端把 Extra 的 quality 键拍平到响应体顶层。
+      ...(msg.quality ? { quality: msg.quality } : {}),
       conversationId: msg.conversation_id?.toString() || msg.conversationId || conversationId || '',
       // 消息附加信息（撤回时保存原始内容用于重新编辑）
       extra: msg.extra || '',

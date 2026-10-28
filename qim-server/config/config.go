@@ -56,6 +56,7 @@ var Thresholds = []AiThresholdConfig{
 	{Key: "ai.context_history_limit", Default: 20, Min: 1, Max: 100, Label: "上下文历史条数", Description: "注入到 AI prompt 的最近对话消息条数上限（分身默认 10、群助手默认 20；管理员调整后两路径同用该值）"},
 	{Key: "ai.recent_ai_messages_limit", Default: 5, Min: 0, Max: 20, Label: "近期 AI 回复条数", Description: "上下文中保留的近期 AI 回复消息条数上限（防自我复制）；超出按远期折叠（0-20）"},
 	{Key: "ai.knowledge_llm_rerank", Default: 1, Min: 0, Max: 1, IsBool: true, Label: "知识检索相关性校验", Description: "开启后知识库检索结果经 LLM 二次校验相关性，过滤误召回（0=关 1=开）"},
+	{Key: "ai.vision_disable_tools", Default: 1, Min: 0, Max: 1, IsBool: true, Label: "带图请求禁用工具", Description: "开启后带图回复走纯视觉单轮、不携带 tools，避免不支持 function calling 的视觉模型被整条拒绝（0=带图也挂工具）"},
 	{Key: "ai.reply_quality_gate", Default: 1, Min: 0, Max: 1, IsBool: true, Label: "回复质量门", Description: "发送 AI 回复前核验切题性、依据支持和幻觉；质量优先建议开启（0=关 1=开）"},
 	{Key: "ai.reply_quality_gate_mention_block", Default: 0, Min: 0, Max: 1, IsBool: true, Label: "@AI 质量门阻断模式", Description: "@AI 提问回复未通过核验时的策略：0=旁路放行（正文照发，仅记录指标与失败案例），1=阻断并通知用户。auto 自动回复始终阻断，不受此项控制（0=旁路 1=阻断）"},
 }

@@ -2218,7 +2218,8 @@ func containsUint(s []uint, v uint) bool {
 }
 
 // ParseMessageExtraFields 解析消息 Extra（JSON 字符串），提取 tool_calls、knowledge_sources、
-// sources 三个顶层字段，返回供消息响应透出的 map。解析失败或为空时返回 nil。
+// sources、quality 四个顶层字段，返回供消息响应透出的 map。解析失败或为空时返回 nil。
+// quality 为核验存疑标注（见 QualityAnnotation），供客户端在气泡下方渲染「存疑」徽章。
 func ParseMessageExtraFields(extra string) map[string]interface{} {
 	if extra == "" {
 		return nil
@@ -2228,7 +2229,7 @@ func ParseMessageExtraFields(extra string) map[string]interface{} {
 		return nil
 	}
 	result := make(map[string]interface{})
-	for _, key := range []string{"tool_calls", "knowledge_sources", "sources"} {
+	for _, key := range []string{"tool_calls", "knowledge_sources", "sources", "quality"} {
 		if v, ok := m[key]; ok {
 			result[key] = v
 		}

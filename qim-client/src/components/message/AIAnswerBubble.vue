@@ -24,6 +24,8 @@
     <AISources v-if="knowledgeSources && knowledgeSources.length" :sources="knowledgeSources" variant="list" />
     <ToolCallTrace v-if="toolCalls && toolCalls.length" :calls="toolCalls" :open="isStreaming" />
     <AISources v-if="avatarSources && avatarSources.length" :sources="avatarSources" variant="inline" />
+    <!-- 核验存疑标注：正文照发，事后如实提示「可能不准」并给反馈入口 -->
+    <AIQualityBadge v-if="quality" :quality="quality" :message-id="messageId" />
   </div>
 </template>
 
@@ -32,7 +34,8 @@ import { computed, ref } from 'vue'
 import { useMarkdownRender, handleLinkClick } from '../../composables/useMarkdownRender'
 import ToolCallTrace from './ToolCallTrace.vue'
 import AISources from './AISources.vue'
-import type { ToolCallRecord, AISource } from '../../types'
+import AIQualityBadge from './AIQualityBadge.vue'
+import type { ToolCallRecord, AISource, AIQualityAnnotation } from '../../types'
 import './markdown-content.css'
 
 const props = withDefaults(defineProps<{
@@ -49,6 +52,10 @@ const props = withDefaults(defineProps<{
   toolCalls?: ToolCallRecord[]
   knowledgeSources?: AISource[]
   avatarSources?: AISource[]
+  /** 核验存疑标注（后端 quality 键），非空时气泡下方渲染「可能不准」徽章 */
+  quality?: AIQualityAnnotation
+  /** 持久化消息 id：存疑徽章提交反馈时使用 */
+  messageId?: number | string
 }>(), {
   isSelf: false,
   showThinking: true,

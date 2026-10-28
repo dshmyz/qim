@@ -196,19 +196,19 @@ func TestBuildEmptyReplyFallback(t *testing.T) {
 
 	t.Run("技术失败", func(t *testing.T) {
 		got := BuildEmptyReplyFallback(nil, true, "")
-		assert.Contains(t, got, "出了点问题")
+		assert.Contains(t, got, "服务异常", "技术失败应说明是服务侧问题")
 		assert.Contains(t, got, "稍后再试")
 	})
 
 	t.Run("纯空回", func(t *testing.T) {
 		got := BuildEmptyReplyFallback(nil, false, "")
-		assert.Contains(t, got, "换个问法")
+		assert.Contains(t, got, "换个更具体的问法")
 		assert.NotContains(t, got, "稍后再试", "纯空回不应提示重试（不是技术问题）")
 	})
 
 	t.Run("mention 前缀拼接", func(t *testing.T) {
 		got := BuildEmptyReplyFallback(nil, false, "@{mention:5|Bob}\n\n")
 		assert.True(t, strings.HasPrefix(got, "@{mention:5|Bob}"), "mention 前缀应拼在文案前")
-		assert.Contains(t, got, "换个问法")
+		assert.Contains(t, got, "换个更具体的问法")
 	})
 }

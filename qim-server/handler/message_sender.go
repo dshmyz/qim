@@ -335,6 +335,28 @@ func BroadcastAIMessage(conversationID uint, content string, assistantName strin
 	return nil
 }
 
+// qualityUpdatePayload 构造核验存疑的增量更新载荷：只带 id + quality（正文未变），
+// 客户端按 id 合并到已显示的气泡。
+func qualityUpdatePayload(msgID, conversationID uint, ann service.QualityAnnotation) gin.H {
+	return gin.H{
+		"id":              msgID,
+		"conversation_id": conversationID,
+		"quality":         ann,
+	}
+}
+
+// BroadcastQualityUpdate 把「核验存疑」标注增量推给会话。正文已经发出、标注是核验结束后
+// 补上的，因此只推送变化字段（id + quality），由客户端合并到已显示的气泡。
+func (s *WebSocketMessageSender) BroadcastQualityUpdate(msgID, conversationID uint, ann service.QualityAnnotation) {
+	if s.hub == nil {
+		return
+	}
+	data := qualityUpdatePayload(msgID, conversationID, ann)
+	wsMsg := ws.WSMessage{Type: "message_updated", Data: data}
+	jsonMsg, _ := json.Marshal(wsMsg)
+	s.hub.SendToConversation(conversationID, 0, jsonMsg)
+}
+
 // broadcastMessageContentUpdate 广播消息内容更新（不更新会话/未读数）
 func broadcastMessageContentUpdate(msg *model.Message) {
 	if ws.GlobalHub == nil {
@@ -385,12 +407,29 @@ func (s *WebSocketMessageSender) SendToolCallEvent(conversationID uint, msgID ui
 // 事件携带回复者（群 AI 助手/默认 AI/bot 虚拟用户）的头像昵称，供前端把占位渲染成
 // 带头像的正常消息行；解析失败时降级为仅携带 conversation_id，占位仍可显示。
 func (s *WebSocketMessageSender) NotifyReplyStarted(conversationID uint, assistantName string) {
-	if s.hub == nil {
-		return
-	}
+	s.NotifyReplyStartedStatus(conversationID, assistantName, "")
+}
+
+// replyStartedPayload 构造 ai_reply_started 的载荷（sender 由调用方按会话解析后补）。
+// status 为空时不下发该字段，前端按默认「思考中」渲染，保持旧行为。
+func replyStartedPayload(conversationID uint, status string) gin.H {
 	data := gin.H{
 		"conversation_id": conversationID,
 	}
+	if status != "" {
+		data["status"] = status
+	}
+	return data
+}
+
+// NotifyReplyStartedStatus 同上，附带阶段状态文案（"正在看图片…"/"正在处理…"）。
+// 回合计划在阶段切换时下发，让首字到达前的等待有具体解释，而不是笼统的「思考中」。
+// status 为空时行为与 NotifyReplyStarted 完全一致（前端按默认占位渲染）。
+func (s *WebSocketMessageSender) NotifyReplyStartedStatus(conversationID uint, assistantName string, status string) {
+	if s.hub == nil {
+		return
+	}
+	data := replyStartedPayload(conversationID, status)
 	if aiUser, _, err := s.resolveAISender(conversationID, assistantName); err == nil && aiUser != nil {
 		data["sender"] = gin.H{
 			"id":       aiUser.ID,

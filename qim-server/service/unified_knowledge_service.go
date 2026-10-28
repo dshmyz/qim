@@ -5,15 +5,20 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/ai"
 	"github.com/dshmyz/qim/qim-server/pkg/logger"
 )
 
-// rerankJudgeTimeout 知识检索 LLM 相关性校验阶段的总超时上限。判定串行逐条进行，
+// rerankJudgeTimeout 知识检索 LLM 相关性校验阶段的总超时上限。判定逐条进行，
 // 用该预算兜底模型逐步挂起/网络变慢，避免多条累加拖死整条回复；超时后保留未判片段。
 const rerankJudgeTimeout = 15 * time.Second
+
+// rerankJudgeConcurrency 相关性校验的并发度：命中通常 3-5 条，3 路并发既能把串行累加
+// 压到接近单次调用耗时，又不至于把同一条回复的 judge 请求打成小高峰。
+const rerankJudgeConcurrency = 3
 
 type UnifiedKnowledgeService struct {
 	groupDocSvc    *GroupDocumentService
@@ -287,8 +292,9 @@ func (s *UnifiedKnowledgeService) filterByReranker(query string, snippets []Know
 // filterSnippetsByReranker 依相关性判定结果过滤片段（群助手/Bot 与分身共用）。
 // 判定器 nil 或判定"拿不准/失败"时保留，仅"明确不相关"（relevant=false 且 confident=true）
 // 被过滤；结果按原序稳定输出。ai.knowledge_llm_rerank=0 时跳过判定（保留全部），供后台一键关闭。
-// timeout 为校验阶段总超时上限（0 时回退包级默认 15s），LLM 判定是串行的，预算耗尽即
-// 停止发起新判定并保留剩余片段（宁可多留不可阻塞）。
+// timeout 为校验阶段总超时上限（0 时回退包级默认 15s），预算耗尽即停止发起新判定并保留
+// 剩余片段（宁可多留不可阻塞）。判定按 rerankJudgeConcurrency 有界并发——逐条串行时
+// 3-4 条命中就要累加好几倍首字延迟；并发只改调用节奏，保留/过滤规则与输出顺序不变。
 func filterSnippetsByReranker(reranker KnowledgeReranker, thresholdSvc *AiThresholdService, timeout time.Duration, query string, snippets []KnowledgeSnippet) []KnowledgeSnippet {
 	if reranker == nil || len(snippets) == 0 {
 		return snippets
@@ -306,27 +312,55 @@ func filterSnippetsByReranker(reranker KnowledgeReranker, thresholdSvc *AiThresh
 	judgeCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	filtered := make([]KnowledgeSnippet, 0, len(snippets))
+	// 默认保留；只有「明确不相关」才置 false。超时/失败/拿不准一律维持保留。
+	keep := make([]bool, len(snippets))
+	for i := range keep {
+		keep[i] = true
+	}
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, rerankJudgeConcurrency)
+	launched := 0
+launch:
 	for i, snip := range snippets {
 		if judgeCtx.Err() != nil {
 			logger.WithModule("diag").Warn("知识检索：LLM 校验超时，停止判定并保留剩余片段",
-				"query", query, "judged", i, "count", len(snippets))
-			filtered = append(filtered, snippets[i:]...)
+				"query", query, "judged", launched, "count", len(snippets))
 			break
 		}
-		relevant, confident, err := reranker.Relevant(judgeCtx, query, snip)
-		if err != nil || !confident {
-			// 判定失败或拿不准 → 保留，避免误杀相关文档
-			filtered = append(filtered, snip)
-			continue
+		select {
+		case sem <- struct{}{}:
+		case <-judgeCtx.Done():
+			logger.WithModule("diag").Warn("知识检索：LLM 校验超时，停止判定并保留剩余片段",
+				"query", query, "judged", launched, "count", len(snippets))
+			break launch
 		}
-		if relevant {
+		launched++
+		wg.Add(1)
+		go func(i int, snip KnowledgeSnippet) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if judgeCtx.Err() != nil {
+				return // 预算已耗尽：保留该片段
+			}
+			relevant, confident, err := reranker.Relevant(judgeCtx, query, snip)
+			if err != nil || !confident || relevant {
+				// 判定失败、拿不准或明确相关 → 保留，避免误杀相关文档
+				return
+			}
+			// 明确不相关 → 过滤
+			keep[i] = false
+			logger.WithModule("diag").Info("知识检索：LLM 判定不相关，已过滤",
+				"query", query, "title", snip.Title, "score", snip.Score)
+		}(i, snip)
+	}
+	wg.Wait()
+
+	filtered := make([]KnowledgeSnippet, 0, len(snippets))
+	for i, snip := range snippets {
+		if keep[i] {
 			filtered = append(filtered, snip)
-			continue
 		}
-		// 明确不相关 → 过滤
-		logger.WithModule("diag").Info("知识检索：LLM 判定不相关，已过滤",
-			"query", query, "title", snip.Title, "score", snip.Score)
 	}
 
 	if len(filtered) != len(snippets) {
