@@ -91,6 +91,9 @@ export const useChatStore = defineStore('chat', () => {
   const readUsersMap = ref<Map<string, MessageReadInfo>>(new Map())
   const aiThinking = ref<Map<string, boolean>>(new Map())
   const aiThinkingSenders = ref<Map<string, ThinkingSender>>(new Map())
+  // 阶段状态文案（"正在看图片…"/"正在处理…"）：由 ai_reply_started.status 下发，
+  // 让首字到达前的等待有具体解释；无该字段时回落到默认的「思考中」渲染。
+  const aiThinkingStatus = ref<Map<string, string>>(new Map())
 
   // 计算属性
   const currentConversation = computed(() => {
@@ -265,12 +268,16 @@ export const useChatStore = defineStore('chat', () => {
 
   // AI 回复「思考中」占位状态：收到 ai_reply_started 置 true（并挂 90s 兜底计时），
   // 回复消息/系统提示到达（isAiThinking=false）或兜底超时置 false。
-  // sender 为事件携带的回复者信息，用于把占位渲染成带头像的正常消息行。
-  function setAiThinking(conversationId: string, thinking: boolean, sender?: ThinkingSender | null) {
+  // sender 为事件携带的回复者信息，用于把占位渲染成带头像的正常消息行；
+  // status 为阶段文案（可空，空则保留默认「思考中」）。
+  function setAiThinking(conversationId: string, thinking: boolean, sender?: ThinkingSender | null, status?: string) {
     if (thinking) {
       aiThinking.value = new Map(aiThinking.value).set(conversationId, true)
       if (sender) {
         aiThinkingSenders.value = new Map(aiThinkingSenders.value).set(conversationId, sender)
+      }
+      if (status) {
+        aiThinkingStatus.value = new Map(aiThinkingStatus.value).set(conversationId, status)
       }
       const prev = aiThinkingTimers.get(conversationId)
       if (prev) clearTimeout(prev)
@@ -292,6 +299,11 @@ export const useChatStore = defineStore('chat', () => {
         next.delete(conversationId)
         aiThinkingSenders.value = next
       }
+      if (aiThinkingStatus.value.has(conversationId)) {
+        const next = new Map(aiThinkingStatus.value)
+        next.delete(conversationId)
+        aiThinkingStatus.value = next
+      }
     }
   }
 
@@ -301,6 +313,10 @@ export const useChatStore = defineStore('chat', () => {
 
   function getAiThinkingSender(conversationId: string): ThinkingSender | null {
     return aiThinkingSenders.value.get(conversationId) || null
+  }
+
+  function getAiThinkingStatus(conversationId: string): string {
+    return aiThinkingStatus.value.get(conversationId) || ''
   }
 
   // 业务逻辑方法
@@ -521,6 +537,7 @@ export const useChatStore = defineStore('chat', () => {
     messagePage,
     readUsersMap,
     aiThinking,
+    aiThinkingStatus,
     // 计算属性
     currentConversation,
     currentMessages,
@@ -551,6 +568,7 @@ export const useChatStore = defineStore('chat', () => {
     setAiThinking,
     isAiThinking,
     getAiThinkingSender,
+    getAiThinkingStatus,
     // 业务逻辑方法
     pinConversation,
     muteConversation,

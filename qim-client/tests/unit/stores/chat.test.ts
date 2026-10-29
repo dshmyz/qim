@@ -501,4 +501,27 @@ describe('useChatStore', () => {
       })
     })
   })
+
+  describe('AI 思考中占位与阶段文案', () => {
+    it('带 status 时记录阶段文案，关闭占位时清除', () => {
+      const store = useChatStore()
+      store.setAiThinking('98', true, null, '正在看图片…')
+      expect(store.isAiThinking('98')).toBe(true)
+      expect(store.getAiThinkingStatus('98')).toBe('正在看图片…')
+
+      store.setAiThinking('98', true, null, '正在处理…')
+      expect(store.getAiThinkingStatus('98')).toBe('正在处理…')
+
+      store.setAiThinking('98', false)
+      expect(store.isAiThinking('98')).toBe(false)
+      expect(store.getAiThinkingStatus('98')).toBe('')
+    })
+
+    it('不带 status 的事件不覆盖已有文案（旧事件兼容）', () => {
+      const store = useChatStore()
+      store.setAiThinking('98', true, null, '正在看图片…')
+      store.setAiThinking('98', true)
+      expect(store.getAiThinkingStatus('98')).toBe('正在看图片…')
+    })
+  })
 })

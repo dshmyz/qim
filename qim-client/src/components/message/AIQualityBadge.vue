@@ -39,6 +39,7 @@ const messageIdNum = computed<number | null>(() => {
 
 const open = ref(false)
 const submitted = ref(false)
+let outsideCloseTimer: ReturnType<typeof setTimeout> | undefined
 
 function toggle() {
   if (open.value) {
@@ -47,8 +48,10 @@ function toggle() {
   }
   open.value = true
   // 下一轮事件循环再挂 outside-close：在当前点击的传播途中挂监听，同一个事件冒到
-  // document 会立刻把刚打开的面板关掉（点击看起来"没反应"）。
-  setTimeout(() => {
+  // document 会立刻把刚打开的面板关掉（点击看起来"没反应"）。timer 需在卸载时清掉，
+  // 否则组件卸载后仍会向 document 注册监听。
+  outsideCloseTimer = setTimeout(() => {
+    outsideCloseTimer = undefined
     if (open.value) document.addEventListener('click', close, { once: true })
   }, 0)
 }
@@ -71,7 +74,13 @@ async function submitFeedback() {
   }
 }
 
-onBeforeUnmount(() => document.removeEventListener('click', close))
+onBeforeUnmount(() => {
+  if (outsideCloseTimer) {
+    clearTimeout(outsideCloseTimer)
+    outsideCloseTimer = undefined
+  }
+  document.removeEventListener('click', close)
+})
 </script>
 
 <style>

@@ -30,6 +30,8 @@ type KnowledgeReranker interface {
 	//   relevant=false, confident=true → 明确不相关，可过滤
 	//   relevant=false, confident=false → 拿不准/判定失败，调用方保留
 	// 返回的 err 非 nil 时，调用方应按"拿不准"处理（保留），不阻塞检索流程。
+	//
+	// 实现必须并发安全：filterSnippetsByReranker 会有界并发调用本方法。
 	Relevant(ctx context.Context, query string, snip KnowledgeSnippet) (relevant bool, confident bool, err error)
 }
 

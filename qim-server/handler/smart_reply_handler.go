@@ -974,11 +974,18 @@ func (e *SmartReplyEngine) handleAIMentionWithGraph(userID uint, conversationID 
 		}
 	}
 
+	// 直接发图（自引用）时消息类型已知，免去一次按主键的消息类型查询；
+	// 显式引用才需要回查被引用消息的类型。
+	hasImage := origMsg != nil && origMsg.Type == "image"
+	if !hasImage {
+		hasImage = e.smartReplyGraph.QuotedHasImage(quotedMessageID)
+	}
+
 	// 回合计划是唯一的决策点：是否带图、带工具、核验策略、投递策略都在 service.PlanGroupTurn。
 	plan := service.PlanGroupTurn(service.TurnInput{
 		Intent:               intent,
 		Question:             question,
-		HasImage:             e.smartReplyGraph.QuotedHasImage(quotedMessageID),
+		HasImage:             hasImage,
 		GroupTools:           e.smartReplyGraph.GroupTools(),
 		ExternalToolsEnabled: e.smartReplyGraph.HasExternalTools(),
 		VisionDisableTools:   e.smartReplyGraph.VisionDisableTools(),
@@ -1102,10 +1109,15 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, plan se
 		}
 		if streamed {
 			hasBody := strings.TrimSpace(mention.StripTokens(sentBody.String())) != ""
+			// 核验必须等 finish() 之后再启动：它要在后台读写同一条消息的 Extra（存疑标注），
+			// 与 persistAIMessageExtra（写 Extra）/finish（Save 整行）并发会构成数据竞争，
+			// 且可能把刚写入的标注覆盖掉。
+			var gateAfterFinish func()
 			if hasBody {
 				if liveSend {
 					// 正文已随流上屏：核验只做事后记录（指标/失败案例），不阻挡也不改写已发内容。
-					e.runQualityGateAsync(input, sentBody.String(), toolEvidence, getMsg)
+					body := sentBody.String()
+					gateAfterFinish = func() { e.runQualityGateAsync(input, body, toolEvidence, getMsg) }
 					e.persistAIMessageExtra(getMsg, toolCalls, input.KnowledgeSources)
 				} else {
 					send, qualityNote := e.validateReplyBeforeSend(input, sentBody.String(), toolEvidence)
@@ -1155,6 +1167,9 @@ func (e *SmartReplyEngine) handleAIMentionWithTools(ctx context.Context, plan se
 				e.recordReplyOutcome(service.ReplySceneGroupMention, false, conversationID, finishMsg.ID, "")
 				logger.WithModule("SmartReply").Info("@AI 带工具流式回复已完成",
 					"kind", kind, "toolCalls", len(toolCalls))
+			}
+			if gateAfterFinish != nil {
+				gateAfterFinish()
 			}
 			return
 		}
@@ -1333,7 +1348,6 @@ func splitReplyChunks(reply string) []string {
 
 // ShouldUseToolsForMention 已由回合计划取代：管理指令（command 意图）通过
 // service.PlanGroupTurn 的 SkipKnowledge / Mode 判定，不再单独提供入口。
-
 
 func (e *SmartReplyEngine) handleAIMentionLegacy(userID uint, conversationID uint, question string, originalContent string, conv *model.Conversation, assistantName string) {
 	ctx := e.promptBuilder.BuildPromptContext(conversationID, userID)

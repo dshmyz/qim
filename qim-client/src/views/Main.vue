@@ -1824,7 +1824,7 @@ const connectWebSocket = () => {
       // AI 回复开始处理：置「思考中」占位（含回复者头像昵称，渲染带头像的消息行）；
       // 回复消息（流式首帧/完整回复/系统提示）到达或 90s 安全超时后由 setAiThinking(false) 清除。
       const cid = data?.conversation_id
-      if (cid != null) chatStore.setAiThinking(String(cid), true, data?.sender)
+      if (cid != null) chatStore.setAiThinking(String(cid), true, data?.sender, data?.status)
     },
     'ai_reply_decision': (data: any) => {
       // 自动回复被安全门控拦截时不静默：把原因展示给用户，由用户决定是否手动处理。

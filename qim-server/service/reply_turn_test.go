@@ -89,6 +89,25 @@ func TestPlanGroupTurn(t *testing.T) {
 			wantTools: true,
 		},
 		{
+			name: "无工具作用域 + 查询 → 退化为直答（避免空白名单=全部放行）",
+			in: func() TurnInput {
+				in := withIntent("query", "我周三有什么会")
+				in.GroupTools = nil
+				return in
+			}(),
+			wantMode: TurnDirectChat,
+		},
+		{
+			name: "无工具作用域 + 带图查询 → 退化为纯视觉单轮",
+			in: func() TurnInput {
+				in := withImage(withIntent("query", "图里有什么"))
+				in.GroupTools = nil
+				return in
+			}(),
+			wantMode:   TurnVisionOnly,
+			wantStatus: []string{"正在看图片…"},
+		},
+		{
 			name:      "意图缺失 → 保守走带工具",
 			in:        base,
 			wantMode:  TurnToolReAct,

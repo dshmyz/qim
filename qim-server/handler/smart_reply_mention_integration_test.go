@@ -13,6 +13,7 @@ import (
 	"github.com/dshmyz/qim/qim-server/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // smart_reply_mention_integration_test.go 覆盖 @AI 提及的整条链路（此前只能手点验证）：
@@ -125,6 +126,7 @@ type fakeAISender struct {
 	msg      *model.Message
 	// firstChunkAt 首个正文块送达客户端的时刻：用于验证"首字在流中即上屏"（而不是整段缓冲）。
 	firstChunkAt time.Time
+	decisions    []SmartReplyDecision
 }
 
 var _ AIResponseSender = (*fakeAISender)(nil)
@@ -139,7 +141,11 @@ func (f *fakeAISender) NotifyReplyStartedStatus(_ uint, _ string, status string)
 	f.statuses = append(f.statuses, status)
 	f.mu.Unlock()
 }
-func (f *fakeAISender) NotifyReplyDecision(uint, SmartReplyDecision) {}
+func (f *fakeAISender) NotifyReplyDecision(_ uint, decision SmartReplyDecision) {
+	f.mu.Lock()
+	f.decisions = append(f.decisions, decision)
+	f.mu.Unlock()
+}
 func (f *fakeAISender) SendAIMessage(uint, string, string, map[string]interface{}) error {
 	return nil
 }
@@ -187,6 +193,12 @@ func (f *fakeAISender) firstChunkTime() time.Time {
 	return f.firstChunkAt
 }
 
+func (f *fakeAISender) decisionSnapshot() []SmartReplyDecision {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]SmartReplyDecision(nil), f.decisions...)
+}
+
 // stubQuotedReader 让 prepareInput 能把被引用图片读成 data URL（真实路径，不绕过）。
 type stubQuotedReader struct{}
 
@@ -211,10 +223,24 @@ func waitForQuality(t *testing.T, sender *fakeAISender, within time.Duration) se
 	return service.QualityAnnotation{}
 }
 
-// TestAIMentionImageTwoStageAnnotatesQuality @AI + 图片 + 管理指令：
-// 两段式（识图 → 带工具执行）→ 正文实时上屏 → 异步核验存疑 → 广播标注并落库。
-func TestAIMentionImageTwoStageAnnotatesQuality(t *testing.T) {
+// integrationHarness 统一装配：内存库（强制单连接——sqlite :memory: 每个连接是独立库，
+// 并发取到新连接会报 no such table）、假 provider/发送端、图片自引用消息与固定回复行。
+type integrationHarness struct {
+	db     *gorm.DB
+	user   model.User
+	conv   model.Conversation
+	img    model.Message
+	prov   *integrationProvider
+	sender *fakeAISender
+	engine *SmartReplyEngine
+}
+
+func newIntegrationHarness(t *testing.T, mentionGateBlock bool) *integrationHarness {
+	t.Helper()
 	db := setupHandlerTestDB(t)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
 	prevDB := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = prevDB })
@@ -251,14 +277,23 @@ func TestAIMentionImageTwoStageAnnotatesQuality(t *testing.T) {
 	graph.SetQuotedFileReader(stubQuotedReader{})
 
 	sender := &fakeAISender{}
-	e := &SmartReplyEngine{
+	engine := &SmartReplyEngine{
 		aiService:          aiSvc,
 		intentDetector:     ai.NewIntentDetector(nil),
 		smartReplyGraph:    graph,
 		messageSender:      sender,
 		qualityGateEnabled: true,
-		mentionGateBlock:   false, // 旁路：正文先发，核验事后标注
+		mentionGateBlock:   mentionGateBlock,
 	}
+	return &integrationHarness{db: db, user: user, conv: conv, img: img, prov: prov, sender: sender, engine: engine}
+}
+
+// TestAIMentionImageTwoStageAnnotatesQuality @AI + 图片 + 管理指令：
+// 两段式（识图 → 带工具执行）→ 正文实时上屏 → 异步核验存疑 → 广播标注并落库。
+func TestAIMentionImageTwoStageAnnotatesQuality(t *testing.T) {
+	h := newIntegrationHarness(t, false) // 旁路：正文先发，核验事后标注
+	e, sender, prov, db := h.engine, h.sender, h.prov, h.db
+	user, conv, img := h.user, h.conv, h.img
 
 	question := "把图里的人踢出群" // 命中 command 规则 → 带图两段式
 	e.handleAIMentionWithGraph(user.ID, conv.ID, question, question, "AI助手", &img)
@@ -276,6 +311,11 @@ func TestAIMentionImageTwoStageAnnotatesQuality(t *testing.T) {
 	assert.Contains(t, body, "已为你创建 2 个待办", "执行结果应续写")
 	assert.True(t, finished, "流式消息应收尾")
 
+	// —— 异步核验 → 存疑标注广播 ——
+	ann := waitForQuality(t, sender, 3*time.Second)
+	assert.Equal(t, "doubtful", ann.Status)
+	assert.Contains(t, ann.Reason, "资料中不存在", "标注原因应来自核验判定")
+
 	// —— 两段式：图片只进视觉段，工具只进执行段 ——
 	prov.mu.Lock()
 	assert.Equal(t, 1, prov.visionCalls, "识图段应调用一次")
@@ -292,15 +332,28 @@ func TestAIMentionImageTwoStageAnnotatesQuality(t *testing.T) {
 	prov.mu.Unlock()
 	assert.GreaterOrEqual(t, toolEvts, 1, "工具调用应有卡片事件")
 
-	// —— 异步核验 → 存疑标注广播 ——
-	ann := waitForQuality(t, sender, 3*time.Second)
-	assert.Equal(t, "doubtful", ann.Status)
-	assert.Contains(t, ann.Reason, "资料中不存在", "标注原因应来自核验判定")
-
 	// —— 标注落库：既有 Extra（工具卡）保留，quality 合并进去 ——
 	var saved model.Message
 	require.NoError(t, db.First(&saved, integrationReplyMsgID).Error)
 	assert.Contains(t, saved.Extra, "quality", "标注应写入消息 Extra")
 	assert.Contains(t, saved.Extra, "doubtful")
 	assert.Contains(t, saved.Extra, "tool_calls", "合并标注不得覆盖工具调用记录")
+}
+
+// TestAIMentionGateBlockWithholdsReply 阻断模式（ai.reply_quality_gate_mention_block=1）：
+// 正文必须缓冲到核验结束，不通过则一个字都不发，只把原因通知给用户。
+func TestAIMentionGateBlockWithholdsReply(t *testing.T) {
+	h := newIntegrationHarness(t, true) // DeliveryBuffered
+
+	question := "把图里的人踢出群"
+	h.engine.handleAIMentionWithGraph(h.user.ID, h.conv.ID, question, question, "AI助手", &h.img)
+
+	_, statuses, chunks, quality, _, _ := h.sender.snapshot()
+	assert.Equal(t, []string{"正在看图片…", "正在处理…"}, statuses, "阶段状态仍应下发")
+	assert.Empty(t, chunks, "阻断模式下未通过核验的正文不得上屏")
+	assert.Empty(t, quality, "阻断路径不走异步存疑标注（正文根本没发）")
+
+	decisions := h.sender.decisionSnapshot()
+	require.Len(t, decisions, 1, "阻断时应通知用户原因，而不是静默")
+	assert.Equal(t, "quality_rejected", decisions[0].ReasonCode)
 }

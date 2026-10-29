@@ -50,7 +50,7 @@
               <span><i class="fas fa-robot"></i> {{ aiThinkingSender?.name || 'AI 助手' }}</span>
             </div>
             <div class="thinking-message-bubble">
-              <ThinkingIndicator />
+              <ThinkingIndicator :label="aiThinkingStatus" />
             </div>
           </div>
         </div>
@@ -172,6 +172,12 @@ const aiThinking = computed(() => {
 const aiThinkingSender = computed(() => {
   const id = props.conversation?.id
   return id != null ? chatStore.getAiThinkingSender(String(id)) : null
+})
+
+/** 阶段状态文案（"正在看图片…"/"正在处理…"）；为空时占位回落到默认「思考中」 */
+const aiThinkingStatus = computed(() => {
+  const id = props.conversation?.id
+  return id != null ? chatStore.getAiThinkingStatus(String(id)) : ''
 })
 
 /** 占位头像徽章：思考中一定是 AI/机器人回复，与正常 AI 消息同款机器人角标

@@ -144,6 +144,17 @@ func PlanGroupTurn(in TurnInput) ReplyTurnPlan {
 		plan.Mode = TurnToolReAct
 	}
 
+	// 群作用域一个工具都没有时不得进带工具模式：ai.isToolAllowed 把"空白名单"解释为
+	// "全部放行"，会让提示词声称无工具、实际却把整个工具注册表交给模型。
+	if len(in.GroupTools) == 0 {
+		switch plan.Mode {
+		case TurnToolReAct:
+			plan.Mode = TurnDirectChat
+		case TurnVisionThenAct:
+			plan.Mode = TurnVisionOnly
+		}
+	}
+
 	if plan.Mode == TurnToolReAct || plan.Mode == TurnVisionThenAct {
 		plan.Tools = append([]string(nil), in.GroupTools...)
 		plan.ExternalGuide = in.ExternalToolsEnabled && len(plan.Tools) > 0

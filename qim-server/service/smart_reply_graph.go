@@ -502,7 +502,12 @@ func (g *SmartReplyGraph) ExecuteTurnStream(ctx context.Context, plan ReplyTurnP
 }
 
 // runReAct 非流式带工具执行。
+// 计划未授权任何工具时绝不进 ReAct：ai.isToolAllowed 对空白名单返回"全部放行"，
+// 传空 slice 等于把整个工具注册表交给模型（纵深防御，正常路径已由 PlanGroupTurn 挡住）。
 func (g *SmartReplyGraph) runReAct(ctx context.Context, taskType ai.TaskType, messages []ai.Message, input *SmartReplyContext, plan ReplyTurnPlan, onStep ai.ReActStepCallback) (string, error) {
+	if !plan.WantsTools() {
+		return g.aiService.GetCompletion(taskType, messages)
+	}
 	return g.aiService.GetCompletionWithToolsMultiStep(
 		taskType, messages, &ai.CallerContext{UserID: input.UserID}, plan.Tools,
 		ai.MaxReActSteps, onStep,
@@ -511,6 +516,9 @@ func (g *SmartReplyGraph) runReAct(ctx context.Context, taskType ai.TaskType, me
 
 // streamReAct 流式带工具执行；不支持流式 tool-call 时把哨兵错误交给调用方降级。
 func (g *SmartReplyGraph) streamReAct(ctx context.Context, taskType ai.TaskType, messages []ai.Message, input *SmartReplyContext, plan ReplyTurnPlan, onStep ai.ReActStepCallback, onChunk func(ai.StreamChunk) error) (bool, error) {
+	if !plan.WantsTools() {
+		return true, g.aiService.GetCompletionStreamWithContext(ctx, taskType, messages, onChunk)
+	}
 	err := g.aiService.GetCompletionWithToolsStreamMultiStep(
 		ctx, taskType, messages, &ai.CallerContext{UserID: input.UserID}, plan.Tools,
 		ai.MaxReActSteps, onStep, onChunk,
@@ -655,6 +663,12 @@ func (g *SmartReplyGraph) HasExternalTools() bool {
 // 任务类型经 resolveQuotedImageTaskType 路由/降级：被引用图片在有视觉路由时走 vision，
 // 否则降级为"看不到"文字提示，避免把 base64 发给纯文本模型直接 400。
 func (g *SmartReplyGraph) preparedHistory(input *SmartReplyContext, plan ReplyTurnPlan) ([]*schema.Message, ai.TaskType, error) {
+	// SkipKnowledge 必须在 prepareInput 之前落定：prepareInput 用它决定要不要跑知识/记忆检索。
+	// 放到 applyPlanFlags（prepareInput 之后）只会晚一步——检索已经发生过，指令类消息白付延迟
+	// 且无关知识会被注入。
+	if plan.SkipKnowledge {
+		input.SkipKnowledge = true
+	}
 	if err := g.prepareInput(input); err != nil {
 		return nil, ai.TaskTypeChat, err
 	}
@@ -672,9 +686,6 @@ func (g *SmartReplyGraph) buildTurnHistory(input *SmartReplyContext, plan ReplyT
 
 // applyPlanFlags 把计划里的工具边界写到上下文中。
 func (g *SmartReplyGraph) applyPlanFlags(input *SmartReplyContext, plan ReplyTurnPlan) {
-	if plan.SkipKnowledge {
-		input.SkipKnowledge = true
-	}
 	if plan.WantsTools() {
 		input.HasTools = true
 		input.AllowedTools = append([]string(nil), plan.Tools...)

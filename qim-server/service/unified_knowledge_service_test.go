@@ -244,8 +244,16 @@ func TestSelectTopKnowledge(t *testing.T) {
 // mockReranker 测试用相关性判定器，按标题可编程返回三态判定。
 type mockReranker struct {
 	// verdict 标题 → 注入判定；未命中默认"拿不准"（confident=false，保留）
+	// filterSnippetsByReranker 并发调用 Relevant，计数需加锁。
 	verdict map[string]mockVerdict
+	mu      sync.Mutex
 	calls   int
+}
+
+func (m *mockReranker) callCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls
 }
 
 type mockVerdict struct {
@@ -255,7 +263,9 @@ type mockVerdict struct {
 }
 
 func (m *mockReranker) Relevant(_ context.Context, _ string, snip KnowledgeSnippet) (bool, bool, error) {
+	m.mu.Lock()
 	m.calls++
+	m.mu.Unlock()
 	if v, ok := m.verdict[snip.Title]; ok {
 		return v.relevant, v.confident, v.err
 	}
@@ -364,7 +374,7 @@ func TestFilterByReranker_RegardingOrder(t *testing.T) {
 	require.Len(t, filtered, 2)
 	assert.Equal(t, "A", filtered[0].Title)
 	assert.Equal(t, "C", filtered[1].Title, "保持原序，B 被过滤")
-	assert.Equal(t, 3, mr.calls, "逐条判定调用 3 次")
+	assert.Equal(t, 3, mr.callCount(), "逐条判定调用 3 次")
 }
 
 // TestFilterByReranker_AllConfidentIrrelevant
