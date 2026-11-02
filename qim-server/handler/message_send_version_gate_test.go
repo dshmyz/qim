@@ -120,8 +120,63 @@ func TestSendMessageVersionGate(t *testing.T) {
 	require.Equal(t, http.StatusOK, send("2.0.29", "windows").Code)
 }
 
+// TestSendMessageVersionGate_UAFallback 老客户端不带版本头时，从 UA 解析发送设备
+// 自己的版本/平台判定：仅配置 Linux 门槛不会误伤 Windows/macOS；UA 解析不出时
+// 退回全局门槛（fail-closed）。
+func TestSendMessageVersionGate_UAFallback(t *testing.T) {
+	router, db, _, conv := setupSendMessageVersionGateTest(t)
+
+	uaFor := func(platformToken, version string) string {
+		return fmt.Sprintf("Mozilla/5.0 (%s) AppleWebKit/537.36 (KHTML, like Gecko) qim/%s Chrome/148.0.7778.218 Electron/42.3.3 Safari/537.36", platformToken, version)
+	}
+	const (
+		winToken   = "Windows NT 10.0; Win64; x64"
+		macToken   = "Macintosh; Intel Mac OS X 10_15_7"
+		linuxToken = "X11; Linux x86_64"
+	)
+	browserUA := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+
+	send := func(ua string) int {
+		body := bytes.NewBufferString(`{"type":"text","content":"hello"}`)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/conversations/%d/messages", conv.ID), body)
+		req.Header.Set("Content-Type", "application/json")
+		if ua != "" {
+			req.Header.Set("User-Agent", ua)
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	// 仅配置 Linux 专属门槛 2.0.39，全局为空
+	require.NoError(t, db.Create(&model.SystemConfig{
+		ConfigKey: "client:min_send_version:linux", Value: "2.0.39", Type: "string",
+	}).Error)
+	invalidateMinSendVersionCache()
+
+	require.Equal(t, http.StatusForbidden, send(uaFor(linuxToken, "1.0.0")), "Linux 低于门槛应拦")
+	require.Equal(t, http.StatusOK, send(uaFor(linuxToken, "2.0.39")), "Linux 达门槛应放行")
+	require.Equal(t, http.StatusOK, send(uaFor(winToken, "1.0.0")), "Linux 门槛不应误伤 Windows")
+	require.Equal(t, http.StatusOK, send(uaFor(macToken, "1.0.0")), "Linux 门槛不应误伤 macOS")
+	require.Equal(t, http.StatusOK, send(""), "无 UA 且无全局门槛 → 放行")
+	require.Equal(t, http.StatusOK, send(browserUA), "UA 解析不出且无全局门槛 → 放行")
+
+	// 追加全局门槛 2.0.30：平台专属优先，解析不出的退回全局 fail-closed
+	require.NoError(t, db.Create(&model.SystemConfig{
+		ConfigKey: "client:min_send_version", Value: "2.0.30", Type: "string",
+	}).Error)
+	invalidateMinSendVersionCache()
+
+	require.Equal(t, http.StatusForbidden, send(uaFor(winToken, "1.0.0")), "Windows 回退全局门槛后应拦")
+	require.Equal(t, http.StatusOK, send(uaFor(winToken, "2.0.35")), "Windows 达全局门槛应放行")
+	require.Equal(t, http.StatusForbidden, send(uaFor(linuxToken, "2.0.35")), "Linux 专属门槛优先于全局")
+	require.Equal(t, http.StatusForbidden, send(""), "UA 解析不出应对全局门槛 fail-closed")
+	require.Equal(t, http.StatusForbidden, send(browserUA), "浏览器 UA 应对全局门槛 fail-closed")
+}
+
 // TestSendMessageVersionGateWSFallback 老客户端不携带 X-App-Version/X-App-Platform 头时，
-// 回退到 WS 连接上报的版本/平台：WS 版本达标 → 放行，未达标 → 403。
+// 回退到 WS 连接上报的版本/平台（与后台版本分布同源）：账号内任一在线设备达到自己的
+// 平台门槛 → 放行；全部不达标 → 403。
 func TestSendMessageVersionGateWSFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -220,6 +275,35 @@ func TestSendMessageVersionGateWSFallback(t *testing.T) {
 	}
 	require.Equal(t, http.StatusOK, postNoHeader(newer.ID, newerConv.ID))
 	require.Equal(t, http.StatusForbidden, postNoHeader(older.ID, olderConv.ID))
+
+	// 追加 Linux 专属门槛 2.0.39（全局 2.0.30 仍在）：
+	// 同一账号只要有一台设备达到自己的平台门槛就不拦，避免 Linux 门槛误伤 Windows。
+	require.NoError(t, db.Create(&model.SystemConfig{
+		ConfigKey: "client:min_send_version:linux", Value: "2.0.39", Type: "string",
+	}).Error)
+	invalidateMinSendVersionCache()
+
+	mixed := model.User{Username: "mixed", PasswordHash: "hash", Nickname: "多设备", Type: "user"}
+	require.NoError(t, db.Create(&mixed).Error)
+	mixedConv := mkConv(mixed)
+	dial(mixed, "1.0.1", "linux")    // 低于 Linux 门槛
+	dial(mixed, "2.0.36", "windows") // 达到全局门槛
+
+	linuxOnly := model.User{Username: "linux-only", PasswordHash: "hash", Nickname: "仅Linux", Type: "user"}
+	require.NoError(t, db.Create(&linuxOnly).Error)
+	linuxOnlyConv := mkConv(linuxOnly)
+	dial(linuxOnly, "1.0.2", "linux") // 唯一设备且低于 Linux 门槛
+
+	require.Eventually(t, func() bool {
+		return len(hub.GetVersionUsers("1.0.1")) == 1 &&
+			len(hub.GetVersionUsers("2.0.36")) == 1 &&
+			len(hub.GetVersionUsers("1.0.2")) == 1
+	}, 3*time.Second, 20*time.Millisecond, "多设备用户应完成 WS 注册")
+
+	require.Equal(t, http.StatusOK, postNoHeader(mixed.ID, mixedConv.ID),
+		"同账号有设备达标时不应被其他平台的专属门槛拦")
+	require.Equal(t, http.StatusForbidden, postNoHeader(linuxOnly.ID, linuxOnlyConv.ID),
+		"账号内所有在线设备都不达标时应拦截")
 }
 
 // TestSendMessageVersionGate_UserTokenExempt 用户长期令牌（qusr_，CLI/MCP 以本人身份调用）

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dshmyz/qim/qim-server/cache"
@@ -116,10 +117,59 @@ func clientSendBlocked(clientVersion, minVersion string) bool {
 	return service.CompareVersions(clientVersion, minVersion) < 0
 }
 
+// parseClientUA 从存量客户端（2.0.39 之前）的 User-Agent 解析版本与平台。
+// Electron 默认 UA 在 " Chrome/" 前带 "<app 名>/<版本>"，例如：
+//
+//	Mozilla/5.0 (X11; Linux x86_64) ... qim/1.0.0 Chrome/148.0.7778.218 Electron/42.3.3 ...
+//
+// 只取 " Chrome/" 前紧邻的 token，避免命中 AppleWebKit/537.36、Electron/42.3.3、Safari/537.36；
+// 浏览器 UA 该位置是 "... Gecko)"，解析不出返回空版本。不校验产品名：客户端是独立桌面程序，
+// 只要求版本是 x.y.z 三段数字，避免把产品名写死进代码。
+func parseClientUA(ua string) (version, platform string) {
+	if ua == "" {
+		return "", ""
+	}
+	return parseUAVersion(ua), parseUAPlatform(ua)
+}
+
+func parseUAVersion(ua string) string {
+	i := strings.Index(ua, " Chrome/")
+	if i <= 0 {
+		return ""
+	}
+	token := ua[:i]
+	if j := strings.LastIndexAny(token, " ;("); j >= 0 {
+		token = token[j+1:]
+	}
+	slash := strings.LastIndexByte(token, '/')
+	if slash <= 0 {
+		return ""
+	}
+	v := token[slash+1:]
+	if !service.IsValidVersion(v) {
+		return ""
+	}
+	return v
+}
+
+func parseUAPlatform(ua string) string {
+	switch {
+	case strings.Contains(ua, "Windows"):
+		return "windows"
+	case strings.Contains(ua, "Macintosh"), strings.Contains(ua, "Mac OS X"):
+		return "macos"
+	case strings.Contains(ua, "Linux"), strings.Contains(ua, "X11"):
+		return "linux"
+	default:
+		return ""
+	}
+}
+
 // clientSendBlockedRequest 对一次 HTTP 发送请求做版本门槛判定：
 //   - 带版本头（新客户端）：按请求自身版本+平台判定；平台缺失时回退全局门槛。
-//   - 无版本头（老客户端/未知设备）：发送设备不可知，按"用户任一在线设备低于其自身平台门槛即拦"
-//     判定——不折叠多设备、确定性，用户在跑旧客户端即受门槛约束；无在线设备可证时对全局门槛 fail-closed。
+//   - 无版本头（存量客户端）：先从 Electron 默认 UA 解析发送设备自己的版本/平台；
+//     解析不出时再取该账号在线设备（WS 上报的 version/platform，与后台版本分布同源）——
+//     只要有一台达到它自己的平台门槛就不拦，全部不达标才拦；无在线设备可证时对全局门槛 fail-closed。
 //
 // 返回是否应拦截、门槛值（供错误消息展示）与"是否因无法验证版本而拦"（unverifiable）。
 // 未配置门槛恒不拦截。REST SendMessage 与频道发消息共用此判定，避免两处逻辑漂移。
@@ -142,6 +192,11 @@ func clientSendBlockedRequest(c *gin.Context, uid uint) (blocked bool, minV stri
 	clientVersion := c.GetHeader("X-App-Version")
 	clientPlatform := c.GetHeader("X-App-Platform")
 
+	// 存量客户端（2.0.39 之前）不发版本头，但 Electron 默认 UA 自带版本与平台。
+	if clientVersion == "" {
+		clientVersion, clientPlatform = parseClientUA(c.GetHeader("User-Agent"))
+	}
+
 	if clientVersion != "" {
 		minV = minSendVersion(clientPlatform)
 		return clientSendBlocked(clientVersion, minV), minV, false
@@ -149,14 +204,28 @@ func clientSendBlockedRequest(c *gin.Context, uid uint) (blocked bool, minV stri
 
 	if ws.GlobalHub != nil {
 		devices := ws.GlobalHub.GetUserDevices(uid)
-		for _, d := range devices {
-			t := minSendVersion(d.Platform)
-			if clientSendBlocked(d.Version, t) {
-				// 设备未上报版本或低于门槛，均因无法归属到发送设备而属"无法验证/可能过低"
-				return true, t, d.Version == "" || !service.IsValidVersion(d.Version)
-			}
-		}
 		if len(devices) > 0 {
+			// 发送设备不可知：任一在线设备达到自己的平台门槛即放行（避免平台专属门槛
+			// 误伤同账号其他平台的设备）；全部不达标才拦。
+			allBlocked := true
+			var firstMinV string
+			var unverifiable bool
+			for _, d := range devices {
+				t := minSendVersion(d.Platform)
+				if !clientSendBlocked(d.Version, t) {
+					allBlocked = false
+					break
+				}
+				if firstMinV == "" {
+					firstMinV = t
+				}
+				if d.Version == "" || !service.IsValidVersion(d.Version) {
+					unverifiable = true
+				}
+			}
+			if allBlocked {
+				return true, firstMinV, unverifiable
+			}
 			return false, "", false
 		}
 	}
