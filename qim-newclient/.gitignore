@@ -1,0 +1,7 @@
+/build/
+/.mygo/
+mygo_windows_*.syso
+# 本地编译产物与调试截图，不入库
+/qim-newclient
+/-
+.DS_Store
