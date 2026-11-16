@@ -188,17 +188,22 @@ func (a *app) mdRun(c *ui.Context, r richtext.Run, fg, link, tint ui.Color, size
 	}
 }
 
-// mdCodeBlock 是合并后的代码块：等宽小一号字、低透明度底、圆角。
+// mdCodeBlock 是合并后的代码块，对齐 qim-client markdown-content.css 的 pre：
+// 底色取文字色 6%（原版 color-mix 94% transparent）、圆角 6、内边距 8/10、
+// 等宽 13px / 行高 1.6。代码行按 GitHub Light 逐 token 着色（原版 hljs）。
+// 语言标识在 mygo 解析与 qim-client 主消息路径里都被丢弃，故按内容自动识别。
 func (a *app) mdCodeBlock(c *ui.Context, lines []richtext.Paragraph, fg ui.Color, mine bool) {
-	// 自己气泡改成浅底后，代码块/行内 code 与对方用同一套深色 tint；
-	// 原来的白色 18% 叠加在浅底上几乎看不见。
-	tint := fg.Alpha(0.08)
-	_ = mine
-	ui.Box(c).FillWidth().Radius(8).Background(tint).Padding(8, 10).Children(func() {
+	_ = mine // 浅底气泡后，代码块与对方共用同一套文字色 tint
+	ui.Box(c).FillWidth().Radius(6).Background(codeBlockBackground(fg)).Padding(8, 10).Children(func() {
 		ui.Column(c).FillWidth().Gap(1).Children(func() {
 			for _, p := range lines {
-				ui.Text(c, paraPlain(p)).Font("monospace").FontSize(12.5).
-					LineHeight(1.5).TextColor(fg).FillWidth()
+				spans := highlightCodeLine(paraPlain(p), fg)
+				ui.RichText(c).Selectable().FillWidth().Font("monospace").FontSize(13).
+					LineHeight(1.6).TextColor(fg).Children(func() {
+					for _, s := range spans {
+						ui.Text(c, s.Text).TextColor(s.Color)
+					}
+				})
 			}
 		})
 	})

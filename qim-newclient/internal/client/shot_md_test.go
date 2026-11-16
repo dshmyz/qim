@@ -38,3 +38,28 @@ func TestShotMarkdownMsg(t *testing.T) {
 	tt.Frame()
 	write(t, tt, "/tmp/qim-md-mine.png")
 }
+
+// TestShotCodeHighlight 锁定代码块语法高亮的视觉回归：一段 Go 代码同时
+// 覆盖关键字 / 注释 / 字符串 / 函数名 / 内置类型 / 数字 / 操作符各类 token，
+// 便于日后主题或解析器改动后一眼看出高亮是否退化成单色。
+func TestShotCodeHighlight(t *testing.T) {
+	a := &app{active: 0, loggedIn: true}
+	a.convs = []conversation{{ID: "1", Name: "AI 助手", Sub: "机器人", Time: "刚刚", Kind: "bot"}}
+
+	fence := "```"
+	src := "代码示例：\n\n" + fence + "go\n" +
+		"package main\n\n" +
+		"import \"fmt\"\n\n" +
+		"// greet 打印问候语\n" +
+		"func greet(name string) string {\n" +
+		"    msg := \"hello, \" + name\n" +
+		"    fmt.Println(msg)\n" +
+		"    return msg\n" +
+		"}\n" + fence
+	m := messageFromAPI(mustMsg(`{"id":"43","type":"markdown","content":`+quoteJSON(src)+`,"sender":{"id":"8","name":"AI 助手"},"timestamp":1700000008000}`), "7", 0)
+	a.msgs = []message{m}
+	tt := ui.NewTester(a.view, 900, 620)
+	tt.Frame()
+	tt.Frame()
+	write(t, tt, "/tmp/qim-code-highlight.png")
+}

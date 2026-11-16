@@ -82,6 +82,15 @@ func (a *app) attachMessageMenu(e ui.Element, m message) {
 		if menu.Item("复制").Chosen() {
 			a.copyMessageText(m.Text)
 		}
+		// 复制代码：仅当消息正文含 ``` 围栏时出现，对齐 qim-client
+		// MessageContextMenu 的 hasCodeBlock 条件；复制所有围栏的代码正文。
+		if hasCodeBlock(m) && menu.Item("复制代码").Chosen() {
+			blocks := extractCodeBlocks(m.RawContent)
+			if len(blocks) == 0 {
+				blocks = extractCodeBlocks(m.Text)
+			}
+			a.copyMessageText(strings.Join(blocks, "\n\n"))
+		}
 		if m.Kind != "" && !m.Att.IsZero() {
 			if menu.Item("打开 / 下载").Chosen() {
 				a.openAttachment(m.Att)
