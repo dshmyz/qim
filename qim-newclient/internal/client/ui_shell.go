@@ -58,6 +58,9 @@ func (a *app) view(c *ui.Context) {
 		a.updateDialog(c)
 		a.mergedRecordModal(c)
 		a.shareOriginalModal(c)
+		// AI 助手：绝对定位在右侧和三栏之上，后绘制保证盖住聊天区。
+		a.aiSidebar(c)
+		a.aiBall(c)
 	})
 }
 

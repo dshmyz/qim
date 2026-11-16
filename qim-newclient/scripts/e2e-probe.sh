@@ -30,7 +30,7 @@ echo "编译探针二进制 ……"
 go build -o "$BIN" . || exit 2
 mkdir -p "$LOGDIR"
 
-PROBES='probe-api probe-msg probe-convlist probe-c probe-groups probe-actions probe-media probe-profile probe-quick probe-files probe-channels probe-recall probe-readusers probe-announce probe-notifs'
+PROBES='probe-api probe-ai probe-msg probe-convlist probe-c probe-groups probe-actions probe-media probe-profile probe-quick probe-files probe-channels probe-recall probe-readusers probe-announce probe-notifs'
 
 pass=0
 fail=0

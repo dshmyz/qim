@@ -148,6 +148,17 @@ type app struct {
 	savedMu sync.Mutex
 	saved   savedSession
 
+	// AI 助手侧边栏（对齐 qim-client FloatingAIBall + AISidebarPanel）：
+	// 独立输入框与会话消息互不影响，走 /ai/sidebar/stream，不在会话里留消息。
+	// aiScopeCross=false 关联当前会话（scope=current），true 为自由对话。
+	aiOpen       bool
+	aiInput      string
+	aiTurns      []aiTurn
+	aiBusy       bool
+	aiCancel     context.CancelFunc
+	aiScopeCross bool
+	aiPrompts    []string
+
 	// shot 是微信式截图的覆盖层，标题栏按钮和全局快捷键都调它。
 	shot *overlay
 

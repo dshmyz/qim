@@ -49,6 +49,9 @@ func Run() {
 	if *probeAPI {
 		os.Exit(runAPIProbe())
 	}
+	if *probeAI {
+		os.Exit(runAIProbe())
+	}
 	if *probeActions {
 		os.Exit(runActionProbe())
 	}
