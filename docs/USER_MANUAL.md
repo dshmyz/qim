@@ -346,16 +346,20 @@ qim whoami
 
 | 工具 | 说明 |
 |------|------|
-| `list_messages` | 列会话消息 |
-| `poll_messages` | 轮询新消息 |
-| `send_message` | 发送消息 |
-| `start_streaming_message` / `append_streaming_chunk` / `finish_streaming_message` | 流式消息 |
+| `list_messages` / `poll_messages` / `list_actions` | 读消息 / 增量轮询 / 卡片点击 |
+| `send_message` / `edit_message` | 发消息（含引用、文件、以本人身份） / 编辑消息 |
+| `start_streaming_message` / `stream_message` | 流式消息（追加 / 收尾 / 丢弃） |
+| `whoami` / `get_bot_identity` | 用户身份 / bot 身份（virtual_user_id） |
+| `list_group_conversations` / `list_bot_conversations` / `list_conversations` | 群会话 / bot 会话 / 用户最近会话 |
+| `search_messages` | 搜索消息（需 user JWT） |
+| `list_tasks` / `create_task` / `update_task` | 待办（需 user JWT） |
+| `list_events` / `create_event` / `update_event` | 日历（需 user JWT） |
 | `list_notes` / `get_note` / `create_note` / `update_note` / `search_notes` | 笔记（需 user JWT） |
 
 ### 11.3 典型场景
 
-- **场景 1**：`send_message` 发送 → `poll_messages` 等待用户回复。
-- **场景 2**：`start_streaming_message` → 逐步 `append_streaming_chunk` → `finish_streaming_message`（AI 实时输出）。
+- **场景 1**：`send_message` 发送 → `poll_messages` 等待用户回复（卡片点击用 `list_actions`）。
+- **场景 2**：`start_streaming_message` → 逐步 `stream_message(delta)` → `stream_message(finish)`（AI 实时输出）。
 - **场景 3**：`list_messages` 读历史 → `send_message` 回复。
 
 ---

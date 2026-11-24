@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -72,7 +73,7 @@ func TestE2E_ToolsList(t *testing.T) {
 	for _, tl := range res.Tools {
 		names[tl.Name] = true
 	}
-	for _, want := range []string{"list_messages", "poll_messages", "send_message", "start_streaming_message", "append_streaming_chunk", "finish_streaming_message"} {
+	for _, want := range []string{"list_messages", "poll_messages", "send_message", "start_streaming_message", "stream_message", "list_actions"} {
 		assert.True(t, names[want], "缺少工具 %s", want)
 	}
 }
@@ -84,7 +85,7 @@ func TestE2E_SendThenList(t *testing.T) {
 
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "send_message",
-		Arguments: map[string]any{"to_user_id": *toUser, "content": "e2e hello from mcp", "msg_type": "markdown"},
+		Arguments: map[string]any{"to": fmt.Sprint(*toUser), "content": "e2e hello from mcp", "type": "markdown"},
 	})
 	require.NoError(t, err)
 	txt := toolText(t, res)
@@ -95,7 +96,7 @@ func TestE2E_SendThenList(t *testing.T) {
 
 	res2, err := cs.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "list_messages",
-		Arguments: map[string]any{"thread_id": convID, "limit": 10},
+		Arguments: map[string]any{"thread": fmt.Sprint(convID), "limit": 10},
 	})
 	require.NoError(t, err)
 	txt2 := toolText(t, res2)
@@ -110,7 +111,7 @@ func TestE2E_Streaming(t *testing.T) {
 
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "start_streaming_message",
-		Arguments: map[string]any{"to_user_id": *toUser},
+		Arguments: map[string]any{"to": fmt.Sprint(*toUser)},
 	})
 	require.NoError(t, err)
 	startTxt := toolText(t, res)
@@ -121,20 +122,20 @@ func TestE2E_Streaming(t *testing.T) {
 
 	for _, delta := range []string{"流式 ", "测试"} {
 		_, err := cs.CallTool(ctx, &mcp.CallToolParams{
-			Name:      "append_streaming_chunk",
+			Name:      "stream_message",
 			Arguments: map[string]any{"message_id": msgID, "delta": delta},
 		})
 		require.NoError(t, err)
 	}
 	_, err = cs.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "finish_streaming_message",
-		Arguments: map[string]any{"message_id": msgID},
+		Name:      "stream_message",
+		Arguments: map[string]any{"message_id": msgID, "finish": true},
 	})
 	require.NoError(t, err)
 
 	res2, err := cs.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "list_messages",
-		Arguments: map[string]any{"thread_id": convID, "limit": 5},
+		Arguments: map[string]any{"thread": fmt.Sprint(convID), "limit": 5},
 	})
 	require.NoError(t, err)
 	txt := toolText(t, res2)
@@ -210,7 +211,7 @@ func TestE2E_HTTP_ToolsList(t *testing.T) {
 
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "list_messages",
-		Arguments: map[string]any{"thread_id": 1, "limit": 3},
+		Arguments: map[string]any{"thread": "1", "limit": 3},
 	})
 	require.NoError(t, err)
 	t.Logf("HTTP list_messages => %v", res)
