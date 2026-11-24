@@ -33,16 +33,39 @@ func newStreamCmd() *cobra.Command {
 }
 
 func newStreamStdinCmd() *cobra.Command {
-	var to, thread string
+	var to, thread, conversation string
 	cmd := &cobra.Command{
 		Use:   "stream-stdin",
 		Short: "stdin 逐行喂 delta，EOF finish",
 		Long:  fmt.Sprintf("建一条流式消息，stdin 每行作为一个 delta 追加，EOF 时 finish。配合 `claude -p ... | %[1]s stream-stdin ...` 实现流式回复。", CliName),
 		Run: func(cmd *cobra.Command, args []string) {
-			if to == "" {
-				die("--to 必填")
+			if cmd.Flags().Changed("thread") {
+				warnThreadDeprecated()
 			}
-			msgID, err := sendMessage(to, thread, "", "streaming", 0)
+			target := conversation
+			strict := true
+			if target == "" {
+				target = thread
+				strict = false
+			}
+			var msgID uint64
+			var err error
+			if target != "" {
+				if convID, found := lookupBotConversation(target); found {
+					msgID, err = sendMessageToConversation(convID, "", "streaming", 0)
+				} else if strict {
+					die("未找到会话 %q（用 `%s groups` 查看已入群会话，或改用会话 ID）", target, CliName)
+				} else if to != "" {
+					msgID, err = sendMessage(to, target, "", "streaming", 0)
+				} else {
+					msgID, err = sendMessage(target, "", "", "streaming", 0)
+				}
+			} else {
+				if to == "" {
+					die("--to 必填；或用 --conversation 指定会话")
+				}
+				msgID, err = sendMessage(to, "", "", "streaming", 0)
+			}
 			if err != nil {
 				die("建流式消息失败: %v", err)
 			}
@@ -52,8 +75,9 @@ func newStreamStdinCmd() *cobra.Command {
 			fmt.Fprintf(os.Stderr, "✅ 流式消息已发送 (ID: %d)\n", msgID)
 		},
 	}
-	cmd.Flags().StringVar(&to, "to", "", "目标用户名或用户 ID（必填）")
-	cmd.Flags().StringVar(&thread, "thread", "", "会话名或会话 ID（可选）")
+	cmd.Flags().StringVar(&to, "to", "", "目标用户名或用户 ID（与 --conversation 二选一）")
+	cmd.Flags().StringVar(&conversation, "conversation", "", "会话 ID 或会话名")
+	cmd.Flags().StringVar(&thread, "thread", "", "已弃用，请改用 --conversation")
 	return cmd
 }
 

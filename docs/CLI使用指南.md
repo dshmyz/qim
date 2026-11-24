@@ -137,9 +137,14 @@ qim config show
 # 向用户 alice 发送一条文本消息（自动创建/查找会话）
 qim send --to alice --content "你好，这是一条测试消息"
 
-# 指定会话
-qim send --to alice --thread "项目讨论" --content "明天开会"
+# 指定会话（支持会话 ID 或名称）
+qim send --conversation "项目讨论" --content "明天开会"
+
+# 发到群
+qim send --conversation 98 --content "大家好"
 ```
+
+> `--conversation` 支持会话 ID 或会话名；`--thread` 已弃用，等价 `--conversation`。
 
 ### 发送 Markdown 消息
 
@@ -164,7 +169,7 @@ qim send --to alice --type card --content '{
 }'
 
 # 等待用户点击结果
-qim messages poll --thread alice --type card_action --once --output json
+qim messages poll --conversation alice --type card_action --once --output json
 ```
 
 ### 发送文件
@@ -178,13 +183,13 @@ qim send --to alice --file ./design.pdf
 
 ```bash
 # 拉取最近 50 条消息
-qim messages list --thread alice
+qim messages list --conversation alice
 
 # 只看最新 10 条
-qim messages list --thread alice --limit 10
+qim messages list --conversation alice --limit 10
 
 # 过滤特定类型
-qim messages list --thread alice --type markdown
+qim messages list --conversation alice --type markdown
 
 # 搜索消息
 qim messages search --keyword "部署"
@@ -194,16 +199,16 @@ qim messages search --keyword "部署"
 
 ```bash
 # 持续监听用户回复
-qim messages poll --thread alice
+qim messages poll --conversation alice
 
 # 只等一次新消息就退出（适合 agent 一次性等待）
-qim messages poll --thread alice --once
+qim messages poll --conversation alice --once
 
 # 等待卡片点击结果
-qim messages poll --thread alice --type card_action --once
+qim messages poll --conversation alice --type card_action --once
 
 # 自定义轮询间隔（默认 2s）
-qim messages poll --thread alice --interval 5s
+qim messages poll --conversation alice --interval 5s
 ```
 
 ### 流式消息（配合 AI Agent）
@@ -259,10 +264,10 @@ qim note update 12 --title "部署备忘（更新版）"
 
 ```bash
 # 默认：人类可读格式
-qim messages list --thread alice
+qim messages list --conversation alice
 
 # 原始 JSON（适合脚本解析）
-qim messages list --thread alice --output json
+qim messages list --conversation alice --output json
 
 # 裸 ID（方便管道取值）
 qim send --to alice --content "hi" --output id
@@ -283,7 +288,7 @@ qim config set --server http://localhost:8080 --token qbot_...
 qim send --to user1 --type card --content '{"title":"选择","text":"你想怎么做？","buttons":[{"id":"a","text":"方案A"},{"id":"b","text":"方案B"}]}'
 
 # 3. 轮询等待用户回复
-qim messages poll --thread user1 --type card_action --once --output json
+qim messages poll --conversation user1 --type card_action --once --output json
 # → {"id":42,"content":"{\"action_id\":\"a\"}","type":"card_action",...}
 
 # 4. 根据用户选择继续处理
@@ -315,7 +320,7 @@ qim agent loop --command 'claude -p --output-format text'
 |------|------|
 | `--command` | **必填**，智能体非交互命令（prompt 走 stdin） |
 | `--interval` | 轮询间隔，默认 `2s` |
-| `--thread` | 只轮询指定会话（逗号分隔）；空 = 自动发现全部已入群 |
+| `--conversations` | 只轮询指定会话（逗号分隔）；空 = 自动发现全部已入群。`--thread` 为弃用别名 |
 | `--mention-only` | 默认 `true`，只响应 @ 本机器人的消息 |
 | `--agent-timeout` | 单次智能体调用超时，默认 `120s` |
 | `--reply-type` | 回复消息类型，默认 `markdown` |

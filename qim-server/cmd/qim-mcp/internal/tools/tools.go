@@ -31,17 +31,17 @@ func Register(s *mcp.Server, a *Adapter) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_messages",
-		Description: "拉取指定会话的一页消息（thread 可为会话 ID 或会话名）。与 CLI `messages list` 同源：按 id 升序，用 after_id 翻页；需要最新水位线时从返回结果里取最大 id。可用 type 过滤消息类型。返回每行一条 JSON 消息。",
+		Description: "拉取指定会话的一页消息（conversation 可为会话 ID 或会话名）。与 CLI `messages list` 同源：按 id 升序，用 after_id 翻页；需要最新水位线时从返回结果里取最大 id。可用 type 过滤消息类型。返回每行一条 JSON 消息。thread 为已弃用别名。",
 	}, a.listMessages)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "poll_messages",
-		Description: "增量拉取会话中 after_id 之后的新消息（thread 可为会话 ID 或会话名）。返回 {after_id, messages}：after_id 为本批最大消息 id，下次轮询直接回传。可用 type 过滤，但水位线始终按整批消息推进，不会因过滤而卡住。",
+		Description: "增量拉取会话中 after_id 之后的新消息（conversation 可为会话 ID 或会话名）。返回 {after_id, messages}：after_id 为本批最大消息 id，下次轮询直接回传。可用 type 过滤，但水位线始终按整批消息推进，不会因过滤而卡住。thread 为已弃用别名。",
 	}, a.pollMessages)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_actions",
-		Description: "查看卡片按钮点击事件（等价 CLI `messages actions`，即 type=card_action 的消息）。用于 agent 发交互卡片后确认用户点了哪个按钮。返回每行一条 JSON 消息，action_id 字段标识按钮。",
+		Description: "查看卡片按钮点击事件（等价 CLI `messages actions`，即 type=card_action 的消息）。用于 agent 发交互卡片后确认用户点了哪个按钮。返回每行一条 JSON 消息，action_id 字段标识按钮。thread 为已弃用别名。",
 	}, a.listActions)
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -61,12 +61,12 @@ func Register(s *mcp.Server, a *Adapter) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "send_message",
-		Description: "发送一条消息。单聊用 to（用户 ID 或用户名），可带 thread（会话 ID 或名）；群聊/已建会话用 conversation（会话 ID，优先于 to/thread）。type 可选 text|markdown|card（默认 text）；reply_to 引用回复；file 上传本地文件并以 markdown 链接发送；as_user=true 以本人身份发送。file 与 as_user 需要用户令牌。card 的 content 为 {\"title\":\"...\",\"text\":\"...\",\"buttons\":[{\"id\":\"confirm\",\"text\":\"确认\"}]}。返回 {message_id, conversation_id}。",
+		Description: "发送一条消息。单聊用 to（用户 ID 或用户名）；群聊/已建会话用 conversation（会话 ID 或名称，优先于 to）。type 可选 text|markdown|card（默认 text）；reply_to 引用回复；file 上传本地文件并以 markdown 链接发送；as_user=true 以本人身份发送。file 与 as_user 需要用户令牌。thread 为已弃用的 conversation 别名。card 的 content 为 {\"title\":\"...\",\"text\":\"...\",\"buttons\":[{\"id\":\"confirm\",\"text\":\"确认\"}]}。返回 {message_id, conversation_id}。",
 	}, a.sendMessage)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "start_streaming_message",
-		Description: "创建一条流式消息占位（typing），返回 {message_id, conversation_id}。目标用 to/thread 或 conversation 指定。随后用 stream_message 追加/收尾。",
+		Description: "创建一条流式消息占位（typing），返回 {message_id, conversation_id}。目标用 to 或 conversation（会话 ID 或名称）指定，thread 为已弃用别名。随后用 stream_message 追加/收尾。",
 	}, a.startStreaming)
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -161,23 +161,26 @@ func Register(s *mcp.Server, a *Adapter) {
 // --- 参数类型 ---
 
 type listMessagesParams struct {
-	Thread  string `json:"thread" jsonschema:"会话 ID 或会话名"`
-	AfterID uint64 `json:"after_id,omitempty" jsonschema:"只返回 id 大于该值的消息"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"最多返回条数（1-100，默认 50）"`
-	Type    string `json:"type,omitempty" jsonschema:"按消息类型过滤：text|markdown|card|card_action|streaming"`
+	Conversation string `json:"conversation,omitempty" jsonschema:"会话 ID 或会话名"`
+	Thread       string `json:"thread,omitempty" jsonschema:"已弃用，请改用 conversation"`
+	AfterID      uint64 `json:"after_id,omitempty" jsonschema:"只返回 id 大于该值的消息"`
+	Limit        int    `json:"limit,omitempty" jsonschema:"最多返回条数（1-100，默认 50）"`
+	Type         string `json:"type,omitempty" jsonschema:"按消息类型过滤：text|markdown|card|card_action|streaming"`
 }
 
 type pollMessagesParams struct {
-	Thread  string `json:"thread" jsonschema:"会话 ID 或会话名"`
-	AfterID uint64 `json:"after_id" jsonschema:"上次拿到的最大消息 id"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"最多返回条数（1-100，默认 50）"`
-	Type    string `json:"type,omitempty" jsonschema:"按消息类型过滤；水位线仍按整批推进"`
+	Conversation string `json:"conversation,omitempty" jsonschema:"会话 ID 或会话名"`
+	Thread       string `json:"thread,omitempty" jsonschema:"已弃用，请改用 conversation"`
+	AfterID      uint64 `json:"after_id" jsonschema:"上次拿到的最大消息 id"`
+	Limit        int    `json:"limit,omitempty" jsonschema:"最多返回条数（1-100，默认 50）"`
+	Type         string `json:"type,omitempty" jsonschema:"按消息类型过滤；水位线仍按整批推进"`
 }
 
 type listActionsParams struct {
-	Thread  string `json:"thread" jsonschema:"会话 ID 或会话名"`
-	AfterID uint64 `json:"after_id,omitempty" jsonschema:"只返回 id 大于该值的消息"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"最多返回条数（1-100，默认 50）"`
+	Conversation string `json:"conversation,omitempty" jsonschema:"会话 ID 或会话名"`
+	Thread       string `json:"thread,omitempty" jsonschema:"已弃用，请改用 conversation"`
+	AfterID      uint64 `json:"after_id,omitempty" jsonschema:"只返回 id 大于该值的消息"`
+	Limit        int    `json:"limit,omitempty" jsonschema:"最多返回条数（1-100，默认 50）"`
 }
 
 type listConversationsParams struct {
@@ -186,8 +189,8 @@ type listConversationsParams struct {
 
 type sendMessageParams struct {
 	To           string `json:"to,omitempty" jsonschema:"目标用户 ID 或用户名（单聊）；与 conversation 二选一"`
-	Thread       string `json:"thread,omitempty" jsonschema:"会话 ID 或会话名（单聊）；省略时自动建/复用会话"`
-	Conversation string `json:"conversation,omitempty" jsonschema:"会话 ID（群聊/已建单聊），优先于 to/thread"`
+	Conversation string `json:"conversation,omitempty" jsonschema:"会话 ID 或会话名（群聊/已建单聊），优先于 to"`
+	Thread       string `json:"thread,omitempty" jsonschema:"已弃用，请改用 conversation"`
 	ReplyTo      uint64 `json:"reply_to,omitempty" jsonschema:"引用回复的消息 ID"`
 	Type         string `json:"type,omitempty" jsonschema:"消息类型 text|markdown|card（默认 text）"`
 	Content      string `json:"content,omitempty" jsonschema:"消息正文；card 时为按钮卡片 JSON。content 与 file 至少一个"`
@@ -197,8 +200,8 @@ type sendMessageParams struct {
 
 type startStreamingParams struct {
 	To           string `json:"to,omitempty" jsonschema:"目标用户 ID 或用户名"`
-	Thread       string `json:"thread,omitempty" jsonschema:"会话 ID 或会话名"`
-	Conversation string `json:"conversation,omitempty" jsonschema:"会话 ID，优先于 to/thread"`
+	Conversation string `json:"conversation,omitempty" jsonschema:"会话 ID 或会话名，优先于 to"`
+	Thread       string `json:"thread,omitempty" jsonschema:"已弃用，请改用 conversation"`
 }
 
 type streamMessageParams struct {
@@ -288,10 +291,11 @@ type searchNotesParams struct {
 // --- Handlers ---
 
 func (a *Adapter) listMessages(ctx context.Context, req *mcp.CallToolRequest, p listMessagesParams) (*mcp.CallToolResult, any, error) {
-	if strings.TrimSpace(p.Thread) == "" {
-		return nil, nil, fmt.Errorf("list_messages 需传入 thread（会话 ID 或会话名）")
+	target, err := a.resolveReadTarget(p.Conversation, p.Thread)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list_messages %w", err)
 	}
-	msgs, err := a.api.ListMessages(p.Thread, p.AfterID, p.Limit)
+	msgs, err := a.api.ListMessages(target, p.AfterID, p.Limit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list_messages 失败: %w", err)
 	}
@@ -299,8 +303,9 @@ func (a *Adapter) listMessages(ctx context.Context, req *mcp.CallToolRequest, p 
 }
 
 func (a *Adapter) pollMessages(ctx context.Context, req *mcp.CallToolRequest, p pollMessagesParams) (*mcp.CallToolResult, any, error) {
-	if strings.TrimSpace(p.Thread) == "" {
-		return nil, nil, fmt.Errorf("poll_messages 需传入 thread（会话 ID 或会话名）")
+	target, err := a.resolveReadTarget(p.Conversation, p.Thread)
+	if err != nil {
+		return nil, nil, fmt.Errorf("poll_messages %w", err)
 	}
 	if p.AfterID == 0 {
 		return nil, nil, fmt.Errorf("poll_messages 需传入 after_id（上次最大消息 id）")
@@ -309,7 +314,7 @@ func (a *Adapter) pollMessages(ctx context.Context, req *mcp.CallToolRequest, p 
 	if limit <= 0 {
 		limit = 100 // 与 CLI messages poll 的批量一致
 	}
-	msgs, err := a.api.ListMessages(p.Thread, p.AfterID, limit)
+	msgs, err := a.api.ListMessages(target, p.AfterID, limit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("poll_messages 失败: %w", err)
 	}
@@ -334,14 +339,43 @@ func (a *Adapter) pollMessages(ctx context.Context, req *mcp.CallToolRequest, p 
 }
 
 func (a *Adapter) listActions(ctx context.Context, req *mcp.CallToolRequest, p listActionsParams) (*mcp.CallToolResult, any, error) {
-	if strings.TrimSpace(p.Thread) == "" {
-		return nil, nil, fmt.Errorf("list_actions 需传入 thread（会话 ID 或会话名）")
+	target, err := a.resolveReadTarget(p.Conversation, p.Thread)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list_actions %w", err)
 	}
-	msgs, err := a.api.ListMessages(p.Thread, p.AfterID, p.Limit)
+	msgs, err := a.api.ListMessages(target, p.AfterID, p.Limit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list_actions 失败: %w", err)
 	}
 	return textResult(messagesToLines(filterMessages(msgs, "card_action"))), nil, nil
+}
+
+// resolveReadTarget 把 conversation/thread 解析为读接口参数。
+// conversation 严格解析；thread 名称解析不到时保留原值，交给服务端 thread_name 回退。
+func (a *Adapter) resolveReadTarget(conversation, thread string) (string, error) {
+	target, err := conversationTarget(conversation, thread)
+	if err != nil {
+		return "", err
+	}
+	id, err := a.api.ResolveConversation(target)
+	if err != nil {
+		if _, ok := parseNumeric(target); ok {
+			return "", err
+		}
+		return target, nil
+	}
+	return strconv.FormatUint(id, 10), nil
+}
+
+// conversationTarget 取 conversation，回退已弃用的 thread。
+func conversationTarget(conversation, thread string) (string, error) {
+	if strings.TrimSpace(conversation) != "" {
+		return conversation, nil
+	}
+	if strings.TrimSpace(thread) != "" {
+		return thread, nil
+	}
+	return "", fmt.Errorf("需传入 conversation（会话 ID 或名称；thread 为已弃用别名）")
 }
 
 // listGroupConversationsParams 无入参，仅占位（go-sdk 要求 handler 必带 input 参数）。
@@ -440,7 +474,11 @@ func (a *Adapter) sendMessage(ctx context.Context, req *mcp.CallToolRequest, p s
 	}
 
 	if p.AsUser {
-		convID, err := a.resolveUserConversation(p.Conversation, p.To)
+		conversation := p.Conversation
+		if conversation == "" {
+			conversation = p.Thread // 弃用别名
+		}
+		convID, err := a.resolveUserConversation(conversation, p.To)
 		if err != nil {
 			return nil, nil, fmt.Errorf("send_message 失败: %w", err)
 		}
@@ -492,8 +530,8 @@ func (a *Adapter) resolveUserConversation(conversation, to string) (uint64, erro
 }
 
 func (a *Adapter) startStreaming(ctx context.Context, req *mcp.CallToolRequest, p startStreamingParams) (*mcp.CallToolResult, any, error) {
-	if p.To == "" && p.Conversation == "" {
-		return nil, nil, fmt.Errorf("start_streaming_message 需要 to（用户）或 conversation（会话 ID）")
+	if p.To == "" && p.Conversation == "" && p.Thread == "" {
+		return nil, nil, fmt.Errorf("start_streaming_message 需要 to（用户）或 conversation（会话 ID 或名称）")
 	}
 	id, convID, err := a.api.SendMessage(client.SendParams{
 		To:           p.To,

@@ -8,7 +8,9 @@ title: MCP 接入指南
 
 NUIM 提供标准的 **MCP (Model Context Protocol)** 服务器（分发产物类型为 `mcp`），支持 Claude Code、Cursor 等任何兼容 MCP 协议的 AI Agent 通过标准化接口在 NUIM 内收发消息、管理待办/日历/笔记。
 
-`mcp` 的参数命名与 `cli` 对齐（`to`/`thread`/`conversation`、`type`、`reply_to`、`file`、`as_user`、`due`/`desc`、`after_id`/`limit`、`keyword`/`conv`、`message_id`/`delta`/`finish`/`abort`），底层调用同一套 REST API。
+`mcp` 的参数命名与 `cli` 对齐（`to`/`conversation`、`type`、`reply_to`、`file`、`as_user`、`due`/`desc`、`after_id`/`limit`、`keyword`/`conv`、`message_id`/`delta`/`finish`/`abort`），底层调用同一套 REST API。
+
+> 会话目标统一用 `conversation`（会话 ID 或名称）。`thread` 仍作为弃用别名保留，读取/发送/流式工具都接受，但新接入请直接用 `conversation`。
 
 ### 与 CLI 的区别
 
@@ -296,7 +298,7 @@ mcp 服务器注册了 24 个标准 MCP 工具，按功能分组：
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `thread` | string | 是 | 会话 ID 或会话名 |
+| `conversation` | string | 是 | 会话 ID 或会话名 |
 | `after_id` | uint64 | 否 | 只返回 id 大于该值的消息 |
 | `limit` | int | 否 | 最多返回条数（1-100，默认 50） |
 | `type` | string | 否 | `text` / `markdown` / `card` / `card_action` / `streaming` |
@@ -309,7 +311,7 @@ mcp 服务器注册了 24 个标准 MCP 工具，按功能分组：
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `thread` | string | 是 | 会话 ID 或会话名 |
+| `conversation` | string | 是 | 会话 ID 或会话名 |
 | `after_id` | uint64 | 是 | 上次拿到的最大消息 id |
 | `limit` | int | 否 | 最多返回条数（1-100，默认 50） |
 | `type` | string | 否 | 按消息类型过滤；水位线仍按整批推进 |
@@ -322,7 +324,7 @@ mcp 服务器注册了 24 个标准 MCP 工具，按功能分组：
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `thread` | string | 是 | 会话 ID 或会话名 |
+| `conversation` | string | 是 | 会话 ID 或会话名 |
 | `after_id` | uint64 | 否 | 只返回 id 大于该值的消息 |
 | `limit` | int | 否 | 最多返回条数（1-100，默认 50） |
 
@@ -335,8 +337,7 @@ mcp 服务器注册了 24 个标准 MCP 工具，按功能分组：
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `to` | string | 否 | 目标用户 ID 或用户名（单聊）；与 `conversation` 二选一 |
-| `thread` | string | 否 | 会话 ID 或会话名；省略时自动创建/复用会话 |
-| `conversation` | string | 否 | 会话 ID（群聊/已建单聊），优先于 `to`/`thread` |
+| `conversation` | string | 否 | 会话 ID 或会话名（群聊/已建单聊）；省略时用 `to` 发单聊 |
 | `content` | string | 否 | 消息内容；`content` 与 `file` 至少一个 |
 | `type` | string | 否 | `text` / `markdown` / `card`，默认 `text` |
 | `reply_to` | uint64 | 否 | 引用回复的消息 ID |
@@ -377,8 +378,7 @@ mcp 服务器注册了 24 个标准 MCP 工具，按功能分组：
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `to` | string | 否 | 目标用户 ID 或用户名 |
-| `thread` | string | 否 | 会话 ID 或会话名 |
-| `conversation` | string | 否 | 会话 ID，优先于 `to`/`thread` |
+| `conversation` | string | 否 | 会话 ID 或会话名，优先于 `to` |
 
 `to` 与 `conversation` 至少一个。
 
@@ -497,7 +497,7 @@ mcp 服务器注册了 24 个标准 MCP 工具，按功能分组：
 1. send_message(to: "1", content: "{\"title\":\"请选择方案\",\"text\":\"...\",\"buttons\":[...]}", type: "card")
    → {"message_id": 42, "conversation_id": 7}
 
-2. poll_messages(thread: "7", after_id: 42, type: "card_action")
+2. poll_messages(conversation: "7", after_id: 42, type: "card_action")
    → {"after_id": 55, "messages": [ {type: "card_action", action_id: "confirm", ...} ]}
 ```
 
@@ -519,7 +519,7 @@ mcp 服务器注册了 24 个标准 MCP 工具，按功能分组：
 
 ```
 1. get_bot_identity() → 记下 virtual_user_id（识别 @ 自己）
-2. list_messages(thread: "7", limit: 10) → 了解上下文
+2. list_messages(conversation: "7", limit: 10) → 了解上下文
 3. send_message(conversation: "7", content: "根据以上讨论，我的建议是...", type: "markdown")
 ```
 

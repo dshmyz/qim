@@ -36,7 +36,7 @@ func newMessagesCmd() *cobra.Command {
 }
 
 func newMessagesListCmd() *cobra.Command {
-	var thread string
+	var conversation, thread string
 	var afterID uint64
 	var limit int
 	var msgType string
@@ -44,10 +44,17 @@ func newMessagesListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "拉会话消息（JSON lines）",
 		Run: func(cmd *cobra.Command, args []string) {
-			if thread == "" {
-				die("--thread 必填（会话名或 ID）")
+			if cmd.Flags().Changed("thread") {
+				warnThreadDeprecated()
 			}
-			msgs, err := fetchMessages(thread, afterID, limit)
+			target := conversation
+			if target == "" {
+				target = thread
+			}
+			if target == "" {
+				die("--conversation 必填（会话 ID 或名称）")
+			}
+			msgs, err := fetchMessages(fmt.Sprint(resolveConversationID(target)), afterID, limit)
 			if err != nil {
 				die("%v", err)
 			}
@@ -55,7 +62,8 @@ func newMessagesListCmd() *cobra.Command {
 			emitMessages(msgs)
 		},
 	}
-	cmd.Flags().StringVar(&thread, "thread", "", "会话名或会话 ID（必填）")
+	cmd.Flags().StringVar(&conversation, "conversation", "", "会话 ID 或会话名（必填）")
+	cmd.Flags().StringVar(&thread, "thread", "", "已弃用，请改用 --conversation")
 	cmd.Flags().Uint64Var(&afterID, "after-id", 0, "只返回 id 大于该值的消息")
 	cmd.Flags().IntVar(&limit, "limit", 50, "最多返回条数")
 	cmd.Flags().StringVar(&msgType, "type", "", "按消息类型过滤: text|markdown|card|card_action|streaming")
@@ -63,7 +71,7 @@ func newMessagesListCmd() *cobra.Command {
 }
 
 func newMessagesPollCmd() *cobra.Command {
-	var thread string
+	var conversation, thread string
 	var interval time.Duration
 	var msgType string
 	var once bool
@@ -75,24 +83,25 @@ func newMessagesPollCmd() *cobra.Command {
 
 示例:
   # 持续监听用户输入
-  %[1]s messages poll --thread alice
+  %[1]s messages poll --conversation alice
 
   # 只等一次卡片点击结果就退出
-  %[1]s messages poll --thread alice --type card_action --once
+  %[1]s messages poll --conversation alice --type card_action --once
 
   # 等待任何新消息，一轮就退出
-  %[1]s messages poll --thread alice --once`, CliName),
+  %[1]s messages poll --conversation alice --once`, CliName),
 		Run: func(cmd *cobra.Command, args []string) {
-			if thread == "" {
-				die("--thread 必填（会话名或 ID）")
+			if cmd.Flags().Changed("thread") {
+				warnThreadDeprecated()
 			}
+			target := resolveThreadArg(conversation, thread)
 			// 监听 SIGINT/SIGTERM 优雅退出
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 			var afterID uint64
-			afterID = latestMessageID(thread)
+			afterID = latestMessageID(target)
 			for {
-				msgs, err := fetchMessages(thread, afterID, 100)
+				msgs, err := fetchMessages(target, afterID, 100)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "poll 错误: %v\n", err)
 				}
@@ -112,7 +121,8 @@ func newMessagesPollCmd() *cobra.Command {
 			}
 		},
 	}
-	cmd.Flags().StringVar(&thread, "thread", "", "会话名或会话 ID（必填）")
+	cmd.Flags().StringVar(&conversation, "conversation", "", "会话 ID 或会话名（必填）")
+	cmd.Flags().StringVar(&thread, "thread", "", "已弃用，请改用 --conversation")
 	cmd.Flags().DurationVar(&interval, "interval", 2*time.Second, "轮询间隔")
 	cmd.Flags().StringVar(&msgType, "type", "", "按消息类型过滤: text|markdown|card|card_action|streaming")
 	cmd.Flags().BoolVar(&once, "once", false, "收到一批新消息后退出（适合 agent 一次性等待）")
@@ -121,7 +131,7 @@ func newMessagesPollCmd() *cobra.Command {
 
 // newMessagesActionsCmd 是 "messages list --type card_action" 的语义别名。
 func newMessagesActionsCmd() *cobra.Command {
-	var thread string
+	var conversation, thread string
 	var afterID uint64
 	var limit int
 	cmd := &cobra.Command{
@@ -134,15 +144,22 @@ agent 发送交互卡片后，用 poll --type card_action --once 等待用户点
 
 示例:
   # 查看历史卡片点击
-  %[1]s messages actions --thread alice
+  %[1]s messages actions --conversation alice
 
   # 等待下一次卡片点击
-  %[1]s messages poll --thread alice --type card_action --once`, CliName),
+  %[1]s messages poll --conversation alice --type card_action --once`, CliName),
 		Run: func(cmd *cobra.Command, args []string) {
-			if thread == "" {
-				die("--thread 必填（会话名或 ID）")
+			if cmd.Flags().Changed("thread") {
+				warnThreadDeprecated()
 			}
-			msgs, err := fetchMessages(thread, afterID, limit)
+			target := conversation
+			if target == "" {
+				target = thread
+			}
+			if target == "" {
+				die("--conversation 必填（会话 ID 或名称）")
+			}
+			msgs, err := fetchMessages(fmt.Sprint(resolveConversationID(target)), afterID, limit)
 			if err != nil {
 				die("%v", err)
 			}
@@ -150,7 +167,8 @@ agent 发送交互卡片后，用 poll --type card_action --once 等待用户点
 			emitMessages(msgs)
 		},
 	}
-	cmd.Flags().StringVar(&thread, "thread", "", "会话名或会话 ID（必填）")
+	cmd.Flags().StringVar(&conversation, "conversation", "", "会话 ID 或会话名（必填）")
+	cmd.Flags().StringVar(&thread, "thread", "", "已弃用，请改用 --conversation")
 	cmd.Flags().Uint64Var(&afterID, "after-id", 0, "只返回 id 大于该值的消息")
 	cmd.Flags().IntVar(&limit, "limit", 50, "最多返回条数")
 	return cmd

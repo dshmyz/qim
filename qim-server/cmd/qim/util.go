@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -134,4 +135,82 @@ func clamp(n int) int {
 		return 50
 	}
 	return n
+}
+
+// botConversation 是 GET /api/v1/bot/conversations 的单项。
+type botConversation struct {
+	ConversationID uint64 `json:"conversation_id"`
+	ConvType       string `json:"conv_type"`
+	Name           string `json:"name"`
+}
+
+// lookupBotConversation 尝试把会话 ID 或名称解析为 bot 会话 ID。
+// 名称在 /api/v1/bot/conversations 里精确匹配（群名或 1:1 对端昵称）。
+// 未匹配到返回 (0, false)，由调用方决定是否回退到服务端 thread_name（用户名/昵称解析）。
+func lookupBotConversation(nameOrID string) (uint64, bool) {
+	if isNumeric(nameOrID) {
+		id, err := strconv.ParseUint(nameOrID, 10, 64)
+		if err != nil {
+			die("无效的会话 ID: %s", nameOrID)
+		}
+		return id, true
+	}
+
+	cfg := mustConfig()
+	body, err := httpGet(cfg, cfg.ServerURL+"/api/v1/bot/conversations")
+	if err != nil {
+		die("查询会话失败: %v", err)
+	}
+	var resp struct {
+		Data []botConversation `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		die("解析会话列表失败: %v", err)
+	}
+
+	var matched []botConversation
+	for _, c := range resp.Data {
+		if c.Name == nameOrID {
+			matched = append(matched, c)
+		}
+	}
+	switch len(matched) {
+	case 0:
+		return 0, false
+	case 1:
+		return matched[0].ConversationID, true
+	default:
+		die("会话名 %q 不唯一（匹配 %d 个），请改用会话 ID", nameOrID, len(matched))
+	}
+	return 0, false
+}
+
+// resolveConversationID 严格模式：解析不到会话直接报错。
+func resolveConversationID(nameOrID string) uint64 {
+	id, found := lookupBotConversation(nameOrID)
+	if !found {
+		die("未找到会话 %q（用 `%s groups` 查看已入群会话，或改用会话 ID）", nameOrID, CliName)
+	}
+	return id
+}
+
+// warnThreadDeprecated 统一提示 --thread 已弃用。
+func warnThreadDeprecated() {
+	fmt.Fprintln(os.Stderr, "⚠️  --thread 已弃用，请改用 --conversation（两者都支持会话 ID 或名称）")
+}
+
+// resolveThreadArg 返回 fetchMessages 用的 thread 参数。
+// --conversation 严格解析（不存在直接报错）；--thread 解析不到时保留原值，
+// 交给服务端 thread_name 按用户名/昵称回退，兼容旧用法。
+func resolveThreadArg(conversation, thread string) string {
+	if conversation != "" {
+		return fmt.Sprint(resolveConversationID(conversation))
+	}
+	if thread == "" {
+		die("--conversation 必填（会话 ID 或名称）")
+	}
+	if id, found := lookupBotConversation(thread); found {
+		return fmt.Sprint(id)
+	}
+	return thread
 }

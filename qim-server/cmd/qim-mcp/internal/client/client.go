@@ -130,8 +130,8 @@ type NoteSearchResult struct {
 // SendParams 汇总一条出站消息的全部目标与内容参数，避免超过四个位置参数。
 type SendParams struct {
 	To           string // 用户 ID 或用户名（单聊）
-	Thread       string // 会话 ID 或会话名（单聊）
-	Conversation string // 会话 ID（群聊/已建单聊，优先于 To/Thread）
+	Thread       string // 已弃用：会话 ID 或会话名，等价 Conversation
+	Conversation string // 会话 ID 或会话名（群聊/已建单聊），优先于 To/Thread
 	Content      string
 	MsgType      string
 	ReplyTo      uint64
@@ -218,6 +218,38 @@ func (c *BotAPIClient) ListBotConversations() ([]BotConversationSummary, error) 
 	return resp.Data, nil
 }
 
+// ResolveConversation 把会话 ID 或会话名解析为会话 ID（bot 视角）。
+// 名称在 /api/v1/bot/conversations 里精确匹配（群名或 1:1 对端昵称）。
+func (c *BotAPIClient) ResolveConversation(nameOrID string) (uint64, error) {
+	if id, ok := parseNumeric(nameOrID); ok {
+		return id, nil
+	}
+	body, err := c.get(c.serverURL + "/api/v1/bot/conversations")
+	if err != nil {
+		return 0, err
+	}
+	var resp struct {
+		Data []BotConversationSummary `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return 0, fmt.Errorf("解析会话列表失败: %w", err)
+	}
+	matched := make([]BotConversationSummary, 0, 1)
+	for _, conv := range resp.Data {
+		if conv.Name == nameOrID {
+			matched = append(matched, conv)
+		}
+	}
+	switch len(matched) {
+	case 0:
+		return 0, fmt.Errorf("未找到会话 %q（可用 list_group_conversations / list_bot_conversations 查看）", nameOrID)
+	case 1:
+		return matched[0].ConversationID, nil
+	default:
+		return 0, fmt.Errorf("会话名 %q 不唯一（匹配 %d 个），请改用会话 ID", nameOrID, len(matched))
+	}
+}
+
 // ListUserConversations 列出当前用户的最近会话（对齐 CLI conversations list）。
 func (c *BotAPIClient) ListUserConversations(limit int) ([]UserConversation, error) {
 	if c.userToken == "" {
@@ -243,8 +275,8 @@ func (c *BotAPIClient) ListUserConversations(limit int) ([]UserConversation, err
 }
 
 // SendMessage 按 CLI send 的语义发送一条消息，返回新消息 ID 与会话 ID。
-// conversation 非空时按会话发送（群聊/已建单聊），优先于 to/thread。
-// to/thread 既可以是数字 ID，也可以是名称，服务端分别用 *_id / *_name 字段解析。
+// conversation（或弃用的 thread）非空时按会话发送（群聊/已建单聊），优先于 to。
+// 会话目标既可以是数字 ID，也可以是名称，名称会先在 bot 会话列表里精确解析。
 func (c *BotAPIClient) SendMessage(p SendParams) (msgID, convID uint64, err error) {
 	msgType := p.MsgType
 	if msgType == "" {
@@ -257,28 +289,33 @@ func (c *BotAPIClient) SendMessage(p SendParams) (msgID, convID uint64, err erro
 	if p.ReplyTo > 0 {
 		payload["reply_to_id"] = p.ReplyTo
 	}
-	if p.Conversation != "" {
-		id, err := strconv.ParseUint(p.Conversation, 10, 64)
+	target := p.Conversation
+	if target != "" {
+		id, err := c.ResolveConversation(target)
 		if err != nil {
-			return 0, 0, fmt.Errorf("conversation 需为会话 ID（数字）: %s", p.Conversation)
+			return 0, 0, err
 		}
 		payload["conversation_id"] = id
-	} else {
-		if p.To == "" {
-			return 0, 0, fmt.Errorf("缺少 to（用户 ID 或用户名）或 conversation（会话 ID）")
-		}
-		if id, ok := parseNumeric(p.To); ok {
-			payload["to_user_id"] = id
-		} else {
-			payload["to_user_name"] = p.To
-		}
-		if p.Thread != "" {
+	} else if p.Thread != "" {
+		// 弃用别名：先按会话解析；解析不到时保留旧的 1:1 语义，
+		// 把名称交给服务端按用户名/昵称解析（thread_name）。
+		if id, err := c.ResolveConversation(p.Thread); err == nil {
+			payload["conversation_id"] = id
+		} else if p.To != "" {
+			setTargetUser(payload, p.To)
 			if id, ok := parseNumeric(p.Thread); ok {
 				payload["thread_id"] = id
 			} else {
 				payload["thread_name"] = p.Thread
 			}
+		} else {
+			setTargetUser(payload, p.Thread)
 		}
+	} else {
+		if p.To == "" {
+			return 0, 0, fmt.Errorf("缺少 to（用户 ID 或用户名）或 conversation（会话 ID 或名称）")
+		}
+		setTargetUser(payload, p.To)
 	}
 	body, _ := json.Marshal(payload)
 	respBody, err := c.post(c.serverURL+"/api/v1/bot/messages", body)
@@ -876,6 +913,15 @@ func (c *BotAPIClient) do(req *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 300))
 	}
 	return body, nil
+}
+
+// setTargetUser 按“数字 ID / 名称”写入 to_user_id 或 to_user_name。
+func setTargetUser(payload map[string]any, to string) {
+	if id, ok := parseNumeric(to); ok {
+		payload["to_user_id"] = id
+		return
+	}
+	payload["to_user_name"] = to
 }
 
 // parseSendResponse 解析 bot/用户发送接口的 message_id + conversation_id。

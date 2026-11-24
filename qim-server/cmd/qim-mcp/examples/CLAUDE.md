@@ -1,7 +1,7 @@
 # QIM MCP Server 使用说明（给 Claude Code / Cursor 等支持 MCP 的 agent）
 
 你（agent）可以通过 MCP（Model Context Protocol）直接调用 QIM 的工具，无需手搓 Bash 轮询脚本。
-本 MCP server 的参数命名与 `qim` CLI 对齐：`to`/`thread`/`conversation`、`type`、`reply_to`、
+本 MCP server 的参数命名与 `qim` CLI 对齐：`to`/`conversation`、`type`、`reply_to`、
 `file`、`as_user`、`due`/`desc`、`after_id`/`limit`、`keyword`/`conv`、`message_id`/`delta`/`finish`/`abort`。
 支持两种传输模式，底层均调用 QIM API（Bearer token 鉴权）：
 
@@ -68,13 +68,13 @@ HTTP 模式为 stateless（无会话持久化），适合部署在服务器上�
 
 ### 读取消息
 
-- `list_messages(thread, after_id?, limit?, type?)`：拉一页消息。`thread` 可为会话 ID 或会话名；
+- `list_messages(conversation, after_id?, limit?, type?)`：拉一页消息。`conversation` 可为会话 ID 或会话名；
   `type` 可选 `text|markdown|card|card_action|streaming`。与 CLI `messages list` 同源：按 id 升序，
   用 `after_id` 翻页，需要最新水位线时取返回结果里的最大 id。
-- `poll_messages(thread, after_id, limit?, type?)`：增量拉取。返回
+- `poll_messages(conversation, after_id, limit?, type?)`：增量拉取。返回
   `{"after_id": <本批最大消息 id>, "messages": [...]}`，下次轮询把 `after_id` 原样回传。
   即使 `type` 过滤掉部分消息，水位线仍按整批推进，不会卡住。
-- `list_actions(thread, after_id?, limit?)`：卡片按钮点击事件（等价 CLI `qim messages actions`），
+- `list_actions(conversation, after_id?, limit?)`：卡片按钮点击事件（等价 CLI `qim messages actions`），
   即 `type=card_action` 的消息，`action_id` 标识用户点了哪个按钮。
 
 每条消息 JSON：`{id, conversation_id, sender_id, sender_type, sender_nickname, content, type, origin, created_at}`。
@@ -82,15 +82,17 @@ HTTP 模式为 stateless（无会话持久化），适合部署在服务器上�
 
 ### 发送消息
 
-- `send_message(to?, thread?, conversation?, reply_to?, type?, content?, file?, as_user?)`：
-  - 单聊：`to`（用户 ID 或用户名），`thread` 可选（会话 ID 或名；省略自动建/复用）。
-  - 群聊/已建会话：`conversation`（会话 ID），优先于 `to`/`thread`。
+- `send_message(to?, conversation?, reply_to?, type?, content?, file?, as_user?)`：
+  - 单聊：`to`（用户 ID 或用户名），`conversation` 可选（会话 ID 或名；省略自动建/复用）。
+  - 群聊/已建会话：`conversation`（会话 ID 或名称），优先于 `to`。
   - `type` 可选 `text|markdown|card`（默认 text）。
   - `reply_to` 引用回复某条消息。
   - `file` 上传本地文件并以 markdown 链接发送（**需 user token**；路径须是 qim-mcp 进程可读的本地路径）。
   - `as_user=true` 以本人身份发送（**需 user token**），与 CLI `send --as-user` 一致。
-  - 返回 `{message_id, conversation_id}`。后续 list/poll 用 `conversation_id` 作 `thread`。
+  - 返回 `{message_id, conversation_id}`。后续 list/poll 用 `conversation_id` 作 `conversation`。
 - `edit_message(message_id, content, type?)`：更新已发出的 bot 消息（卡片状态回写等）。
+
+> `thread` 仍是 `conversation` 的弃用别名（读取/发送/流式工具都接受），新接入请直接用 `conversation`。
 
 何时用 card：当需要用户在几个明确选项中做决策（确认/取消、批准/拒绝、选择方案）时，优先用 card。
 `content` 形如 `{"title":"标题","text":"说明","buttons":[{"id":"confirm","text":"确认"},{"id":"cancel","text":"取消"}]}`。
@@ -98,7 +100,7 @@ HTTP 模式为 stateless（无会话持久化），适合部署在服务器上�
 
 ### 流式回复（边生成边推送）
 
-- `start_streaming_message(to?, thread?, conversation?)`：创建流式占位，返回 `{message_id, conversation_id}`。
+- `start_streaming_message(to?, conversation?)`：创建流式占位，返回 `{message_id, conversation_id}`。
 - `stream_message(message_id, delta?, finish?, abort?)`：等价 CLI `qim stream`。
   - `delta` 追加一段内容，可多次调用。
   - `finish=true` 收尾，转为最终 markdown。
@@ -134,8 +136,8 @@ HTTP 模式为 stateless（无会话持久化），适合部署在服务器上�
 ## 典型循环
 
 1. `get_bot_identity()` 拿到 `virtual_user_id`；`list_group_conversations()` / `list_bot_conversations()` 发现会话。
-2. 用 `list_messages(thread=<conversation_id>)` 读取历史，从返回消息里取最大 id 作为起点。
-3. 循环 `poll_messages(thread=<id>, after_id=<上次返回的 after_id>)` 感知新消息。
+2. 用 `list_messages(conversation=<conversation_id>)` 读取历史，从返回消息里取最大 id 作为起点。
+3. 循环 `poll_messages(conversation=<id>, after_id=<上次返回的 after_id>)` 感知新消息。
 4. 跳过 `sender_type=="bot"` 的（自己发的）。
 5. 生成回复：
    - 一次性：`send_message(conversation=<conv_id>, content=<回复>, type="markdown")`。

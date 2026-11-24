@@ -24,37 +24,44 @@ func newSendCmd() *cobra.Command {
 		Long: fmt.Sprintf(`发消息。默认以 bot 身份发送（需 --server/--token 配置，消息发送者显示为 bot）；
 加 --as-user 则以你本人身份发送，走与桌面客户端相同的用户接口，消息以你的名义
 出现在会话里（需 user_token：%s login 的 JWT，或客户端「设置 → 开发者设置」
-签发的 qusr_ 长期令牌）。`, CliName),
+签发的 qusr_ 长期令牌）。
+
+目标用户与会话二选一：
+  --to <用户名或ID>       单聊（自动建/复用会话）
+  --conversation <ID或名称>  指定会话（群聊/已建单聊），优先于 --to
+  --thread               已弃用，等价于 --conversation`, CliName),
 		Run: func(cmd *cobra.Command, args []string) {
-			// --as-user：以本人身份（user_token）走用户 API 发送，消息以当前用户名义出现在会话里。
-			// 默认（bot 身份）走 /api/v1/bot/messages，发送者是 bot 虚拟用户。
-			if asUser {
-				if content == "-" {
-					b, err := io.ReadAll(os.Stdin)
-					if err != nil {
-						die("读取 stdin 失败: %v", err)
-					}
-					content = string(b)
+			if cmd.Flags().Changed("thread") {
+				warnThreadDeprecated()
+			}
+
+			// 内容来源：--content（- 表示读 stdin）+ --file（用户态上传后追加链接）。
+			if content == "-" {
+				b, err := io.ReadAll(os.Stdin)
+				if err != nil {
+					die("读取 stdin 失败: %v", err)
 				}
-				if file != "" {
-					// sendFile 走 userUpload 上传，本身就是用户身份
-					if content == "" {
-						content = sendFile(file)
-						if msgType == "text" {
-							msgType = "markdown"
-						}
-					} else {
-						content += "\n\n" + sendFile(file)
-						if msgType == "text" {
-							msgType = "markdown"
-						}
-					}
-				}
+				content = string(b)
+			}
+			if file != "" {
+				link := sendFile(file)
 				if content == "" {
-					die("--content 或 --file 必填")
+					content = link
+				} else {
+					content += "\n\n" + link
 				}
-				if thread != "" && conversation == "" {
-					conversation = thread // --thread 是 --conversation 的别名
+				if msgType == "text" {
+					msgType = "markdown"
+				}
+			}
+			if content == "" {
+				die("--content 或 --file 必填")
+			}
+
+			// 以本人身份发送：--conversation 优先，--thread 为弃用别名。
+			if asUser {
+				if conversation == "" && thread != "" {
+					conversation = thread
 				}
 				convID := resolveUserConversationID(conversation, to)
 				id, err := sendMessageAsUser(convID, content, msgType, replyTo)
@@ -64,76 +71,60 @@ func newSendCmd() *cobra.Command {
 				out(map[string]any{"message_id": id}, "✅ 消息已发送 (ID: %d)\n", id)
 				return
 			}
-			// 按会话发送（群聊/已建单聊）：--conversation <id> 时，--to 可省略
-			if conversation != "" && to == "" {
-				if !isNumeric(conversation) {
-					die("--conversation 需为会话 ID（数字）")
+
+			// bot 身份：--conversation 为准（ID 或名称），--thread 仅作弃用别名。
+			// 同时指定 --to 时以会话目标为准，与服务端 conversation_id 优先级一致。
+			target := conversation
+			strict := true
+			if target == "" {
+				target = thread
+				strict = false
+			}
+			if target != "" {
+				if to != "" && conversation != "" {
+					fmt.Fprintln(os.Stderr, "ℹ️  同时指定 --to 与 --conversation 时，以 --conversation 为准")
 				}
-				convID, err := strconv.ParseUint(conversation, 10, 64)
-				if err != nil {
-					die("无效的会话 ID: %s", conversation)
-				}
-				// --content - 从 stdin 读取
-				if content == "-" {
-					b, err := io.ReadAll(os.Stdin)
+				if convID, found := lookupBotConversation(target); found {
+					id, err := sendMessageToConversation(convID, content, msgType, replyTo)
 					if err != nil {
-						die("读取 stdin 失败: %v", err)
+						die("%v", err)
 					}
-					content = string(b)
+					out(map[string]any{"message_id": id}, "✅ 消息已发送 (ID: %d)\n", id)
+					return
 				}
-				if content == "" {
-					die("--content 或 --file 必填")
+				if strict {
+					die("未找到会话 %q（用 `%s groups` 查看已入群会话，或改用会话 ID）", target, CliName)
 				}
-				id, err := sendMessageToConversation(convID, content, msgType, replyTo)
+				// --thread 的旧语义：名称交给服务端按用户名/昵称解析。
+				if to != "" {
+					id, err := sendMessage(to, target, content, msgType, replyTo)
+					if err != nil {
+						die("%v", err)
+					}
+					out(map[string]any{"message_id": id}, "✅ 消息已发送 (ID: %d)\n", id)
+					return
+				}
+				id, err := sendMessage(target, "", content, msgType, replyTo)
 				if err != nil {
 					die("%v", err)
 				}
 				out(map[string]any{"message_id": id}, "✅ 消息已发送 (ID: %d)\n", id)
 				return
 			}
+
 			if to == "" {
-				die("--to 必填")
+				die("--to 必填；或用 --conversation 指定会话（目标用户/会话二选一）")
 			}
-			// --conversation 是 --thread 的别名
-			if conversation != "" && thread == "" {
-				thread = conversation
-			}
-			// --content - 从 stdin 读取
-			if content == "-" {
-				b, err := io.ReadAll(os.Stdin)
-				if err != nil {
-					die("读取 stdin 失败: %v", err)
-				}
-				content = string(b)
-			}
-			// --file 模式：上传文件并以 markdown 链接发送
-			if file != "" {
-				if content == "" {
-					content = sendFile(file)
-					if msgType == "text" {
-						msgType = "markdown"
-					}
-				} else {
-					// --file 和 --content 同时指定：内容追加文件链接
-					content += "\n\n" + sendFile(file)
-					if msgType == "text" {
-						msgType = "markdown"
-					}
-				}
-			}
-			if content == "" {
-				die("--content 或 --file 必填")
-			}
-			id, err := sendMessage(to, thread, content, msgType, replyTo)
+			id, err := sendMessage(to, "", content, msgType, replyTo)
 			if err != nil {
 				die("%v", err)
 			}
 			out(map[string]any{"message_id": id}, "✅ 消息已发送 (ID: %d)\n", id)
 		},
 	}
-	cmd.Flags().StringVar(&to, "to", "", "目标用户名或用户 ID（必填，除非用 --conversation 按群会话发送）")
-	cmd.Flags().StringVar(&thread, "thread", "", "会话名或会话 ID（可选，不填自动创建/查找）")
-	cmd.Flags().StringVar(&conversation, "conversation", "", "群会话/已建单聊会话 ID（传数字时按会话发送，可省略 --to）")
+	cmd.Flags().StringVar(&to, "to", "", "目标用户名或用户 ID（与 --conversation 二选一）")
+	cmd.Flags().StringVar(&thread, "thread", "", "已弃用，请改用 --conversation")
+	cmd.Flags().StringVar(&conversation, "conversation", "", "会话 ID 或会话名（群聊/已建单聊），优先于 --to")
 	cmd.Flags().Uint64Var(&replyTo, "reply-to", 0, "回复的消息 ID（可选）")
 	cmd.Flags().StringVar(&msgType, "type", "text", "消息类型: text|markdown|card")
 	cmd.Flags().StringVarP(&content, "content", "c", "", "消息内容（card 时为 JSON；- 表示从 stdin 读取）")

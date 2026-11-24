@@ -139,7 +139,7 @@ func TestSendMessage(t *testing.T) {
 	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
 
 	out := callTool(t, cs, "send_message", map[string]any{
-		"to": "13", "thread": "7", "content": "hi", "type": "markdown",
+		"to": "13", "content": "hi", "type": "markdown",
 	})
 	assert.Contains(t, out, `"message_id":42`)
 	assert.Contains(t, out, `"conversation_id":7`)
@@ -150,7 +150,19 @@ func TestSendMessage(t *testing.T) {
 	assert.Equal(t, "hi", r.body["content"])
 	assert.Equal(t, "markdown", r.body["msg_type"])
 	assert.EqualValues(t, 13, r.body["to_user_id"])
-	assert.EqualValues(t, 7, r.body["thread_id"])
+}
+
+func TestSendMessage_ConversationPriority(t *testing.T) {
+	srv, log := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"message_id": float64(42), "conversation_id": float64(7)}})
+	})
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
+
+	callTool(t, cs, "send_message", map[string]any{"to": "13", "conversation": "7", "content": "hi"})
+	r := log.last()
+	assert.EqualValues(t, 7, r.body["conversation_id"], "conversation 应优先于 to")
+	_, hasTo := r.body["to_user_id"]
+	assert.False(t, hasTo, "会话发送不应带 to_user_id")
 }
 
 func TestSendMessage_ByName(t *testing.T) {
@@ -159,12 +171,31 @@ func TestSendMessage_ByName(t *testing.T) {
 	})
 	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
 
-	callTool(t, cs, "send_message", map[string]any{"to": "alice", "thread": "产品群", "content": "hi"})
+	callTool(t, cs, "send_message", map[string]any{"to": "alice", "content": "hi"})
 	r := log.last()
 	assert.Equal(t, "alice", r.body["to_user_name"], "非数字 to 应走 to_user_name")
-	assert.Equal(t, "产品群", r.body["thread_name"], "非数字 thread 应走 thread_name")
 	_, hasID := r.body["to_user_id"]
 	assert.False(t, hasID)
+}
+
+func TestSendMessage_ConversationByName(t *testing.T) {
+	srv, log := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		if r.URL.Path == "/api/v1/bot/conversations" {
+			json.NewEncoder(w).Encode(map[string]any{"data": []any{
+				map[string]any{"conversation_id": float64(98), "conv_type": "group", "name": "产品群"},
+			}})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"message_id": float64(1), "conversation_id": float64(98)}})
+	})
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
+
+	callTool(t, cs, "send_message", map[string]any{"conversation": "产品群", "content": "hi"})
+	reqs := log.all()
+	require.Len(t, reqs, 2)
+	assert.Equal(t, "/api/v1/bot/conversations", reqs[0].path)
+	assert.Equal(t, "/api/v1/bot/messages", reqs[1].path)
+	assert.EqualValues(t, 98, reqs[1].body["conversation_id"], "名称应解析为会话 ID")
 }
 
 func TestSendMessage_ReplyTo(t *testing.T) {
@@ -335,12 +366,56 @@ func TestListMessages(t *testing.T) {
 
 func TestListMessages_ByName(t *testing.T) {
 	srv, log := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		if r.URL.Path == "/api/v1/bot/conversations" {
+			json.NewEncoder(w).Encode(map[string]any{"data": []any{
+				map[string]any{"conversation_id": float64(98), "conv_type": "group", "name": "产品群"},
+			}})
+			return
+		}
 		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"messages": []any{}}})
 	})
 	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
 
-	callTool(t, cs, "list_messages", map[string]any{"thread": "产品群"})
-	assert.Equal(t, "产品群", log.last().query.Get("thread_name"))
+	callTool(t, cs, "list_messages", map[string]any{"conversation": "产品群"})
+	assert.Equal(t, "98", log.last().query.Get("thread_id"), "名称应解析为会话 ID")
+}
+
+func TestListMessages_ThreadAlias(t *testing.T) {
+	srv, log := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"messages": []any{}}})
+	})
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
+
+	callTool(t, cs, "list_messages", map[string]any{"thread": "5"})
+	assert.Equal(t, "5", log.last().query.Get("thread_id"), "thread 应作为弃用别名继续可用")
+}
+
+func TestListMessages_UsernameFallback(t *testing.T) {
+	srv, log := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		if r.URL.Path == "/api/v1/bot/conversations" {
+			json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"messages": []any{}}})
+	})
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
+
+	callTool(t, cs, "list_messages", map[string]any{"conversation": "alice"})
+	assert.Equal(t, "alice", log.last().query.Get("thread_name"), "会话名匹配不到时应回退服务端 thread_name")
+}
+
+func TestSendMessage_ThreadOnlyUsernameFallback(t *testing.T) {
+	srv, log := mockBotAPI(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		if r.URL.Path == "/api/v1/bot/conversations" {
+			json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"message_id": float64(1), "conversation_id": float64(9)}})
+	})
+	cs := setupMCP(t, client.New(srv.URL, "qbot_test", ""))
+
+	callTool(t, cs, "send_message", map[string]any{"thread": "alice", "content": "hi"})
+	assert.Equal(t, "alice", log.last().body["to_user_name"], "thread-only 名称应回退为 to_user_name")
 }
 
 func TestListMessages_TypeFilter(t *testing.T) {

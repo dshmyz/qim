@@ -316,8 +316,8 @@ qim config set --user-token <user_jwt>
 qim send --to alice --content "你好"              # 发文本（自动建会话）
 qim send --to alice --type markdown --content - < report.md   # Markdown/文件
 qim send --to alice --type card --content '{...}' # 交互卡片
-qim messages list --thread alice                   # 拉历史
-qim messages poll --thread alice --once            # 等一条新消息（agent 模式）
+qim messages list --conversation alice                   # 拉历史
+qim messages poll --conversation alice --once            # 等一条新消息（agent 模式）
 qim stream-stdin --to alice                        # 管道流式
 qim task create --title "修复bug" --assignee alice # 任务
 qim note create --title "部署备忘" --content "..." # 笔记（长期记忆）

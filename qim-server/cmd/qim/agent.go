@@ -143,6 +143,9 @@ prompt 不会被拼进命令行，因此不会被消息内容注入。
   Linux   systemd --user unit 的 ExecStart 同上`, CliName),
 		SilenceUsage: true,
 		Run: func(cmd *cobra.Command, args []string) {
+			if cmd.Flags().Changed("thread") {
+				warnThreadDeprecated()
+			}
 			if strings.TrimSpace(agentCmd) == "" {
 				die("--command 必填：智能体的非交互调用命令（prompt 走 stdin）")
 			}
@@ -164,7 +167,7 @@ prompt 不会被拼进命令行，因此不会被消息内容注入。
 					}
 					n, err := strconv.ParseUint(p, 10, 64)
 					if err != nil {
-						die("--thread 需为会话 ID（数字，逗号分隔）: %s", p)
+						die("--conversations 需为会话 ID（数字，逗号分隔）: %s", p)
 					}
 					threads = append(threads, n)
 				}
@@ -197,7 +200,8 @@ prompt 不会被拼进命令行，因此不会被消息内容注入。
 	f.StringVar(&agentCmd, "command", "", "智能体非交互命令（必填；prompt 从 stdin 读，stdout 为回复）")
 	f.DurationVar(&interval, "interval", 2*time.Second, "轮询间隔")
 	f.DurationVar(&agentTimeout, "agent-timeout", 120*time.Second, "单次智能体调用超时")
-	f.StringVar(&threadsRaw, "thread", "", "只轮询这些会话（逗号分隔的 conversation_id）；空=自动发现全部群聊+私聊")
+	f.StringVar(&threadsRaw, "conversations", "", "只轮询这些会话（逗号分隔的 conversation_id）；空=自动发现全部群聊+私聊")
+	f.StringVar(&threadsRaw, "thread", "", "已弃用，请改用 --conversations")
 	f.Uint64Var(&selfID, "self-id", 0, "本机器人的虚拟用户 id；0=通过 GET /bot/me 自动发现")
 	f.StringVar(&statePath, "state", "", "水位线文件路径（默认 ~/.qim/agent-loop-state.json）")
 	f.StringVar(&replyType, "reply-type", "markdown", "回复消息类型: text|markdown")
@@ -241,7 +245,7 @@ func runAgentLoop(opts agentLoopOptions) {
 	logf("轮询启动：会话 %d 个，间隔 %v，mention-only=%v，状态 %s",
 		len(r.threadsToPoll()), opts.interval, opts.mentionOnly, opts.statePath)
 	if opts.mentionOnly && len(opts.threads) > 0 {
-		logf("提示: --thread 指定的会话若不在群列表中，按 1:1 私聊处理（每条都回复）")
+		logf("提示: --conversations 指定的会话若不在群列表中，按 1:1 私聊处理（每条都回复）")
 	}
 
 	lastDiscover := time.Now()

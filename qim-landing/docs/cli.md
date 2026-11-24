@@ -128,9 +128,14 @@ nuim config show
 # 向用户 alice 发送一条文本消息（自动创建/查找会话）
 nuim send --to alice --content "你好，这是一条测试消息"
 
-# 指定会话
-nuim send --to alice --thread "项目讨论" --content "明天开会"
+# 指定会话（支持会话 ID 或名称）
+nuim send --conversation "项目讨论" --content "明天开会"
+
+# 发到群
+nuim send --conversation 98 --content "大家好"
 ```
+
+> `--conversation` 支持会话 ID 或会话名；`--thread` 已弃用，等价 `--conversation`。
 
 ### 发送 Markdown 消息
 
@@ -155,7 +160,7 @@ nuim send --to alice --type card --content '{
 }'
 
 # 等待用户点击结果
-nuim messages poll --thread alice --type card_action --once --output json
+nuim messages poll --conversation alice --type card_action --once --output json
 ```
 
 ### 发送文件
@@ -169,13 +174,13 @@ nuim send --to alice --file ./design.pdf
 
 ```bash
 # 拉取最近 50 条消息
-nuim messages list --thread alice
+nuim messages list --conversation alice
 
 # 只看最新 10 条
-nuim messages list --thread alice --limit 10
+nuim messages list --conversation alice --limit 10
 
 # 过滤特定类型
-nuim messages list --thread alice --type markdown
+nuim messages list --conversation alice --type markdown
 
 # 搜索消息
 nuim messages search --keyword "部署"
@@ -185,16 +190,16 @@ nuim messages search --keyword "部署"
 
 ```bash
 # 持续监听用户回复
-nuim messages poll --thread alice
+nuim messages poll --conversation alice
 
 # 只等一次新消息就退出（适合 agent 一次性等待）
-nuim messages poll --thread alice --once
+nuim messages poll --conversation alice --once
 
 # 等待卡片点击结果
-nuim messages poll --thread alice --type card_action --once
+nuim messages poll --conversation alice --type card_action --once
 
 # 自定义轮询间隔（默认 2s）
-nuim messages poll --thread alice --interval 5s
+nuim messages poll --conversation alice --interval 5s
 ```
 
 ### 流式消息（配合 AI Agent）
@@ -232,10 +237,10 @@ nuim task update --id 1 --status done
 
 ```bash
 # 默认：人类可读格式
-nuim messages list --thread alice
+nuim messages list --conversation alice
 
 # 原始 JSON（适合脚本解析）
-nuim messages list --thread alice --output json
+nuim messages list --conversation alice --output json
 
 # 裸 ID（方便管道取值）
 nuim send --to alice --content "hi" --output id
@@ -256,7 +261,7 @@ nuim config set --server http://localhost:8080 --token qbot_...
 nuim send --to user1 --type card --content '{"title":"选择","text":"你想怎么做？","buttons":[{"id":"a","text":"方案A"},{"id":"b","text":"方案B"}]}'
 
 # 3. 轮询等待用户回复
-nuim messages poll --thread user1 --type card_action --once --output json
+nuim messages poll --conversation user1 --type card_action --once --output json
 # → {"id":42,"content":"{\"action_id\":\"a\"}","type":"card_action",...}
 
 # 4. 根据用户选择继续处理
